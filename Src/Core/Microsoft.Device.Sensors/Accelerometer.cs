@@ -11,7 +11,7 @@ namespace Microsoft.Devices.Sensors
             State = SensorState.Ready;
         }
 
-#if __MOBILE__
+#if __MOBILE__ || __ANDROID__
         private void OnImplReadingChanged(object ?sender, Xamarin.Essentials.AccelerometerChangedEventArgs args)
         {
             // We always rotate it to the right... Which seems to be the opposite to Windows Phone default reported axis direction
@@ -48,7 +48,7 @@ namespace Microsoft.Devices.Sensors
 
             _Started = true;
 
-#if __MOBILE__
+#if __MOBILE__ || __ANDROID__
             Xamarin.Essentials.Accelerometer.ReadingChanged += OnImplReadingChanged;
 
             if (!Xamarin.Essentials.Accelerometer.IsMonitoring)
@@ -65,7 +65,7 @@ namespace Microsoft.Devices.Sensors
                 return;
             }
 
-#if __MOBILE__
+#if __MOBILE__ || __ANDROID__
             Xamarin.Essentials.Accelerometer.ReadingChanged -= OnImplReadingChanged;
 #endif
 

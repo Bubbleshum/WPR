@@ -134,6 +134,7 @@ namespace WPR
 
                     GraphicsDeviceManager2.RequestOrientation = requestOrientation;
                     SignedInGamer.Reset();
+                    GamerServicesDispatcher.WindowHandle = obj.Window.Handle;
 
                     obj.Activated += (obj, args) =>
                     {

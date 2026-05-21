@@ -54,15 +54,33 @@ namespace WPR.UI.Android
             ActivityResult resultAct = (result as ActivityResult)!;
             if (resultAct.ResultCode != (int)Result.Ok)
             {
-                var errorText = resultAct.Data?.GetStringExtra(GameActivity.ErrorDataName)
-                    ?? Properties.Resources.ExceptionRunApp;
+                var errorText = resultAct.Data?.GetStringExtra(GameActivity.ErrorDataName);
+                if (string.IsNullOrWhiteSpace(errorText))
+                {
+                    errorText = "The game process exited unexpectedly (native crash or force-close). Check logcat for details.";
+                }
+
                 WPR.Common.Log.Error(LogCategory.AppList, $"Game run error: {errorText}");
+                global::Android.Util.Log.Error("WPR", $"Game run error: {errorText}");
+
+                try
+                {
+                    var logPath = System.IO.Path.Combine(
+                        _Owning.GetExternalFilesDir(null)!.AbsolutePath,
+                        "last_game_error.txt");
+                    System.IO.File.WriteAllText(logPath, errorText);
+                }
+                catch { }
+
+                var dialogMessage = errorText.Length > 3500
+                    ? errorText.Substring(0, 3500) + "\n…(truncated)"
+                    : errorText;
 
                 _Owning.RunOnUiThread(() =>
                 {
                     new AlertDialog.Builder(_Owning)!
                         .SetTitle(Properties.Resources.AppRunError)!
-                        .SetMessage(errorText)!
+                        .SetMessage(dialogMessage)!
                         .SetPositiveButton("OK", (IDialogInterfaceOnClickListener?)null)!
                         .Show();
                 });
