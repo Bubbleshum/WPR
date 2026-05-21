@@ -132,6 +132,7 @@ using WPR.Common;
 using Avalonia.Platform.Storage;
 using DialogHostAvalonia;
 using Avalonia.Interactivity;
+using Avalonia.Input;
 
 namespace WPR.UI.Pages
 {
@@ -157,6 +158,15 @@ namespace WPR.UI.Pages
             };
 
             this.Get<Button>("addNewAppButton").Click += AddNewAppButton_Click;
+
+            var appListBox = this.Get<ListBox>("appListBox");
+            appListBox.DoubleTapped += (_, _) =>
+            {
+                if (ViewModel?.ChoosenApp != null)
+                {
+                    ApplicationLaunchRequest.Ask(ViewModel.ChoosenApp.Model);
+                }
+            };
         }
 
         private async void AddNewAppButton_Click(object? sender, RoutedEventArgs e)
