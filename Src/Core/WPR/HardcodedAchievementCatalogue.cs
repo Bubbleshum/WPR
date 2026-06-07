@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
@@ -57,6 +58,60 @@ namespace WPR
             return ids;
         }
 
+        /// <summary>
+        /// The curated game display name from the product's catalogue manifest (the top-level
+        /// <c>"Name"</c> in <c>achievements.json</c>), or null when no catalogue ships for the
+        /// product or the manifest omits a name. Used to title a running game from its curated
+        /// metadata, falling back to the manifest title when there's no catalogue.
+        /// </summary>
+        public static string? GameName(string productId)
+        {
+            string? name = ReadManifest(productId)?.Name;
+            return string.IsNullOrWhiteSpace(name) ? null : name;
+        }
+
+        /// <summary>
+        /// The curated game description from the product's catalogue manifest (the top-level
+        /// <c>"Description"</c> in <c>achievements.json</c>), or null when no catalogue ships for
+        /// the product or the manifest omits a description. Used on the game page in preference to
+        /// the (often empty/terse) WMAppManifest description.
+        /// </summary>
+        public static string? GameDescription(string productId)
+        {
+            string? desc = ReadManifest(productId)?.Description;
+            return string.IsNullOrWhiteSpace(desc) ? null : desc;
+        }
+
+        // GameName/GameDescription back the library list and game-page bindings, which re-read
+        // per item (and on every tooltip hover). The catalogue tree is deployed once at startup
+        // and stable for the session, so cache the parsed manifest (null included) to keep the UI
+        // off the disk. Not used by Load() — the install/reconcile path keeps its own fresh read.
+        private static readonly ConcurrentDictionary<string, ManifestDto?> ManifestCache =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Reads and deserialises a product's catalogue manifest, or null if absent/unparseable. Cached per session.</summary>
+        private static ManifestDto? ReadManifest(string productId)
+        {
+            if (string.IsNullOrEmpty(productId)) return null;
+
+            return ManifestCache.GetOrAdd(productId, static id =>
+            {
+                string manifest = Path.Combine(ProductDir(id), ManifestName);
+                if (!File.Exists(manifest)) return null;
+
+                try
+                {
+                    return JsonSerializer.Deserialize<ManifestDto>(File.ReadAllText(manifest), JsonOptions);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warn(LogCategory.AppInstall,
+                        $"HardcodedAchievementCatalogue: failed to read manifest {manifest}: {ex.Message}");
+                    return null;
+                }
+            });
+        }
+
         public static List<HardcodedAchievement> Load(string productId)
         {
             var result = new List<HardcodedAchievement>();
@@ -104,6 +159,7 @@ namespace WPR
         private sealed class ManifestDto
         {
             public string? Name { get; set; }
+            public string? Description { get; set; }
             public List<EntryDto>? Achievements { get; set; }
         }
 

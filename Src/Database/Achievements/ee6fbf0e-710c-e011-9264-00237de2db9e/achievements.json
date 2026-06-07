@@ -1,5 +1,6 @@
 {
   "Name": "Zombies!!!",
+  "Description": "Based on the cult board game. Battle and flee through a randomly assembled city overrun by the dead, racing to reach the helipad and escape with your life.",
   "Achievements": [
     { "Key": "overkill",                "Name": "Overkill",                "GamerScore": 10, "Icon": "overkill.png",                "Description": "Defeat a Zombie with a roll of 7 or greater." },
     { "Key": "zombie_slayer",           "Name": "King of the Zombies",     "GamerScore": 25, "Icon": "zombie_slayer.png",           "Description": "Kill 200 Zombies." },

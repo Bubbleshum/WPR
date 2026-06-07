@@ -1,5 +1,6 @@
 {
   "Name": "3D Brick Breaker Revolution",
+  "Description": "A 3D twist on the classic brick-breaker. Bounce a ball off your paddle to smash through walls of bricks, grabbing power-ups and weapons across dozens of increasingly tricky levels.",
   "Achievements": [
     { "Key": "APPRENTICEREVOLUTIONARY", "Name": "Apprentice Revolutionary", "GamerScore": 10, "Icon": "apprentice_revolutionary.png", "Description": "Get to Level 5 in the Revolution Mode." },
     { "Key": "MASTERCLASSICIST",        "Name": "Master Classicist",        "GamerScore": 10, "Icon": "master_classicist.png",        "Description": "Complete 30 levels in Classic Mode." },

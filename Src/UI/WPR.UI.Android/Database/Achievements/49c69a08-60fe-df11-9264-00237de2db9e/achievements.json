@@ -1,5 +1,6 @@
 {
   "Name": "Fruit Ninja",
+  "Description": "Halfbrick's smash-hit slicing game. Swipe to slash waves of flying fruit into juicy pieces while dodging bombs, across the Classic, Arcade, and Zen modes.",
   "Achievements": [
     { "Key": "Great Fruit Ninja",    "Name": "Great Fruit Ninja",    "GamerScore": 20,  "Icon": "", "Description": "Got a score of 100 in Classic Mode" },
     { "Key": "Ultimate Fruit Ninja", "Name": "Ultimate Fruit Ninja", "GamerScore": 40,  "Icon": "", "Description": "Got a score of 200 in Classic Mode" },

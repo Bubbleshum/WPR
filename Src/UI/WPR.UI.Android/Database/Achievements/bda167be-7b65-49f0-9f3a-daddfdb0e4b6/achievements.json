@@ -1,5 +1,6 @@
 {
     "Name":  "Bug Village",
+    "Description":  "Grow a bustling colony of bugs. Farm, gather, and build to expand your tiny village, keeping your industrious insects fed, happy, and hard at work.",
     "Achievements":  [
       {
         "Key":  "BUGGINOUT_ACHIEVE_RESOURCES",

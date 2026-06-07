@@ -383,9 +383,33 @@ namespace Microsoft.Xna.Framework.Media
 
 		private static bool IsSupportedSongPath(string path)
 		{
-			/* XNA_PlaySong uses stb_vorbis; WP7 titles ship .wma instead. */
+			/* XNA_PlaySong uses stb_vorbis, so it only plays Ogg Vorbis. WP7 titles
+			 * ship .wma; AudioCompabilityConverter transcodes those to Ogg at install
+			 * time but writes the result back under the original .wma filename (the
+			 * .xnb/SongReader path is unchanged), so the extension lies. Sniff the
+			 * actual container ("OggS" magic) rather than trusting the extension. */
 			string ext = Path.GetExtension(path);
-			return ext.Equals(".ogg", StringComparison.OrdinalIgnoreCase);
+			if (ext.Equals(".ogg", StringComparison.OrdinalIgnoreCase))
+			{
+				return true;
+			}
+
+			try
+			{
+				using (FileStream fs = File.OpenRead(path))
+				{
+					byte[] magic = new byte[4];
+					return fs.Read(magic, 0, 4) == 4
+						&& magic[0] == (byte) 'O'
+						&& magic[1] == (byte) 'g'
+						&& magic[2] == (byte) 'g'
+						&& magic[3] == (byte) 'S';
+				}
+			}
+			catch
+			{
+				return false;
+			}
 		}
 
 		private static void PlaySong(Song song)

@@ -41,7 +41,12 @@ namespace WPR.UI.Views
                         _ = NativeUI.NotificationManager.ShowNotification(new DesktopNotifications.Notification()
                         {
                             Title = Properties.Resources.LaunchingInProcess,
-                            Body = args.Target.Name!,
+                            // Prefer the curated catalogue name (e.g. "Risk") over the
+                            // manifest title (e.g. "Risky", or an unresolved @AppResLib
+                            // resource), matching how the game window title is set in
+                            // ApplicationLaunch. Falls back to the manifest name when no
+                            // catalogue ships for the product.
+                            Body = WPR.HardcodedAchievementCatalogue.GameName(args.Target.ProductId) ?? args.Target.Name!,
                             // Game icon goes into the avatar slot — the manager circle-crops it.
                             ImagePath = Configuration.Current!.DataPath(args.Target.IconPath),
                             AttributionText = "Windows Phone Reimplementation",

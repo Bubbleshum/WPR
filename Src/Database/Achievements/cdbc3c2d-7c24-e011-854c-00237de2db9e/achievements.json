@@ -1,5 +1,6 @@
 {
     "Name":  "Tiki Towers",
+    "Description":  "A physics construction puzzler. Build bamboo bridges and scaffolds to guide a troop of monkeys safely across each treacherous level, using only the materials you're given.",
     "Achievements":  [
                          {
                              "Key":  "UNLOCK_ISLAND",

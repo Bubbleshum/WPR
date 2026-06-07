@@ -46,6 +46,16 @@ namespace Microsoft.Phone.Info
                     // light them up.
                     return 180L * 1024 * 1024;
 
+                case "DeviceUniqueId":
+                    // WP7 returns a 20-byte anonymous per-device hash here. Games cast the
+                    // result straight to byte[] and index it (RISK's MpWiFiNetwork..ctor does
+                    // `mDeviceUniqueID = (byte[])GetValue("DeviceUniqueId"); mDeviceUniqueID[0] = 0;`)
+                    // — returning null NREs them mid-init, and because RISK swallows the throw
+                    // in XNAGame.Update's catch{} the game hangs on a black logo screen forever.
+                    // Return a stable, machine-specific 20-byte id (SHA-1 is exactly 20 bytes).
+                    return System.Security.Cryptography.SHA1.HashData(
+                        System.Text.Encoding.UTF8.GetBytes("WPR-DeviceUniqueId:" + Environment.MachineName));
+
                 default:
                     return null;
             }

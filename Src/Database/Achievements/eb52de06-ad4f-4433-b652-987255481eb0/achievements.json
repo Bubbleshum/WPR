@@ -1,0 +1,26 @@
+{
+  "Name": "Z0MB1ES (on teh ph0ne)",
+  "Description": "A frantic top-down zombie shooter. Blast your way through relentless waves of the undead, grabbing weapons and upgrades to stay alive as long as you can.",
+  "Achievements": [
+    { "Key": "im_100k",       "Name": "Extremely Decent Score",         "GamerScore": 10, "Icon": "im_100k.png",       "Description": "Score 100,000 in I MAED A GAM3." },
+    { "Key": "im_million",    "Name": "Zombie Smashers 20XX",           "GamerScore": 10, "Icon": "im_million.png",    "Description": "Score one million in I MAED A GAM3." },
+    { "Key": "im_win",        "Name": "Epic Outro",                     "GamerScore": 10, "Icon": "im_win.png",        "Description": "Reach the end of the song in I MAED A GAM3." },
+    { "Key": "im_invincible", "Name": "Perfect GAM3",                   "GamerScore": 10, "Icon": "im_invincible.png", "Description": "Beat I MAED A GAM3 without dying once." },
+    { "Key": "im_asteroids",  "Name": "Space!",                         "GamerScore": 10, "Icon": "im_asteroids.png",  "Description": "Survive space without firing a shot in I MAED A GAM3." },
+    { "Key": "im_nomove",     "Name": "Manual Tower Defense",           "GamerScore": 10, "Icon": "im_nomove.png",     "Description": "Don't move for a minute in I MAED A GAM3." },
+    { "Key": "im_laser",      "Name": "Taser Lag",                      "GamerScore": 10, "Icon": "im_laser.png",      "Description": "Get 20 kills with one laser shot in I MAED A GAM3." },
+    { "Key": "tv_100k",       "Name": "Mind Bullets",                   "GamerScore": 10, "Icon": "tv_100k.png",       "Description": "Score 100,000 in Time Viking." },
+    { "Key": "tv_million",    "Name": "The Future is for Time Viking",  "GamerScore": 10, "Icon": "tv_million.png",    "Description": "Score one million in Time Viking." },
+    { "Key": "tv_win",        "Name": "Sweet, sweet moon gold",         "GamerScore": 10, "Icon": "tv_win.png",        "Description": "Destroy the moon in Time Viking." },
+    { "Key": "tv_tower",      "Name": "Towers so High",                 "GamerScore": 10, "Icon": "tv_tower.png",      "Description": "Build a 1,000 foot tower in Time Viking." },
+    { "Key": "tv_invincible", "Name": "Invincible Viking",              "GamerScore": 10, "Icon": "tv_invincible.png", "Description": "Destroy the moon without dying in Time Viking." },
+    { "Key": "ez_100k",       "Name": "Boosh!",                         "GamerScore": 10, "Icon": "ez_100k.png",       "Description": "Score 100,000 in Endless Z0mb1es." },
+    { "Key": "ez_million",    "Name": "Twin Stick Master",              "GamerScore": 10, "Icon": "ez_million.png",    "Description": "Score one million in Endless Z0mb1es." },
+    { "Key": "ez_oneroom",    "Name": "The Beginning of the End(less)", "GamerScore": 10, "Icon": "ez_oneroom.png",    "Description": "Survive one room of Endless Z0mb1es." },
+    { "Key": "ez_oneround",   "Name": "Endless Tour",                   "GamerScore": 10, "Icon": "ez_oneround.png",   "Description": "Survive one round of Endless Z0mb1es." },
+    { "Key": "ez_tworounds",  "Name": "Reunion Tour",                   "GamerScore": 10, "Icon": "ez_tworounds.png",  "Description": "Survive TWO rounds of Endless Z0mb1es." },
+    { "Key": "kill1000",      "Name": "Bodies: Counted!",               "GamerScore": 10, "Icon": "kill1000.png",      "Description": "Kill 1,000 \"things.\"" },
+    { "Key": "kill10000",     "Name": "SO SRS",                         "GamerScore": 10, "Icon": "kill10000.png",     "Description": "Kill 10,000 \"things.\"" },
+    { "Key": "mega",          "Name": "Not so mega",                    "GamerScore": 10, "Icon": "mega.png",          "Description": "Create a custom game sprite in Mega Games Creator 2000." }
+  ]
+}

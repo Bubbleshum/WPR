@@ -1,0 +1,21 @@
+{
+  "Name": "Kinectimals",
+  "Description": "Adopt your very own exotic wild cub and raise it as a loving companion. Play games, teach tricks, and explore the island of Lemuria in this gentle family pet adventure.",
+  "Achievements": [
+    { "Key": "Achievement_01_AFriendForLife",         "Name": "A Friend For Life",         "GamerScore": 10, "Icon": "a_friend_for_life.png",          "Description": "Choose a new animal." },
+    { "Key": "Achievement_02_FirstContact",           "Name": "First Contact",             "GamerScore": 10, "Icon": "first_contact.png",             "Description": "Pet your animal for the first time." },
+    { "Key": "Achievement_03_CatchMeIfYouCan",        "Name": "Catch Me If You Can",       "GamerScore": 10, "Icon": "catch_me_if_you_can.png",       "Description": "Get your animal to catch a ball for the first time." },
+    { "Key": "Achievement_04_AnimalCarer",            "Name": "Animal Carer",              "GamerScore": 10, "Icon": "animal_carer.png",              "Description": "Clean and feed your animal for the first time." },
+    { "Key": "Achievement_05_AGreatStart",            "Name": "A Great Start",             "GamerScore": 10, "Icon": "a_great_start.png",             "Description": "Win your first medal." },
+    { "Key": "Achievement_06_PiecesofFlair",          "Name": "Pieces of Flair",           "GamerScore": 10, "Icon": "pieces_of_flair.png",           "Description": "Place your first collar on your animal." },
+    { "Key": "Achievement_07_HitTheSurf",             "Name": "Hit The Surf",              "GamerScore": 10, "Icon": "hit_the_surf.png",              "Description": "Visit Fiddler's Beach for the first time." },
+    { "Key": "Achievement_08_Archaeologist",          "Name": "Archaeologist",             "GamerScore": 10, "Icon": "archaeologist.png",             "Description": "Visit La Selva for the first time." },
+    { "Key": "Achievement_09_UnderTheFallingBlossom", "Name": "Under The Falling Blossom", "GamerScore": 10, "Icon": "under_the_falling_blossom.png", "Description": "Visit Cherry Blossom Grove for the first time." },
+    { "Key": "Achievement_10_TheHillsAreAlive",       "Name": "The Hills Are Alive",       "GamerScore": 10, "Icon": "the_hills_are_alive.png",       "Description": "Visit Suri Mountain for the first time." },
+    { "Key": "Achievement_11_Mountaineer",            "Name": "Mountaineer",               "GamerScore": 10, "Icon": "mountaineer.png",               "Description": "Visit Celestial Glacier for the first time." },
+    { "Key": "Achievement_12_TreasureHunter",         "Name": "Treasure Hunter",           "GamerScore": 20, "Icon": "treasure_hunter.png",           "Description": "Complete the pirate map." },
+    { "Key": "Achievement_13_Champion",               "Name": "Champion",                  "GamerScore": 30, "Icon": "champion.png",                  "Description": "Win gold medals in 25 challenges." },
+    { "Key": "Achievement_14_TheRingMaster",          "Name": "The Ring Master",           "GamerScore": 20, "Icon": "the_ring_master.png",           "Description": "Perform all tricks." },
+    { "Key": "Achievement_15_WildlifeGuru",           "Name": "Wildlife Guru",             "GamerScore": 20, "Icon": "wildlife_guru.png",             "Description": "Reach the rank of Wildlife Guru." }
+  ]
+}

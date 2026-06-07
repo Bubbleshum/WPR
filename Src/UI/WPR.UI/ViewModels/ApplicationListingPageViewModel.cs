@@ -231,10 +231,14 @@ namespace WPR.UI.ViewModels
             {
                 string filter = (text ?? "").ToLower();
 
+                // Materialise the DB rows first, then filter/sort on the view-model's resolved
+                // Name — for catalogue games that's the curated catalogue name, which can't be
+                // expressed in SQL. Keeps search + ordering consistent with what's displayed.
                 List<ApplicationItemViewModel> installed = ApplicationContext.Current.Applications!
-                    .Where(app => app.Name.ToLower().Contains(filter))
-                    .OrderBy(app => app.Name.ToLower())
+                    .ToList()
                     .Select(app => new ApplicationItemViewModel(app))
+                    .Where(vm => (vm.Name ?? "").ToLower().Contains(filter))
+                    .OrderBy(vm => (vm.Name ?? "").ToLower())
                     .ToList();
 
                 HashSet<string> installedProductIds = new HashSet<string>(
@@ -251,9 +255,9 @@ namespace WPR.UI.ViewModels
                     .Where(d => !installedProductIds.Contains(d.Preview.ProductId))
                     .Where(d => installingProductId == null
                         || !string.Equals(d.Preview.ProductId, installingProductId, StringComparison.OrdinalIgnoreCase))
-                    .Where(d => (d.Preview.Name ?? "").ToLower().Contains(filter))
-                    .OrderBy(d => (d.Preview.Name ?? "").ToLower())
                     .Select(d => new ApplicationItemViewModel(d.XapFilePath, d.Preview))
+                    .Where(vm => (vm.Name ?? "").ToLower().Contains(filter))
+                    .OrderBy(vm => (vm.Name ?? "").ToLower())
                     .ToList();
 
                 IEnumerable<ApplicationItemViewModel> combined = installed.Concat(discovered);

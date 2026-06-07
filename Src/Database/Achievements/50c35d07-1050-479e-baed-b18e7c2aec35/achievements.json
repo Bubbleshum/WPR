@@ -1,5 +1,6 @@
 {
     "Name":  "MonstaFish",
+    "Description":  "Survive the food chain as a hungry fish. Eat smaller creatures to grow ever bigger while dodging larger predators through colorful underwater stages.",
     "Achievements":  [
                          {
                              "Key":  "absolutebeginner",

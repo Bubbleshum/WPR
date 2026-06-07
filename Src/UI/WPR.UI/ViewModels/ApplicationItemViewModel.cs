@@ -84,13 +84,25 @@ namespace WPR.UI.ViewModels
 
         public bool IsInstalled => _App != null;
         public bool IsAvailable => _App == null && _Installing == null;
+
+        /// <summary>
+        /// Whether the user may edit this game's name/description/etc. False for games that ship a
+        /// hardcoded catalogue (<c>Database/Achievements/&lt;productId&gt;/</c>): the catalogue is the
+        /// authoritative source for their metadata (it backs both the window title and the game-page
+        /// description), so an edit would be silently overridden and is disallowed.
+        /// </summary>
+        public bool IsEditable => IsInstalled && !HardcodedAchievementCatalogue.HasCatalogue(ProductId ?? "");
         public bool IsInstalling => _Installing != null;
         public int Progress => _Installing?.Progress ?? 0;
 
-        public string? Name => _App?.Name ?? _Preview?.Name ?? _Installing?.Name;
+        public string? Name =>
+            HardcodedAchievementCatalogue.GameName(ProductId ?? "")
+            ?? _App?.Name ?? _Preview?.Name ?? _Installing?.Name;
         public string? Author => _App?.Author ?? _Preview?.Author ?? _Installing?.Author;
         public string? Publisher => _App?.Publisher ?? _Preview?.Publisher ?? _Installing?.Publisher;
-        public string? Description => _App?.Description ?? _Preview?.Description ?? _Installing?.Description;
+        public string? Description =>
+            HardcodedAchievementCatalogue.GameDescription(ProductId ?? "")
+            ?? _App?.Description ?? _Preview?.Description ?? _Installing?.Description;
         public string? Version => _App?.Version ?? _Preview?.Version ?? _Installing?.Version;
         public string? ProductId => _App?.ProductId ?? _Preview?.ProductId ?? _Installing?.ProductId;
         public ApplicationType? ApplicationType => _App?.ApplicationType ?? _Preview?.ApplicationType ?? _Installing?.ApplicationType;
@@ -181,6 +193,9 @@ namespace WPR.UI.ViewModels
 
         private void EditApp()
         {
+            // Catalogue-managed games own their metadata; never open the edit dialog for them
+            // even if a command somehow fires (the UI entry points are hidden via IsEditable).
+            if (!IsEditable) return;
             EditRequested?.Invoke(this, this);
         }
 

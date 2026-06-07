@@ -33,7 +33,24 @@ namespace Microsoft.Xna.Framework.GamerServices
 
         public Achievement? this[string key]
         {
-            get { return innerlist.Find(achievement => achievement.Key == key); }
+            get
+            {
+                Achievement? hit = innerlist.Find(achievement => achievement.Key == key);
+                if (hit != null) return hit;
+
+                // On a real WP7 device GetAchievements() returns the title's FULL achievement
+                // catalogue (every achievement the game defines, earned or not), so a lookup by
+                // key always resolves. In WPR the collection can be empty or partial when the
+                // install-time seeder couldn't reach TrueAchievements (e.g. Kinectimals 403s)
+                // and the game ships no offline catalogue under Database/Achievements/<id>/.
+                // Games iterate their own known achievement IDs and dereference the result
+                // unconditionally — Kinectimals' AchievementManager.Initialise() does
+                // `achievements[name].IsEarned`, which NREs on a miss and wedges the splash
+                // screen forever (the loop keeps redrawing the splash but never transitions).
+                // Hand back an unearned placeholder so the game can advance; AwardAchievement
+                // still no-ops harmlessly when there's no backing DB row to flip.
+                return new Achievement { Key = key, Name = key, IsEarned = false };
+            }
             set { throw new InvalidOperationException("Manually set achievement data is not allowed!"); }
         }
 

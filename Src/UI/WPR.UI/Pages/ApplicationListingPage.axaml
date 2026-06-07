@@ -142,6 +142,8 @@
                            Text="{Binding ChoosenApp.TypeLabel}"/>
                 <TextBlock Classes="h1"
                            Text="{Binding ChoosenApp.Name}"
+                           TextWrapping="Wrap"
+                           MaxLines="2"
                            TextTrimming="CharacterEllipsis"/>
                 <StackPanel Orientation="Horizontal" Spacing="6">
                   <TextBlock Classes="dim" Text="by"/>
@@ -157,9 +159,13 @@
           </Grid>
         </Grid>
 
-        <!-- Body -->
-        <ScrollViewer Grid.Row="1" Padding="40,24,40,24">
-          <StackPanel Spacing="24">
+        <!-- Body. Inset lives on the StackPanel Margin, not the ScrollViewer
+             Padding: ScrollViewer padding isn't part of the scrollable extent in
+             Avalonia, so a bottom Padding clips the last item at max scroll. The
+             96px bottom also clears the floating "+" button (56 + 24 margin). -->
+        <ScrollViewer Grid.Row="1">
+          <StackPanel Spacing="24"
+                      Margin="40,24,40,96">
             <StackPanel Orientation="Horizontal" Spacing="12">
               <Button Classes="play"
                       Command="{Binding ChoosenApp.RunAppCommand}"
@@ -173,7 +179,7 @@
                       Command="{Binding ChoosenApp.EditAppCommand}"
                       Content="{x:Static p:Resources.EditApp}"
                       ToolTip.Tip="{x:Static p:Resources.EditAppToolTip}"
-                      IsVisible="{Binding ChoosenApp.IsInstalled}"/>
+                      IsVisible="{Binding ChoosenApp.IsEditable}"/>
               <Button Classes="ghost"
                       Command="{Binding ChoosenApp.RepatchAppCommand}"
                       Content="Repatch"

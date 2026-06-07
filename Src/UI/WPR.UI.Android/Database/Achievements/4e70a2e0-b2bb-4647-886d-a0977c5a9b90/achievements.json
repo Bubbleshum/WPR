@@ -1,0 +1,26 @@
+{
+  "Name": "Risk",
+  "Description": "The classic Hasbro game of global domination. Deploy your armies, fortify your borders, and wage war across the world map to conquer every territory and eliminate your rivals.",
+  "Achievements": [
+    { "Key": "BrigadierGeneral",     "Name": "Brigadier-general",     "GamerScore": 5,  "Icon": "brigadier_general.png",     "Description": "First victory." },
+    { "Key": "MajorGeneral",         "Name": "Major-general",         "GamerScore": 10, "Icon": "major_general.png",         "Description": "Win 5 games." },
+    { "Key": "LieutenantGeneral",    "Name": "Lieutenant-general",    "GamerScore": 10, "Icon": "lieutenant_general.png",    "Description": "Win 10 games." },
+    { "Key": "General",              "Name": "General",               "GamerScore": 15, "Icon": "general.png",               "Description": "Win 20 games." },
+    { "Key": "PromisingStrategist",  "Name": "Promising strategist",  "GamerScore": 5,  "Icon": "promising_strategist.png",  "Description": "Get a total of 10 Strategic kudos." },
+    { "Key": "VeteranStrategist",    "Name": "Veteran strategist",    "GamerScore": 10, "Icon": "veteran_strategist.png",    "Description": "Get a total of 25 Strategic kudos." },
+    { "Key": "StrategicSpecialist",  "Name": "Strategic specialist",  "GamerScore": 15, "Icon": "strategic_specialist.png",  "Description": "Get a total of 50 Strategic kudos." },
+    { "Key": "MasterStrategist",     "Name": "Master strategist",     "GamerScore": 20, "Icon": "master_strategist.png",     "Description": "Get a total of 100 Strategic kudos." },
+    { "Key": "PromisingDefender",    "Name": "Promising defender",    "GamerScore": 5,  "Icon": "promising_defender.png",    "Description": "Get a total of 10 Defensive kudos." },
+    { "Key": "VeteranDefender",      "Name": "Veteran defender",      "GamerScore": 10, "Icon": "veteran_defender.png",      "Description": "Get a total of 25 Defensive kudos." },
+    { "Key": "DefenseSpecialist",    "Name": "Defense specialist",    "GamerScore": 15, "Icon": "defense_specialist.png",    "Description": "Get a total of 50 Defensive kudos." },
+    { "Key": "MasterDefender",       "Name": "Master defender",       "GamerScore": 20, "Icon": "master_defender.png",       "Description": "Get a total of 100 Defensive kudos." },
+    { "Key": "Tactician",            "Name": "Tactician",             "GamerScore": 10, "Icon": "tactician.png",             "Description": "Win the game by attacking not more than 6 times." },
+    { "Key": "Warlord",              "Name": "Warlord",               "GamerScore": 5,  "Icon": "warlord.png",               "Description": "Conquer the last territory of all the opponents in a game." },
+    { "Key": "Homerun",              "Name": "Homerun",               "GamerScore": 10, "Icon": "homerun.png",               "Description": "Win 5 consecutive games." },
+    { "Key": "NoChinks",             "Name": "The wall",              "GamerScore": 5,  "Icon": "the_wall.png",              "Description": "Control a continent for 5 turns." },
+    { "Key": "Cannonade",            "Name": "Cannonade",             "GamerScore": 5,  "Icon": "cannonade.png",             "Description": "Conquer 15 or more territories in a single attack." },
+    { "Key": "Dominator",            "Name": "Dominator",             "GamerScore": 10, "Icon": "dominator.png",             "Description": "Win a single player game with 5 players." },
+    { "Key": "Allrounder",           "Name": "Allrounder",            "GamerScore": 10, "Icon": "allrounder.png",            "Description": "Win a single player game in all 3 difficulty modes." },
+    { "Key": "Orchestrator",         "Name": "Orchestrator",          "GamerScore": 5,  "Icon": "orchestrator.png",          "Description": "Win a game by manually deploying the troops." }
+  ]
+}

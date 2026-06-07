@@ -30,6 +30,12 @@ namespace WPR
         [System.Diagnostics.Conditional("DEBUG")]
         private static void WprTrace(string msg) => Trace.WriteLine(msg);
 
+        // Diagnostic state for the first-chance exception logger (see Start). Hook the
+        // AppDomain event once; the [ThreadStatic] flag stops the logger recursing if our
+        // own logging throws.
+        private static bool _firstChanceHooked;
+        [ThreadStatic] private static bool _inFirstChance;
+
         /// <summary>
         /// The game currently being driven by <see cref="Start"/>, or null if no game is running.
         /// Used by the host so it can request a clean shutdown when the main window closes.
@@ -207,6 +213,31 @@ namespace WPR
                 debugListener = new TextWriterTraceListener(sw, "wpr_game_debug");
                 Trace.Listeners.Add(debugListener);
                 WprTrace("[wpr-trace] ApplicationLaunch: trace listener attached (smoke test)");
+
+                // Surface exceptions that game code swallows in broad catch(Exception){}
+                // blocks. FirstChanceException fires at throw time, before any catch, so the
+                // real type/message/stack is captured even when the game discards it. This is
+                // exactly the case for ports like RISK whose XNAGame.Update wraps the whole
+                // scene-load chain in catch{} — a package-load throw there leaves the game
+                // stuck on its 2-sprite logo (black screen) with nothing logged. Debug-only
+                // (this whole block is #if DEBUG) and hooked once per process.
+                if (!_firstChanceHooked)
+                {
+                    _firstChanceHooked = true;
+                    AppDomain.CurrentDomain.FirstChanceException += (_, e) =>
+                    {
+                        if (_inFirstChance) return;
+                        _inFirstChance = true;
+                        try
+                        {
+                            Exception fce = e.Exception;
+                            WprTrace($"[wpr-fce] {fce.GetType().FullName}: {fce.Message}");
+                            WprTrace("[wpr-fce] " + (fce.StackTrace ?? "(no stack)"));
+                        }
+                        catch { /* never let logging mask the original throw */ }
+                        finally { _inFirstChance = false; }
+                    };
+                }
             }
             catch (Exception ex)
             {
@@ -344,7 +375,11 @@ namespace WPR
                 {
                     CurrentGame = obj;
                     obj!.IsMouseVisible = true;
-                    obj!.Window.Title = $"{app.Name} - {app.Author} (Publisher: {app.Publisher})";
+                    // Prefer the curated name from the game's achievement catalogue
+                    // (Database/Achievements/<productId>/achievements.json "Name") when one ships;
+                    // otherwise fall back to the app's friendly manifest title.
+                    string displayName = HardcodedAchievementCatalogue.GameName(app.ProductId) ?? app.Name;
+                    obj!.Window.Title = $"{displayName} - {app.Author} (Publisher: {app.Publisher})";
 
                     // Hook for the host to decorate the just-created SDL window (e.g. set the
                     // game's icon via SDL_SetWindowIcon). Best-effort: a host that throws here
@@ -402,6 +437,18 @@ namespace WPR
 
                     try
                     {
+                        // WPR: suppress focus-driven IsActive flips across the launch/boot window.
+                        // A transient FOCUS_LOST during startup (something briefly steals the SDL
+                        // window's focus around sign-in) flips Game.IsActive→false and fires
+                        // OnDeactivated mid-boot. Engines that pause their game clock on deactivate
+                        // (the jamdat/EA-Mobile RISK port calls GetGlobalTimeSystem().Pause() from
+                        // GameApp.FocusLost) then freeze on their logo screen forever, because SDL
+                        // delivers no paired FOCUS_GAINED to resume them — the game sits on a black
+                        // screen. Arm the same guard the achievement toast uses so the boot blip is
+                        // ignored; a genuine alt-tab a few seconds later is still honored. See
+                        // WprActivationGuard and SDL2_FNAPlatform's FOCUS_LOST/GAINED branches.
+                        WprActivationGuard.SuppressFocusActivation(TimeSpan.FromSeconds(8));
+
                         WprTrace("[wpr-trace] ApplicationLaunch: about to call Game.Run()");
                         // Run the game and capture any exceptions to produce richer diagnostics.
                         try

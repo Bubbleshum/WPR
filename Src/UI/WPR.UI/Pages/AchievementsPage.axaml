@@ -144,9 +144,13 @@
           </Grid>
         </Grid>
 
-        <!-- Achievement list -->
-        <ScrollViewer Grid.Row="1" Padding="40,16,40,24">
-          <ItemsControl ItemsSource="{Binding Achievements}">
+        <!-- Achievement list. Inset lives on the ItemsControl Margin, not the
+             ScrollViewer Padding: ScrollViewer padding isn't part of the
+             scrollable extent in Avalonia, so a bottom Padding clips the last
+             row at max scroll ("scroll doesn't go far enough"). -->
+        <ScrollViewer Grid.Row="1">
+          <ItemsControl ItemsSource="{Binding Achievements}"
+                        Margin="40,16,40,32">
             <ItemsControl.ItemTemplate>
               <DataTemplate DataType="vm:AchievementItemViewModel">
                 <Border Background="{StaticResource WprPanelBrush}"
