@@ -25,12 +25,20 @@ namespace WPR.UI.Desktop
             Configuration.Current = new Configuration(Path.Combine(Environment.GetFolderPath(
                 Environment.SpecialFolder.LocalApplicationData), "WPR"));
 
-            Filesystem.CopyFilesRecursively(Path.Combine(Directory.GetCurrentDirectory(), "Database\\TrueAchievements"),
+            // Resolve bundled data against the executable's own directory, NOT the process
+            // working directory. The build's "Copy pre-made database" target drops Database\
+            // next to the .exe; AppContext.BaseDirectory always points there regardless of
+            // what CWD the app was launched with (Directory.GetCurrentDirectory() is not
+            // guaranteed to be the exe dir and would make these copies read the wrong place
+            // or throw at startup).
+            string bundledDb = Path.Combine(AppContext.BaseDirectory, "Database");
+
+            Filesystem.CopyFilesRecursively(Path.Combine(bundledDb, "TrueAchievements"),
                 Configuration.Current.DataPath("Database\\TrueAchievements"));
 
             // Hardcoded achievement catalogues (manifest + icon PNGs). Overwrite-copy
             // every launch so curated updates ship with the build.
-            string achievementsSrc = Path.Combine(Directory.GetCurrentDirectory(), "Database\\Achievements");
+            string achievementsSrc = Path.Combine(bundledDb, "Achievements");
             if (Directory.Exists(achievementsSrc))
             {
                 Filesystem.CopyFilesRecursively(achievementsSrc,
@@ -39,12 +47,12 @@ namespace WPR.UI.Desktop
 
             if (!File.Exists(Configuration.Current.DataPath("Database\\achievements.db")))
             {
-                File.Copy("Database\\achievements.db", Configuration.Current.DataPath("Database\\achievements.db"));
+                File.Copy(Path.Combine(bundledDb, "achievements.db"), Configuration.Current.DataPath("Database\\achievements.db"));
             }
 
             if (!File.Exists(Configuration.Current.DataPath("Database\\applications.db")))
             {
-                File.Copy("Database\\applications.db", Configuration.Current.DataPath("Database\\applications.db"));
+                File.Copy(Path.Combine(bundledDb, "applications.db"), Configuration.Current.DataPath("Database\\applications.db"));
             }
 
             // Reconcile installed games against their hardcoded catalogues: add new /

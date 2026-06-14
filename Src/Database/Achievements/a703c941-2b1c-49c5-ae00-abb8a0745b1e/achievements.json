@@ -1,0 +1,26 @@
+{
+  "Name": "The Sims Medieval",
+  "Description": "A pocket-sized take on the Sims kingdom-building RPG. Forge your hero's destiny across quests, crafting, fishing, and combat in a medieval realm of knights and royal intrigue.",
+  "Achievements": [
+    { "Key": "ROLEPLAYER",       "Name": "Role Player",        "GamerScore": 15, "Icon": "role_player.png",       "Description": "Aim to get all the honorific titles." },
+    { "Key": "SOKIND",           "Name": "So Kind",            "GamerScore": 15, "Icon": "so_kind.png",           "Description": "Finish story \"Charitable Guy\"." },
+    { "Key": "SOVICIOUS",        "Name": "So Vicious",         "GamerScore": 15, "Icon": "so_vicious.png",        "Description": "Finish story \"Political Commitment\"." },
+    { "Key": "SORELIGIOUS",      "Name": "So Religious",       "GamerScore": 15, "Icon": "so_religious.png",      "Description": "Finish story \"Religious Commitment\"." },
+    { "Key": "SOBRAVE",          "Name": "So Brave",           "GamerScore": 15, "Icon": "so_brave.png",          "Description": "Finish story \"Way of the Brave\"." },
+    { "Key": "SMARTCRAFT",       "Name": "Smart Craft",        "GamerScore": 10, "Icon": "smart_craft.png",       "Description": "Craft all kind of potions." },
+    { "Key": "GARDENKEEPER",     "Name": "Garden Keeper",      "GamerScore": 10, "Icon": "garden_keeper.png",     "Description": "Grow all kind of plants." },
+    { "Key": "ECOLOGICDISASTER", "Name": "Ecologic Disaster",  "GamerScore": 10, "Icon": "ecologic_disaster.png", "Description": "Fish 50 lbs of fish in one session." },
+    { "Key": "ULTIMATEFIGHTER",  "Name": "Ultimate Fighter",   "GamerScore": 10, "Icon": "ultimate_fighter.png",  "Description": "Win a combat with 0 damages." },
+    { "Key": "KINGOFTHERING",    "Name": "King of the Ring",   "GamerScore": 5,  "Icon": "king_of_the_ring.png",  "Description": "Get married." },
+    { "Key": "BROTHERSINARM",    "Name": "Brothers in Arm",    "GamerScore": 5,  "Icon": "brothers_in_arm.png",   "Description": "Have 2 guild members." },
+    { "Key": "FRIENDLYSIM",      "Name": "Friendly Sim",       "GamerScore": 5,  "Icon": "friendly_sim.png",      "Description": "Have 5 friends." },
+    { "Key": "RICHESIM",         "Name": "Rich-E-Sim",         "GamerScore": 10, "Icon": "rich_e_sim.png",        "Description": "Get 10000 Simoles." },
+    { "Key": "WEAPONMASTER",     "Name": "Weapon Master",      "GamerScore": 10, "Icon": "weapon_master.png",     "Description": "Get all the weapons." },
+    { "Key": "CHEVRONKNIGHT",    "Name": "Chevron Knight",     "GamerScore": 5,  "Icon": "chevron_knight.png",    "Description": "Get the Chevron weapon." },
+    { "Key": "VAMPIREKNIGHT",    "Name": "Vampire Knight",     "GamerScore": 5,  "Icon": "vampire_knight.png",    "Description": "Get the Vampire sword." },
+    { "Key": "DRAKHANKNIGHT",    "Name": "Drakhan Knight",     "GamerScore": 5,  "Icon": "drakhan_knight.png",    "Description": "Get the Drakhanic weapon." },
+    { "Key": "LUCKY",            "Name": "Lucky!",             "GamerScore": 5,  "Icon": "lucky.png",             "Description": "Win the Wishing Well prize." },
+    { "Key": "CASINO",           "Name": "Casino",             "GamerScore": 10, "Icon": "casino.png",            "Description": "Play 100 times with dice." },
+    { "Key": "QUESTMASTER",      "Name": "Quest Master",       "GamerScore": 20, "Icon": "quest_master.png",      "Description": "Finish all the quests." }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "Name": "Sonic The Hedgehog 4: Episode I",
+  "Description": "The blue blur returns in a classic 2D platformer that picks up where Sonic & Knuckles left off. Dash, spin and loop through four reimagined zones, collect the Chaos Emeralds and stop Dr. Eggman once again.",
+  "Achievements": [
+    { "Key": "A1",  "Name": "The Story Begins",       "GamerScore": 5,  "Icon": "TheStoryBegins.png",       "Description": "Clear Splash Hill Zone Act 1." },
+    { "Key": "A2",  "Name": "The First Chaos Emerald", "GamerScore": 5,  "Icon": "TheFirstChaosEmerald.png", "Description": "Acquire a Chaos Emerald." },
+    { "Key": "A3",  "Name": "Enemy Hunter",            "GamerScore": 10, "Icon": "EnemyHunter.png",          "Description": "Defeat 1,000 enemies." },
+    { "Key": "A4",  "Name": "Golden Flash",            "GamerScore": 10, "Icon": "GoldenFlash.png",          "Description": "Clear all Acts as Super Sonic." },
+    { "Key": "A5",  "Name": "All Stages Cleared!",     "GamerScore": 25, "Icon": "AllStagesCleared.png",     "Description": "Defeat the final boss and view the ending." },
+    { "Key": "A6",  "Name": "Contender",               "GamerScore": 10, "Icon": "Contender.png",            "Description": "Upload your recorded clear times for all Time Attack stages." },
+    { "Key": "A7",  "Name": "Ring Collector",          "GamerScore": 15, "Icon": "RingCollector.png",        "Description": "Collect all the Rings in 'Special Stage 1' and Clear the stage." },
+    { "Key": "A8",  "Name": "Immortal",                "GamerScore": 20, "Icon": "Immortal.png",             "Description": "Build up 99 or more extra lives." },
+    { "Key": "A9",  "Name": "Super Sonic Genesis",     "GamerScore": 30, "Icon": "SuperSonicGenesis.png",    "Description": "Acquire all seven Chaos Emeralds." },
+    { "Key": "A10", "Name": "Speed's My Game",         "GamerScore": 15, "Icon": "SpeedsMyGame.png",         "Description": "Clear Splash Hill Zone Act 1 in less than a minute." },
+    { "Key": "A11", "Name": "Untouchable",             "GamerScore": 30, "Icon": "Untouchable.png",          "Description": "Clear the E.G.G. Station Zone without taking any damage." },
+    { "Key": "A12", "Name": "Centurion",               "GamerScore": 5,  "Icon": "Centurion.png",            "Description": "Get 120 rings in Mad Gear Zone Act 1." },
+    { "Key": "A13", "Name": "Splash Hill Zone",        "GamerScore": 5,  "Icon": "SplashHillZone.png",       "Description": "Finish all 3 Acts and boss round of Splash Hill Zone." },
+    { "Key": "A14", "Name": "Casino Street Zone",      "GamerScore": 5,  "Icon": "CasinoStreetZone.png",     "Description": "Finish all 3 Acts and boss round of Casino Street Zone." },
+    { "Key": "A15", "Name": "Lost Labyrinth Zone",     "GamerScore": 5,  "Icon": "LostLabyrinthZone.png",    "Description": "Finish all 3 Acts and boss round of Lost Labyrinth Zone." },
+    { "Key": "A16", "Name": "Mad Gear Zone",           "GamerScore": 5,  "Icon": "MadGearZone.png",          "Description": "Finish all 3 Acts and boss round of Mad Gear Zone." }
+  ]
+}

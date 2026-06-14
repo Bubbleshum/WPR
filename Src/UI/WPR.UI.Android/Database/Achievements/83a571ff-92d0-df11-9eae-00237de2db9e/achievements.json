@@ -1,0 +1,24 @@
+{
+  "Name": "Star Wars: Battle for Hoth",
+  "Description": "Defend the Rebel base on the ice planet Hoth from the Empire's onslaught in this tower-defence game. Build and upgrade towers, command X-wings and bring down the AT-ATs before they overrun your shield generator.",
+  "Achievements": [
+    { "Key": "Classic Victory",           "Name": "Classic Victory",            "GamerScore": 5,  "Icon": "ClassicVictory.png",           "Description": "Complete all levels Classic/Easy" },
+    { "Key": "Classic Total Victory",     "Name": "Classic Total Victory",      "GamerScore": 15, "Icon": "ClassicTotalVictory.png",      "Description": "Complete all levels Classic/Easy/Wipe Them Out" },
+    { "Key": "Classic Supreme Victory",   "Name": "Classic Supreme Victory",    "GamerScore": 20, "Icon": "ClassicSupremeVictory.png",    "Description": "Complete all levels Classic/Normal" },
+    { "Key": "Classic Absolute Victory",  "Name": "Classic Absolute Victory",   "GamerScore": 33, "Icon": "ClassicAbsoluteVictory.png",   "Description": "Complete all levels Classic/Normal/Wipe Them Out" },
+    { "Key": "Fortress Victory",          "Name": "Fortress Victory",           "GamerScore": 5,  "Icon": "FortressVictory.png",          "Description": "Complete all levels Fortress/Easy" },
+    { "Key": "Fortress Total Victory",    "Name": "Fortress Total Victory",     "GamerScore": 15, "Icon": "FortressTotalVictory.png",     "Description": "Complete all levels Fortress/Easy/Wipe Them Out" },
+    { "Key": "Fortress Supreme Victory",  "Name": "Fortress Supreme Victory",   "GamerScore": 20, "Icon": "FortressSupremeVictory.png",   "Description": "Complete all levels Fortress/Normal" },
+    { "Key": "Fortress Absolute Victory", "Name": "Fortress Absolute Victory",  "GamerScore": 33, "Icon": "FortressAbsoluteVictory.png",  "Description": "Complete all levels Fortress/Normal/Wipe Them Out" },
+    { "Key": "AT AT Killer",              "Name": "AT-AT Killer",               "GamerScore": 3,  "Icon": "ATATKiller.png",               "Description": "Kill an AT-AT." },
+    { "Key": "AT AT Hunter Killer",       "Name": "AT-AT Hunter-Killer",        "GamerScore": 5,  "Icon": "ATATHunterKiller.png",         "Description": "Kill 10 AT-ATs." },
+    { "Key": "Power up",                  "Name": "Power-up!",                  "GamerScore": 3,  "Icon": "PowerUp.png",                  "Description": "Build Tower and Power Generator to supply it" },
+    { "Key": "X wing Ace",               "Name": "X-wing Ace",                 "GamerScore": 5,  "Icon": "XWingAce.png",                 "Description": "Kill 10 TIE Fighters using X-wing fighters." },
+    { "Key": "Commander of Technology",   "Name": "Commander of Technology",    "GamerScore": 3,  "Icon": "CommanderOfTechnology.png",    "Description": "Build at least one of all types of technology" },
+    { "Key": "Wipe Them Out Again",       "Name": "Wipe Them Out – Again!", "GamerScore": 5, "Icon": "WipeThemOutAgain.png",         "Description": "Complete at least 5 levels with Wipe Them Out" },
+    { "Key": "Logistics Award",           "Name": "Logistics Award",            "GamerScore": 5,  "Icon": "LogisticsAward.png",           "Description": "Get 6,000+ CP Bonus Points from one level" },
+    { "Key": "Supreme Logistics Award",   "Name": "Supreme Logistics Award",    "GamerScore": 5,  "Icon": "SupremeLogisticsAward.png",    "Description": "Get total 50,000+ CP Bonus points, any levels" },
+    { "Key": "High Score Award",          "Name": "High Score Award",           "GamerScore": 5,  "Icon": "HighScoreAward.png",           "Description": "Score 40,000+ Points on single level" },
+    { "Key": "Colossal Score Award",      "Name": "Colossal Score Award",       "GamerScore": 15, "Icon": "ColossalScoreAward.png",       "Description": "Get total 500,000+ points, any levels" }
+  ]
+}

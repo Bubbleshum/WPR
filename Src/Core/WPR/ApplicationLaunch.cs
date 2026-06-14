@@ -158,6 +158,25 @@ namespace WPR
                     return null;
                 }
             };
+
+            // Emulate the WP7 MediaPlayerLauncher round-trip. On real WP7, Show() hands off
+            // to the system media player and the app is reactivated when it returns; titles
+            // like Star Wars: The Battle for Hoth only continue (CVideoPlayer ->
+            // CGame.OnGameActivated -> DoPlayVideoComplete -> LoadLevel) on that reactivation.
+            // The launcher facade can't drive the game, so it raises Launched and we post the
+            // reactivation onto the game thread. Deferred to the next tick because the title
+            // sets its video-complete callback AFTER Show() returns; on the game thread because
+            // completion ends up touching the GraphicsDevice. The shim assemblies live in the
+            // shared Default ALC, so this single static hook serves every launch.
+            Microsoft.Phone.Tasks.MediaPlayerLauncher.Launched += _ =>
+            {
+                WprTrace("[wpr-trace] MediaPlayerLauncher.Launched -> scheduling app reactivation to complete video");
+                WprGameThread.Post(() =>
+                {
+                    try { PhoneApplicationService.Current?.HandleApplicationStart(false); }
+                    catch (Exception ex) { WprTrace("[wpr-ex] MediaPlayerLauncher reactivation threw: " + ex); }
+                });
+            };
         }
 
         public static async Task Start(Application app, Action<DisplayOrientation>? requestOrientation = null, Action<Game>? onGameCreated = null)

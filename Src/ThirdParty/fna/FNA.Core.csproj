@@ -43,6 +43,7 @@
     <Compile Include="src\BoundingSphere.cs" />
     <Compile Include="src\Color.cs" />
     <Compile Include="src\WprActivationGuard.cs" />
+    <Compile Include="src\WprGameThread.cs" />
     <Compile Include="src\ContainmentType.cs" />
     <Compile Include="src\Content\ContentExtensions.cs" />
     <Compile Include="src\Content\ContentLoadException.cs" />

@@ -115,17 +115,22 @@ namespace WPR.SilverlightCompability
 #if DEBUG
                 Trace.WriteLine($"[wpr-trace] PhoneApplicationService.Activated += handler (_AppActivated={_AppActivated})");
 #endif
+                // Always retain the subscriber so it receives FUTURE activations — e.g. a
+                // MediaPlayerLauncher round-trip re-firing Activated so a game's
+                // OnGameActivated runs and completes a video (CVideoPlayer.DoPlayVideoComplete
+                // -> LoadLevel). The original code only invoked-and-dropped when _AppActivated
+                // was already set, which is the COMMON case (games subscribe in Initialize,
+                // after ApplicationLaunch primes HandleApplicationStart) — so their handler was
+                // never stored and missed every later activation, hanging Star Wars: The Battle
+                // for Hoth on a black screen at level start.
+                _Activated += value;
+
                 // If the app already booted past HandleApplicationStart by the time this
-                // handler attaches (rare, but happens when a page's ctor runs late),
-                // invoke the handler immediately so it doesn't sit silently missing the
+                // handler attaches, also invoke it once now so it doesn't miss the initial
                 // signal it was waiting for.
                 if (_AppActivated)
                 {
                     value?.Invoke(this, new ActivatedEventArgs { IsApplicationInstancePreserved = false });
-                }
-                else
-                {
-                    _Activated += value;
                 }
             }
             remove { _Activated -= value; }

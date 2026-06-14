@@ -7,6 +7,18 @@ namespace WPR.XnaCompability
     {
         public static Action<DisplayOrientation>? RequestOrientation;
 
+        // The patcher redirects every Microsoft.Xna.Framework.GraphicsDeviceManager
+        // reference in the game IL to this type, including the static field reads
+        // GraphicsDeviceManager.DefaultBackBufferWidth/Height. In real XNA these are
+        // public static fields; the game emits `ldsfld GraphicsDeviceManager2::Default...`
+        // which the runtime resolves on the EXACT declared type and does not walk to the
+        // FNA base class — so without these declarations launch dies with
+        // MissingFieldException (Star Wars: The Battle for Hoth crashed on the first line
+        // of CGame.InitializeMain reading these). Shadow the base fields with identical
+        // 800x480 phone-surface values so the redirected ldsfld resolves here.
+        public new static readonly int DefaultBackBufferWidth = PhoneLongDim;
+        public new static readonly int DefaultBackBufferHeight = PhoneShortDim;
+
         // WP7 phones had a fixed 800x480 hardware surface. Games like Zuma's Revenge
         // request a larger preferred backbuffer (1066x640 in the Nokia build) but
         // hardcode their internal viewport to 800x480, so on a real phone the OS

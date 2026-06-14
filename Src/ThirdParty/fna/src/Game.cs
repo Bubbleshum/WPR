@@ -719,6 +719,10 @@ namespace Microsoft.Xna.Framework
 			 * modes across multiple devices and platforms.
 			 */
 
+			// WPR: run any work shims have queued for the game thread (e.g. a
+			// MediaPlayerLauncher video completing -> title reactivation -> LoadLevel).
+			WprGameThread.DrainPending();
+
 			bool wprTraceThisTick = _wprTraceTickCount < 30;
 			int wprTraceIndex = _wprTraceTickCount;
 			if (wprTraceThisTick)

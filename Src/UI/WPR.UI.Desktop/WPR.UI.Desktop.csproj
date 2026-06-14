@@ -11,6 +11,13 @@
     <TrimMode>copyused</TrimMode>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <OutputType>WinExe</OutputType>
+    <!-- The "Copy pre-made database" target below runs AfterTargets="Build". Rider/VS
+         fast up-to-date check skips invoking MSBuild entirely when only content files
+         change (e.g. adding a new Database\Achievements\<id>\ catalogue and no .cs edit),
+         so the copy target never fires and the new catalogue never reaches the output.
+         Disabling FUTDC forces the IDE to invoke a real build every time, guaranteeing
+         the copy runs. Costs a few hundred ms per build — acceptable for a dev tool. -->
+    <DisableFastUpToDateCheck>true</DisableFastUpToDateCheck>
   </PropertyGroup>
 
   <!-- Notification impl (moved from the old DesktopNotifications.Windows project).

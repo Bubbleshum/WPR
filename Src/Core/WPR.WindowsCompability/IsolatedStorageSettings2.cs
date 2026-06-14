@@ -193,6 +193,36 @@ namespace WPR.WindowsCompability
             return _Settings.TryGetValue(key, out value);
         }
 
+        // Generic overload mirroring Silverlight's instance
+        // IsolatedStorageSettings.TryGetValue<T>(string, out T). Krome Game Room
+        // titles (e.g. Asteroids Deluxe) read settings via
+        // applicationSettings.TryGetValue<float>/<bool>(key, out value); without
+        // this overload the patched call site throws MissingMethodException.
+        public bool TryGetValue<T>(string key, out T value)
+        {
+            if (_Settings != null && _Settings.TryGetValue(key, out var raw))
+            {
+                if (raw is T typed)
+                {
+                    value = typed;
+                    return true;
+                }
+
+                try
+                {
+                    value = (T)Convert.ChangeType(raw, typeof(T));
+                    return true;
+                }
+                catch
+                {
+                    // Stored value isn't convertible to T — treat as absent.
+                }
+            }
+
+            value = default!;
+            return false;
+        }
+
         public bool Contains(string key) => _Settings != null && _Settings.ContainsKey(key);
 
         public bool Remove(string key) => _Settings != null && _Settings.Remove(key);

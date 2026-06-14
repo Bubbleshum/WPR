@@ -910,12 +910,33 @@ namespace Microsoft.Xna.Framework
 		) {
 			SDL.SDL_Event evt;
 			char* charsBuffer = stackalloc char[32]; // SDL_TEXTINPUTEVENT_TEXT_SIZE
+
+			// WP7's Back button is MOMENTARY: a press is one discrete "go back", not a
+			// state held across frames. PollEvents runs once per Tick immediately before
+			// Update (Game.cs), so we clear the Back edge here and (re)assert it below only
+			// on a fresh, non-repeat keydown. That makes GamePad.Buttons.Back true for
+			// exactly the one frame the press arrives. Without this the press read as
+			// "held" for every frame the key was physically down (~5-10 frames), and games
+			// that sample Buttons.Back per frame (level-triggered — e.g. The Sims Medieval's
+			// Update does KEY_STATUS|=BACK whenever Buttons.Back==1) registered ONE Esc press
+			// as MANY Backs, cascading through menus into the pause menu. Clearing per frame
+			// (rather than on KEYUP) is also immune to a dropped KEYUP on focus loss.
+			PhoneBackButtonPressed = false;
+
 			while (SDL.SDL_PollEvent(out evt) == 1)
 			{
 				// Keyboard
 				if (evt.type == SDL.SDL_EventType.SDL_KEYDOWN)
 				{
-					if (evt.key.keysym.sym == SDL.SDL_Keycode.SDLK_AC_BACK)
+					// WP7's hardware Back arrives as SDLK_AC_BACK, which no desktop keyboard
+					// emits; also accept Escape so desktop users can go Back. Only the initial
+					// keydown (repeat == 0) counts — auto-repeat must not fire extra Backs.
+					// One press → Back asserted for this one frame only (see the per-frame
+					// clear above). e.g. The Sims Medieval's menus exit via
+					// GamePad.Buttons.Back (Kernel.isKeyPressed(BACK)).
+					if ((evt.key.keysym.sym == SDL.SDL_Keycode.SDLK_AC_BACK ||
+						evt.key.keysym.sym == SDL.SDL_Keycode.SDLK_ESCAPE) &&
+						evt.key.repeat == 0)
 					{
 						PhoneBackButtonPressed = true;
 					}
@@ -954,10 +975,6 @@ namespace Microsoft.Xna.Framework
 				}
 				else if (evt.type == SDL.SDL_EventType.SDL_KEYUP)
 				{
-					if (evt.key.keysym.sym == SDL.SDL_Keycode.SDLK_AC_BACK)
-					{
-						PhoneBackButtonPressed = false;
-					}
 
 					Keys key = ToXNAKey(ref evt.key.keysym);
 					if (Keyboard.keys.Remove(key))
