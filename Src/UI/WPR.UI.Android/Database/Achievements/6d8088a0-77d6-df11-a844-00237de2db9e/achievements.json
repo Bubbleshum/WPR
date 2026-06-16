@@ -1,0 +1,21 @@
+{
+  "Name": "ilomilo",
+  "Description": "Guide the inseparable friends ilo and milo back to each other through a charming, gravity-bending puzzle world of shifting cubes and collectible Safkas.",
+  "Achievements": [
+    { "Key": "Achievement1",  "Name": "The Student",      "GamerScore": 20, "Icon": "achievement1.png",  "Description": "Complete your first level" },
+    { "Key": "Achievement2",  "Name": "Gaining Ground",   "GamerScore": 10, "Icon": "achievement2.png",  "Description": "Get to chapter 1" },
+    { "Key": "Achievement3",  "Name": "Move On",          "GamerScore": 10, "Icon": "achievement3.png",  "Description": "Complete six levels in chapter 1" },
+    { "Key": "Achievement4",  "Name": "Almost There",     "GamerScore": 10, "Icon": "achievement4.png",  "Description": "Get to the third chapter" },
+    { "Key": "Achievement5",  "Name": "Catch the Train",  "GamerScore": 10, "Icon": "achievement5.png",  "Description": "Meet on the train in chapter 3" },
+    { "Key": "Achievement6",  "Name": "Bonus Champ",      "GamerScore": 10, "Icon": "achievement6.png",  "Description": "Complete one bonus level" },
+    { "Key": "Achievement7",  "Name": "Free Bonus",       "GamerScore": 10, "Icon": "achievement7.png",  "Description": "Unlock the first bonus level" },
+    { "Key": "Achievement8",  "Name": "Green Fingers",    "GamerScore": 20, "Icon": "achievement8.png",  "Description": "Collect all green Safkas" },
+    { "Key": "Achievement9",  "Name": "Color of the Sun", "GamerScore": 10, "Icon": "achievement9.png",  "Description": "Collect all yellow Safkas" },
+    { "Key": "Achievement10", "Name": "Purple Rain",      "GamerScore": 10, "Icon": "achievement10.png", "Description": "Collect all purple Safkas" },
+    { "Key": "Achievement11", "Name": "Hard Boiled",      "GamerScore": 10, "Icon": "achievement11.png", "Description": "Collect all eggs" },
+    { "Key": "Achievement12", "Name": "Safkas Are Saved", "GamerScore": 20, "Icon": "achievement12.png", "Description": "Collect all the Safkas in the game" },
+    { "Key": "Achievement13", "Name": "The Hunter",       "GamerScore": 20, "Icon": "achievement13.png", "Description": "Complete all bonus levels" },
+    { "Key": "Achievement14", "Name": "Party Hat",        "GamerScore": 10, "Icon": "achievement14.png", "Description": "Complete all eggilogue levels" },
+    { "Key": "Achievement15", "Name": "Finally Together", "GamerScore": 20, "Icon": "achievement15.png", "Description": "Complete all levels in the game" }
+  ]
+}

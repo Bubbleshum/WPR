@@ -1,0 +1,22 @@
+{
+  "Name": "Ghostscape",
+  "Description": "A spooky point-and-click escape game: explore a haunted house, photograph the paranormal activity, collect occult items and diary pages, and solve its puzzles to uncover the house's dark secrets.",
+  "Achievements": [
+    { "Key": "First Contact",       "Name": "First Contact",       "GamerScore": 5,  "Icon": "first_contact.png",       "Description": "This achievement is awarded the first time you take a photograph of any paranormal activity." },
+    { "Key": "Exorcist",            "Name": "Exorcist",            "GamerScore": 25, "Icon": "exorcist.png",            "Description": "This achievement is awarded when ALL the paranormal activity in the house have been photographed." },
+    { "Key": "Occult Investigator", "Name": "Occult Investigator", "GamerScore": 10, "Icon": "occult_investigator.png", "Description": "Collect ALL the occult items that are around the house." },
+    { "Key": "Diary Demon",         "Name": "Diary Demon",         "GamerScore": 10, "Icon": "diary_demon.png",         "Description": "Collect all the pages of the diary." },
+    { "Key": "The Medium",          "Name": "The Medium",          "GamerScore": 10, "Icon": "the_medium.png",          "Description": "Photograph all the ghostly messages around the house." },
+    { "Key": "Explorer",            "Name": "Explorer",            "GamerScore": 25, "Icon": "explorer.png",            "Description": "Investigate all the rooms in the house, even the secret ones..." },
+    { "Key": "Art Collector",       "Name": "Art Collector",       "GamerScore": 15, "Icon": "art_collector.png",       "Description": "Photograph all the strange pictures in the house." },
+    { "Key": "Cypher Master",       "Name": "Cypher Master",       "GamerScore": 10, "Icon": "cypher_master.png",       "Description": "Decode all the cases you find in the house." },
+    { "Key": "Bone Collector",      "Name": "Bone Collector",      "GamerScore": 10, "Icon": "bone_collector.png",      "Description": "Photograph all the corpses you come across in the house." },
+    { "Key": "Monachus Aulas",      "Name": "Monachus Aulas",      "GamerScore": 15, "Icon": "monachus_aulas.png",      "Description": "There is tell of secret rooms in the house, and this is one of them..." },
+    { "Key": "Ocularium",           "Name": "Ocularium",           "GamerScore": 15, "Icon": "ocularium.png",           "Description": "There is tell of secret rooms in the house, and this is one of them..." },
+    { "Key": "Illumination",        "Name": "Illumination",        "GamerScore": 15, "Icon": "illumination.png",        "Description": "There is tell of secret rooms in the house, and this is one of them..." },
+    { "Key": "Observation",         "Name": "Observation",         "GamerScore": 15, "Icon": "observation.png",         "Description": "There is tell of secret rooms in the house, and this is one of them..." },
+    { "Key": "Speedy Solver",       "Name": "Speedy Solver",       "GamerScore": 10, "Icon": "speedy_solver.png",       "Description": "Complete the game within 20 minutes." },
+    { "Key": "Spooky Score",        "Name": "Spooky Score",        "GamerScore": 5,  "Icon": "spooky_score.png",        "Description": "Score more than 80000 points." },
+    { "Key": "Super Spooky Score",  "Name": "Super Spooky Score",  "GamerScore": 5,  "Icon": "super_spooky_score.png",  "Description": "You need to score more than 100000." }
+  ]
+}

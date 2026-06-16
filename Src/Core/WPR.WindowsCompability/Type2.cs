@@ -65,20 +65,56 @@ namespace WPR.WindowsCompability
                 string typeOnly = typeName.Substring(0, commaIdx).Trim();
                 string asmSimpleName = typeName.Substring(commaIdx + 1).Trim().Split(',')[0].Trim();
 
+                // Resolve against the CALLER's own ALC first. Matching on simple name
+                // across every ALC in the process is unsafe: when two games are resident
+                // at once, each ships its own copy of a common dependency (e.g.
+                // SkinnedModel) under the same simple name but a different version and
+                // contents. A blind AssemblyLoadContext.All scan can hand ilomilo
+                // Ghostscape's SkinnedModel 1.0.0.1 — which has no PAnimTrigger and a
+                // different AnimationClip.Read — so the lookup throws TypeLoadException /
+                // MissingMethodException against the wrong assembly. Searching the
+                // requesting assembly's ALC first binds the sibling that actually shipped
+                // with the caller; the broad All scan stays only as the cross-ALC
+                // fallback (a Default-ALC helper resolving a type in the collectible user
+                // assembly — see the Krome -> AsteroidsDeluxe note above).
+                AssemblyLoadContext? callerAlc = null;
+                try
+                {
+                    callerAlc = AssemblyLoadContext.GetLoadContext(Assembly.GetCallingAssembly());
+                }
+                catch { /* fall through to the unordered scan below */ }
+
+                if (callerAlc != null)
+                {
+                    var t = FindTypeInAlc(callerAlc, asmSimpleName, typeOnly);
+                    if (t != null) return t;
+                }
+
                 foreach (var alc in AssemblyLoadContext.All)
                 {
-                    foreach (var asm in alc.Assemblies)
-                    {
-                        if (string.Equals(asm.GetName().Name, asmSimpleName, StringComparison.OrdinalIgnoreCase))
-                        {
-                            var t = asm.GetType(typeOnly, throwOnError: false);
-                            if (t != null) return t;
-                        }
-                    }
+                    if (ReferenceEquals(alc, callerAlc)) continue; // already searched above
+                    var t = FindTypeInAlc(alc, asmSimpleName, typeOnly);
+                    if (t != null) return t;
                 }
             }
 
             return Type.GetType(typeName, throwOnError);
+        }
+
+        // Return the first type matching <paramref name="typeOnly"/> from an assembly in
+        // <paramref name="alc"/> whose simple name equals <paramref name="asmSimpleName"/>,
+        // or null if none of that ALC's assemblies carry the type.
+        private static Type? FindTypeInAlc(AssemblyLoadContext alc, string asmSimpleName, string typeOnly)
+        {
+            foreach (var asm in alc.Assemblies)
+            {
+                if (string.Equals(asm.GetName().Name, asmSimpleName, StringComparison.OrdinalIgnoreCase))
+                {
+                    var t = asm.GetType(typeOnly, throwOnError: false);
+                    if (t != null) return t;
+                }
+            }
+            return null;
         }
     }
 

@@ -1,0 +1,146 @@
+﻿{
+    "Name":  "Guitar Hero 5",
+    "Description":  "Glu\u0027s mobile entry in the Guitar Hero series. Play Guitar, Bass, and Drums across three city set lists - San Francisco, New York, and Cairo - chasing five-star and Perfect runs on Expert difficulty.",
+    "Achievements":  [
+                         {
+                             "Key":  "COMPLETE_SONG_GUITAR",
+                             "Name":  "Complete Any Song on Guitar",
+                             "Description":  "Complete any song on Guitar",
+                             "GamerScore":  10,
+                             "Icon":  "COMPLETE_SONG_GUITAR.png"
+                         },
+                         {
+                             "Key":  "TWO_HUNDRED_NOTES",
+                             "Name":  "Hit 200 Consecutive Notes",
+                             "Description":  "Hit 200 consecutive notes",
+                             "GamerScore":  10,
+                             "Icon":  "TWO_HUNDRED_NOTES.png"
+                         },
+                         {
+                             "Key":  "COMPLETE_SAN_FRANCISCO",
+                             "Name":  "Complete San Francisco",
+                             "Description":  "Complete all songs in San Francisco",
+                             "GamerScore":  10,
+                             "Icon":  "COMPLETE_SAN_FRANCISCO.png"
+                         },
+                         {
+                             "Key":  "COMPLETE_NEW_YORK",
+                             "Name":  "Complete New York",
+                             "Description":  "Complete all songs in New York",
+                             "GamerScore":  10,
+                             "Icon":  "COMPLETE_NEW_YORK.png"
+                         },
+                         {
+                             "Key":  "COMPLETE_CAIRO",
+                             "Name":  "Complete Cairo",
+                             "Description":  "Complete all songs in Cairo",
+                             "GamerScore":  10,
+                             "Icon":  "COMPLETE_CAIRO.png"
+                         },
+                         {
+                             "Key":  "PERFECT_GUITAR",
+                             "Name":  "Perfect Guitar",
+                             "Description":  "Get a Perfect on Guitar",
+                             "GamerScore":  10,
+                             "Icon":  "PERFECT_GUITAR.png"
+                         },
+                         {
+                             "Key":  "PERFECT_BASS",
+                             "Name":  "Perfect Bass",
+                             "Description":  "Get a Perfect on Bass",
+                             "GamerScore":  10,
+                             "Icon":  "PERFECT_BASS.png"
+                         },
+                         {
+                             "Key":  "PERFECT_DRUMS",
+                             "Name":  "Perfect Drums",
+                             "Description":  "Get a Perfect on Drums",
+                             "GamerScore":  10,
+                             "Icon":  "PERFECT_DRUMS.png"
+                         },
+                         {
+                             "Key":  "FIVE_STARS_ONE_SONG",
+                             "Name":  "Five Stars",
+                             "Description":  "Get Five Stars on all instruments on any song",
+                             "GamerScore":  10,
+                             "Icon":  "FIVE_STARS_ONE_SONG.png"
+                         },
+                         {
+                             "Key":  "FIVE_STARS_FOUR_SONGS",
+                             "Name":  "Five Stars on Four",
+                             "Description":  "Get Five Stars on all instruments on four songs",
+                             "GamerScore":  10,
+                             "Icon":  "FIVE_STARS_FOUR_SONGS.png"
+                         },
+                         {
+                             "Key":  "FIVE_STARS_GUITAR_EXPERT",
+                             "Name":  "Five Stars Expert Guitar",
+                             "Description":  "Get Five Stars on Expert Guitar for one song",
+                             "GamerScore":  10,
+                             "Icon":  "FIVE_STARS_GUITAR_EXPERT.png"
+                         },
+                         {
+                             "Key":  "FIVE_STARS_GUITAR_EXP_4_SONGS",
+                             "Name":  "Five on Four Expert Guitar",
+                             "Description":  "Get Five Stars on any four songs with Expert Guitar",
+                             "GamerScore":  10,
+                             "Icon":  "FIVE_STARS_GUITAR_EXP_4_SONGS.png"
+                         },
+                         {
+                             "Key":  "FIVE_STARS_BASS_EXPERT",
+                             "Name":  "Five Stars Expert Bass",
+                             "Description":  "Get Five Stars on Expert Bass for one song",
+                             "GamerScore":  10,
+                             "Icon":  "FIVE_STARS_BASS_EXPERT.png"
+                         },
+                         {
+                             "Key":  "FIVE_STARS_BASS_EXP_4_SONGS",
+                             "Name":  "Five on Four Expert Bass",
+                             "Description":  "Get Five Stars on any four songs in Expert Bass",
+                             "GamerScore":  10,
+                             "Icon":  "FIVE_STARS_BASS_EXP_4_SONGS.png"
+                         },
+                         {
+                             "Key":  "FIVE_STARS_DRUMS_EXPERT",
+                             "Name":  "Five Stars Expert Drums",
+                             "Description":  "Get Five Stars on any song with Expert Drums",
+                             "GamerScore":  10,
+                             "Icon":  "FIVE_STARS_DRUMS_EXPERT.png"
+                         },
+                         {
+                             "Key":  "FIVE_STARS_DRUMS_EXP_4_SONGS",
+                             "Name":  "Five on Four Expert Drums",
+                             "Description":  "Get Five Stars on any four songs with Expert Drums",
+                             "GamerScore":  10,
+                             "Icon":  "FIVE_STARS_DRUMS_EXP_4_SONGS.png"
+                         },
+                         {
+                             "Key":  "PERFECT_ON_EXPERT",
+                             "Name":  "Perfect on Expert",
+                             "Description":  "Get a perfect score on Expert difficulty",
+                             "GamerScore":  10,
+                             "Icon":  "PERFECT_ON_EXPERT.png"
+                         },
+                         {
+                             "Key":  "COMPLETE_TWO_SF",
+                             "Name":  "Two for San Fran",
+                             "Description":  "Complete any two songs in San Francisco",
+                             "GamerScore":  10,
+                             "Icon":  "COMPLETE_TWO_SF.png"
+                         },
+                         {
+                             "Key":  "COMPLETE_TWO_NEW_YORK",
+                             "Name":  "Two for NY",
+                             "Description":  "Complete any two songs in New York",
+                             "GamerScore":  10,
+                             "Icon":  "COMPLETE_TWO_NEW_YORK.png"
+                         },
+                         {
+                             "Key":  "COMPLETE_TWO_CAIRO",
+                             "Name":  "Two for Cairo",
+                             "Description":  "Complete any two songs in Cairo",
+                             "GamerScore":  10,
+                             "Icon":  "COMPLETE_TWO_CAIRO.png"
+                         }
+                     ]
+}

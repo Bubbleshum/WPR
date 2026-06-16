@@ -28,6 +28,7 @@ namespace WPR
         private AssemblyNameReference StandardCompRef;
         private AssemblyNameReference ServiceModelPrimitivesRef;
         private AssemblyNameReference ServiceModelHTTPRef;
+        private AssemblyNameReference GamerServicesCompRef;
         //private AssemblyNameReference SystemSecurityCryptographyRef; //!
         //private AssemblyNameReference SystemWindowsMediaImagingRef; //!
 
@@ -53,6 +54,15 @@ namespace WPR
             ServiceModelHTTPRef = AssemblyNameReference.Parse("System.ServiceModel.Http");
 
             StandardCompRef = AssemblyNameReference.Parse("WPR.StandardCompability");
+
+            // The shim for GamerServicesComponent lives in our managed assembly
+            // Microsoft.Xna.Framework.GamerServices (Src/Core/...). The user
+            // assembly's GamerServicesComponent type refs must be rescoped to it,
+            // otherwise they stay bound to the WP7 assembly
+            // Microsoft.Xna.Framework.GamerServicesExtensions, which doesn't exist
+            // at runtime -> FileNotFoundException aborts game init (black screen).
+            GamerServicesCompRef =
+                AssemblyNameReference.Parse("Microsoft.Xna.Framework.GamerServices");
 
             //SystemSecurityCryptographyRef = AssemblyNameReference.Parse("WPR.WindowsCompability");
             //SystemWindowsMediaImagingRef =  AssemblyNameReference.Parse("WPR.WindowsCompability");
@@ -1379,14 +1389,18 @@ namespace WPR
             {
                 if (refer.Name.Contains("Microsoft.Xna"))
                 {
-                    if (refer.Name.Contains("GamerServices"))
-                    {
-                        xnaGameServices = refer;
-                    }
-                    else if (refer.Name.Contains("GamerServicesExtensions"))
+                    // Test the more specific "GamerServicesExtensions" first —
+                    // "GamerServicesExtensions".Contains("GamerServices") is true,
+                    // so the broad check must not run before it (otherwise the
+                    // Extensions branch is dead code).
+                    if (refer.Name.Contains("GamerServicesExtensions"))
                     {
                         //RnD
                         xnaGameServicesExtensions = refer;
+                    }
+                    else if (refer.Name.Contains("GamerServices"))
+                    {
+                        xnaGameServices = refer;
                     }
                     else
                     {
@@ -1422,6 +1436,7 @@ namespace WPR
             module.AssemblyReferences.Add(ServiceModelPrimitivesRef);
             module.AssemblyReferences.Add(ServiceModelHTTPRef);
             module.AssemblyReferences.Add(StandardCompRef);
+            module.AssemblyReferences.Add(GamerServicesCompRef);
             //module.AssemblyReferences.Add(SystemSecurityCryptographyRef);//!
             //module.AssemblyReferences.Add(SystemWindowsMediaImagingRef);//
 
@@ -1472,14 +1487,16 @@ namespace WPR
                 if (existingRef.FullName
                     == "Microsoft.Xna.Framework.GamerServices.GamerServicesComponent")
                 {
-                    existingRef.Scope = xnaGameServices;
+                    // Bind to our shim assembly directly. The captured WP7 ref
+                    // (xnaGameServices) may be absent or point at the missing
+                    // GamerServicesExtensions assembly, so don't rely on it.
+                    existingRef.Scope = GamerServicesCompRef;
                 }
                 else if (existingRef.FullName
                     == "Microsoft.Xna.Framework.GamerServicesExtensions.GamerServicesComponent")
                 {
                     //RnD
-
-                    existingRef.Scope = xnaGameServicesExtensions;
+                    existingRef.Scope = GamerServicesCompRef;
                 }
                 else
                 {
