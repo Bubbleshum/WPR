@@ -126,8 +126,8 @@ skips the Android leg.
 
 ## Game compatibility
 
-Moved to the wiki — see
-[Compatibility List](https://github.com/Bubbleshum/WPR/wiki/Compatibility-List).
+See the interactive [Compatibility List](https://bubbleshum.github.io/WPR/) —
+searchable / sortable / filterable, with box art.
 
 
 ## Runtime types supported
