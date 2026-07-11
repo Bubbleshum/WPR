@@ -1199,18 +1199,48 @@ namespace Microsoft.Xna.Framework
 		protected virtual void OnActivated(object sender, EventArgs args)
 		{
 			AssertNotDisposed();
-			if (Activated != null)
-			{
-				Activated(this, args);
-			}
+			RaiseActivationEvent(Activated, args);
 		}
 
 		protected virtual void OnDeactivated(object sender, EventArgs args)
 		{
 			AssertNotDisposed();
-			if (Deactivated != null)
+			RaiseActivationEvent(Deactivated, args);
+		}
+
+		// WPR: raise Activated/Deactivated with each subscriber under its own guard.
+		// Some WP7 ports throw from their activation handlers, and an unguarded throw
+		// here propagates out of the IsActive setter -> SDL2_FNAPlatform.PollEvents ->
+		// the game loop, killing the game on a mere focus change. The clearest offender
+		// is the Shiva engine cross-compiled to C# via llvm2cs (e.g. Babel Rising 3D):
+		// its handler calls the native runtime's hermes_enginePause / hermes_engineResume,
+		// but those symbols are not registered in the game's llvm2cs function table, so
+		// RT.getDeclaredFunction throws "invalid declared function" on EVERY focus
+		// transition. A time-boxed WprActivationGuard can't help — the symbol is missing
+		// permanently, so the crash reproduces on the first genuine alt-tab, a late boot
+		// blip past the guard window, or an achievement toast. Swallowing makes the
+		// pause/resume a no-op (the game simply keeps running, which is correct for a
+		// fullscreen desktop port) and, by isolating each subscriber, keeps WPR's own
+		// lifecycle handlers running even when the game's handler throws. Mirrors the
+		// initial-Activated guard in Tick().
+		private void RaiseActivationEvent(EventHandler<EventArgs> handler, EventArgs args)
+		{
+			if (handler == null)
 			{
-				Deactivated(this, args);
+				return;
+			}
+			foreach (Delegate subscriber in handler.GetInvocationList())
+			{
+				try
+				{
+					((EventHandler<EventArgs>) subscriber)(this, args);
+				}
+				catch (Exception ex)
+				{
+					WprDebugTrace.WriteLine(
+						"[wpr-ex] Game - activation handler threw (ignored): " + ex
+					);
+				}
 			}
 		}
 

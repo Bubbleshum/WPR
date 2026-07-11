@@ -97,6 +97,45 @@ namespace WPR.WindowsCompability
                     if (t != null) return t;
                 }
             }
+            else
+            {
+                // Unqualified type name (no assembly part). The CLR's
+                // Type.GetType(name) resolves the name only against the *requesting*
+                // assembly plus CoreLib — and because this shim now stands between the
+                // real caller and the CLR, the requesting assembly is
+                // WPR.WindowsCompability (this DLL), NOT the assembly that actually
+                // called Type.GetType. So a type defined in the caller's own assembly
+                // is invisible and GetType returns null where the unpatched call would
+                // have found it.
+                //
+                // Concrete casualty: the Shiva engine cross-compiled to C# via llvm2cs.
+                // Bridge.Initialize (in S3DClientNative_WP7) calls
+                //   Type.GetType("com.indigen.llvm2cs.generated.Program", false)
+                // to hand RT.startProgram the generated program class. That type lives in
+                // S3DClientNative_WP7 itself, so the shim's fall-through to Type.GetType
+                // returned null; RT then silently skipped program init (getProgramClass()
+                // was null), no hermes_* functions ever registered, the DLMalloc allocator
+                // could not find hermes_dlmalloc, and the engine rendered nothing — Babel
+                // Rising 3D NRE'd every frame, then hard-crashed on the first focus loss
+                // inside hermes_enginePause.
+                //
+                // Restore the unpatched semantics: resolve against the calling assembly
+                // first (this is exactly the assembly the CLR would have treated as the
+                // requesting assembly if the call had not been redirected here). CoreLib
+                // types still resolve via the Type.GetType fall-through below.
+                Assembly? caller = null;
+                try
+                {
+                    caller = Assembly.GetCallingAssembly();
+                }
+                catch { /* fall through to Type.GetType below */ }
+
+                if (caller != null)
+                {
+                    var t = caller.GetType(typeName, throwOnError: false);
+                    if (t != null) return t;
+                }
+            }
 
             return Type.GetType(typeName, throwOnError);
         }
