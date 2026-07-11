@@ -147,12 +147,16 @@ namespace WPR
 
         /// <summary>
         /// Looks for a public/non-public PhoneApplicationFrame property or field on the user's
-        /// App instance — covers the standard WP template's <c>public PhoneApplicationFrame RootFrame { get; private set; }</c>.
+        /// App — covers the standard WP template's instance
+        /// <c>public PhoneApplicationFrame RootFrame { get; private set; }</c> as well as the
+        /// <c>static</c> variant some titles use (e.g. AC Pirates' <c>SparkApplicationXaml.App</c>
+        /// declares <c>public static PhoneApplicationFrame RootFrame</c>).
         /// </summary>
         private static PhoneApplicationFrame? FindRootFrameOnApp(object? appInstance)
         {
             if (appInstance == null) return null;
-            const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+            const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic
+                | BindingFlags.Instance | BindingFlags.Static;
 
             for (Type? t = appInstance.GetType(); t != null && t != typeof(object); t = t.BaseType)
             {
@@ -160,9 +164,10 @@ namespace WPR
                 {
                     if (!typeof(PhoneApplicationFrame).IsAssignableFrom(p.PropertyType)) continue;
                     if (p.GetIndexParameters().Length != 0) continue;
+                    bool isStatic = p.GetGetMethod(true)?.IsStatic ?? false;
                     try
                     {
-                        if (p.GetValue(appInstance) is PhoneApplicationFrame found) return found;
+                        if (p.GetValue(isStatic ? null : appInstance) is PhoneApplicationFrame found) return found;
                     }
                     catch { /* property may throw before fully constructed; skip */ }
                 }
@@ -171,7 +176,7 @@ namespace WPR
                     if (!typeof(PhoneApplicationFrame).IsAssignableFrom(f.FieldType)) continue;
                     try
                     {
-                        if (f.GetValue(appInstance) is PhoneApplicationFrame found) return found;
+                        if (f.GetValue(f.IsStatic ? null : appInstance) is PhoneApplicationFrame found) return found;
                     }
                     catch { }
                 }

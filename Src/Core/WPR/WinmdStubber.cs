@@ -31,6 +31,45 @@ namespace WPR
     public static class WinmdStubber
     {
         /// <summary>
+        /// WinRT ↔ .NET projection map. On a real WinRT host the CLR projects these WinRT
+        /// interfaces to their BCL equivalents, so managed code (the user's IL, and any class
+        /// that implements a WinRT callback interface) is written against the BCL type. Our
+        /// stubs must use the same BCL types or the interface map won't line up — e.g. a
+        /// callback declaring <c>LogEvent(IMap&lt;string,string&gt;)</c> in the winmd is
+        /// implemented in C# as <c>LogEvent(IDictionary&lt;string,string&gt;)</c>; if the stub
+        /// keeps the raw WinRT <c>IMap`2</c> the class fails to load with "does not have an
+        /// implementation". Keyed by the open generic's Cecil FullName (with `arity suffix).
+        /// </summary>
+        private static readonly Dictionary<string, Type> WinRtProjections = new(StringComparer.Ordinal)
+        {
+            ["Windows.Foundation.Collections.IMap`2"]         = typeof(IDictionary<,>),
+            ["Windows.Foundation.Collections.IMapView`2"]     = typeof(IReadOnlyDictionary<,>),
+            ["Windows.Foundation.Collections.IVector`1"]      = typeof(IList<>),
+            ["Windows.Foundation.Collections.IVectorView`1"]  = typeof(IReadOnlyList<>),
+            ["Windows.Foundation.Collections.IIterable`1"]    = typeof(IEnumerable<>),
+            ["Windows.Foundation.Collections.IIterator`1"]    = typeof(IEnumerator<>),
+            ["Windows.Foundation.Collections.IKeyValuePair`2"] = typeof(KeyValuePair<,>),
+        };
+
+        /// <summary>
+        /// WinRT value-type structs that the .NET WinRT projection relocates into
+        /// <c>System.Runtime.WindowsRuntime</c>. User IL compiled against the projection
+        /// references them from that assembly (e.g.
+        /// <c>[System.Runtime.WindowsRuntime]Windows.Foundation.Size</c>), while the raw winmd
+        /// scopes them to <c>Windows</c>. If the stub keeps the <c>Windows</c> scope, a call like
+        /// <c>set_WindowBounds([System.Runtime.WindowsRuntime]Size)</c> won't bind to the stub's
+        /// <c>set_WindowBounds([Windows]Size)</c>. Re-scope so both sides name the same type.
+        /// (WindowsTypeSynthesizer then materializes the struct under that scope.)
+        /// </summary>
+        private const string ProjectedValueTypeScope = "System.Runtime.WindowsRuntime";
+        private static readonly HashSet<string> ProjectedValueTypes = new(StringComparer.Ordinal)
+        {
+            "Windows.Foundation.Size",
+            "Windows.Foundation.Point",
+            "Windows.Foundation.Rect",
+        };
+
+        /// <summary>
         /// Find every .winmd in <paramref name="installFolder"/> and replace it + its native
         /// peer .dll with a managed stub. Best-effort — failures are logged, not thrown.
         /// </summary>
@@ -376,6 +415,14 @@ namespace WPR
             string fn = t.FullName;
             if (fn == "System.Void" || fn == "System.IntPtr" || fn == "System.UIntPtr") return true;
 
+            // Known WinRT value-type structs — WindowsTypeSynthesizer emits these as real structs
+            // (see its KnownValueTypeFields), so stub members that return them must default via
+            // initobj, not ldnull. The synthesized type isn't on disk yet when we stub, so we
+            // can't Resolve() it — recognise it by name.
+            if (fn == "Windows.Foundation.Size" || fn == "Windows.Foundation.Point" ||
+                fn == "Windows.Foundation.Rect")
+                return true;
+
             // Try to resolve. ResolveTypeRef may have given us a TypeDefinition (local clone).
             try
             {
@@ -386,6 +433,15 @@ namespace WPR
             catch { /* unresolvable — treat as ref type and emit ldnull */ }
 
             return false;
+        }
+
+        private static AssemblyNameReference GetOrAddAssemblyRef(ModuleDefinition mod, string name)
+        {
+            foreach (var r in mod.AssemblyReferences)
+                if (r.Name == name) return r;
+            var anr = new AssemblyNameReference(name, new Version(8, 0, 0, 0));
+            mod.AssemblyReferences.Add(anr);
+            return anr;
         }
 
         /// <summary>
@@ -423,6 +479,19 @@ namespace WPR
                     // we just import as-is.
                     return dstMod.ImportReference(gp);
             }
+
+            // WinRT type with a BCL projection (IMap`2 → IDictionary`2, etc.). Substitute the
+            // BCL type so stubbed signatures match the projected types the user's managed code
+            // is compiled against. Matched on the open generic's FullName; the surrounding
+            // GenericInstanceType case re-applies the captured arguments.
+            if (WinRtProjections.TryGetValue(src.FullName, out var netType))
+                return dstMod.ImportReference(netType);
+
+            // WinRT value type the projection relocates into System.Runtime.WindowsRuntime —
+            // re-scope so the stub names the same type the user IL does (see ProjectedValueTypes).
+            if (ProjectedValueTypes.Contains(src.FullName))
+                return new TypeReference(src.Namespace, src.Name, dstMod,
+                    GetOrAddAssemblyRef(dstMod, ProjectedValueTypeScope), valueType: true);
 
             // Plain TypeReference. Prefer our local clone if there is one.
             if (map.TryGetValue(src.FullName, out var local)) return local;

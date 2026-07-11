@@ -41,17 +41,40 @@ namespace WPR.SilverlightCompability
         public Version ContractVersion { get; } = new Version(8, 0);
 
         /// <summary>
-        /// Drives the WP7 boot lifecycle from <c>ApplicationLaunch</c>. WP7 fires
-        /// <see cref="Launching"/> on a fresh launch (<paramref name="anew"/>=true) and
-        /// <see cref="Activated"/> on resume (anew=false, IsApplicationInstancePreserved=true).
-        /// Firing only Activated leaves games that initialise in their Launching handler
-        /// wedged on the splash forever (e.g. MonstaFish drawing Clear(Color.Black) and
-        /// nothing else, because its scene system never gets built).
+        /// Drives the WP7 boot lifecycle from <c>ApplicationLaunch</c>. A fresh launch
+        /// (<paramref name="anew"/>=true) raises <see cref="Launching"/>; a resume (anew=false)
+        /// does not. <see cref="Activated"/> is raised on BOTH paths, and always with
+        /// <see cref="ActivatedEventArgs.IsApplicationInstancePreserved"/>=<c>true</c>.
+        /// <para>
+        /// <b>Launching on anew=true:</b> games that build their scene graph in the Launching
+        /// handler (e.g. MonstaFish) otherwise sit on a black Clear(Color.Black) forever.
+        /// </para>
+        /// <para>
+        /// <b>Activated on a fresh launch (kept):</b> several titles key level/HUD setup off the
+        /// activation signal. Star Wars: The Battle for Hoth is the concrete case — its in-game
+        /// HUD only unfolds when the post-boot Activated drives the flow; drop it and the
+        /// coin / command-point icons never leave alpha 0 (HUD looks empty) on a cold start even
+        /// though a later resume shows them. So Activated is raised at boot AND on resume.
+        /// </para>
+        /// <para>
+        /// <b>IsApplicationInstancePreserved is always true (not <c>!anew</c>):</b> a fresh launch
+        /// has nothing to restore, so handlers that treat Activated+preserved=<c>false</c> as a
+        /// tombstone-restore signal must not run that path at boot. Battlewagon's
+        /// <c>Current_Activated</c> does exactly that — with preserved=false it runs
+        /// <c>SystemData.ContinueGame()</c> -> <c>MapData.FromFile()</c>, which on a fresh install
+        /// overwrites the <c>MapData</c> just loaded in <c>LoadContent</c> with an empty
+        /// <c>new MapData()</c> (null <c>MapSeasons</c>) and jumps to the title scene, whose
+        /// <c>Initialise()</c> NREs on the null array (the game sat on its animated-bomb loading
+        /// screen forever). Reporting the instance as preserved makes such handlers early-out
+        /// (<c>if (e.IsApplicationInstancePreserved) return;</c>) while preserved-agnostic handlers
+        /// (Hoth) are unaffected. On a genuine resume (anew=false, e.g. a MediaPlayerLauncher
+        /// round-trip) preserved=true is also correct — the WPR process never died.
+        /// </para>
         /// </summary>
         public void HandleApplicationStart(bool anew)
         {
 #if DEBUG
-            Trace.WriteLine($"[wpr-trace] PhoneApplicationService.HandleApplicationStart(anew={anew}) firing Launching+Activated. " +
+            Trace.WriteLine($"[wpr-trace] PhoneApplicationService.HandleApplicationStart(anew={anew}) firing {(anew ? "Launching+Activated" : "Activated")} (preserved=true). " +
                 $"Subscribers: Launching={CountInvocations(_Launching)} Activated={CountInvocations(_Activated)}");
 #endif
 
@@ -68,7 +91,10 @@ namespace WPR.SilverlightCompability
                 }
             }
 
-            try { _Activated?.Invoke(this, new ActivatedEventArgs { IsApplicationInstancePreserved = !anew }); }
+            // Always raise Activated (boot AND resume), but as an instance-preserved
+            // (fast-resume) signal so cold-start handlers skip tombstone-restore logic.
+            // See the remarks above for why this satisfies both Hoth and Battlewagon.
+            try { _Activated?.Invoke(this, new ActivatedEventArgs { IsApplicationInstancePreserved = true }); }
             catch (Exception ex)
             {
 #if DEBUG

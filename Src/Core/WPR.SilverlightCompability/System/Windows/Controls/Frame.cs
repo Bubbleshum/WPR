@@ -27,6 +27,16 @@ namespace WPR.SilverlightCompability
 
         public NavigationService NavigationService { get; }
 
+        /// <summary>
+        /// Optional URI rewriter applied to every <see cref="Navigate(Uri)"/> target, mirroring
+        /// WP's <c>Frame.UriMapper</c>. The WP app template assigns one in
+        /// <c>InitializePhoneApplication</c> (e.g. AC Pirates' <c>AssociationUriMapper</c>), so
+        /// the property must exist and be honoured for the app's navigation to resolve the same
+        /// pages it would on-device. Lives in the <c>Microsoft.Phone</c> facade because that's
+        /// the assembly WP user code references it from.
+        /// </summary>
+        public System.Windows.Navigation.UriMapperBase? UriMapper { get; set; }
+
         public Uri? Source
         {
             get => _currentUri;
@@ -61,6 +71,26 @@ namespace WPR.SilverlightCompability
         public bool Navigate(Uri source)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
+
+            // Apply the app-supplied UriMapper the same way WP does before resolving a page.
+            // A mapper returns the original URI when no rule matches, so this is a no-op for
+            // normal launches and only rewrites friendly/deep-link URIs. If the guest's mapper
+            // throws — typically because its body touches a WP API we don't shim yet (AC Pirates'
+            // AssociationUriMapper calls System.Net.HttpUtility, which isn't provided) — fall
+            // back to the original target so a special-case rewrite can't break a normal launch.
+            if (UriMapper != null)
+            {
+                try
+                {
+                    Uri mapped = UriMapper.MapUri(source);
+                    if (mapped != null) source = mapped;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[UriMapper] {UriMapper.GetType().Name}.MapUri('{source}') " +
+                                      $"threw {ex.GetType().Name}: {ex.Message} — using unmapped URI.");
+                }
+            }
 
             var navigatingArgs = new NavigatingCancelEventArgs(source, NavigationMode.New);
             Navigating?.Invoke(this, navigatingArgs);
@@ -114,6 +144,17 @@ namespace WPR.SilverlightCompability
         public void StopLoading()
         {
             NavigationStopped?.Invoke(this, new NavigationEventArgs(_currentPage, _currentUri, NavigationMode.New));
+        }
+
+        /// <summary>
+        /// Removes the most recent entry from the back stack and returns it, or <c>null</c> when
+        /// the stack is empty. Matches WP semantics (returns null rather than throwing) — the
+        /// standard app template's <c>ClearBackStackAfterReset</c> drains the stack with
+        /// <c>while (RootFrame.RemoveBackEntry() != null) { }</c>.
+        /// </summary>
+        public JournalEntry? RemoveBackEntry()
+        {
+            return _backStack.Count > 0 ? _backStack.Pop() : null;
         }
 
         protected PhoneApplicationPage ResolvePage(Uri source)

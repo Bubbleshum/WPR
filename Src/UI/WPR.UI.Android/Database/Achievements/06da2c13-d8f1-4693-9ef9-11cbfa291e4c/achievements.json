@@ -1,0 +1,20 @@
+{
+  "Name": "Zuma's Revenge!",
+  "Description": "PopCap's marble-shooting sequel. As a stone frog idol you spit colored balls to clear the chains snaking toward the skull before they reach it. Blast through 60 Adventure levels and the brutal Iron Frog gauntlet across tropical islands, hop between lily pads, thread balls through gaps, and topple six tiki-god bosses.",
+  "Achievements": [
+    { "Key": "FE_RROG", "Name": "Fe Frog", "GamerScore": 30, "Icon": "fe_rrog.png", "Description": "Complete the Challenge Mode." },
+    { "Key": "CHALLENGE_ACCEPTED", "Name": "Challenge Accepted", "GamerScore": 5, "Icon": "challenge_accepted.png", "Description": "Win a Challenge Level." },
+    { "Key": "FROZEN_FROG", "Name": "Frozen Frog", "GamerScore": 10, "Icon": "frozen_frog.png", "Description": "Beat a regular rail level without moving the frog." },
+    { "Key": "POWER_PLAYER", "Name": "Power Player", "GamerScore": 10, "Icon": "power_player.png", "Description": "Build your score multiplier up to 5X." },
+    { "Key": "C_C_C_C_CHAIN_BONUS", "Name": "C-C-C-C-Chain Bonus!", "GamerScore": 10, "Icon": "c_c_c_c_chain_bonus.png", "Description": "Shoot 15 balls and make 15 matches... in a row!" },
+    { "Key": "THREAD_THE_NEEDLE", "Name": "Thread the Needle", "GamerScore": 5, "Icon": "thread_the_needle.png", "Description": "Make a match by shooting a ball through a gap in the curve." },
+    { "Key": "TIME_FOR_TADPOLES", "Name": "Time for Tadpoles!", "GamerScore": 25, "Icon": "time_for_tadpoles.png", "Description": "Defeat Zhaka Mu and discover the secret of the island!" },
+    { "Key": "YOU_WIN", "Name": "You Win!", "GamerScore": 5, "Icon": "you_win.png", "Description": "Just win a regular level. Easy hu?!" },
+    { "Key": "CEPHALOPOD_SMASHE", "Name": "Cephalopod Smashe", "GamerScore": 20, "Icon": "cephalopod_smashe.png", "Description": "Defeat Cephalo Ka and his Inky Ink Attack." },
+    { "Key": "PESTILENCE_PACIFIER", "Name": "Pestilence Pacifier", "GamerScore": 20, "Icon": "pestilence_pacifier.png", "Description": "Defeat Kolo Kamari and his Swarm of Bugs." },
+    { "Key": "BONE_PICKER", "Name": "Bone Picker", "GamerScore": 20, "Icon": "bone_picker.png", "Description": "Defeat Baron Digo and his Skeleton Crew." },
+    { "Key": "TIKI_TRAMPLER", "Name": "Tiki Trampler", "GamerScore": 15, "Icon": "tiki_trampler.png", "Description": "Defeat Maga Maga and his Tiki Minions." },
+    { "Key": "JAW_BREAKER", "Name": "Jaw Breaker", "GamerScore": 15, "Icon": "jaw_breaker.png", "Description": "Defeat the Gluttonous Kahtiki Khan." },
+    { "Key": "FROG_STATUE", "Name": "Frog Statue", "GamerScore": 10, "Icon": "frog_statue.png", "Description": "Beat a lily pad level without jumping lily pads." }
+  ]
+}

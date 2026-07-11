@@ -458,6 +458,24 @@ namespace WPR
                     NewNamespace = "WPR.SilverlightCompability"
                 }
                 },
+                { "System.Windows.Markup.XmlLanguage", new TypePatchInfo()
+                {
+                    Reference = SilverlightCompRef,
+                    NewNamespace = "WPR.SilverlightCompability"
+                }
+                },
+                { "System.Net.HttpUtility", new TypePatchInfo()
+                {
+                    Reference = SilverlightCompRef,
+                    NewNamespace = "WPR.SilverlightCompability"
+                }
+                },
+                { "System.Windows.FlowDirection", new TypePatchInfo()
+                {
+                    Reference = SilverlightCompRef,
+                    NewNamespace = "WPR.SilverlightCompability"
+                }
+                },
                 { "System.Windows.Markup.XamlReader", new TypePatchInfo()
                 {
                     Reference = SilverlightCompRef,
@@ -1352,6 +1370,92 @@ namespace WPR
             }
         }
 
+        /// <summary>
+        /// Per-game IL fixups that can't be expressed as reference redirects (the
+        /// <see cref="Patches"/> / <see cref="MemberPatches"/> tables only retarget type/member
+        /// references — they don't rewrite a game's own method bodies). Runs after all reference
+        /// patching, immediately before the module is written. Every fixup is guarded so it only
+        /// touches the exact game it targets and no-ops (rather than corrupting the DLL) if the
+        /// expected IL isn't present, e.g. a different build of the title.
+        /// </summary>
+        private static void ApplyGameSpecificFixups(ModuleDefinition module)
+        {
+            // Star Wars: The Battle for Hoth (SWTheBattleForHoth.dll). On a *fresh* game the
+            // in-game HUD and the tutorial popups are revealed by animating the sprites in from
+            // hidden via CInGameUI/CInGameHelpMode.PlayAnimationForwards, which calls the 4-arg
+            // FLAnimation.play overload (animate from tick 0). Under WPR that animated reveal
+            // leaves the sprites invisible, so a new game shows an empty HUD (no wave counter,
+            // command-point/score panel, buttons or minimap) and blank tutorial boxes. A *resumed*
+            // game is unaffected because its restore path (CInGameUI.LoadState) uses the 6-arg
+            // play overload, whose startFrame maps past the animation's end so it snaps straight to
+            // the final (visible) frame. This rewrites PlayAnimationForwards to use that same
+            // snap-open overload so the fresh-game UI is visible too. (The reveal animation is
+            // cosmetic; snapping loses the unfold flourish but restores the missing UI. Closing
+            // still animates normally — PlayAnimationBackwards is untouched.)
+            if (module.GetType("SWTheBattleForHoth.CInGameUI") == null) return;
+
+            foreach (string typeName in new[] { "SWTheBattleForHoth.CInGameUI", "SWTheBattleForHoth.CInGameHelpMode" })
+            {
+                try
+                {
+                    TypeDefinition? ty = module.GetType(typeName);
+                    MethodDefinition? paf = ty?.Methods.FirstOrDefault(m => m.Name == "PlayAnimationForwards" && m.HasBody);
+                    if (paf == null)
+                    {
+                        Debug.WriteLine($"[hoth-fixup] {typeName}.PlayAnimationForwards not found — skip.");
+                        continue;
+                    }
+                    Debug.WriteLine(SnapOpenReveal(paf)
+                        ? $"[hoth-fixup] snapped {typeName}.PlayAnimationForwards to the 6-arg (snap-open) reveal."
+                        : $"[hoth-fixup] IL pattern not matched in {typeName}.PlayAnimationForwards — skip.");
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[hoth-fixup] {typeName} threw: {ex.Message}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Rewrites a <c>PlayAnimationForwards</c> body from
+        /// <c>group.play(startTime, playFlags, speed, notify)</c> (4-arg animate-from-hidden) to
+        /// <c>group.play(startTime, 1000, -1, playFlags, speed, notify)</c> (6-arg). The 6-arg
+        /// overload multiplies startFrame by ~33.3 to a tick value past the animation's authored
+        /// length, so the reveal lands on its final (visible) frame immediately — the same thing
+        /// LoadState does on resume. Returns false (leaving the body untouched) if the expected
+        /// call sites aren't present.
+        /// </summary>
+        private static bool SnapOpenReveal(MethodDefinition m)
+        {
+            Instruction? getScreenTime = null, play4 = null;
+            foreach (Instruction i in m.Body.Instructions)
+            {
+                if ((i.OpCode == OpCodes.Call || i.OpCode == OpCodes.Callvirt) && i.Operand is MethodReference mr)
+                {
+                    if (mr.Name == "GetScreenAnimationTime") getScreenTime = i;
+                    if (mr.Name == "play" && mr.Parameters.Count == 4) play4 = i;
+                }
+            }
+            if (getScreenTime == null || play4 == null) return false;
+
+            // Find the 6-arg play overload on the same declaring type (or a base type).
+            MethodReference play4Ref = (MethodReference)play4.Operand;
+            MethodDefinition? play6def = null;
+            for (TypeDefinition? t = play4Ref.DeclaringType.Resolve(); t != null && play6def == null; t = t.BaseType?.Resolve())
+            {
+                play6def = t.Methods.FirstOrDefault(x => x.Name == "play" && x.Parameters.Count == 6);
+            }
+            if (play6def == null) return false;
+
+            ILProcessor il = m.Body.GetILProcessor();
+            // Insert startFrame=1000, endFrame=-1 immediately after startTime is pushed, so the
+            // stack for the call becomes (group, startTime, 1000, -1, playFlags, speed, notify).
+            il.InsertAfter(getScreenTime, il.Create(OpCodes.Ldc_I4, 1000));
+            il.InsertAfter(getScreenTime.Next, il.Create(OpCodes.Ldc_I4_M1));
+            play4.Operand = m.Module.ImportReference(play6def);
+            return true;
+        }
+
         // PatchDll(string modulePath)
         public void PatchDll(string modulePath)
         {
@@ -1524,6 +1628,9 @@ namespace WPR
                 }
             }//for...
 
+
+            // Game-specific IL fixups that don't fit the reference-redirect tables above.
+            ApplyGameSpecificFixups(module);
 
             // create .dll.new
             try

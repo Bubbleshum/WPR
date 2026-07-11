@@ -22,6 +22,7 @@ namespace WPR.UI.Views
             {
                 WPR.ApplicationLaunch.RequestExit();
                 SilverlightLauncher.RequestExit();
+                UnityPortLauncher.RequestExit();
             };
 
 //RnD
@@ -67,13 +68,20 @@ namespace WPR.UI.Views
 
                 try
                 {
-                    if (args.Target.ApplicationType == ApplicationType.Silverlight)
+                    // Externally-built native ports (Unity rebuilds, etc.) are launched as a
+                    // standalone process rather than hosted in-process. Detected by a
+                    // wpr-port.json in the install folder; returns false for normal titles so
+                    // they fall through to the Silverlight / XNA hosts below.
+                    if (!await UnityPortLauncher.TryLaunchAsync(args.Target))
                     {
-                        await SilverlightLauncher.LaunchAsync(args.Target);
-                    }
-                    else
-                    {
-                        await XnaLauncher.LaunchAsync(args.Target);
+                        if (args.Target.ApplicationType == ApplicationType.Silverlight)
+                        {
+                            await SilverlightLauncher.LaunchAsync(args.Target);
+                        }
+                        else
+                        {
+                            await XnaLauncher.LaunchAsync(args.Target);
+                        }
                     }
                 }
                 catch (Exception ex)

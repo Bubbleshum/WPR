@@ -268,6 +268,19 @@ namespace WPR.UI.Android
         {
             global::Android.Util.Log.Info("WPR", $"Launch requested: {app.Name} (PatchedVersion={app.PatchedVersion})");
 
+            // Externally-built native ports (Unity rebuilds, etc.) aren't patched WP8 assemblies
+            // hosted in GameActivity — they're their own native binary. Detected by a
+            // wpr-port.json in the install folder; route to the port path and skip patching.
+            var installFolder = Path.Combine(
+                Configuration.Current!.DataPath(Models.Application.DataStoreFolder),
+                app.ProductId!);
+            var portManifest = UnityPortManifest.TryLoad(installFolder);
+            if (portManifest != null)
+            {
+                LaunchUnityPort(app, portManifest, installFolder);
+                return;
+            }
+
             var progress = new ProgressDialog(this);
             progress.SetMessage(Properties.Resources.LaunchingInProcess);
             progress.SetCancelable(false);
@@ -335,6 +348,92 @@ namespace WPR.UI.Android
                             .Show();
                     }
                 });
+            });
+        }
+
+        /// <summary>
+        /// Launch an externally-built native port (see <see cref="WPR.UnityPortManifest"/>). Two
+        /// shapes are supported:
+        /// <list type="number">
+        ///   <item><b>Unity-as-a-Library embed</b> — the Unity build's activity (e.g.
+        ///     <c>com.unity3d.player.UnityPlayerActivity</c>) is compiled into this APK via a
+        ///     bound <c>unityLibrary</c> AAR; we start it directly by class name. This is the
+        ///     chosen Android model, but it is inert until a rebuilt port's AAR is added to
+        ///     WPR.UI.Android — resolving the activity by name means it lights up automatically
+        ///     once that AAR is present. See <c>Docs/Unity_WP8_Feasibility.md</c> for the
+        ///     Gradle / binding steps.</item>
+        ///   <item><b>Separate installed APK</b> — launched by package via a launch intent.</item>
+        /// </list>
+        /// </summary>
+        void LaunchUnityPort(Models.Application app, WPR.UnityPortManifest manifest, string installFolder)
+        {
+            app.ApplicationType = Models.ApplicationType.UnityPort;
+
+            var android = manifest.Android;
+            if (android == null)
+            {
+                ShowPortError(app, $"This port has no Android build defined in {WPR.UnityPortManifest.FileName}.");
+                return;
+            }
+
+            // (1) Embedded Unity-as-a-Library activity, resolved by name so this compiles before
+            //     any Unity AAR is bound into the app.
+            if (!string.IsNullOrEmpty(android.Activity))
+            {
+                try
+                {
+                    var cls = Java.Lang.Class.ForName(android.Activity);
+                    StartActivity(new Intent(this, cls));
+                    return;
+                }
+                catch (Java.Lang.ClassNotFoundException)
+                {
+                    global::Android.Util.Log.Warn("WPR",
+                        $"Unity port activity '{android.Activity}' isn't in this APK — the Unity library isn't embedded yet.");
+                    // fall through to package / error
+                }
+            }
+
+            // (2) Separate installed package.
+            if (!string.IsNullOrEmpty(android.Package))
+            {
+                var launch = PackageManager!.GetLaunchIntentForPackage(android.Package);
+                if (launch != null)
+                {
+                    StartActivity(launch);
+                    return;
+                }
+
+                if (!string.IsNullOrEmpty(android.Apk) &&
+                    File.Exists(Path.Combine(installFolder, android.Apk)))
+                {
+                    // Auto-install via PackageInstaller (needs a FileProvider + REQUEST_INSTALL_PACKAGES)
+                    // is future work; for now point the user at the bundled APK.
+                    ShowPortError(app,
+                        $"The port package '{android.Package}' isn't installed. Install the bundled APK " +
+                        $"at '{Path.Combine(installFolder, android.Apk)}' and relaunch.");
+                    return;
+                }
+
+                ShowPortError(app, $"The port package '{android.Package}' isn't installed on this device.");
+                return;
+            }
+
+            ShowPortError(app,
+                "This Unity port isn't embedded yet. Build the Unity project for Android and either bind its " +
+                "library into WPR (Unity-as-a-Library) or install its APK. See Docs/Unity_WP8_Feasibility.md.");
+        }
+
+        void ShowPortError(Models.Application app, string message)
+        {
+            WPR.Common.Log.Warn(LogCategory.AppList, $"Unity port '{app.Name}': {message}");
+            RunOnUiThread(() =>
+            {
+                new AlertDialog.Builder(this)!
+                    .SetTitle(Properties.Resources.AppRunError)!
+                    .SetMessage(message)!
+                    .SetPositiveButton("OK", (IDialogInterfaceOnClickListener?)null)!
+                    .Show();
             });
         }
 

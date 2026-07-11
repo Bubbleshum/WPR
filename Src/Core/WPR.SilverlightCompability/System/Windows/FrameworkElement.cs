@@ -309,6 +309,14 @@ namespace WPR.SilverlightCompability
             DependencyProperty.Register(nameof(Foreground), typeof(Brush), typeof(FrameworkElement),
                 new PropertyMetadata((object?)null));
 
+        public static readonly DependencyProperty LanguageProperty =
+            DependencyProperty.Register(nameof(Language), typeof(XmlLanguage), typeof(FrameworkElement),
+                new PropertyMetadata((object?)null));
+
+        public static readonly DependencyProperty FlowDirectionProperty =
+            DependencyProperty.Register(nameof(FlowDirection), typeof(FlowDirection), typeof(FrameworkElement),
+                new PropertyMetadata(FlowDirection.LeftToRight));
+
         public string FontFamily
         {
             get => (string)GetValue(FontFamilyProperty)!;
@@ -331,6 +339,22 @@ namespace WPR.SilverlightCompability
         {
             get => (Brush?)GetValue(ForegroundProperty);
             set => SetValue(ForegroundProperty, value);
+        }
+
+        /// <summary>The element's language (SL <c>FrameworkElement.Language</c>). Stored only —
+        /// we don't do per-language text shaping — but the WP app template sets it during init.</summary>
+        public XmlLanguage? Language
+        {
+            get => (XmlLanguage?)GetValue(LanguageProperty);
+            set => SetValue(LanguageProperty, value);
+        }
+
+        /// <summary>Text/layout flow direction (SL <c>FrameworkElement.FlowDirection</c>). Stored
+        /// only; RTL mirroring isn't applied, which is fine for LTR locales (the common case).</summary>
+        public FlowDirection FlowDirection
+        {
+            get => (FlowDirection)GetValue(FlowDirectionProperty)!;
+            set => SetValue(FlowDirectionProperty, value);
         }
 
         /// <summary>Stub for SL's template-application lifecycle hook. WP Toolkit

@@ -108,18 +108,26 @@ namespace WPR.SilverlightCompability
             }
 
 #if WPR_D3D11
-            // No registered renderer — try to find a splash image in the app's install folder
-            // and render that with a Ken Burns animation. Real game-content rendering needs
-            // a per-app renderer that knows how to interpret the user's data files (e.g.
-            // GameMaker's game.win), but the splash gives an authentic "game is loading"
-            // visual using a real GPU pipeline.
+            // A dedicated full-screen splash image (Ken Burns) if the app ships one.
             string? splash = TryFindSplashImage();
             if (splash != null)
             {
                 try { return new D3D11ImageSplashRenderer(splash); }
-                catch { /* fall through to test pattern */ }
+                catch { /* fall through */ }
+            }
+#endif
+
+            // Otherwise present a branded splash built from the app's own tile/icon art — much
+            // nicer than a bare test pattern for titles whose engine we can't host (e.g. AC
+            // Pirates' native ARM Spark2). Pure Avalonia, so it works on every backend.
+            string? installFolder = HostContext.CurrentInstallFolder;
+            if (installFolder != null && BrandedSplashRenderer.HasArt(installFolder))
+            {
+                try { return new BrandedSplashRenderer(installFolder); }
+                catch { /* fall through */ }
             }
 
+#if WPR_D3D11
             // Last resort: animated test pattern proves the pipeline is wired even when
             // there's nothing else to show.
             try { return new D3D11TestPatternRenderer(); }

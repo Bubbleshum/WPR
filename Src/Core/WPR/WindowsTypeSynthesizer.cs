@@ -129,6 +129,65 @@ namespace WPR
             return name.Length >= 2 && name[0] == 'I' && char.IsUpper(name[1]);
         }
 
+        /// <summary>
+        /// WinRT value-type structs whose members the user IL actually touches (constructs and
+        /// reads). Emitted as real structs with public double fields + a positional ctor, rather
+        /// than the default empty class shell. Field order matches the WinRT layout / ctor args.
+        /// </summary>
+        private static readonly Dictionary<string, string[]> KnownValueTypeFields = new(StringComparer.Ordinal)
+        {
+            ["Windows.Foundation.Size"]  = new[] { "Width", "Height" },
+            ["Windows.Foundation.Point"] = new[] { "X", "Y" },
+            ["Windows.Foundation.Rect"]  = new[] { "X", "Y", "Width", "Height" },
+        };
+
+        /// <summary>
+        /// Emit a known WinRT value type (Size/Point/Rect) as a struct with public double fields
+        /// and a positional ctor that assigns them. Returns false for unknown types.
+        /// </summary>
+        private static bool TryEmitKnownValueType(string ns, string name, ModuleDefinition mod, out TypeDefinition? type)
+        {
+            type = null;
+            string full = string.IsNullOrEmpty(ns) ? name : ns + "." + name;
+            if (!KnownValueTypeFields.TryGetValue(full, out var fields)) return false;
+
+            var t = new TypeDefinition(ns, name,
+                TypeAttributes.Public | TypeAttributes.SequentialLayout | TypeAttributes.Sealed |
+                    TypeAttributes.BeforeFieldInit | TypeAttributes.AnsiClass,
+                mod.ImportReference(typeof(ValueType)));
+
+            var fieldDefs = new FieldDefinition[fields.Length];
+            for (int i = 0; i < fields.Length; i++)
+            {
+                var fd = new FieldDefinition(fields[i], FieldAttributes.Public, mod.TypeSystem.Double);
+                t.Fields.Add(fd);
+                fieldDefs[i] = fd;
+            }
+
+            var ctor = new MethodDefinition(".ctor",
+                Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.HideBySig |
+                Mono.Cecil.MethodAttributes.SpecialName | Mono.Cecil.MethodAttributes.RTSpecialName,
+                mod.TypeSystem.Void)
+            { ImplAttributes = MethodImplAttributes.IL | MethodImplAttributes.Managed };
+            foreach (var f in fields)
+                ctor.Parameters.Add(new ParameterDefinition(
+                    char.ToLowerInvariant(f[0]) + f.Substring(1), ParameterAttributes.None, mod.TypeSystem.Double));
+
+            ctor.Body = new Mono.Cecil.Cil.MethodBody(ctor);
+            var il = ctor.Body.GetILProcessor();
+            for (int i = 0; i < fieldDefs.Length; i++)
+            {
+                il.Append(il.Create(Mono.Cecil.Cil.OpCodes.Ldarg_0));
+                il.Append(il.Create(Mono.Cecil.Cil.OpCodes.Ldarg, ctor.Parameters[i]));
+                il.Append(il.Create(Mono.Cecil.Cil.OpCodes.Stfld, fieldDefs[i]));
+            }
+            il.Append(il.Create(Mono.Cecil.Cil.OpCodes.Ret));
+            t.Methods.Add(ctor);
+
+            type = t;
+            return true;
+        }
+
         private static void SynthesizeAssembly(
             string installFolder,
             string scopeName,
@@ -145,6 +204,15 @@ namespace WPR
 
             foreach (var (ns, name) in types)
             {
+                // Known WinRT value-type structs (Size/Point/Rect) need real fields + ctors —
+                // the user IL constructs them (new Size(w,h)) and uses value semantics, so an
+                // empty class shell fails to load / bind. Emit a proper struct.
+                if (TryEmitKnownValueType(ns, name, mod, out var valueType))
+                {
+                    mod.Types.Add(valueType!);
+                    continue;
+                }
+
                 bool isInterface = LooksLikeInterface(ns, name, interfaceTypes);
 
                 TypeDefinition t;
@@ -183,6 +251,17 @@ namespace WPR
                         mod.ImportReference(typeof(object).GetConstructor(Type.EmptyTypes)!)));
                     il.Append(il.Create(Mono.Cecil.Cil.OpCodes.Ret));
                     t.Methods.Add(ctor);
+                }
+
+                // Preserve generic arity. Cecil keeps the `N suffix in the type Name; a type
+                // named "Foo`2" with zero GenericParameters is malformed and won't bind to a
+                // "Foo<A,B>" reference. Add N placeholder parameters so generic WinRT types that
+                // weren't projected to a BCL equivalent still resolve.
+                int tick = name.IndexOf('`');
+                if (tick >= 0 && int.TryParse(name.Substring(tick + 1), out int arity) && arity > 0)
+                {
+                    for (int gi = 0; gi < arity; gi++)
+                        t.GenericParameters.Add(new GenericParameter("T" + gi, t));
                 }
 
                 mod.Types.Add(t);
