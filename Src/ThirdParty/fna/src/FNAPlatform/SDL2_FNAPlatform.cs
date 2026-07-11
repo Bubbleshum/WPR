@@ -502,6 +502,19 @@ namespace Microsoft.Xna.Framework
 			string screenDeviceName,
 			ref string resultDeviceName
 		) {
+			// WPR: WP7 titles ran on a fixed 800x480 phone surface and commonly stamp
+			// PresentationParameters.IsFullScreen=true (Battleship does this in its own
+			// PreparingDeviceSettings handler, which bypasses GraphicsDeviceManager2's
+			// neutralized IsFullScreen setter). On desktop we always want a real window, so
+			// force windowed at this single choke point — every fullscreen transition
+			// (property set, direct pp stamp, ToggleFullScreen, alt-tab refullscreen) funnels
+			// through here. clientWidth/clientHeight pass through unchanged, so the game's
+			// 800x480 backbuffer/viewport sizing is preserved.
+			if (!IsMobilePlatform())
+			{
+				wantsFullscreen = false;
+			}
+
 			bool center = false;
 
 			/* The drawable size is now the primary width/height, so

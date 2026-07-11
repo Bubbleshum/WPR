@@ -273,6 +273,33 @@ namespace WPR
                 isCollectible: true);
             alc.Resolving += (ctx, name) =>
             {
+                // Satellite (localized) resource assemblies live in a per-culture SUBFOLDER
+                // (e.g. <folder>\en\battleship.resources.dll), not the install root. The CLR
+                // requests them as "<name>.resources, Culture=<c>"; the flat probe below only
+                // looks in the root and misses, so the game's ResourceManager string table never
+                // loads and ALL on-screen text renders blank (Battleship's getString() reads
+                // BS_Resource from battleship.resources.dll). Probe the culture subfolder first.
+                // A missing file falls through to the normal probes, and the CLR walks parent
+                // cultures (en-GB -> en -> neutral) via separate Resolving requests.
+                if (!string.IsNullOrEmpty(name.CultureName))
+                {
+                    string satellitePath = Path.Combine(folderPath, name.CultureName, name.Name + ".dll");
+                    if (File.Exists(satellitePath))
+                    {
+                        try
+                        {
+                            var sat = LoadAssemblyWithoutFileLock(ctx, satellitePath);
+                            WprTrace($"[wpr-resolve-user] OK   {name.FullName} -> {satellitePath} (satellite)");
+                            return sat;
+                        }
+                        catch (Exception ex)
+                        {
+                            WprTrace($"[wpr-resolve-user] FAIL satellite {name.FullName} via {satellitePath}: {ex.GetType().FullName} hr=0x{ex.HResult:X8} msg=\"{ex.Message}\"");
+                            return null;
+                        }
+                    }
+                }
+
                 string candidate = Path.Combine(folderPath, name.Name + ".dll");
                 if (File.Exists(candidate))
                 {

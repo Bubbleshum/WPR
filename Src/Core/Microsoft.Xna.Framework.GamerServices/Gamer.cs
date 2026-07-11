@@ -75,6 +75,17 @@ namespace Microsoft.Xna.Framework.GamerServices
             return StubUtils.ForeverTask;
         }
 
+        // Synchronous partner-token fetch. WPR has no Xbox LIVE partner-service backend,
+        // so there is no real token to return. Battleship's XBOXLive.getPartnerToken() calls
+        // this statically (Gamer.GetPartnerToken(audienceUri)) from RESTRequest._start() on a
+        // background thread; without the method the game threw MissingMethodException and the
+        // whole process died. Return an empty token — the caller (ExtractTokenData) tolerates
+        // it (parses to nothing, yields ""), wraps it in an empty SAML assertion, and the
+        // ensuing REST call to the unreachable partner service fails gracefully in its own
+        // guarded async callback. Online partner features won't work offline; single-player is
+        // unaffected.
+        public static string GetPartnerToken(string audienceUri) => "";
+
         public string Gamertag
         {
             get => _GamerTag;

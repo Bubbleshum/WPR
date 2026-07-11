@@ -12,8 +12,13 @@ namespace Microsoft.Xna.Framework.GamerServices
         private ReadOnlyCollection<LeaderboardEntry>? _Entries;
         public ReadOnlyCollection<LeaderboardEntry>? Entries => this._Entries;
 
-        public LeaderboardReader()
+        public LeaderboardReader() : this(default)
         {
+        }
+
+        public LeaderboardReader(LeaderboardIdentity identity)
+        {
+            LeaderboardIdentity = identity;
             _Entries = new ReadOnlyCollection<LeaderboardEntry>(new List<LeaderboardEntry>());
         }
 
@@ -23,7 +28,14 @@ namespace Microsoft.Xna.Framework.GamerServices
         public bool CanPageUp => false;
         public bool IsDisposed { get; private set; }
         public bool IsSynchronizedWithLiveServer => false;
-        public LeaderboardIdentity Leaderboard { get; internal set; }
+        // Real XNA member name. Games read reader.LeaderboardIdentity back off the reader
+        // returned by EndRead — Battleship's XBOXLive.LeaderboardReadCallback does
+        // `reader.LeaderboardIdentity.GameMode` to pick which leaderboards[] slot to fill.
+        // Captured at BeginRead so GameMode round-trips the slot index the caller passed in;
+        // without it (the shim previously mis-named this "Leaderboard" and discarded the
+        // identity) the game threw MissingMethodException on get_LeaderboardIdentity() every
+        // leaderboard read.
+        public LeaderboardIdentity LeaderboardIdentity { get; internal set; }
         public int PageSize => 0;
         public int PageStart => 0;
         public int TotalLeaderboardSize => 0;
@@ -39,7 +51,7 @@ namespace Microsoft.Xna.Framework.GamerServices
         public static IAsyncResult BeginRead(LeaderboardIdentity leaderb,
             int pageStart, int pageSize, AsyncCallback callback, object asyncState)
         {
-            return CompleteRead(callback, asyncState);
+            return CompleteRead(leaderb, callback, asyncState);
         }
 
         public static IAsyncResult BeginRead(
@@ -49,7 +61,7 @@ namespace Microsoft.Xna.Framework.GamerServices
           AsyncCallback callback,
           object asyncState)
         {
-            return CompleteRead(callback, asyncState);
+            return CompleteRead(leaderboardId, callback, asyncState);
         }
 
         public static IAsyncResult BeginRead(
@@ -60,12 +72,12 @@ namespace Microsoft.Xna.Framework.GamerServices
           AsyncCallback callback,
           object asyncState)
         {
-            return CompleteRead(callback, asyncState);
+            return CompleteRead(leaderboardId, callback, asyncState);
         }
 
-        private static IAsyncResult CompleteRead(AsyncCallback? callback, object? asyncState)
+        private static IAsyncResult CompleteRead(LeaderboardIdentity identity, AsyncCallback? callback, object? asyncState)
         {
-            var reader = new LeaderboardReader();
+            var reader = new LeaderboardReader(identity);
             var task = Task.FromResult(reader);
             callback?.Invoke(task);
             return task;

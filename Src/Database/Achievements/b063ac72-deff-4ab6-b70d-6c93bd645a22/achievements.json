@@ -1,0 +1,26 @@
+{
+  "Name": "Battleship",
+  "Description": "The classic Hasbro naval-combat game from Electronic Arts. Deploy your fleet and hunt the enemy across Classic and Salvo modes, unlock devastating super-weapons and call in reinforcements, then take the fight online in head-to-head multiplayer.",
+  "Achievements": [
+    { "Key": "Back to boot camp", "Name": "Back to Boot Camp", "GamerScore": 10, "Icon": "back_to_boot_camp.png", "Description": "Miss 20 times before you hit a ship." },
+    { "Key": "I sunk your battleship", "Name": "I Sunk Your Battleship", "GamerScore": 10, "Icon": "i_sunk_your_battleship.png", "Description": "Sink your opponent's Battleship before any other ship. (Classic Mode only)" },
+    { "Key": "Eyes on the target", "Name": "Eyes on the Target", "GamerScore": 10, "Icon": "eyes_on_the_target.png", "Description": "Score a hit on your first Salvo. (Salvo Mode only)" },
+    { "Key": "On the hunt", "Name": "On the Hunt", "GamerScore": 10, "Icon": "on_the_hunt.png", "Description": "Hit all 5 ships in a single turn in Salvo Mode." },
+    { "Key": "Gun Captain", "Name": "Gun Captain", "GamerScore": 15, "Icon": "gun_captain.png", "Description": "Unlock all super weapons." },
+    { "Key": "This is all I need to beat you", "Name": "This Is All I Need to Beat You", "GamerScore": 5, "Icon": "this_is_all_i_need_to_beat_you.png", "Description": "Win a Super-weapons game without using any super weapons." },
+    { "Key": "Reinforcements did not come", "Name": "Reinforcements Did Not Come", "GamerScore": 10, "Icon": "reinforcements_did_not_come.png", "Description": "Sink 5 Reinforcement ships." },
+    { "Key": "Locking on", "Name": "Locking On", "GamerScore": 5, "Icon": "locking_on.png", "Description": "Hit at least one target on your first 3 turns. (Salvo Mode only)" },
+    { "Key": "No blue horizon", "Name": "No Blue Horizon", "GamerScore": 10, "Icon": "no_blue_horizon.png", "Description": "Sink 15 Aircraft Carriers. (Classic Mode only)" },
+    { "Key": "I See You", "Name": "I See You", "GamerScore": 15, "Icon": "i_see_you.png", "Description": "Hit your targets 250 times. (Classic Mode only)" },
+    { "Key": "Jack of all trades", "Name": "Jack of All Trades", "GamerScore": 5, "Icon": "jack_of_all_trades.png", "Description": "Play all game modes." },
+    { "Key": "Buddy System", "Name": "Buddy System", "GamerScore": 15, "Icon": "buddy_system.png", "Description": "Finish a game with two ships still afloat next to each other." },
+    { "Key": "Winning", "Name": "Winning!", "GamerScore": 5, "Icon": "winning.png", "Description": "Win your very first multiplayer game." },
+    { "Key": "Undisputed", "Name": "Undisputed", "GamerScore": 10, "Icon": "undisputed.png", "Description": "Win 5 Salvo games without using Best of 5." },
+    { "Key": "Sunk but not Destroyed", "Name": "Sunk but Not Destroyed", "GamerScore": 10, "Icon": "sunk_but_not_destroyed.png", "Description": "Finish a game with your Destroyer still afloat." },
+    { "Key": "Not so sneaky", "Name": "Not So Sneaky", "GamerScore": 10, "Icon": "not_so_sneaky.png", "Description": "Sink 10 Recon Boats using Best of 5." },
+    { "Key": "What comes around", "Name": "What Comes Around", "GamerScore": 10, "Icon": "what_comes_around.png", "Description": "After the enemy sinks your sub, return the favor on your next turn." },
+    { "Key": "Down with the Ship", "Name": "Down with the Ship", "GamerScore": 5, "Icon": "down_with_the_ship.png", "Description": "Win a game with only one ship and one hit remaining." },
+    { "Key": "Commodore", "Name": "Commodore", "GamerScore": 10, "Icon": "commodore.png", "Description": "Win 50 matches." },
+    { "Key": "Admiral", "Name": "Admiral", "GamerScore": 20, "Icon": "admiral.png", "Description": "Win 200 matches." }
+  ]
+}
