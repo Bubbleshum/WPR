@@ -55,6 +55,21 @@ namespace WPR.UI.Desktop
                 File.Copy(Path.Combine(bundledDb, "applications.db"), Configuration.Current.DataPath("Database\\applications.db"));
             }
 
+            // Headless library maintenance (opt-in via CLI). Runs the real install
+            // pipeline over the whole library, then exits before the UI starts:
+            //   --repatch-installed : re-patch every installed game with the current patcher
+            //   --reinstall-all     : the above, plus fresh-install every library XAP not
+            //                         yet installed
+            // Useful after a patcher change touches many already-installed games, where
+            // clicking "reinstall" per game in the UI is impractical. Requires the WPR UI
+            // to be closed (installed DLLs must not be locked by a running game).
+            if (args.Contains("--reinstall-all") || args.Contains("--repatch-installed"))
+            {
+                bool includeNew = args.Contains("--reinstall-all");
+                BatchReinstall.RunAsync(includeNew).GetAwaiter().GetResult();
+                Environment.Exit(0);
+            }
+
             // Reconcile installed games against their hardcoded catalogues: add new /
             // update changed achievements, never reset unlock progress. Non-fatal.
             try { WPR.XnaAchievementSeeder.ReconcileCatalogueGamesAsync().GetAwaiter().GetResult(); }

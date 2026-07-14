@@ -1459,9 +1459,27 @@ namespace WPR
         // PatchDll(string modulePath)
         public void PatchDll(string modulePath)
         {
+            // Cecil resolves type references when it *serialises* the module — most
+            // notably to find the underlying integer type of an enum used as a field
+            // constant (MetadataBuilder.GetConstantType -> CheckedResolve). A user
+            // assembly with a field constant typed as an enum from
+            // Microsoft.Xna.Framework.Graphics (rescoped to FNA below) or from one of
+            // our shims therefore forces an assembly resolve at Write time. The
+            // default resolver only searches the module's own directory, so it can't
+            // find FNA / the WPR shim assemblies and Write throws
+            // AssemblyResolutionException — which the catch below used to swallow
+            // silently, leaving that one DLL unpatched (its [System.Windows] typerefs
+            // never redirected -> TypeLoadException at launch). Point the resolver at
+            // the install dir *and* the running WPR bin (where FNA + the shims are
+            // deployed) so those resolves succeed. Repro'd on "Beards and Beaks.dll".
+            var resolver = new DefaultAssemblyResolver();
+            resolver.AddSearchDirectory(Path.GetDirectoryName(modulePath)!);
+            resolver.AddSearchDirectory(AppContext.BaseDirectory);
+
             // ReadAssembly
             AssemblyDefinition assemblyData =
-                Mono.Cecil.AssemblyDefinition.ReadAssembly(modulePath);
+                Mono.Cecil.AssemblyDefinition.ReadAssembly(
+                    modulePath, new ReaderParameters { AssemblyResolver = resolver });
 
             Mono.Cecil.ModuleDefinition module = assemblyData.MainModule;
 
@@ -1639,10 +1657,19 @@ namespace WPR
             }
             catch (Exception ex)
             {
-                Debug.WriteLine("[ex] assemblyData.Write : " + ex.Message);
-                Debug.WriteLine("[error] " + modulePath + "can't patch normally :(");
+                // With the resolver supplied above this should be rare, but if a
+                // constant still references a genuinely unresolvable assembly Cecil
+                // throws here. Log it loudly — a bare Debug.WriteLine never reached
+                // the install log, which is exactly how an unpatched DLL slipped
+                // through unnoticed before. Leave the original in place.
+                Log.Error(LogCategory.AppInstall,
+                    $"Cecil failed to write patched assembly '{modulePath}'. It will be left UNPATCHED. Error:\n{ex}");
 
                 assemblyData.Dispose();
+
+                // Drop the truncated/empty .new so a stale 0-byte file can't linger
+                // or be mistaken for a real patched output.
+                try { File.Delete(modulePath + ".new"); } catch { /* best-effort */ }
                 return;
             }
 

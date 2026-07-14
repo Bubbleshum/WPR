@@ -6,6 +6,12 @@ namespace WPR.SilverlightCompability
     {
         private Dictionary<DependencyProperty, object?>? _values;
 
+        /// <summary>WP7 <c>DependencyObject.Dispatcher</c>: the object's UI-thread
+        /// dispatcher. Games marshal work back onto the UI thread through it — e.g.
+        /// <c>((DependencyObject)Deployment.Current).Dispatcher.BeginInvoke(action)</c>.
+        /// We return the shared inline dispatcher (runs work immediately).</summary>
+        public Threading.Dispatcher Dispatcher => Threading.Dispatcher.Shared;
+
         public object? GetValue(DependencyProperty dp)
         {
             if (_values != null && _values.TryGetValue(dp, out var v))
