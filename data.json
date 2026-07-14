@@ -26,7 +26,7 @@
   {"name":"Battleship","dev":"Electronic Arts","status":"Playable","achv":true,"notes":"Promoted from Untested → Playable after shimming `HttpNotificationChannel` and `Gamer.GetPartnerToken`; boots and runs end-to-end.","type":"XNA","dagger":false,"img":"battleship.jpg"},
   {"name":"Battlewagon","dev":"Ironsun Studios","status":"Playable","achv":true,"notes":"18-achievement / 200G catalogue.","type":"XNA","dagger":false,"img":"battlewagon.jpg"},
   {"name":"BBB: App-ocalypse","dev":"","status":"Untested","achv":false,"notes":"Legacy: broken — error screen on load.","type":"XNA","dagger":true,"img":""},
-  {"name":"Beards \u0026 Beaks","dev":"Microsoft Studios","status":"Untested","achv":false,"notes":"","type":"XNA","dagger":false,"img":"beardsandbeaks.jpg"},
+  {"name":"Beards \u0026 Beaks","dev":"Microsoft Studios","status":"Playable","achv":false,"notes":"Promoted from Untested → Playable after fixing a patcher write failure that left the main DLL unpatched.","type":"XNA","dagger":false,"img":"beardsandbeaks.jpg"},
   {"name":"Bejeweled Live","dev":"PopCap","status":"Untested","achv":false,"notes":"","type":"XNA","dagger":false,"img":"bejeweledlive.jpg"},
   {"name":"Bejeweled Live +","dev":"PopCap","status":"Playable","achv":true,"notes":"Boots and runs end-to-end; 20-achievement / 200G catalogue.","type":"XNA","dagger":false,"img":"bejeweledliveplus.jpg"},
   {"name":"Big Buck Hunter Pro","dev":"Merge Interactive","status":"Broken","achv":false,"notes":"Silverlight title; not yet running on this fork.","type":"Silverlight","dagger":false,"img":"bigbuckhunterpro.jpg"},
