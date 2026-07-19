@@ -1,0 +1,19 @@
+{
+  "Name": "James Patterson's Women's Murder Club",
+  "Description": "Join Detective Lindsay Boxer and the Women's Murder Club to crack a string of San Francisco murders in this hidden-object crime thriller based on James Patterson's best-selling novels. Comb crime scenes for evidence, beat the clock, and follow the leads from the lab to the courtroom.",
+  "Achievements": [
+    { "Key": "Lab Investigation", "Name": "Lab Investigation", "GamerScore": 10, "Icon": "lab_investigation.png", "Description": "The player has viewed the cutscene saying that Jennie Kwong's body is to be taken to the lab." },
+    { "Key": "Investigating Tso", "Name": "Investigating Tso", "GamerScore": 10, "Icon": "investigating_tso.png", "Description": "Begin investigating Judge Tso's office." },
+    { "Key": "Investigating Wong", "Name": "Investigating Wong", "GamerScore": 10, "Icon": "investigating_wong.png", "Description": "Begin investigating Donald Wong's office." },
+    { "Key": "Investigation Complete", "Name": "Investigation Complete", "GamerScore": 10, "Icon": "investigation_complete.png", "Description": "The player has successfully completed every investigation in the game." },
+    { "Key": "Crime Scene Investigator", "Name": "Crime Scene Investigator", "GamerScore": 20, "Icon": "crime_scene_investigator.png", "Description": "The player has completed levels on all 8 crime scenes." },
+    { "Key": "Keeping It Together", "Name": "Keeping It Together", "GamerScore": 10, "Icon": "keeping_it_together.png", "Description": "During gameplay, the player has paused the game and accessed the Investigation Docket." },
+    { "Key": "Lady MacGyver", "Name": "Lady MacGyver", "GamerScore": 10, "Icon": "lady_macgyver.png", "Description": "The player has used an inventory item within a scene." },
+    { "Key": "Sharp shooter", "Name": "Sharp-shooter", "GamerScore": 20, "Icon": "sharp_shooter.png", "Description": "The player needs to select 3 items in a single crime scene inside a 5 second time-frame." },
+    { "Key": "Elementary", "Name": "Elementary", "GamerScore": 20, "Icon": "elementary.png", "Description": "The player only made 5 mistakes, or less, in completing the investigation." },
+    { "Key": "Methodical Investigation", "Name": "Methodical Investigation", "GamerScore": 20, "Icon": "methodical_investigation.png", "Description": "An investigation was completed by identifying every object in the order displayed on the HUD." },
+    { "Key": "Quick Worker", "Name": "Quick Worker", "GamerScore": 20, "Icon": "quick_worker.png", "Description": "A player completes a scene in half of the time allotted to complete the scene, or less." },
+    { "Key": "Eagle Eye", "Name": "Eagle Eye", "GamerScore": 20, "Icon": "eagle_eye.png", "Description": "The player completes an investigation scene having never used the zoom functionality on that scene." },
+    { "Key": "Lightbulb", "Name": "Lightbulb", "GamerScore": 20, "Icon": "lightbulb.png", "Description": "The player must complete three consecutive scenes without using any hints." }
+  ]
+}
