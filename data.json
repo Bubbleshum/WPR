@@ -139,7 +139,7 @@
   {"name":"iO The Game","dev":"Gamious","status":"Broken","achv":false,"notes":"Silverlight title; not yet running on this fork.","type":"Silverlight","dagger":false,"img":"iothegame.jpg"},
   {"name":"IonBallEx","dev":"IronSun Studios","status":"Untested","achv":false,"notes":"","type":"XNA","dagger":false,"img":"ionballex.jpg"},
   {"name":"iStunt 2","dev":"Miniclip","status":"Untested","achv":false,"notes":"","type":"XNA","dagger":false,"img":"istunt2.jpg"},
-  {"name":"James Patterson\u0027s Women\u0027s Murder Club","dev":"Vivid Games","status":"Untested","achv":false,"notes":"","type":"XNA","dagger":false,"img":"jamespattersonswomensmurderclub.jpg"},
+  {"name":"James Patterson\u0027s Women\u0027s Murder Club","dev":"Vivid Games","status":"Playable","achv":true,"notes":"Playable; full 13-achievement catalogue (200G) added.","type":"XNA","dagger":false,"img":"jamespattersonswomensmurderclub.jpg"},
   {"name":"Jet Car Stunts","dev":"True Axis","status":"Untested","achv":false,"notes":"","type":"XNA","dagger":false,"img":"jetcarstunts.jpg"},
   {"name":"Jet Set Go","dev":"Ph03nix New Media","status":"Untested","achv":false,"notes":"","type":"XNA","dagger":false,"img":"jetsetgo.jpg"},
   {"name":"Jetpack Joyride","dev":"Halfbrick Studios","status":"Broken","achv":false,"notes":"Silverlight title; not yet running on this fork.","type":"Silverlight","dagger":false,"img":"jetpackjoyride.jpg"},
