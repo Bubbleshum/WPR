@@ -1,0 +1,26 @@
+{
+  "Name": "Beards & Beaks",
+  "Description": "Fling an army of feisty gnomes to capture shiny treasure and drive off marauding crows across Gnomeville and the Meadow. Line up boulder shots, field the right mix of gnome types, and unleash mushroom god-powers in this physics puzzler from Microsoft Studios.",
+  "Achievements": [
+    { "Key": "PintSizedHercules", "Name": "Pint-sized Hercules", "GamerScore": 5, "Icon": "pint_sized_hercules.png", "Description": "Capture a heavy treasure using only 1 gnome without dropping or assisting." },
+    { "Key": "EvictionNotice", "Name": "Eviction Notice", "GamerScore": 10, "Icon": "eviction_notice.png", "Description": "Eject 20 enemies from garrisons." },
+    { "Key": "Pull", "Name": "Pull!", "GamerScore": 5, "Icon": "pull.png", "Description": "Hurl 5 or more crows with 1 boulder." },
+    { "Key": "GetOffOurLawn", "Name": "Get off Our Lawn!", "GamerScore": 20, "Icon": "get_off_our_lawn.png", "Description": "Complete the Gnomeville levels." },
+    { "Key": "MeadowMasters", "Name": "Meadow Masters", "GamerScore": 20, "Icon": "meadow_masters.png", "Description": "Complete the Meadow levels." },
+    { "Key": "TeamEffort", "Name": "Team Effort", "GamerScore": 10, "Icon": "team_effort.png", "Description": "Use at least 4 gnomes to collect a heavy treasure." },
+    { "Key": "SoloPerformance", "Name": "Solo Performance", "GamerScore": 5, "Icon": "solo_performance.png", "Description": "Complete a multi-gnome level by fielding only 1 gnome." },
+    { "Key": "BrothersInArms", "Name": "Brothers in Arms", "GamerScore": 5, "Icon": "brothers_in_arms.png", "Description": "Complete a multi-type level with only 1 type of gnome." },
+    { "Key": "DivineIntervention", "Name": "Divine Intervention", "GamerScore": 10, "Icon": "divine_intervention.png", "Description": "Use a mushroom power for the first time." },
+    { "Key": "FeatherCollector", "Name": "Feather Collector", "GamerScore": 15, "Icon": "feather_collector.png", "Description": "Defeat 100 crows." },
+    { "Key": "BetterGnomesGardens", "Name": "Putting Hair on Your Chin", "GamerScore": 20, "Icon": "putting_hair_on_your_chin.png", "Description": "Complete the first level of Gnomeville." },
+    { "Key": "Goaltending", "Name": "Goaltending", "GamerScore": 5, "Icon": "goaltending.png", "Description": "Knock 10 treasures out of crow possession right in front of their base." },
+    { "Key": "ItsNotCalledABirdPaddle", "Name": "It's Not Called a Bird Paddle", "GamerScore": 5, "Icon": "its_not_called_a_bird_paddle.png", "Description": "Hurl 5 crows into water." },
+    { "Key": "AMurderOfAMurder", "Name": "A Murder of a Murder", "GamerScore": 10, "Icon": "a_murder_of_a_murder.png", "Description": "Defeat 5 crows in less than 5 seconds." },
+    { "Key": "DownToTheWire", "Name": "Down to the Wire", "GamerScore": 5, "Icon": "down_to_the_wire.png", "Description": "Finish a base defense level with your bases having less than 10% health remaining." },
+    { "Key": "Flickmaster", "Name": "Flickmaster", "GamerScore": 10, "Icon": "flickmaster.png", "Description": "Perform more than 1,000 flicks." },
+    { "Key": "MushroomFueledExcess", "Name": "Mushroom-Fueled Excess", "GamerScore": 10, "Icon": "mushroom_fueled_excess.png", "Description": "Win a level using every mushroom power." },
+    { "Key": "ItsTooQuiet", "Name": "It's Too Quiet", "GamerScore": 5, "Icon": "its_too_quiet.png", "Description": "On any map with more than 6 crows, sideline all crows at the same time." },
+    { "Key": "ShinyThingsAreMine", "Name": "The Shiny Things Are Mine!", "GamerScore": 10, "Icon": "the_shiny_things_are_mine.png", "Description": "Complete the third level of Gnomeville." },
+    { "Key": "SaviorOfShinyThings", "Name": "Savior of Shiny Things", "GamerScore": 15, "Icon": "savior_of_shiny_things.png", "Description": "You've captured more than 100 treasures." }
+  ]
+}

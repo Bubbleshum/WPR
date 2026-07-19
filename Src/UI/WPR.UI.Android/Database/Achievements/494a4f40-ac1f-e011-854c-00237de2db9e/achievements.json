@@ -1,0 +1,26 @@
+{
+  "Name": "I Dig It",
+  "Description": "A physics-based digging adventure: pilot your excavator ever deeper underground across the Farm, Cavern, Oceanic, Antarctic, Amazonian and Egyptian expeditions, collecting valuable Diggins and rare artifacts, plugging vents, discharging gas pockets and upgrading your rig along the way.",
+  "Achievements": [
+    { "Key": "Finished_Farm", "Name": "Save the Farm", "Description": "Save the Farm.", "GamerScore": 10, "Icon": "Finished_Farm.png" },
+    { "Key": "Finished_UnderWorld", "Name": "Cavern Explorer", "Description": "Complete the Cavern expedition.", "GamerScore": 10, "Icon": "Finished_UnderWorld.png" },
+    { "Key": "Finished_Water", "Name": "Ocean Explorer", "Description": "Complete the Oceanic expedition.", "GamerScore": 10, "Icon": "Finished_Water.png" },
+    { "Key": "Finished_Arctic", "Name": "Antarctic Explorer", "Description": "Complete the Antarctic expedition.", "GamerScore": 10, "Icon": "Finished_Arctic.png" },
+    { "Key": "Finished_Jungle", "Name": "Amazon Explorer", "Description": "Complete the Amazonian expedition.", "GamerScore": 10, "Icon": "Finished_Jungle.png" },
+    { "Key": "Finished_Egypt", "Name": "Egyptian Explorer", "Description": "Complete the Egyptian expedition.", "GamerScore": 10, "Icon": "Finished_Egypt.png" },
+    { "Key": "JunkCollector", "Name": "Junk Collector", "Description": "Complete your collection of the junk diggins from the Farm.", "GamerScore": 10, "Icon": "JunkCollector.png" },
+    { "Key": "Historian", "Name": "Historian", "Description": "Complete your collection of artifacts from the Antarctic.", "GamerScore": 10, "Icon": "Historian.png" },
+    { "Key": "Pirateologist", "Name": "Pirateologist", "Description": "Complete your collection of pirate artifacts from the Oceanic expedition.", "GamerScore": 10, "Icon": "Pirateologist.png" },
+    { "Key": "Aztecologist", "Name": "Aztecologist", "Description": "Complete your collection of Aztec artifacts from the Amazonian expedition.", "GamerScore": 10, "Icon": "Aztecologist.png" },
+    { "Key": "MushroomFarmer", "Name": "Mushroom Farmer", "Description": "Collect 100 mushrooms from the Cavern expedition.", "GamerScore": 5, "Icon": "MushroomFarmer.png" },
+    { "Key": "Egyptologist", "Name": "Egyptologist", "Description": "Complete your collection of Egyptian artifacts.", "GamerScore": 10, "Icon": "Egyptologist.png" },
+    { "Key": "Venting", "Name": "Venting", "Description": "Plug 10 geothermal vents in the Oceanic expedition.", "GamerScore": 15, "Icon": "Venting.png" },
+    { "Key": "MethaneMiner", "Name": "Methane Miner", "Description": "Safely discharge 25 gas pockets.", "GamerScore": 10, "Icon": "MethaneMiner.png" },
+    { "Key": "Entomologist", "Name": "Entomologist", "Description": "Collect 30 small ants and 10 large ants from the Amazonian expedition.", "GamerScore": 15, "Icon": "Entomologist.png" },
+    { "Key": "Gopher", "Name": "Gopher", "Description": "Dig 500 square meters of dirt.", "GamerScore": 5, "Icon": "Gopher.png" },
+    { "Key": "EarthMover", "Name": "Earth Mover", "Description": "Dig 5000 square meters of dirt.", "GamerScore": 15, "Icon": "EarthMover.png" },
+    { "Key": "ComboKing", "Name": "Combo King", "Description": "Achieve a 20x multiplier.", "GamerScore": 10, "Icon": "ComboKing.png" },
+    { "Key": "MeetTheTeam", "Name": "Meet the Team", "Description": "Find all of the Developer tokens.", "GamerScore": 10, "Icon": "MeetTheTeam.png" },
+    { "Key": "First_Diggin", "Name": "First Diggin", "Description": "Collect your first Diggin.", "GamerScore": 5, "Icon": "First_Diggin.png" }
+  ]
+}
