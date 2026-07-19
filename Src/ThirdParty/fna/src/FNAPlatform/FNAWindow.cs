@@ -126,6 +126,24 @@ namespace Microsoft.Xna.Framework
 				screenDeviceName,
 				ref deviceName
 			);
+			// WPR: on desktop SDL never emits a device-orientation change, so
+			// CurrentOrientation would stay DisplayOrientation.Default (0) for the whole
+			// session. WP7 games branch on Window.CurrentOrientation to decide their
+			// portrait/landscape layout — e.g. Bejeweled LIVE's SexyFramework
+			// LockOrientation does `if (CurrentOrientation == Portrait) portrait-backbuffer;
+			// else landscape-backbuffer` and, seeing Default, flipped its main menu to a
+			// landscape backbuffer even though the game (and its loading screen) is portrait.
+			// Report the orientation implied by the backbuffer we just applied so those
+			// checks match what the player actually sees. Guarded to non-mobile so the real
+			// SDL orientation events on phones/tablets (INTERNAL_HandleOrientationChange)
+			// remain authoritative. Portrait == 4 (matches XNA); landscape uses
+			// LandscapeRight to stay consistent with GraphicsDeviceManager2 and the tilt input.
+			if (!FNAPlatform.SupportsOrientationChanges())
+			{
+				CurrentOrientation = clientHeight > clientWidth
+					? DisplayOrientation.Portrait
+					: DisplayOrientation.LandscapeRight;
+			}
 			if (deviceName != prevName)
 			{
 				OnScreenDeviceNameChanged();

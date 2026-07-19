@@ -149,7 +149,12 @@ namespace Microsoft.Xna.Framework.GamerServices
                         var compSource = new TaskCompletionSource<AchievementCollection>(asyncState);
                         compSource.SetResult(collection);
 
-                        callback(compSource.Task);
+                        // Run the game's completion callback on the GAME thread, not this
+                        // thread-pool continuation. WP7 titles build their in-game achievement
+                        // UI inside this callback and call Texture2D.FromStream(GraphicsDevice, …)
+                        // per row; FNA's FNA3D/GL resource calls are thread-affine, so doing that
+                        // off-thread fails. See the populated branch below for the full rationale.
+                        WprGameThread.Post(() => callback(compSource.Task));
                     }
 
                     return collection;
@@ -166,7 +171,18 @@ namespace Microsoft.Xna.Framework.GamerServices
 
                 if (callback != null)
                 {
-                    callback(completeSource.Task);
+                    // Marshal the game's completion callback onto the GAME thread rather than
+                    // invoking it here on this Task.Run thread-pool thread. Games run their
+                    // BeginGetAchievements callback to build the in-game achievement screen, and
+                    // that build calls Texture2D.FromStream(GraphicsDevice, GetPicture()) once per
+                    // achievement (Bejeweled LIVE's GetAchievementsCallback, Assassin's Creed, …).
+                    // FNA creates/uploads those textures via FNA3D on the thread that owns the
+                    // graphics context, so an off-thread FromStream throws or corrupts — the game
+                    // swallows it in a try/catch and the in-game list comes up EMPTY. WprGameThread
+                    // drains queued actions at the top of Game.Tick (Game.cs), so the callback runs
+                    // on the render thread at the start of the next frame; completeSource is already
+                    // completed, so the game's EndGetAchievements(result) returns immediately.
+                    WprGameThread.Post(() => callback(completeSource.Task));
                 }
 
                 return coll;
