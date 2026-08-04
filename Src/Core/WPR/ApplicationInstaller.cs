@@ -201,6 +201,15 @@ namespace WPR
                     return ( ApplicationInstallError.NotSupportedAppType, app, dataFolderProduct );
                 }
 
+                // WP8 "Modern Native" packages (native ARM/C++ against WinRT) have no managed
+                // entry assembly to host and ship without the Silverlight AppManifest.xaml.
+                // Reject with an honest reason HERE — otherwise the AppManifest.xaml check below
+                // fires and misreports it as MissingManifestFiles ("missing manifest files!").
+                if (runtimeTypeParsed == ApplicationType.ModernNative)
+                {
+                    return ( ApplicationInstallError.ModernNativeUnsupported, app, dataFolderProduct );
+                }
+
                 XmlAttribute? authorAttrib = appNode!.Attributes!["Author"];
                 XmlAttribute? publisherAttrib = appNode!.Attributes!["Publisher"];
                 XmlAttribute? descriptionAttrib = appNode!.Attributes!["Description"];

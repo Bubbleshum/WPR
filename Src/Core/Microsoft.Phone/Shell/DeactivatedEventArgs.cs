@@ -4,12 +4,12 @@ namespace Microsoft.Phone.Shell
 {
     public class DeactivatedEventArgs : EventArgs
     {
-        private DeactivationReason _reason;
+        // Settable (internal) so PhoneApplicationService can build it via object-initializer;
+        // the ctor overloads are kept for positional construction.
+        public DeactivationReason Reason { get; internal set; } = DeactivationReason.UserAction;
 
-        public DeactivatedEventArgs() => this._reason = DeactivationReason.UserAction;
+        public DeactivatedEventArgs() { }
 
-        public DeactivatedEventArgs(DeactivationReason reason) => this._reason = reason;
-
-        public DeactivationReason Reason => this._reason;
+        public DeactivatedEventArgs(DeactivationReason reason) => Reason = reason;
     }
 }

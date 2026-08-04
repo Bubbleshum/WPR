@@ -16,6 +16,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\WPR.SilverlightCompability\WPR.SilverlightCompability.csproj" />
+    <!-- PhoneApplicationFrame/Page/FrameView + gesture types moved here from SL. -->
+    <ProjectReference Include="..\Microsoft.Phone\Microsoft.Phone.csproj" />
   </ItemGroup>
 
 </Project>

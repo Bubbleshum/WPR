@@ -45,19 +45,27 @@ namespace WPR.SilverlightCompability
             ("WPR.SilverlightCompability", typeof(FrameworkElement).Assembly),
         };
 
+        private const string SlcAssemblyName = "WPR.SilverlightCompability";
+        private const string PhoneAssemblyName = "Microsoft.Phone";
+
         /// <summary>
         /// Compatibility redirects for un-patched XAML resources (e.g. straight from a XAP).
-        /// Maps (sourceNamespace, sourceAssembly?) to where we actually keep the shim.
+        /// Maps a source CLR namespace to (target namespace, target assembly name). Resolved by
+        /// assembly NAME because the WP control/shell/gesture types now live in the
+        /// Microsoft.Phone assembly, which this reader (in WPR.SilverlightCompability) cannot
+        /// reference — doing so would recreate the dependency cycle. Redirecting the phone
+        /// namespaces here also keeps OUR shim winning over any user-bundled
+        /// Microsoft.Phone.Controls.Toolkit.dll that ships its own GestureListener etc.
         /// </summary>
-        private static readonly Dictionary<string, (string Namespace, Assembly Assembly)> ClrNsRedirects =
+        private static readonly Dictionary<string, (string Namespace, string AssemblyName)> ClrNsRedirects =
             new(StringComparer.Ordinal)
             {
-                ["Microsoft.Phone.Controls"] = ("WPR.SilverlightCompability", typeof(FrameworkElement).Assembly),
-                ["Microsoft.Phone.Shell"] = ("WPR.SilverlightCompability", typeof(FrameworkElement).Assembly),
-                ["System.Windows.Controls"] = ("WPR.SilverlightCompability", typeof(FrameworkElement).Assembly),
-                ["System.Windows"] = ("WPR.SilverlightCompability", typeof(FrameworkElement).Assembly),
-                ["System.Windows.Media"] = ("WPR.SilverlightCompability", typeof(FrameworkElement).Assembly),
-                ["System.Windows.Navigation"] = ("WPR.SilverlightCompability", typeof(FrameworkElement).Assembly),
+                ["Microsoft.Phone.Controls"] = ("Microsoft.Phone.Controls", PhoneAssemblyName),
+                ["Microsoft.Phone.Shell"] = ("Microsoft.Phone.Shell", PhoneAssemblyName),
+                ["System.Windows.Controls"] = (SlcAssemblyName, SlcAssemblyName),
+                ["System.Windows"] = (SlcAssemblyName, SlcAssemblyName),
+                ["System.Windows.Media"] = (SlcAssemblyName, SlcAssemblyName),
+                ["System.Windows.Navigation"] = (SlcAssemblyName, SlcAssemblyName),
             };
 
         public static object Load(string xaml)
@@ -850,6 +858,16 @@ namespace WPR.SilverlightCompability
                     Type? t = SafeGetType(asm, ns + "." + local);
                     if (t != null) return t;
                 }
+                // PhoneApplicationPage and other WP types moved to the Microsoft.Phone assembly;
+                // let the default/presentation namespace reach them too, so terse XAML (and our
+                // tests) can name `<PhoneApplicationPage/>` without the phone: clr-namespace.
+                Assembly? mp = FindRedirectAssembly(PhoneAssemblyName);
+                if (mp != null)
+                {
+                    Type? t = SafeGetType(mp, "Microsoft.Phone.Controls." + local)
+                              ?? SafeGetType(mp, "Microsoft.Phone.Shell." + local);
+                    if (t != null) return t;
+                }
             }
 
             if (xmlns.StartsWith("clr-namespace:", StringComparison.Ordinal))
@@ -862,19 +880,22 @@ namespace WPR.SilverlightCompability
                 //
                 // Two namespaces to try in the redirect-target assembly:
                 //   1. The redirect's nominated namespace (e.g. "WPR.SilverlightCompability"
-                //      for everything we shim under that umbrella).
-                //   2. The XAML's original namespace verbatim — some of our shims keep the
-                //      original namespace (e.g. Microsoft.Phone.Controls.GestureService is
-                //      DECLARED in namespace Microsoft.Phone.Controls inside our SLC asm so
-                //      it can be patched to live next to user types that name it that way).
+                //      for the System.Windows.* shims, or "Microsoft.Phone.Controls" for the
+                //      gesture/PhoneApplication* types that now live in the Microsoft.Phone asm).
+                //   2. The XAML's original namespace verbatim.
                 // First match wins; second-place existence in a different assembly (the
                 // user-bundled Microsoft.Phone.Controls.Toolkit.dll, which ships its own
-                // copy of GestureEventArgs etc.) must not steal the lookup.
+                // copy of GestureEventArgs etc.) must not steal the lookup — that's exactly
+                // why the Microsoft.Phone.Controls redirect points at OUR Microsoft.Phone asm.
                 if (ClrNsRedirects.TryGetValue(ns, out var redir))
                 {
-                    Type? t = SafeGetType(redir.Assembly, redir.Namespace + "." + local)
-                              ?? SafeGetType(redir.Assembly, ns + "." + local);
-                    if (t != null) return t;
+                    Assembly? ra = FindRedirectAssembly(redir.AssemblyName);
+                    if (ra != null)
+                    {
+                        Type? t = SafeGetType(ra, redir.Namespace + "." + local)
+                                  ?? SafeGetType(ra, ns + "." + local);
+                        if (t != null) return t;
+                    }
                 }
 
                 // Try the literal namespace + assembly. CRITICAL: prefer assemblies
@@ -918,6 +939,25 @@ namespace WPR.SilverlightCompability
         /// registered (rare — only happens if XAML is parsed before
         /// SilverlightAppHost.Boot has stashed it).
         /// </summary>
+        /// <summary>
+        /// Resolve a shim assembly by simple name for a XAML type redirect. The SL shim is this
+        /// very assembly, returned directly (fast and ALC-correct). Microsoft.Phone is looked up
+        /// among the relevant (user + Default ALC) assemblies, with an explicit load-by-name
+        /// fallback in case no XAML has forced it to load yet.
+        /// </summary>
+        private static Assembly? FindRedirectAssembly(string name)
+        {
+            if (string.Equals(name, typeof(FrameworkElement).Assembly.GetName().Name, StringComparison.Ordinal))
+                return typeof(FrameworkElement).Assembly;
+
+            foreach (Assembly a in EnumerateRelevantAssemblies())
+                if (string.Equals(a.GetName().Name, name, StringComparison.Ordinal))
+                    return a;
+
+            try { return Assembly.Load(new AssemblyName(name)); }
+            catch { return null; }
+        }
+
         private static IEnumerable<Assembly> EnumerateRelevantAssemblies()
         {
             Assembly? userAsm = HostContext.UserAssembly;

@@ -28,7 +28,7 @@
   <ItemGroup>
     <ProjectReference Condition="'$(TargetFramework)' == 'net8.0-android'" Include="$(SolutionDir)\JavaBindings\com.arthenica.ffmpegkit\com.arthenica.ffmpegkit.csproj" />
     <ProjectReference Include="$(SolutionDir)\Core\Microsoft.Device.Sensors\Microsoft.Devices.Sensors.csproj" />
-    <ProjectReference Include="$(SolutionDir)\Core\Microsoft.Phone\Microsoft.Phone.csproj" />
+    <ProjectReference Include="..\Microsoft.Phone\Microsoft.Phone.csproj" />
     <ProjectReference Include="$(SolutionDir)\Core\Microsoft.Xna.Framework.GamerServices\Microsoft.Xna.Framework.GamerServices.csproj" />
     <ProjectReference Include="$(SolutionDir)\Core\System.Device\System.Device.csproj" />
     <ProjectReference Include="$(SolutionDir)\ThirdParty\fna\FNA.Core.csproj" />

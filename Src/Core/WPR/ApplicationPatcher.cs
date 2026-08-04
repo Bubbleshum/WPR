@@ -24,6 +24,7 @@ namespace WPR
 
         private AssemblyNameReference WindowsCompRef;
         private AssemblyNameReference SilverlightCompRef;
+        private AssemblyNameReference MicrosoftPhoneRef;
 
         private AssemblyNameReference StandardCompRef;
         private AssemblyNameReference ServiceModelPrimitivesRef;
@@ -49,6 +50,7 @@ namespace WPR
             SystemRunTimeRef = AssemblyNameReference.Parse("System.Runtime");
             WindowsCompRef = AssemblyNameReference.Parse("WPR.WindowsCompability");
             SilverlightCompRef = AssemblyNameReference.Parse("WPR.SilverlightCompability");
+            MicrosoftPhoneRef = AssemblyNameReference.Parse("Microsoft.Phone");
 
             ServiceModelPrimitivesRef = AssemblyNameReference.Parse("System.ServiceModel.Primitives");
             ServiceModelHTTPRef = AssemblyNameReference.Parse("System.ServiceModel.Http");
@@ -293,103 +295,72 @@ namespace WPR
                     NewNamespace = "WPR.SilverlightCompability"
                 }
                 },
-                // Toolkit gesture types — declared in WPR.SilverlightCompability with
-                // namespace Microsoft.Phone.Controls so the patcher just retargets the
-                // assembly scope; everything else (the user IL's typeref name +
-                // namespace) stays as-is.
-                { "Microsoft.Phone.Controls.GestureService", new TypePatchInfo()
+                // NOTE: the WP control/shell types that used to be redirected here
+                // (Microsoft.Phone.Controls.GestureService / GestureListener / *GestureEventArgs,
+                // PhoneApplicationFrame, PhoneApplicationPage, and every Microsoft.Phone.Shell.*
+                // lifecycle type) now live in the Microsoft.Phone assembly under their real
+                // namespaces, so user IL binds them natively — no patch entry needed.
+
+                // UriMapperBase / UriMapper / UriMapping moved the OTHER way: out of the
+                // Microsoft.Phone facade into WPR.SilverlightCompability, so the SL Frame's
+                // UriMapper property can reference UriMapperBase without SL depending on the
+                // Microsoft.Phone assembly (which now references SL). They keep their real
+                // System.Windows.Navigation namespace, so only the assembly scope is retargeted
+                // (like the gesture types used to be).
+                { "System.Windows.Navigation.UriMapperBase", new TypePatchInfo()
                 {
                     Reference = SilverlightCompRef,
+                }
+                },
+                { "System.Windows.Navigation.UriMapper", new TypePatchInfo()
+                {
+                    Reference = SilverlightCompRef,
+                }
+                },
+                { "System.Windows.Navigation.UriMapping", new TypePatchInfo()
+                {
+                    Reference = SilverlightCompRef,
+                }
+                },
+                // Toolkit gesture types: on real WP7 these ship in
+                // Microsoft.Phone.Controls.Toolkit.dll (namespace Microsoft.Phone.Controls), so
+                // user IL references them from THAT assembly — unlike PhoneApplicationPage/Shell
+                // (canonically in Microsoft.Phone.dll, which now resolve natively), the gesture
+                // typerefs would otherwise bind the user-bundled toolkit dll. Retarget the
+                // assembly scope to our Microsoft.Phone shim (namespace unchanged).
+                { "Microsoft.Phone.Controls.GestureService", new TypePatchInfo()
+                {
+                    Reference = MicrosoftPhoneRef,
                 }
                 },
                 { "Microsoft.Phone.Controls.GestureListener", new TypePatchInfo()
                 {
-                    Reference = SilverlightCompRef,
+                    Reference = MicrosoftPhoneRef,
                 }
                 },
                 { "Microsoft.Phone.Controls.GestureEventArgs", new TypePatchInfo()
                 {
-                    Reference = SilverlightCompRef,
+                    Reference = MicrosoftPhoneRef,
                 }
                 },
                 { "Microsoft.Phone.Controls.FlickGestureEventArgs", new TypePatchInfo()
                 {
-                    Reference = SilverlightCompRef,
+                    Reference = MicrosoftPhoneRef,
                 }
                 },
                 { "Microsoft.Phone.Controls.DragStartedGestureEventArgs", new TypePatchInfo()
                 {
-                    Reference = SilverlightCompRef,
+                    Reference = MicrosoftPhoneRef,
                 }
                 },
                 { "Microsoft.Phone.Controls.DragDeltaGestureEventArgs", new TypePatchInfo()
                 {
-                    Reference = SilverlightCompRef,
+                    Reference = MicrosoftPhoneRef,
                 }
                 },
                 { "Microsoft.Phone.Controls.DragCompletedGestureEventArgs", new TypePatchInfo()
                 {
-                    Reference = SilverlightCompRef,
-                }
-                },
-                { "Microsoft.Phone.Controls.PhoneApplicationFrame", new TypePatchInfo()
-                {
-                    Reference = SilverlightCompRef,
-                    NewNamespace = "WPR.SilverlightCompability"
-                }
-                },
-                { "Microsoft.Phone.Controls.PhoneApplicationPage", new TypePatchInfo()
-                {
-                    Reference = SilverlightCompRef,
-                    NewNamespace = "WPR.SilverlightCompability"
-                }
-                },
-                { "Microsoft.Phone.Shell.PhoneApplicationService", new TypePatchInfo()
-                {
-                    Reference = SilverlightCompRef,
-                    NewNamespace = "WPR.SilverlightCompability"
-                }
-                },
-                { "Microsoft.Phone.Shell.IdleDetectionMode", new TypePatchInfo()
-                {
-                    Reference = SilverlightCompRef,
-                    NewNamespace = "WPR.SilverlightCompability"
-                }
-                },
-                { "Microsoft.Phone.Shell.StartupMode", new TypePatchInfo()
-                {
-                    Reference = SilverlightCompRef,
-                    NewNamespace = "WPR.SilverlightCompability"
-                }
-                },
-                { "Microsoft.Phone.Shell.DeactivationReason", new TypePatchInfo()
-                {
-                    Reference = SilverlightCompRef,
-                    NewNamespace = "WPR.SilverlightCompability"
-                }
-                },
-                { "Microsoft.Phone.Shell.LaunchingEventArgs", new TypePatchInfo()
-                {
-                    Reference = SilverlightCompRef,
-                    NewNamespace = "WPR.SilverlightCompability"
-                }
-                },
-                { "Microsoft.Phone.Shell.ClosingEventArgs", new TypePatchInfo()
-                {
-                    Reference = SilverlightCompRef,
-                    NewNamespace = "WPR.SilverlightCompability"
-                }
-                },
-                { "Microsoft.Phone.Shell.ActivatedEventArgs", new TypePatchInfo()
-                {
-                    Reference = SilverlightCompRef,
-                    NewNamespace = "WPR.SilverlightCompability"
-                }
-                },
-                { "Microsoft.Phone.Shell.DeactivatedEventArgs", new TypePatchInfo()
-                {
-                    Reference = SilverlightCompRef,
-                    NewNamespace = "WPR.SilverlightCompability"
+                    Reference = MicrosoftPhoneRef,
                 }
                 },
                 { "System.Windows.Controls.Frame", new TypePatchInfo()
@@ -1154,6 +1125,21 @@ namespace WPR
                 {
                     "System.IO.IsolatedStorage.IsolatedStorageSettings System.IO.IsolatedStorage.IsolatedStorageSettings::get_ApplicationSettings()",
                     typeof(WPR.WindowsCompability.IsolatedStorageSettings2)
+                },
+
+                // Open IsolatedStorage file streams with FileShare.ReadWrite. WP7 was single-
+                // process so games never needed to share; under WPR (one process, collectible
+                // ALCs) a static stream left open by a prior launch — or a second thread racing
+                // an unsynchronised open — otherwise throws "being used by another process"
+                // (e.g. Battleship's Profiler debug.log). Redirects the two ctors games use to a
+                // subclass that adds the share flag; same store, same access otherwise.
+                {
+                    "System.Void System.IO.IsolatedStorage.IsolatedStorageFileStream::.ctor(System.String,System.IO.FileMode,System.IO.IsolatedStorage.IsolatedStorageFile)",
+                    typeof(WPR.WindowsCompability.SharedIsolatedStorageFileStream)
+                },
+                {
+                    "System.Void System.IO.IsolatedStorage.IsolatedStorageFileStream::.ctor(System.String,System.IO.FileMode,System.IO.FileAccess,System.IO.IsolatedStorage.IsolatedStorageFile)",
+                    typeof(WPR.WindowsCompability.SharedIsolatedStorageFileStream)
                 },
 
                 {

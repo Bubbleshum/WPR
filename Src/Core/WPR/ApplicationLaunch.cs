@@ -6,6 +6,7 @@ using WPR.Models;
 using WPR.Common;
 
 using WPR.SilverlightCompability;
+using Microsoft.Phone.Shell;
 using Microsoft.Xna.Framework.GamerServices;
 
 using System;
@@ -795,7 +796,7 @@ namespace WPR
                 // explicit. Without this swap, event subscribers added by launch 1 stay
                 // wired to types in the unloaded ALC, and any cross-launch handler invoke
                 // would touch dead types.
-                Type t = typeof(WPR.SilverlightCompability.PhoneApplicationService);
+                Type t = typeof(Microsoft.Phone.Shell.PhoneApplicationService);
                 FieldInfo? f = t.GetField("_Current", BindingFlags.NonPublic | BindingFlags.Static);
                 object? fresh = Activator.CreateInstance(t);
                 f?.SetValue(null, fresh);

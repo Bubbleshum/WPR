@@ -17,7 +17,12 @@ namespace WPR.SilverlightCompability
         protected readonly Stack<JournalEntry> _backStack = new();
         protected readonly Stack<JournalEntry> _forwardStack = new();
 
-        protected PhoneApplicationPage? _currentPage;
+        // Typed as the Page base (not PhoneApplicationPage) so this SL core type has no
+        // dependency on Microsoft.Phone — PhoneApplicationPage/PhoneApplicationFrame live in
+        // the Microsoft.Phone assembly, which references SL, so SL must not reference back.
+        // Every member the navigation flow touches (OnNavigatedTo/From, OnNavigatingFrom,
+        // NavigationService, Title) is declared on Page.
+        protected Page? _currentPage;
         protected Uri? _currentUri;
 
         public Frame()
@@ -62,9 +67,9 @@ namespace WPR.SilverlightCompability
 
         public void RegisterPage(string name, Type pageType)
         {
-            if (!typeof(PhoneApplicationPage).IsAssignableFrom(pageType))
+            if (!typeof(Page).IsAssignableFrom(pageType))
                 throw new ArgumentException(
-                    $"{pageType.FullName} is not a PhoneApplicationPage", nameof(pageType));
+                    $"{pageType.FullName} is not a Page", nameof(pageType));
             _pageRegistry[name] = pageType;
         }
 
@@ -96,7 +101,7 @@ namespace WPR.SilverlightCompability
             Navigating?.Invoke(this, navigatingArgs);
             if (navigatingArgs.Cancel) return false;
 
-            PhoneApplicationPage page;
+            Page page;
             try
             {
                 page = ResolvePage(source);
@@ -157,7 +162,7 @@ namespace WPR.SilverlightCompability
             return _backStack.Count > 0 ? _backStack.Pop() : null;
         }
 
-        protected PhoneApplicationPage ResolvePage(Uri source)
+        protected Page ResolvePage(Uri source)
         {
             string key = source.OriginalString.Trim();
             if (key.StartsWith("/", StringComparison.Ordinal))
@@ -167,11 +172,11 @@ namespace WPR.SilverlightCompability
 
             // Explicit registration wins.
             if (_pageRegistry.TryGetValue(key, out var registered))
-                return (PhoneApplicationPage)Activator.CreateInstance(registered)!;
+                return (Page)Activator.CreateInstance(registered)!;
 
             // Standard WP behaviour: navigate by XAML resource URI. Locate the embedded XAML
             // resource in the user assembly, read its x:Class to find the page type, instantiate.
-            PhoneApplicationPage? page = TryResolveFromXamlResource(source);
+            Page? page = TryResolveFromXamlResource(source);
             if (page != null) return page;
 
             throw new InvalidOperationException($"No page registered for navigation key '{key}' (Uri: {source})");
@@ -182,7 +187,7 @@ namespace WPR.SilverlightCompability
         /// parse the root element's <c>x:Class</c> attribute, and instantiate that type.
         /// Returns null if any step fails so the caller can fall back to a clearer error.
         /// </summary>
-        private static PhoneApplicationPage? TryResolveFromXamlResource(Uri source)
+        private static Page? TryResolveFromXamlResource(Uri source)
         {
             Assembly? userAsm = HostContext.UserAssembly;
             if (userAsm == null) return null;
@@ -196,11 +201,11 @@ namespace WPR.SilverlightCompability
             Type? pageType = userAsm.GetType(className, throwOnError: false)
                              ?? Type.GetType(className!, throwOnError: false);
             if (pageType == null) return null;
-            if (!typeof(PhoneApplicationPage).IsAssignableFrom(pageType)) return null;
+            if (!typeof(Page).IsAssignableFrom(pageType)) return null;
 
             try
             {
-                return (PhoneApplicationPage?)Activator.CreateInstance(pageType);
+                return (Page?)Activator.CreateInstance(pageType);
             }
             catch (TargetInvocationException tie) when (tie.InnerException != null)
             {
@@ -337,7 +342,7 @@ namespace WPR.SilverlightCompability
             catch { return null; }
         }
 
-        protected void DoNavigate(PhoneApplicationPage newPage, Uri newUri, NavigationMode mode, bool pushCurrentToBack)
+        protected void DoNavigate(Page newPage, Uri newUri, NavigationMode mode, bool pushCurrentToBack)
         {
             var oldPage = _currentPage;
             var oldUri = _currentUri;

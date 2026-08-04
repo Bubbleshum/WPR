@@ -7,7 +7,7 @@ using Avalonia.Interactivity;
 using Microsoft.Devices.Sensors;
 using WPR.Common;
 using WPR;
-using SLFrameView = WPR.SilverlightCompability.PhoneApplicationFrameView;
+using SLFrameView = Microsoft.Phone.Controls.PhoneApplicationFrameView;
 using AvTextBlock = Avalonia.Controls.TextBlock;
 using WPRApp = WPR.WindowsCompability.Application;
 using WPRModel = WPR.Models.Application;
