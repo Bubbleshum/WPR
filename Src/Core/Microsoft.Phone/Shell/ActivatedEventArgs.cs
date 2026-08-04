@@ -8,7 +8,12 @@ namespace Microsoft.Phone.Shell
 {
     public class ActivatedEventArgs : EventArgs
     {
-        public bool IsApplicationInstancePreserved { get; }
+        // Settable (internal) so PhoneApplicationService can build it via object-initializer
+        // when it needs to force the preserved flag; the bool ctor is kept for callers that
+        // construct it positionally.
+        public bool IsApplicationInstancePreserved { get; internal set; }
+
+        public ActivatedEventArgs() { }
 
         public ActivatedEventArgs(bool isApplicationInstancePreserved)
         {

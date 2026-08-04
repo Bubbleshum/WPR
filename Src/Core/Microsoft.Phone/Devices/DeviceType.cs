@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace Microsoft.Devices
+﻿namespace Microsoft.Devices
 {
     public enum DeviceType
     {

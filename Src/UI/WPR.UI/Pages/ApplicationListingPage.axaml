@@ -215,7 +215,7 @@
                     Padding="20,16">
               <StackPanel Spacing="14">
                 <TextBlock Classes="eyebrow" Text="DETAILS"/>
-                <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+                <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
                   <TextBlock Grid.Row="0" Grid.Column="0" Classes="dim" Text="Publisher" Margin="0,0,0,8"/>
                   <TextBlock Grid.Row="0" Grid.Column="1" Classes="body" Margin="0,0,0,8"
                              Text="{Binding ChoosenApp.Publisher}"/>
@@ -240,12 +240,26 @@
                              Text="{Binding ChoosenApp.InstalledTime, StringFormat='{}{0:MMM d, yyyy}'}"
                              IsVisible="{Binding ChoosenApp.IsInstalled}"/>
 
-                  <TextBlock Grid.Row="5" Grid.Column="0" Classes="dim" Text="Source"
+                  <TextBlock Grid.Row="5" Grid.Column="0" Classes="dim" Text="Source" Margin="0,0,0,8"
                              IsVisible="{Binding ChoosenApp.IsAvailable}"/>
-                  <TextBlock Grid.Row="5" Grid.Column="1" Classes="body"
+                  <TextBlock Grid.Row="5" Grid.Column="1" Classes="body" Margin="0,0,0,8"
                              Text="{Binding ChoosenApp.XapFilePath}"
                              TextTrimming="CharacterEllipsis"
                              IsVisible="{Binding ChoosenApp.IsAvailable}"/>
+
+                  <!-- Game ID: only shown for games with no achievement catalogue yet, so the
+                       product id can be read off / copied to add the game to the catalogue. -->
+                  <TextBlock Grid.Row="6" Grid.Column="0" Classes="dim" Text="Game ID"
+                             IsVisible="{Binding ChoosenApp.IsNotInCatalogue}"/>
+                  <!-- Not Classes="body": the TextBlock.body style selector matches the exact
+                       type, not the SelectableTextBlock subclass, so its setters are inlined here. -->
+                  <SelectableTextBlock Grid.Row="6" Grid.Column="1"
+                                       FontSize="13"
+                                       LineHeight="20"
+                                       Foreground="{StaticResource WprTextBrush}"
+                                       Text="{Binding ChoosenApp.ProductId}"
+                                       TextWrapping="Wrap"
+                                       IsVisible="{Binding ChoosenApp.IsNotInCatalogue}"/>
                 </Grid>
               </StackPanel>
             </Border>

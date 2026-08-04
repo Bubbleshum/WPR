@@ -126,6 +126,9 @@
   <data name="ApplicationInstallError_MissingManifestFiles" xml:space="preserve">
     <value>The application package is missing manifest files!</value>
   </data>
+  <data name="ApplicationInstallError_ModernNativeUnsupported" xml:space="preserve">
+    <value>This is a Windows Phone 8 "Modern Native" app — native ARM/C++ code built against WinRT. WPR can only run managed WP7 XNA and Silverlight titles, so this package cannot be installed or run. If a WP7 (XNA/Silverlight) version of this game exists, use that instead.</value>
+  </data>
   <data name="ApplicationInstallError_None" xml:space="preserve">
     <value>The application has been successfully installed!</value>
   </data>

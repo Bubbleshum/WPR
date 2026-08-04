@@ -30,8 +30,4 @@
     <DefineConstants>$(DefineConstants);WPR_D3D11</DefineConstants>
   </PropertyGroup>
 
-  <ItemGroup>
-    <!-- Need Microsoft.Phone.Controls.ObscuredEventArgs for PhoneApplicationFrame events. -->
-    <ProjectReference Include="..\Microsoft.Phone\Microsoft.Phone.csproj" />
-  </ItemGroup>
 </Project>

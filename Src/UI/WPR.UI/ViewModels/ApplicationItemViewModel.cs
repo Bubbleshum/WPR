@@ -2,6 +2,7 @@ using Avalonia.Media.Imaging;
 using System;
 using System.IO;
 using System.Reactive;
+using System.Text.RegularExpressions;
 using ReactiveUI;
 
 using WPR;
@@ -92,12 +93,57 @@ namespace WPR.UI.ViewModels
         /// description), so an edit would be silently overridden and is disallowed.
         /// </summary>
         public bool IsEditable => IsInstalled && !HardcodedAchievementCatalogue.HasCatalogue(ProductId ?? "");
+
+        /// <summary>
+        /// True when this game has no hardcoded achievement catalogue under
+        /// <c>Database/Achievements/&lt;productId&gt;/</c>. Drives the game-page "Game ID" field,
+        /// which surfaces the product id so an as-yet-uncatalogued game can be looked up and added.
+        /// </summary>
+        public bool IsNotInCatalogue => !HardcodedAchievementCatalogue.HasCatalogue(ProductId ?? "");
         public bool IsInstalling => _Installing != null;
         public int Progress => _Installing?.Progress ?? 0;
 
         public string? Name =>
             HardcodedAchievementCatalogue.GameName(ProductId ?? "")
-            ?? _App?.Name ?? _Preview?.Name ?? _Installing?.Name;
+            ?? _App?.Name ?? PreviewName ?? _Installing?.Name;
+
+        /// <summary>
+        /// Display name for a pre-install (discovered) entry when it has no catalogue: the cleaned
+        /// XAP file name rather than the manifest <c>&lt;App Title&gt;</c>, which for many WP games is a
+        /// resource ref (<c>@AppResLib.dll,-100</c>) or a truncated internal name. Falls back to the
+        /// manifest title only if a name can't be derived from the file path. Null for non-preview VMs.
+        /// </summary>
+        private string? PreviewName
+        {
+            get
+            {
+                if (_Preview == null) return null;
+                return CleanXapFileName(_XapFilePath)
+                    ?? (string.IsNullOrWhiteSpace(_Preview.Name) ? null : _Preview.Name);
+            }
+        }
+
+        /// <summary>
+        /// Derive a display name from a XAP file path by dropping the extension and a trailing
+        /// version token (e.g. <c>" v1.2.0.0"</c>, <c>"_1.1.5.0"</c>) and tidying separators. Mirrors
+        /// the naming used when the achievement catalogue was seeded from these same file names.
+        /// </summary>
+        private static string? CleanXapFileName(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return null;
+            string name;
+            try { name = Path.GetFileNameWithoutExtension(path); }
+            catch { return null; }
+            if (string.IsNullOrEmpty(name)) return null;
+
+            // Strip a trailing version token: a 'v'-prefixed version ("v1.2.0.0") or a dotted one
+            // ("1.0.3.0"). A bare single trailing digit is left alone so titles like "Asphalt 5"
+            // or "Connect 4" (files with no version suffix) keep their number.
+            name = Regex.Replace(name, @"[\s_]+(v\d[\d.]*|\d+(\.\d+)+)$", "", RegexOptions.IgnoreCase);
+            name = name.Replace('_', ' ');
+            name = Regex.Replace(name, @"\s+", " ").Trim();
+            return name.Length == 0 ? null : name;
+        }
         public string? Author => _App?.Author ?? _Preview?.Author ?? _Installing?.Author;
         public string? Publisher => _App?.Publisher ?? _Preview?.Publisher ?? _Installing?.Publisher;
         public string? Description =>

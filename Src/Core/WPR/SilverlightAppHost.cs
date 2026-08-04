@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Runtime.Loader;
 using System.Xml;
 using WPR.SilverlightCompability;
+using Microsoft.Phone.Controls;
 using SLApplication = WPR.WindowsCompability.Application;
 
 namespace WPR
