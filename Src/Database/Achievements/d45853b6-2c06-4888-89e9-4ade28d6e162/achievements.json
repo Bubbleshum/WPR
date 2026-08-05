@@ -1,4 +1,15 @@
 {
   "Name": "Breeze",
-  "Achievements": []
+  "Achievements": [
+    { "Key": "IPressedTheRedButton", "Name": "I pressed the Red Button!", "Description": "Use an air-brake.", "GamerScore": 5, "Icon": "IPressedTheRedButton.png" },
+    { "Key": "Apprentice", "Name": "Apprentice", "Description": "Reach level 5 in any game mode.", "GamerScore": 5, "Icon": "Apprentice.png" },
+    { "Key": "Adept", "Name": "Adept", "Description": "Reach level 20 in any game mode.", "GamerScore": 5, "Icon": "Adept.png" },
+    { "Key": "Artisan", "Name": "Artisan", "Description": "Reach level 35 in any game mode.", "GamerScore": 5, "Icon": "Artisan.png" },
+    { "Key": "HighSpeedFlower", "Name": "High speed flower", "Description": "Get the flower moving at pace.", "GamerScore": 5, "Icon": "HighSpeedFlower.png" },
+    { "Key": "SparkOfSunlight", "Name": "Spark of sunlight", "Description": "Pick up a single sunshine orb.", "GamerScore": 5, "Icon": "SparkOfSunlight.png" },
+    { "Key": "RayOfSunlight", "Name": "Ray of sunlight", "Description": "Pick up 100 sunshine orbs (in any single session).", "GamerScore": 5, "Icon": "RayOfSunlight.png" },
+    { "Key": "DoFlowersReallyExplode", "Name": "Do flowers really explode?", "Description": "Die 20 times in any single session.", "GamerScore": 5, "Icon": "DoFlowersReallyExplode.png" },
+    { "Key": "ThereIsNoCowLevel", "Name": "There is no cow level!", "Description": "Find the secret level.", "GamerScore": 5, "Icon": "ThereIsNoCowLevel.png" },
+    { "Key": "Master", "Name": "Master", "Description": "Complete the game in any mode.", "GamerScore": 5, "Icon": "Master.png" }
+  ]
 }

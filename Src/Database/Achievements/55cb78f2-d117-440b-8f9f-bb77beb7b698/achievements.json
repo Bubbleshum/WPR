@@ -1,4 +1,13 @@
 {
   "Name": "Spider Jack",
-  "Achievements": []
+  "Achievements": [
+    { "Key": "Collect 50 stars", "Name": "Good Spider", "Description": "Collect 50 stars.", "GamerScore": 5, "Icon": "Collect_50_stars.png" },
+    { "Key": "Collect 150 stars", "Name": "Excellent Spider", "Description": "Collect 150 stars.", "GamerScore": 10, "Icon": "Collect_150_stars.png" },
+    { "Key": "Collect 255 stars", "Name": "Master Spider", "Description": "Collect 255 stars.", "GamerScore": 25, "Icon": "Collect_255_stars.png" },
+    { "Key": "Collect 30 vanishing stars", "Name": "Speedy Spider", "Description": "Collect 30 vanishing stars.", "GamerScore": 15, "Icon": "Collect_30_vanishing_stars.png" },
+    { "Key": "Collect 48 vanishing stars", "Name": "Lightning Fast Spider", "Description": "Collect 48 vanishing stars.", "GamerScore": 25, "Icon": "Collect_48_vanishing_stars.png" },
+    { "Key": "Collect all stars in all Barn levels", "Name": "Barn Star Hunt", "Description": "Collect all stars in all Barn levels.", "GamerScore": 40, "Icon": "Collect_all_stars_in_all_Barn_levels.png" },
+    { "Key": "Collect all stars in all Bathroom levels", "Name": "Bathroom Star Hunt", "Description": "Collect all stars in all Bathroom levels.", "GamerScore": 40, "Icon": "Collect_all_stars_in_all_Bathroom_levels.png" },
+    { "Key": "Collect all stars in all Laboratory levels", "Name": "Laboratory Star Hunt", "Description": "Collect all stars in all Laboratory levels.", "GamerScore": 40, "Icon": "Collect_all_stars_in_all_Laboratory_levels.png" }
+  ]
 }

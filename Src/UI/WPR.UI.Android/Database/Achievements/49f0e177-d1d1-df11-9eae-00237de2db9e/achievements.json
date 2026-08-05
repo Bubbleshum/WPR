@@ -1,4 +1,25 @@
 {
   "Name": "Twin Blades - The Reaping Vanguard",
-  "Achievements": []
+  "Achievements": [
+    { "Key": "100KillStory", "Name": "1st Class Nun", "Description": "Kill 100 zombies in story mode.", "GamerScore": 5, "Icon": "100KillStory.png" },
+    { "Key": "500KillStory", "Name": "Nun Corporal", "Description": "Kill 500 zombies in story mode.", "GamerScore": 5, "Icon": "500KillStory.png" },
+    { "Key": "1000KillStory", "Name": "Nun Sergeant", "Description": "Kill 1000 zombies in story mode.", "GamerScore": 5, "Icon": "1000KillStory.png" },
+    { "Key": "Boss1", "Name": "The revenge of the meat", "Description": "Defeat the undead butcher.", "GamerScore": 10, "Icon": "Boss1.png" },
+    { "Key": "Boss2", "Name": "Did I break your concentration?", "Description": "Defeat the necromancer.", "GamerScore": 10, "Icon": "Boss2.png" },
+    { "Key": "Boss3", "Name": "See thee in Hell", "Description": "Defeat the evil spirit.", "GamerScore": 10, "Icon": "Boss3.png" },
+    { "Key": "AllUpgradeStory", "Name": "Sold out", "Description": "Buy and upgrade all guns and abilities to the max in story mode.", "GamerScore": 15, "Icon": "AllUpgradeStory.png" },
+    { "Key": "FinishStory", "Name": "Guardian angel", "Description": "Finish the story mode.", "GamerScore": 20, "Icon": "FinishStory.png" },
+    { "Key": "FinishStoryHard", "Name": "Iron Lady", "Description": "Finish the story mode in hard difficulty.", "GamerScore": 25, "Icon": "FinishStoryHard.png" },
+    { "Key": "500KillGunSurvival", "Name": "Pistolera", "Description": "Kill 500 zombies using only the base gun or the machine gun in survival mode.", "GamerScore": 5, "Icon": "500KillGunSurvival.png" },
+    { "Key": "500KillFlameSurvival", "Name": "Inquisitor", "Description": "Kill 500 zombies using only the flamethrower in survival mode.", "GamerScore": 5, "Icon": "500KillFlameSurvival.png" },
+    { "Key": "500KillIceSurvival", "Name": "Ice Cold Killer", "Description": "Kill 500 zombies using only the ice gun in survival mode.", "GamerScore": 5, "Icon": "500KillIceSurvival.png" },
+    { "Key": "500KillExplodeSurvival", "Name": "Fallout", "Description": "Kill 500 zombies using only the explosive gun in survival mode.", "GamerScore": 5, "Icon": "500KillExplodeSurvival.png" },
+    { "Key": "1000KillHolySurvival", "Name": "Wrath of God", "Description": "Kill 1000 zombies using only the holy beam in survival mode.", "GamerScore": 5, "Icon": "1000KillHolySurvival.png" },
+    { "Key": "500KillAirSlashSurvival", "Name": "The Falcon", "Description": "Kill 500 zombies using only the air slash in survival mode.", "GamerScore": 5, "Icon": "500KillAirSlashSurvival.png" },
+    { "Key": "100ShakeSurvival", "Name": "Love Me Tender", "Description": "Shake off 100 zombies in survival mode.", "GamerScore": 10, "Icon": "100ShakeSurvival.png" },
+    { "Key": "AllWeaponsSurvival", "Name": "One Nun Army", "Description": "Buy all possible upgrades for all the weapons in survival mode.", "GamerScore": 5, "Icon": "AllWeaponsSurvival.png" },
+    { "Key": "AllAbilitiesSurvival", "Name": "Way Of The Nunja", "Description": "Upgrade all of your Nun's abilities in survival mode.", "GamerScore": 5, "Icon": "AllAbilitiesSurvival.png" },
+    { "Key": "FinishSurvival", "Name": "Sector Clear", "Description": "Finish the survival mode.", "GamerScore": 20, "Icon": "FinishSurvival.png" },
+    { "Key": "FinishSurvivalHard", "Name": "It's a hard life", "Description": "Finish the survival mode in hard difficulty.", "GamerScore": 25, "Icon": "FinishSurvivalHard.png" }
+  ]
 }
