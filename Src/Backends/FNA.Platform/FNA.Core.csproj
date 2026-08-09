@@ -1,0 +1,59 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0</TargetFrameworks>
+    <Platforms>x64</Platforms>
+  </PropertyGroup>
+  <PropertyGroup>
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <AssemblyName>FNA</AssemblyName>
+    <RootNamespace>Microsoft.Xna.Framework</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+  </PropertyGroup>
+  <PropertyGroup>
+    <FNASettingsPropsFilePath>$(SolutionDir)FNA.Settings.props</FNASettingsPropsFilePath>
+  </PropertyGroup>
+  <Import Project="$(FNASettingsPropsFilePath)" Condition="Exists('$(FNASettingsPropsFilePath)')" />
+  <Target Name="ValidatePropsFilePath" BeforeTargets="BeforeBuild">
+    <Message Importance="High" Text="No property overrides found at '$(FNASettingsPropsFilePath)'" Condition="!Exists('$(FNASettingsPropsFilePath)')" />
+    <Message Importance="High" Text="Loaded property overrides from '$(FNASettingsPropsFilePath)'" Condition="Exists('$(FNASettingsPropsFilePath)')" />
+  </Target>
+  <ItemGroup>
+    <Compile Include="src\WprActivationGuard.cs" />
+    <Compile Include="src\WprGameThread.cs" />
+    <Compile Include="src\DrawableGameComponent.cs" />
+    <Compile Include="src\FNALoggerEXT.cs" />
+    <Compile Include="src\FNAPlatform\FNAPlatform.cs" />
+    <Compile Include="src\FNAPlatform\FNAWindow.cs" />
+    <Compile Include="src\FNAPlatform\SDL2_FNAPlatform.cs" />
+    <Compile Include="src\Game.cs" />
+    <Compile Include="src\GameComponent.cs" />
+    <Compile Include="src\GameServiceContainer.cs" />
+    <Compile Include="src\GameWindow.cs" />
+    <Compile Include="src\Graphics\FNA3D.cs" />
+    <Compile Include="src\GraphicsDeviceInformation.cs" />
+    <Compile Include="src\GraphicsDeviceManager.cs" />
+    <Compile Include="src\NamespaceDocs.cs" />
+    <Compile Include="src\PreparingDeviceSettingsEventArgs.cs" />
+    <Compile Include="src\Properties\AssemblyInfo.cs" />
+    <Compile Include="src\TitleLocation.cs" />
+    <Compile Include="src\Utilities\AssemblyHelper.cs" />
+    <Compile Include="src\Utilities\FNADllMap.cs" />
+    <Compile Include="src\Utilities\XamarinHelper.cs" />
+    <Compile Include="lib\SDL2-CS\src\SDL2.cs" />
+    <Compile Include="lib\FAudio\csharp\FAudio.cs" />
+    <Compile Include="lib\Theorafile\csharp\Theorafile.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="app.config" />
+  </ItemGroup>
+  <ItemGroup>
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Stage 5a (docs/ARCHITECTURE-MIGRATION.md): the XNA value/math types (Vector2/3/4, Matrix,
+         Quaternion, Color, Rectangle, Point, Plane, Ray, Bounding*, Curve*, MathHelper, their Design
+         converters, IPackedVector) were pulled OUT of FNA into WPR.Framework.Xna. FNA references them
+         back so its runtime (GraphicsDevice/SpriteBatch/â€¦) and games share one value-type identity. -->
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Xna\WPR.Framework.Xna.csproj" />
+  </ItemGroup>
+</Project>

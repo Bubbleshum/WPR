@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Framework.Devices.Sensors — the WP7 sensors framework (Microsoft.Devices.Sensors.*).
+    Organised in the WPR.Framework.* layer, but its OUTPUT ASSEMBLY keeps the game-facing identity
+    <AssemblyName>Microsoft.Devices.Sensors</AssemblyName> so patched game IL binds the REAL
+    implementation directly — no forwarder shim, no ApplicationPatcher change, no reinstall
+    (see docs/ARCHITECTURE-MIGRATION.md §3). Namespaces stay Microsoft.Devices.Sensors.*.
+
+    The FNA reference (AccelerometerReading.Acceleration is Microsoft.Xna.Framework.Vector3) is the
+    known Stage-5d leak — this assembly stays in the fitness baseline (as Microsoft.Devices.Sensors)
+    until owned math types land.
+  -->
+
+  <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <TargetFrameworks>net8.0;net8.0-android</TargetFrameworks>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(OS)' == 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <TargetFrameworks>net8.0-windows10.0.17763.0;net8.0-android</TargetFrameworks>
+  </PropertyGroup>
+  <PropertyGroup>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <Nullable>enable</Nullable>
+    <Version>8.0.0</Version>
+    <AssemblyName>Microsoft.Devices.Sensors</AssemblyName>
+    <RootNamespace>Microsoft.Devices.Sensors</RootNamespace>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net8.0-android'">21.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Xamarin.Essentials" Version="1.7.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(SolutionDir)\Backends\FNA.Platform\FNA.Core.csproj" />
+  </ItemGroup>
+
+</Project>

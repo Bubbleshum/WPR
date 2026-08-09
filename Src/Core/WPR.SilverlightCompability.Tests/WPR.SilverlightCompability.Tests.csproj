@@ -15,9 +15,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\WPR.SilverlightCompability\WPR.SilverlightCompability.csproj" />
+    <ProjectReference Include="..\WPR.Framework.Silverlight\WPR.Framework.Silverlight.csproj" />
     <!-- PhoneApplicationFrame/Page/FrameView + gesture types moved here from SL. -->
-    <ProjectReference Include="..\Microsoft.Phone\Microsoft.Phone.csproj" />
+    <!-- References the impl assembly directly (not the Microsoft.Phone forwarder shim) —
+         the tests reach an internal (PhoneApplicationFrameView.ConvertBrush) exposed via
+         WPR.Framework.Phone's InternalsVisibleTo, which a forwarder can't surface. -->
+    <ProjectReference Include="..\WPR.Framework.Phone\WPR.Framework.Phone.csproj" />
   </ItemGroup>
 
 </Project>

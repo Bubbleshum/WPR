@@ -1,4 +1,25 @@
 {
   "Name": "Zombie Attack 2",
-  "Achievements": []
+  "Achievements": [
+    { "Key": "Eagle Eye Engagement", "Name": "Eagle Eye Engagement", "Description": "Earn a grade of 'B' or higher on the 'Eagle Eye Engagement' Challenge.", "GamerScore": 10, "Icon": "Eagle_Eye_Engagement.png" },
+    { "Key": "Aerial Assault", "Name": "Aerial Assault", "Description": "Earn a grade of 'A' or higher on the 'Aerial Assault' Challenge.", "GamerScore": 10, "Icon": "Aerial_Assault.png" },
+    { "Key": "Tougher Than Nails", "Name": "Tougher Than Nails", "Description": "Earn a grade of 'S' or higher on the 'Tougher Than Nails' Challenge.", "GamerScore": 10, "Icon": "Tougher_Than_Nails.png" },
+    { "Key": "Unstable Ground", "Name": "Unstable Ground", "Description": "Earn a grade of 'A' or higher on the 'Unstable Ground' Challenge.", "GamerScore": 10, "Icon": "Unstable_Ground.png" },
+    { "Key": "Undead Attrition", "Name": "Undead Attrition", "Description": "Earn a grade of 'B' or higher on the 'Undead Attrition' Challenge.", "GamerScore": 10, "Icon": "Undead_Attrition.png" },
+    { "Key": "Close Combat Clash", "Name": "Close Combat Clash", "Description": "Earn a grade of 'A' or higher on the 'Close Combat Clash' Challenge.", "GamerScore": 10, "Icon": "Close_Combat_Clash.png" },
+    { "Key": "Living Nightmare", "Name": "Living Nightmare", "Description": "Earn a grade of 'B' or higher on the 'Living Nightmare' Challenge.", "GamerScore": 10, "Icon": "Living_Nightmare.png" },
+    { "Key": "Not so fast", "Name": "Not so fast", "Description": "Kill a Skinny for the first time in Survival mode", "GamerScore": 10, "Icon": "Not_so_fast.png" },
+    { "Key": "There Goes the Hounds", "Name": "There Goes the Hounds", "Description": "Kill a Hound for the first time in Survivor mode", "GamerScore": 10, "Icon": "There_Goes_the_Hounds.png" },
+    { "Key": "Grounded", "Name": "Grounded", "Description": "Kill a Winged Horror for the first time in Survivor mode", "GamerScore": 10, "Icon": "Grounded.png" },
+    { "Key": "Stone Age Struggle", "Name": "Stone Age Struggle", "Description": "Earn a grade of 'S' or higher on the 'Stone Age Struggle' Challenge.", "GamerScore": 10, "Icon": "Stone_Age_Struggle.png" },
+    { "Key": "Undead Team Spirit", "Name": "Undead Team Spirit", "Description": "Kill a Cheerleader for the first time in Survivor mode", "GamerScore": 10, "Icon": "Undead_Team_Spirit.png" },
+    { "Key": "The Fat Zombie Sings", "Name": "The Fat Zombie Sings", "Description": "Kill a Flesh Beast for the first time in Survivor mode", "GamerScore": 10, "Icon": "The_Fat_Zombie_Sings.png" },
+    { "Key": "This is my boomstick", "Name": "This is my boomstick!", "Description": "Earn the shotgun for the first time in Survivor mode", "GamerScore": 10, "Icon": "This_is_my_boomstick.png" },
+    { "Key": "Poor Equipment", "Name": "Poor Equipment", "Description": "Earn a grade of 'B' or higher on the 'Poor Equipment' Challenge.", "GamerScore": 10, "Icon": "Poor_Equipment.png" },
+    { "Key": "Napalm Warfare", "Name": "Napalm Warfare", "Description": "Earn a grade of 'A' or higher on the 'Napalm Warfare' Challenge.", "GamerScore": 10, "Icon": "Napalm_Warfare.png" },
+    { "Key": "Zombie Slaughter", "Name": "Zombie Slaughter", "Description": "Kill 100 Zombies in one game in Survivor mode", "GamerScore": 10, "Icon": "Zombie_Slaughter.png" },
+    { "Key": "Zombie Massacre", "Name": "Zombie Massacre", "Description": "Kill 200 Zombies in one game in Survivor mode", "GamerScore": 10, "Icon": "Zombie_Massacre.png" },
+    { "Key": "Engineer Prodigy", "Name": "Engineer Prodigy", "Description": "Earn a grade of 'B' or higher on the 'Engineer Prodigy' Challenge.", "GamerScore": 10, "Icon": "Engineer_Prodigy.png" },
+    { "Key": "High Tech Horror", "Name": "High Tech Horror", "Description": "Earn a grade of 'B' or higher on the 'High Tech Horror' Challenge.", "GamerScore": 10, "Icon": "High_Tech_Horror.png" }
+  ]
 }

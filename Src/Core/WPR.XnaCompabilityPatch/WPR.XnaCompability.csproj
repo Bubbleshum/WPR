@@ -12,7 +12,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="$(SolutionDir)\ThirdParty\fna\FNA.Core.csproj" />
+    <ProjectReference Include="$(SolutionDir)\Backends\FNA.Platform\FNA.Core.csproj" />
   </ItemGroup>
 
 </Project>

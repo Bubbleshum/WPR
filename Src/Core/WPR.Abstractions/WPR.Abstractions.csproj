@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Abstractions — the linchpin of the layered architecture
+    (docs/ARCHITECTURE-MIGRATION.md, Stage 1). Pure interface + primitive-DTO
+    contracts. Has NO dependencies: no FNA, no Vortice, no Avalonia, no WPR
+    project references. Backends (WPR.Backend.*) and Platforms (WPR.Platform.*)
+    implement these; Runtime and Frameworks consume only these.
+
+    Geometry/colour/vectors are expressed with BCL primitives
+    (System.Drawing.Primitives, System.Numerics) on purpose — they are
+    cross-platform, dependency-free, and keep the contracts backend-neutral
+    without colliding with the owned Microsoft.Xna.Framework math value types
+    that arrive in Stage 5a.
+  -->
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net8.0-android</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net8.0-android'">21.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+</Project>

@@ -1,6 +1,10 @@
 bin/
 obj/
 .vs/
+
+# Packaged output from build-desktop.ps1 / build-android.ps1
+/Artifacts/
+
 x64/
 *.bak
 /Src/.idea/

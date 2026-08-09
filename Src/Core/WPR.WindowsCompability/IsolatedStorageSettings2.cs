@@ -138,12 +138,21 @@ namespace WPR.WindowsCompability
         {
             get
             {
-                //return _Settings[key];
-                if (!_Settings.ContainsKey(key))
-                {
-                    return default;//null;
-                }
-
+                // MUST throw on a missing key — do NOT "soften" this to return null.
+                // Both contracts we implement require the throw: Silverlight's
+                // IsolatedStorageSettings indexer throws KeyNotFoundException, and so does
+                // IDictionary<string, object>. WP7 SDKs are written against that and catch it
+                // to substitute a default. Returning null instead turns their catch into an
+                // unboxing NRE for value-type settings:
+                //
+                //   try   { val = (T) _isolatedStore[key]; }          // (int) null -> NRE
+                //   catch (KeyNotFoundException) { val = defaultValue; }   // never reached
+                //
+                // That is exactly how FlurryWP7SDK.Common.PersistedSettingUtils.GetValueOrDefault<T>
+                // reads its never-written "Flurry_ReportDelay" (int) setting. The NRE escaped on
+                // Flurry's raw reporting Thread (no try/catch in ReportManager.SendReportsWithDelay),
+                // i.e. an UNHANDLED exception that killed the process on every launch of every
+                // Flurry-bundled title (Bug Village and 4 others). Fixed 2026-08-07.
                 return _Settings[key];
             }
 
@@ -176,11 +185,11 @@ namespace WPR.WindowsCompability
                 {
                     return;
                 }
-                if (!_Settings.ContainsKey(keyString))
-                {
-                    return;
-                }
 
+                // IDictionary's indexer setter ADDS the key when absent (only the getter is
+                // lookup-only). This used to bail out on a missing key, silently dropping the
+                // write, so a game that persisted a NEW setting through the non-generic
+                // indexer could never save it. Fixed 2026-08-07 alongside the getter above.
                 _Settings[keyString] = value!;
             }
         }

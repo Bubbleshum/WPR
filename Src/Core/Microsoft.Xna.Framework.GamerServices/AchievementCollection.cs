@@ -41,8 +41,8 @@ namespace Microsoft.Xna.Framework.GamerServices
                 // On a real WP7 device GetAchievements() returns the title's FULL achievement
                 // catalogue (every achievement the game defines, earned or not), so a lookup by
                 // key always resolves. In WPR the collection can be empty or partial when the
-                // install-time seeder couldn't reach TrueAchievements (e.g. Kinectimals 403s)
-                // and the game ships no offline catalogue under Database/Achievements/<id>/.
+                // game ships no hardcoded catalogue under Database/Achievements/<id>/
+                // (so the install-time seeder had nothing to seed).
                 // Games iterate their own known achievement IDs and dereference the result
                 // unconditionally — Kinectimals' AchievementManager.Initialise() does
                 // `achievements[name].IsEarned`, which NREs on a miss and wedges the splash

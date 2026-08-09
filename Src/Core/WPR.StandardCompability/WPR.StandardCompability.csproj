@@ -11,4 +11,9 @@
     <CheckEolWorkloads>false</CheckEolWorkloads>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- For WprHostEnvironment.CurrentInstallFolder (install-folder fallback in
+         XElement2.Load). WPR.Common is foundational and references nothing back. -->
+    <ProjectReference Include="$(SolutionDir)\Core\WPR.Common\WPR.Common.csproj" />
+  </ItemGroup>
 </Project>

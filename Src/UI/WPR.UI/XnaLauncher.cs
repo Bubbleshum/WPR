@@ -99,7 +99,9 @@ namespace WPR.UI
                 }
             };
 
-            return ApplicationLaunch.Start(app, requestOrientation, onCreated);
+            // Drive the game through the WPR.Abstractions IGameHost seam (FNA backend).
+            // RunAsync() returns the same Task the legacy ApplicationLaunch.Start call did.
+            return new WPR.Backend.FNA.FnaGameHost(app, requestOrientation, onCreated).RunAsync();
         }
 
         private static byte[] DecodeIconToBgra(string path, out int width, out int height)

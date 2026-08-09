@@ -13,7 +13,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Common\WPR.Common.csproj" />
-    <ProjectReference Include="$(SolutionDir)\Core\WPR.SilverlightCompability\WPR.SilverlightCompability.csproj" />
+    <ProjectReference Include="$(SolutionDir)\Core\WPR.Framework.Silverlight\WPR.Framework.Silverlight.csproj" />
   </ItemGroup>
 
 </Project>

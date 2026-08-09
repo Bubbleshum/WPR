@@ -1,4 +1,25 @@
 {
   "Name": "Vampire Rush",
-  "Achievements": []
+  "Achievements": [
+    { "Key": "Apperentice", "Name": "Apprentice", "Description": "Kill 100 monsters.", "GamerScore": 10, "Icon": "Apperentice.png" },
+    { "Key": "Vampire Hunter", "Name": "Vampire Hunter", "Description": "Kill 1000 monsters.", "GamerScore": 10, "Icon": "Vampire_Hunter.png" },
+    { "Key": "Legend", "Name": "Legend", "Description": "Kill 10 000 monsters.", "GamerScore": 10, "Icon": "Legend.png" },
+    { "Key": "Die Hard", "Name": "Die Hard", "Description": "Don't die once during the level.", "GamerScore": 10, "Icon": "Die_Hard.png" },
+    { "Key": "Waster", "Name": "Waster", "Description": "Never have more than 300 gold during the level.", "GamerScore": 10, "Icon": "Waster.png" },
+    { "Key": "Miser", "Name": "Miser", "Description": "Save 1000 gold.", "GamerScore": 10, "Icon": "Miser.png" },
+    { "Key": "Master Chemist", "Name": "Master Chemist", "Description": "Upgrade Garlic tower to the max.", "GamerScore": 10, "Icon": "Master_Chemist.png" },
+    { "Key": "Master Electrician", "Name": "Master Electrician", "Description": "Upgrade Electric tower to the max.", "GamerScore": 10, "Icon": "Master_Electrician.png" },
+    { "Key": "Master Priest", "Name": "Master Priest", "Description": "Upgrade Holy tower to the max.", "GamerScore": 10, "Icon": "Master_Priest.png" },
+    { "Key": "Master Swordsman", "Name": "Master Swordsman", "Description": "Kill red monster of every kind using the sword.", "GamerScore": 10, "Icon": "Master_Swordsman.png" },
+    { "Key": "Faces Of Death", "Name": "Faces Of Death", "Description": "Kill monsters with all the ways possible.", "GamerScore": 10, "Icon": "Faces_Of_Death.png" },
+    { "Key": "Builder", "Name": "Builder", "Description": "Build 8 towers in a single level.", "GamerScore": 10, "Icon": "Builder.png" },
+    { "Key": "Masochist", "Name": "Masochist", "Description": "Get knocked-out 5 times during the single level.", "GamerScore": 10, "Icon": "Masochist.png" },
+    { "Key": "Almost Did It", "Name": "Almost Did It", "Description": "Die at 10th wave.", "GamerScore": 10, "Icon": "Almost_Did_It.png" },
+    { "Key": "Rich and Famous", "Name": "Rich and Famous", "Description": "Earn 100 000 gold.", "GamerScore": 10, "Icon": "Rich_and_Famous.png" },
+    { "Key": "Gorgeous Greg", "Name": "Gorgeous Greg", "Description": "Get hit by the Red Lord. Don't die. Kill him. Easy.", "GamerScore": 10, "Icon": "Gorgeous_Greg.png" },
+    { "Key": "Nerd", "Name": "Nerd", "Description": "Spend 20 hours in the game.", "GamerScore": 10, "Icon": "Nerd.png" },
+    { "Key": "Megakill", "Name": "Megakill", "Description": "Kill 3 monsters with one sword slash.", "GamerScore": 10, "Icon": "Megakill.png" },
+    { "Key": "Ultrakill", "Name": "Ultrakill", "Description": "Kill 4 monsters with one sword slash.", "GamerScore": 10, "Icon": "Ultrakill.png" },
+    { "Key": "Nosy Fella", "Name": "Nosy Fella", "Description": "Discover the secret combo.", "GamerScore": 10, "Icon": "Nosy_Fella.png" }
+  ]
 }

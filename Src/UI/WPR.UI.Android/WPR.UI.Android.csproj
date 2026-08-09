@@ -12,7 +12,7 @@
     <AvaloniaVersion>11.3.9</AvaloniaVersion>
     <ApplicationId>com.MediaExplorer.WPR</ApplicationId>
     <ApplicationVersion>1</ApplicationVersion>
-    <ApplicationDisplayVersion>0.0.17</ApplicationDisplayVersion>
+    <ApplicationDisplayVersion>0.0.18</ApplicationDisplayVersion>
     <AndroidPackageFormat>apk</AndroidPackageFormat>
     <EmbedAssembliesIntoApk>True</EmbedAssembliesIntoApk>
     <PublishTrimmed>False</PublishTrimmed>
@@ -40,8 +40,6 @@
   <ItemGroup>
     <AndroidAsset Include="Database\applications.db" />
     <AndroidAsset Include="Database\achievements.db" />
-    <AndroidAsset Include="Database\TrueAchievements\AchievementsNameToKey.json" />
-    <AndroidAsset Include="Database\TrueAchievements\ProductIdUrl.json" />
   </ItemGroup>
   
 
@@ -77,6 +75,10 @@
     <ProjectReference Include="$(SolutionDir)\JavaBindings\Org.Libsdl.App\Org.Libsdl.App.csproj" />
     <ProjectReference Include="$(SolutionDir)\ThirdParty\assembly-store-reader\assembly-store-reader.csproj" />
     <ProjectReference Include="$(SolutionDir)\UI\WPR.UI\WPR.UI.csproj" />
+    <ProjectReference Include="$(SolutionDir)\Core\WPR.Runtime\WPR.Runtime.csproj" />
+    <ProjectReference Include="$(SolutionDir)\Core\WPR.Loader\WPR.Loader.csproj" />
+    <!-- FNA game-loop host driver (ApplicationLaunch + FnaGameHost/IGameHost) — Stage 4. -->
+    <ProjectReference Include="$(SolutionDir)\Backends\WPR.Backend.FNA\WPR.Backend.FNA.csproj" />
   </ItemGroup>
 </Project>
   

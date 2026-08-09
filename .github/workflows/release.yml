@@ -1,0 +1,274 @@
+# Builds the two distributable artifacts and (optionally) publishes them as a
+# GitHub Release:
+#
+#   * Windows - self-contained x64 payload wrapped in an Inno Setup installer
+#   * Android - signed APK (net8.0-android34.0 / API 34)
+#
+# Manual dispatch only: Actions -> Release -> Run workflow, then type the version.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version, e.g. 0.0.18 (no leading v)"
+        required: true
+        type: string
+      android_version_code:
+        description: "Android versionCode (integer, must increase between releases). Blank = this run's number."
+        required: false
+        type: string
+      publish_release:
+        description: "Create a GitHub Release and attach the artifacts"
+        type: boolean
+        default: true
+      prerelease:
+        description: "Mark the GitHub Release as a pre-release"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # -------------------------------------------------------------------------
+  # Fail fast on a malformed version before burning ~20 minutes of runner time.
+  # -------------------------------------------------------------------------
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      version_code: ${{ steps.v.outputs.version_code }}
+    steps:
+      - id: v
+        shell: bash
+        run: |
+          VERSION="${{ inputs.version }}"
+          VERSION="${VERSION#v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::version must be MAJOR.MINOR.PATCH (got '${{ inputs.version }}')"
+            exit 1
+          fi
+
+          CODE="${{ inputs.android_version_code }}"
+          [[ -z "$CODE" ]] && CODE="${{ github.run_number }}"
+          if [[ ! "$CODE" =~ ^[0-9]+$ ]]; then
+            echo "::error::android_version_code must be an integer (got '$CODE')"
+            exit 1
+          fi
+
+          echo "version=$VERSION"           >> "$GITHUB_OUTPUT"
+          echo "version_code=$CODE"         >> "$GITHUB_OUTPUT"
+          echo "Building $VERSION (Android versionCode $CODE)" >> "$GITHUB_STEP_SUMMARY"
+
+  # -------------------------------------------------------------------------
+  # Windows: publish self-contained, then wrap in an Inno Setup installer.
+  # -------------------------------------------------------------------------
+  windows:
+    needs: validate
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      # -p:SolutionDir is required from the CLI: Src/Backends/FNA.Platform's
+      # Directory.Build.props shadows the Src/ one that defines it (nearest-wins,
+      # no parent import), so FNA.Core can't resolve WPR.Framework.Xna without it.
+      # Trailing forward slash - a trailing backslash would escape the quote.
+      - name: Publish (self-contained win-x64)
+        shell: pwsh
+        run: >
+          dotnet publish Src/UI/WPR.UI.Desktop/WPR.UI.Desktop.csproj
+          -c Release
+          -f net8.0-windows10.0.17763.0
+          -r win-x64
+          --self-contained true
+          -o publish/desktop
+          -p:SolutionDir=${{ github.workspace }}/Src/
+          -p:Version=${{ needs.validate.outputs.version }}
+          -maxcpucount:1
+          -nodeReuse:false
+          --nologo
+
+      # The csproj's "Copy pre-made database" target is AfterTargets="Build" and
+      # writes to $(OutputPath), so it never reaches the publish folder.
+      - name: Stage pre-made database
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force publish/desktop/Database | Out-Null
+          Copy-Item Src/Database/* publish/desktop/Database -Recurse -Force
+          if (-not (Test-Path publish/desktop/WPR.UI.Desktop.exe)) {
+            throw "publish succeeded but WPR.UI.Desktop.exe is missing"
+          }
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+            /DAppVersion=${{ needs.validate.outputs.version }} `
+            /DPayloadDir=${{ github.workspace }}\publish\desktop `
+            /DOutputDir=${{ github.workspace }}\dist `
+            Packaging\windows\WPR.iss
+          Get-ChildItem dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: dist/WPR-Setup-*.exe
+          if-no-files-found: error
+
+  # -------------------------------------------------------------------------
+  # Android: signed APK. Runs on Linux - faster, and the Android SDK is
+  # preinstalled. Switch runs-on to windows-latest if the Linux leg ever
+  # diverges from the local build.
+  # -------------------------------------------------------------------------
+  android:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Install .NET Android workload
+        run: dotnet workload install android
+
+      # net8.0-android* maps to API 34 only; the runner image's default platform
+      # set moves over time, so pin what we need explicitly.
+      - name: Ensure Android SDK platform 34
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-34" "build-tools;34.0.0"
+
+      # Optional real signing key. Without these secrets .NET Android falls back
+      # to a debug keystore generated fresh on each runner, which means every
+      # release is signed with a DIFFERENT key and users cannot upgrade in place
+      # (Android rejects it as "App not installed"). See README for setup.
+      - name: Decode signing keystore
+        id: keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [[ -n "$KEYSTORE_B64" ]]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/wpr.keystore"
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::No ANDROID_KEYSTORE_BASE64 secret - signing with a throwaway debug key. This APK will NOT install over a previous release."
+          fi
+
+      - name: Build signed APK
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+          VERSION_CODE: ${{ needs.validate.outputs.version_code }}
+        run: |
+          SIGNING_ARGS=()
+          if [[ "${{ steps.keystore.outputs.present }}" == "true" ]]; then
+            SIGNING_ARGS=(
+              -p:AndroidKeyStore=true
+              -p:AndroidSigningKeyStore="$RUNNER_TEMP/wpr.keystore"
+              -p:AndroidSigningStorePass='${{ secrets.ANDROID_KEYSTORE_PASSWORD }}'
+              -p:AndroidSigningKeyAlias='${{ secrets.ANDROID_KEY_ALIAS }}'
+              -p:AndroidSigningKeyPass='${{ secrets.ANDROID_KEY_PASSWORD }}'
+            )
+          fi
+
+          # A plain Release *build* stops short of packaging, hence SignAndroidPackage.
+          dotnet build Src/UI/WPR.UI.Android/WPR.UI.Android.csproj \
+            -c Release \
+            -f net8.0-android34.0 \
+            -t:SignAndroidPackage \
+            -p:SolutionDir="$GITHUB_WORKSPACE/Src/" \
+            -p:ApplicationDisplayVersion="$VERSION" \
+            -p:ApplicationVersion="$VERSION_CODE" \
+            -p:EmbedAssembliesIntoApk=true \
+            -p:AndroidEnableAssemblyCompression=false \
+            -maxcpucount:1 \
+            -nodeReuse:false \
+            --nologo \
+            "${SIGNING_ARGS[@]}"
+
+      - name: Collect APK
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          mkdir -p dist
+          BIN=Src/UI/WPR.UI.Android/bin/Release/net8.0-android34.0
+          APK=$(ls "$BIN"/*-Signed.apk 2>/dev/null | head -1)
+          if [[ -z "$APK" ]]; then
+            echo "::error::no signed APK produced in $BIN"
+            ls -la "$BIN" || true
+            exit 1
+          fi
+          cp "$APK" "dist/WPR-$VERSION.apk"
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: dist/WPR-*.apk
+          if-no-files-found: error
+
+  # -------------------------------------------------------------------------
+  # Publish. Skipped when publish_release is false, so you can dry-run the
+  # build and just grab the workflow artifacts.
+  # -------------------------------------------------------------------------
+  release:
+    needs: [validate, windows, android]
+    if: ${{ inputs.publish_release }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      # Notes go via a file: a quoted heredoc keeps backticks and pipes literal,
+      # which an inline --notes string does not.
+      - name: Write release notes
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          cat > notes.md <<'EOF'
+          Prebuilt WPR __VERSION__.
+
+          | Download | Platform |
+          | --- | --- |
+          | `WPR-Setup-__VERSION__.exe` | Windows x64 — self-contained, no .NET install required |
+          | `WPR-__VERSION__.apk` | Android — API 21+, arm64-v8a / x86_64 |
+
+          Built from commit __SHA__.
+          EOF
+          sed -i "s/__VERSION__/$VERSION/g; s/__SHA__/$GITHUB_SHA/g" notes.md
+          cat notes.md
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          ls -la dist
+          gh release create "v$VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "WPR $VERSION" \
+            --notes-file notes.md \
+            ${{ inputs.prerelease && '--prerelease' || '' }} \
+            dist/*

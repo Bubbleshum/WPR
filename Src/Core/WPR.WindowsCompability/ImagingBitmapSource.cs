@@ -79,36 +79,5 @@ namespace WPR.WindowsCompability
 
     }//BitmapSource
 
-    //RnD
-    /*
-    public class BitmapSource2 : BitmapSource
-    {
-        //public static Action<DisplayOrientation>? RequestOrientation;
-
-        public BitmapSource2()
-            : base()
-        {
-            return;
-        }
-
-       
-        public void SetSource(System.IO.Stream stream)
-        {
-            //TODO
-            return;
-        }
-
-        public Int32 get_PixelWidth()
-        { 
-            return (Int32)4; //RnD
-        }
-
-        public Int32 get_PixelHeight()
-        {
-            return (Int32)4; //RnD
-        }
-        
-    }
-    */
 }
 

@@ -15,15 +15,16 @@
     <Version>4.0.0</Version>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="ExCSS" Version="4.1.4" />
-    <PackageReference Include="HtmlAgilityPack" Version="1.11.45" />
-    <PackageReference Include="HtmlAgilityPack.CssSelectors" Version="1.0.2" />
+    <!-- ExCSS + HtmlAgilityPack(.CssSelectors) removed 2026-08-07 with the TrueAchievements
+         scraper (they were used only by Scraper.cs). EF Core / Sqlite stay: they back
+         AchievementContext, which is the achievements DB used by the seeder, the runtime
+         GamerServices API, and the WPR UI. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="$(EFVersion)" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="$(EFVersion)" />
     <PackageReference Condition="'$(TargetFramework)' != 'net8.0-android'" Include="Microsoft.Windows.Compatibility" Version="6.0.0" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="$(SolutionDir)\ThirdParty\fna\FNA.Core.csproj" />
+    <ProjectReference Include="$(SolutionDir)\Backends\FNA.Platform\FNA.Core.csproj" />
     <ProjectReference Include="$(SolutionDir)\Core\WPR.WindowsCompability\WPR.WindowsCompability.csproj" />
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Common\WPR.Common.csproj" />
   </ItemGroup>

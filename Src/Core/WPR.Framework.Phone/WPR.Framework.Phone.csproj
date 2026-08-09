@@ -1,0 +1,37 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <TargetFrameworks>net8.0;net8.0-android</TargetFrameworks>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(OS)' == 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <TargetFrameworks>net8.0;net8.0-windows10.0.17763.0;net8.0-android</TargetFrameworks>
+  </PropertyGroup>
+  <PropertyGroup>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <Nullable>enable</Nullable>
+    <Version>8.0.0</Version>
+    <!-- Stage 3 (revised 2026-08-06): this project lives in the WPR.Framework.* layer, but its
+         OUTPUT ASSEMBLY keeps the game-facing identity <AssemblyName>Microsoft.Phone</AssemblyName>,
+         so patched game IL and Silverlight XAML (assembly=Microsoft.Phone) bind the REAL
+         implementation directly — no forwarder shim, no ApplicationPatcher change, no reinstall.
+         Project name ≠ assembly name on purpose: clean layer organisation + preserved WP7 identity
+         (see docs/ARCHITECTURE-MIGRATION.md §3). Types stay in namespace Microsoft.Phone.*;
+         RootNamespace kept as Microsoft.Phone so resource/default-namespace logical names match. -->
+    <AssemblyName>Microsoft.Phone</AssemblyName>
+    <RootNamespace>Microsoft.Phone</RootNamespace>
+  </PropertyGroup>
+
+  <!-- The heavy WP control/nav types (PhoneApplicationFrame/Page/FrameView, gestures) moved
+       here from WPR.SilverlightCompability and derive from / use its System.Windows.* shims.
+       Dependency is one-way: Microsoft.Phone -> WPR.SilverlightCompability. SL must never
+       reference back (it would recreate the cycle these moves were meant to break). -->
+  <ItemGroup>
+    <ProjectReference Include="..\WPR.Framework.Silverlight\WPR.Framework.Silverlight.csproj" />
+  </ItemGroup>
+
+  <!-- The test project reaches PhoneApplicationFrameView.ConvertBrush (internal). -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="WPR.SilverlightCompability.Tests" />
+  </ItemGroup>
+</Project>

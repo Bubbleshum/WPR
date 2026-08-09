@@ -33,8 +33,8 @@ namespace WPR.UI.Desktop
             // or throw at startup).
             string bundledDb = Path.Combine(AppContext.BaseDirectory, "Database");
 
-            Filesystem.CopyFilesRecursively(Path.Combine(bundledDb, "TrueAchievements"),
-                Configuration.Current.DataPath("Database\\TrueAchievements"));
+            // (The Database\TrueAchievements JSON maps are no longer deployed — they fed the
+            //  TrueAchievements scraper, removed 2026-08-07. Catalogues below are the source of truth.)
 
             // Hardcoded achievement catalogues (manifest + icon PNGs). Overwrite-copy
             // every launch so curated updates ship with the build.

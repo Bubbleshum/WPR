@@ -98,7 +98,7 @@ WPR treats a title as a *port* whenever a `wpr-port.json` sits in its install fo
 migration, no installer change. The manifest is authoritative; the stored `ApplicationType` is
 irrelevant to dispatch.
 
-- **Model / loader:** `Src/Core/WPR/UnityPortManifest.cs` (`TryLoad`, `ResolveWindowsExe`).
+- **Model / loader:** `Src/Core/WPR.Loader/UnityPortManifest.cs` (`TryLoad`, `ResolveWindowsExe`).
 - **Enum:** `ApplicationType.UnityPort` (documentation/metadata; dispatch is manifest-driven).
 - **Desktop:** `Src/UI/WPR.UI/UnityPortLauncher.cs` — `TryLaunchAsync` probes for the manifest,
   spawns the Windows exe as a child process and awaits exit (mirrors the GameMaker `Runner.exe`

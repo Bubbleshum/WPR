@@ -8,7 +8,7 @@
         xmlns:dialogHost="clr-namespace:DialogHostAvalonia;assembly=DialogHost.Avalonia"
         x:Class="WPR.UI.Views.MainWindowDesktop"
         Icon="/Assets/logo.png"
-        Title="WPR 0.0.17-alpha"
+        Title="WPR 0.0.18-alpha"
         Background="{StaticResource WprWindowBackdrop}"
         MinWidth="980" MinHeight="640"
         Name="MainWindow">

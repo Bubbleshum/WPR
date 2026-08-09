@@ -40,6 +40,12 @@ namespace Microsoft.Xna.Framework.GamerServices
         public static void Reset()
         {
             FirstSignInSessionDone = false;
+
+            // Drop subscribers left behind by an exited game. SignedOut is a field-like STATIC event,
+            // so a game handler stays reachable forever and pins the game's collectible
+            // AssemblyLoadContext (games do not unsubscribe before exiting). SignedIn does not need
+            // this — its custom `add` invokes the handler instead of storing it.
+            SignedOut = null;
         }
 
         public static event EventHandler<SignedInEventArgs> SignedIn
@@ -124,25 +130,19 @@ namespace Microsoft.Xna.Framework.GamerServices
 
                 if (achievementStored.Count == 0)
                 {
-                    // Scraper can throw — Kinectimals (5a3f9c59...) hits 403 because
-                    // its mapping in ProductIdUrl.json is missing/stale, and the raw
-                    // HttpRequestException was previously rethrown synchronously
-                    // through EndGetAchievements on every Game.Update tick, locking
-                    // the splash. Degrade to an empty collection on any failure so
-                    // the game can advance past sign-in.
-                    AchievementCollection collection;
-                    try { collection = await TrueAchievements.Scraper.QueryAchievements(Application.Current!.ProductId!); }
-                    catch (Exception ex)
-                    {
-                        Trace.WriteLine($"[wpr-trace] BeginGetAchievements: scraper failed, returning empty collection: {ex.Message}");
-                        collection = new AchievementCollection();
-                    }
-
-                    if (collection.Count != 0)
-                    {
-                        await AchievementContext.Current!.Achievements!.AddRangeAsync(collection.ToArray());
-                        await AchievementContext.Current!.SaveChangesAsync();
-                    }
+                    // No rows for this product: the game has no hardcoded achievement catalogue
+                    // (Database/Achievements/<productId>/achievements.json), which XnaAchievementSeeder
+                    // seeds at install time. Return an empty collection — the game still advances past
+                    // sign-in, it just shows no achievements.
+                    //
+                    // This used to fall back to a live TrueAchievements web scrape. That scraper was
+                    // removed (2026-08-07): the hardcoded catalogue is the source of truth, and the
+                    // scrape was network-dependent and unreliable (e.g. Kinectimals 5a3f9c59… returned
+                    // 403 on a stale ProductIdUrl.json mapping, and the rethrown HttpRequestException
+                    // locked the splash on every Game.Update tick). To give a game achievements, add
+                    // it to the catalogue rather than fetching at runtime.
+                    AchievementCollection collection = new AchievementCollection();
+                    Trace.WriteLine($"[wpr-trace] BeginGetAchievements: no catalogue rows for {Application.Current.ProductId}, returning empty collection");
 
                     if (callback != null)
                     {
@@ -216,16 +216,13 @@ namespace Microsoft.Xna.Framework.GamerServices
                 {
                     /* Diagnostic: AwardAchievement fired but we have no matching row
                      * to flip. Two common reasons:
-                     *   1) The install-time XnaAchievementSeeder couldn't reach
-                     *      TrueAchievements (no internet) or that game has no
-                     *      mapping in Database/TrueAchievements/ProductIdUrl.json,
-                     *      so the catalogue was never seeded.
-                     *   2) The scraper persisted the achievement under its
-                     *      TrueAchievements DISPLAY NAME, but the game is
-                     *      calling AwardAchievement with the INTERNAL KEY (the
-                     *      game's own constant). The display→internal map lives
-                     *      in Database/TrueAchievements/AchievementsNameToKey.json
-                     *      and may be missing an entry for this product.
+                     *   1) This game has no hardcoded catalogue under
+                     *      Database/Achievements/<productId>/achievements.json, so
+                     *      XnaAchievementSeeder seeded nothing for it at install.
+                     *   2) The catalogue IS seeded, but its Key column doesn't match
+                     *      the INTERNAL KEY the game passes to AwardAchievement (the
+                     *      game's own constant) — e.g. the catalogue was authored with
+                     *      display names instead of the game's keys.
                      * Either way: log enough to debug. The user gets no notification
                      * (there's nothing to look up an icon/name for), but the call
                      * doesn't crash either.
@@ -236,7 +233,7 @@ namespace Microsoft.Xna.Framework.GamerServices
                         $"AwardAchievement: no DB row for product '{productId}' key '{achievementKey}'. " +
                         $"{rowsForProduct} achievement(s) seeded for this product. " +
                         "Check that the game's internal key matches the seeded Key column " +
-                        "(see Database/TrueAchievements/AchievementsNameToKey.json).");
+                        "in Database/Achievements/<productId>/achievements.json.");
                 }
 
                 if (achievements.Count != 0)

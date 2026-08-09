@@ -84,7 +84,14 @@ namespace WPR.UI.Android
         }
     }
 
-    [Activity(Label = "WPR.Android", Theme = "@style/MyTheme.NoActionBar", Icon = "@drawable/icon", MainLauncher = true, LaunchMode = LaunchMode.SingleInstance, ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize)]
+    // LaunchMode is SingleTask, NOT SingleInstance. A singleInstance activity is the only
+    // activity allowed in its task, so every activity it starts is forced into a SEPARATE
+    // task — and Android delivers the result for a cross-task startActivityForResult
+    // immediately as RESULT_CANCELED, before the child has done anything. That made
+    // GameActivityResultCallback fire its "game process exited unexpectedly" dialog the
+    // instant a game launched, and left the stale game task for the launcher icon to
+    // resume. SingleTask keeps the "only one MainActivity" property without either problem.
+    [Activity(Label = "WPR.Android", Theme = "@style/MyTheme.NoActionBar", Icon = "@drawable/icon", MainLauncher = true, LaunchMode = LaunchMode.SingleTask, ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize)]
     [Register("com.wpr.android.MainActivity")]
     public class MainActivity : AvaloniaMainActivity<App>
     {
@@ -139,7 +146,12 @@ namespace WPR.UI.Android
                     }
                     else
                     {
-                        entry.ExtractToFile(Path.Combine(basePath, dll), true);
+                        // Must keep the ".dll" extension. Cecil's BaseAssemblyResolver looks for
+                        // "<name>.dll" in its search directories (this folder is the CWD, set at
+                        // the end of this method), so a file written as bare "FNA" is invisible to
+                        // it and every patch that needs to resolve FNA fails. The Release branch
+                        // below already produces "FNA.dll"; this one silently didn't.
+                        entry.ExtractToFile(Path.Combine(basePath, $"{dll}.dll"), true);
                     }
                 }
             }
@@ -183,7 +195,13 @@ namespace WPR.UI.Android
 
                 if (fileShouldMove)
                 {
-                    File.Move(Path.Combine(basePath, filename), Path.Combine(basePath, filenameAuth));
+                    // overwrite: true is load-bearing. PatchAssemblies lives in the app's
+                    // external files dir, so FNA.dll survives the process — every launch after
+                    // the first found it already there and the 2-arg File.Move threw
+                    // IOException("...FNA.dll already exists") straight out of OnCreate, killing
+                    // the app on startup. Same crash from LaunchGame's re-patch call below, which
+                    // invokes this method a second time in one process.
+                    File.Move(Path.Combine(basePath, filename), Path.Combine(basePath, filenameAuth), true);
                 } else
                 {
                     File.Delete(Path.Combine(basePath, filename));
@@ -220,8 +238,8 @@ namespace WPR.UI.Android
                 Filesystem.CopyFileFromAssets(Assets!, "Database/achievements.db", achievementsPath);
             }
 
-            Filesystem.CopyFolderFromAssets(Assets!, "Database/TrueAchievements",
-                Path.Combine(databaseDir, "TrueAchievements"));
+            // (The Database/TrueAchievements JSON maps are no longer deployed — they fed the
+            //  TrueAchievements scraper, removed 2026-08-07. Catalogues below are the source of truth.)
 
             // Hardcoded achievement catalogues (manifest + icon PNGs), one folder
             // per product. Recursive copy handles the per-product subfolders.

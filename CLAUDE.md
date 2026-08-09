@@ -44,9 +44,11 @@ limitations on this machine and should not be the primary build mechanism.
 - **Install pipeline** (per game, runs once when the user clicks Install on a
   newly-discovered `.xap`/XNA folder):
   1. `LibraryScanner` discovers the package.
-  2. `ApplicationInstaller` unpacks to `%LocalAppData%\WPR\Apps\<ProductId>`.
+  2. `ApplicationInstaller` unpacks to `%LocalAppData%\WPR\AppData\<ProductId>`
+     (the folder name is `Application.DataStoreFolder`).
   3. `ApplicationPatcher.PatchDll` rewrites every `*.dll` in the install dir:
      Silverlight / WP / XNA types redirected to our shims (`Patches` dict),
+     XNA types rescoped to `WPR.Framework.Xna` (`WprFrameworkXnaTypes` set),
      a handful of CLR methods redirected (`MemberPatches` dict).
   4. `XnaAchievementSeeder.SeedAsync` populates the SQLite achievements DB.
 - **Game launch loads the patched DLLs.** If the patcher table changes, every
@@ -59,35 +61,55 @@ limitations on this machine and should not be the primary build mechanism.
 
 Two distinct rebuild paths depending on what changed:
 
-1. **Shim implementation only** (`WPR.SilverlightCompability/*.cs`,
-   `WPR.WindowsCompability/*.cs`, `WPR.XnaCompability/*.cs`, GamerServices,
+1. **Shim implementation only** (`WPR.Framework.Silverlight/*.cs`,
+   `WPR.Framework.Phone/*.cs`, `WPR.WindowsCompability/*.cs`,
+   `WPR.XnaCompabilityPatch/*.cs`, `WPR.Framework.Xna/*.cs`, GamerServices,
    etc.): just rebuild — installed games will pick up the new behaviour on
    next launch because they reference the shim assembly, not a snapshot of it.
    **No reinstall needed.**
-2. **Patcher table change** (`ApplicationPatcher.cs` — adding entries to
-   `Patches` / `MemberPatches`, changing target types): rebuild **and**
-   **reinstall the affected games**. The IL was rewritten at install time;
-   adding a new redirect now does nothing to already-installed `.dll`s.
+2. **Patcher table change** (`Src/Core/WPR.Loader/ApplicationPatcher.cs` — adding
+   entries to `Patches` / `MemberPatches` / `WprFrameworkXnaTypes`, changing target
+   types): rebuild **and** **reinstall the affected games**, and bump
+   `ApplicationPatcher.Version` so the installer knows the IL is stale. The IL was
+   rewritten at install time; adding a new redirect now does nothing to
+   already-installed `.dll`s.
+
+   Note `WprFrameworkXnaTypes` (the set rescoped to `WPR.Framework.Xna`) is tested
+   **before** `Patches`, so a FullName in both silently loses its `Patches` redirect.
 
 The common "add a new shim type" task is **both**: add the shim class, add the
 patcher entry, rebuild, reinstall the affected game.
 
-### Shim file layout (`WPR.SilverlightCompability`)
+### Shim file layout (project `WPR.Framework.Silverlight`)
 
-This project's source tree mirrors the real Silverlight / Windows Phone
-namespace hierarchy as directories — **one C# class per file, file path
-matches where the type lives upstream**. The C# `namespace` declaration in
-every file stays `WPR.SilverlightCompability` regardless of where on disk the
-file lives — the directory structure is pure organisation, the assembly is one
-flat DLL, and the patcher target paths (`NewNamespace` in
-`ApplicationPatcher.cs`) refer to that flat namespace.
+**Project name ≠ namespace.** Stage 3 renamed the *project* to
+`WPR.Framework.Silverlight`, but the code inside was deliberately left alone: every
+file still declares `namespace WPR.SilverlightCompability`, and that is what the
+patcher redirects to (`NewNamespace` in `ApplicationPatcher.cs`). Don't "fix" the
+namespace to match the folder — you'd have to rewrite the patcher tables and reinstall
+every game.
+
+This project's source tree mirrors the real Silverlight namespace hierarchy as
+directories — **one C# class per file, file path matches where the type lives
+upstream**. The directory structure is pure organisation; the assembly is one flat DLL
+in one flat namespace regardless of where on disk a file sits.
 
 Examples:
 - `System.Windows.Shapes.Rectangle` → `System/Windows/Shapes/Rectangle.cs`
 - `System.Windows.Controls.Primitives.Popup` → `System/Windows/Controls/Primitives/Popup.cs`
 - `System.Windows.Media.Animation.Storyboard` → `System/Windows/Media/Animation/Storyboard.cs`
-- `Microsoft.Phone.Shell.PhoneApplicationService` → `Microsoft/Phone/Shell/PhoneApplicationService.cs`
 - `System.ComponentModel.DesignerProperties` → `System/ComponentModel/DesignerProperties.cs`
+
+**`Microsoft.Phone.*` types are NOT here** — they live in the separate
+`WPR.Framework.Phone` project, which is a real facade: it builds the assembly
+`Microsoft.Phone` and declares the genuine `Microsoft.Phone.*` namespaces, so games
+bind it without a patcher redirect at all. Its tree mirrors the namespace *below*
+`Microsoft.Phone`:
+- `Microsoft.Phone.Shell.PhoneApplicationService` → `Shell/PhoneApplicationService.cs`
+- `Microsoft.Phone.Tasks.MediaPlayerLauncher` → `Tasks/MediaPlayerLauncher.cs`
+
+Deciding which of the two a new WP type goes in is a recurring call — see the
+`microsoft-phone-facade-vs-patcher` memory.
 
 When adding a new shim type, look up the real upstream namespace (usually in
 the type's MSDN docs or a Silverlight 4 reference assembly), create the
@@ -110,10 +132,11 @@ runtime/helper code that doesn't shadow any upstream type:
 If you're adding something that *is* a shim, it goes in the namespace tree.
 If you're adding new hosting logic, it stays at the root.
 
-`WPR.WindowsCompability` and `WPR.XnaCompability` are still flat — the
-mirror-tree convention has only been applied to `WPR.SilverlightCompability`
-so far. Apply the same pattern when you next touch those projects, but don't
-make a separate pass just to reorganise them.
+`WPR.WindowsCompability` and `WPR.XnaCompabilityPatch` (which builds the assembly
+`WPR.XnaCompability` — another project-name/assembly-name mismatch) are still flat.
+The mirror-tree convention has only been applied to `WPR.Framework.Silverlight` so
+far. Apply the same pattern when you next touch those projects, but don't make a
+separate pass just to reorganise them.
 
 ### CLI build shortcuts that work
 
@@ -128,7 +151,7 @@ dotnet build <project>.csproj -c Debug -f net8.0-windows10.0.17763.0 \
 - `-f net8.0-windows10.0.17763.0` skips the broken Android leg.
 - `-maxcpucount:1 -nodeReuse:false` avoids the parallel-build CS0006
   "metadata file not found" race that hits in MSBuild's default settings.
-- Build leaf projects first (e.g. `WPR.SilverlightCompability`) — they have
+- Build leaf projects first (e.g. `WPR.Framework.Silverlight`) — they have
   no project deps that need staging and give the fastest yes/no on a shim edit.
 - Building `WPR` / `WPR.UI` / `WPR.UI.Desktop` from CLI often fails with
   spurious "namespace not found" cascades because the CLI doesn't restage

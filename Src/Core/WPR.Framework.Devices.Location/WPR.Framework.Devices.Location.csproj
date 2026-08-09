@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Framework.Devices.Location — the WP7 location/GPS framework (System.Device.Location.*).
+    Organised in the WPR.Framework.* layer, but its OUTPUT ASSEMBLY keeps the game-facing identity
+    <AssemblyName>System.Device</AssemblyName> so patched game IL and any reflection/XAML that names
+    the assembly bind the REAL implementation directly — no forwarder shim, no ApplicationPatcher
+    change, no reinstall (see docs/ARCHITECTURE-MIGRATION.md §3). Namespaces stay System.Device.*.
+
+    FNA-free: unlike the Sensors sibling this assembly has no backend edge, so it is NOT in the
+    fitness baseline.
+  -->
+
+  <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <TargetFrameworks>net8.0;net8.0-android</TargetFrameworks>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(OS)' == 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <TargetFrameworks>net8.0-windows10.0.17763.0;net8.0-android</TargetFrameworks>
+  </PropertyGroup>
+  <PropertyGroup>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <Nullable>enable</Nullable>
+    <Version>2.0.5.0</Version>
+    <AssemblyName>System.Device</AssemblyName>
+    <RootNamespace>System.Device</RootNamespace>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net8.0-android'">21.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+</Project>

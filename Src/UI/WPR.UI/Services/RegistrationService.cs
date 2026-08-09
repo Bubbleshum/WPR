@@ -27,7 +27,7 @@ namespace WPR.UI.Services
                     {
                         Email = email,
                         Password = password,
-                        ProductKey = "WPR-0.0.15", // Placeholder product identifier
+                        ProductKey = "WPR-0.0.18", // Placeholder product identifier
                         MachineId = Environment.MachineName // Basic machine identification
                     };
                     

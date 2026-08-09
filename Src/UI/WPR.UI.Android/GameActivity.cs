@@ -1,19 +1,38 @@
-﻿using Android.App;
+using Android.App;
 using Android.Content;
 using Android.OS;
 
 using Org.Libsdl.App;
 using Newtonsoft.Json;
 using WPR.Common;
+using WPR.UI;
 
 using System;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Android.Content.PM;
 using Android.Runtime;
 
 namespace WPR.UI.Android
 {
-    [Activity(Label = "Game activity", Theme = "@style/MyTheme.NoActionBar", ScreenOrientation = ScreenOrientation.Landscape, ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize)]
+    /// <summary>
+    /// Hosts one WP7/XNA game run.
+    ///
+    /// <para><b>Runs in its own OS process</b> (<c>Process = ":game"</c>). The game is hosted
+    /// in-process by FNA, and a process that has run one game cannot cleanly run another:
+    /// FNA leaves non-background audio/render threads alive, SDL's native layer does not
+    /// survive a re-init, and <c>ApplicationLaunch</c> deliberately retains the whole game
+    /// object graph (<c>RetainGameGraphToAvoidGameFinalizers</c>) so third-party finalizers
+    /// never run. The desktop head handles this with <c>Environment.Exit(0)</c> at the end of
+    /// <c>Main</c>; on Android the equivalent is to give the game its own process and kill it
+    /// on the way out, which leaves the launcher process untouched. This is the
+    /// "host each game in its OWN PROCESS" end-state called out in ApplicationLaunch.cs.</para>
+    ///
+    /// <para>Nothing may be shared with the launcher through statics — the intent extra is
+    /// JSON precisely so it crosses the process boundary. Anything the game path needs from
+    /// the launcher's start-up has to be redone in <see cref="OnCreate"/>.</para>
+    /// </summary>
+    [Activity(Label = "Game activity", Theme = "@style/MyTheme.NoActionBar", ScreenOrientation = ScreenOrientation.Landscape, ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize, Process = ":game")]
     [Register("com.wpr.android.GameActivity")]
     public class GameActivity : SDLActivity
     {
@@ -22,6 +41,27 @@ namespace WPR.UI.Android
 
         private static Models.Application? TargetLaunchApplication;
         private static GameActivity CurrentActivity;
+
+        /// <summary>
+        /// The running host, so <see cref="OnDestroy"/> can ask the game to exit. Static because
+        /// <see cref="SDLMain"/> is invoked from native code with no instance context.
+        /// </summary>
+        private static WPR.Backend.FNA.FnaGameHost? RunningHost;
+
+        /// <summary>Set once the game loop has unwound and <see cref="SDLMain"/> is done.</summary>
+        private static readonly ManualResetEventSlim GameLoopFinished = new ManualResetEventSlim(false);
+
+        /// <summary>
+        /// How long <see cref="OnDestroy"/> waits for the game to unwind before killing the
+        /// process. It only has to cover <c>PhoneApplicationService.HandleApplicationExit()</c> —
+        /// the WP7 "app is closing, save your state" hook, which ApplicationLaunch runs FIRST when
+        /// the loop exits, ahead of Game.Dispose / audio teardown / the ALC unload. Everything
+        /// after that hook only releases memory the OS is about to reclaim anyway, so waiting for
+        /// it is pointless and (at the ~17 s that teardown has been measured to take) would blow
+        /// straight through Android's activity-destroy watchdog into an ANR — which is exactly
+        /// what made the game impossible to quit.
+        /// </summary>
+        private const int GameExitGraceMs = 3000;
 
         [DllImport("main")]
         private static extern void SetMain(System.Action main);
@@ -42,7 +82,14 @@ namespace WPR.UI.Android
             base.OnCreate(savedInstanceState);
 
             CurrentActivity = this;
-            //MessageBoxUtils.MainActivity = this;
+
+            // This is a fresh process, so none of MainActivity.OnCreate's process-wide setup has
+            // run here. Games call Guide.ShowMessageBox / Guide.ShowInputBox mid-game (save
+            // prompts, trial nags); those funcs are installed by ServicesSetup and dispatch onto
+            // MessageBoxUtils.MainActivity, so without these two lines the first in-game dialog
+            // NREs on a null activity.
+            MessageBoxUtils.MainActivity = this;
+            ServicesSetup.Start();
 
             string ?targetApplication = Intent!.GetStringExtra(TargetApplicationDataName);
 
@@ -59,6 +106,29 @@ namespace WPR.UI.Android
             base.OnWindowFocusChanged(hasFocus);
         }
 
+        /// <summary>
+        /// Ends the process this activity owns.
+        ///
+        /// <para>Deliberately does NOT call <c>base.OnDestroy()</c>. SDLActivity's implementation
+        /// posts SDL_QUIT and then blocks the UI thread on <c>mSDLThread.join()</c> with no
+        /// timeout — an unbounded wait on WPR's full teardown, which is the ANR that made Back
+        /// impossible to escape from. Skipping the base call is safe only because the process
+        /// never returns from this method: <c>KillProcess</c> below takes it down, so Android
+        /// never observes the missing super call.</para>
+        /// </summary>
+        protected override void OnDestroy()
+        {
+            // Ask the game to exit and give it a bounded window to run its own exit/save hook.
+            // Already-finished runs (game called Game.Exit itself) fall straight through.
+            try { RunningHost?.RequestExit(); }
+            catch { /* best-effort: the loop may already be gone */ }
+
+            try { GameLoopFinished.Wait(GameExitGraceMs); }
+            catch { /* wait must never be the reason we fail to exit */ }
+
+            global::Android.OS.Process.KillProcess(global::Android.OS.Process.MyPid());
+        }
+
         public static void SDLMain()
         {
             // Should not be possible
@@ -70,7 +140,7 @@ namespace WPR.UI.Android
 
             try
             {
-                ApplicationLaunch.Start(TargetLaunchApplication!, orientation =>
+                var host = new WPR.Backend.FNA.FnaGameHost(TargetLaunchApplication!, orientation =>
                 {
                     CurrentActivity.RunOnUiThread(() =>
                     {
@@ -83,7 +153,10 @@ namespace WPR.UI.Android
                             CurrentActivity.RequestedOrientation = ScreenOrientation.Landscape;
                         }
                     });
-                }).Wait();
+                });
+
+                RunningHost = host;
+                host.RunAsync().Wait();
             }
             catch (Exception ex)
             {
@@ -91,10 +164,39 @@ namespace WPR.UI.Android
                 errorIntent.PutExtra(ErrorDataName, ex.ToString());
 
                 CurrentActivity.SetResult(Result.FirstUser, errorIntent);
+                FinishIfNeeded();
                 return;
+            }
+            finally
+            {
+                // Unblocks OnDestroy's bounded wait. In the finally so a throwing game still
+                // releases it rather than making every quit pay the full grace period.
+                GameLoopFinished.Set();
             }
 
             CurrentActivity.SetResult(Result.Ok);
+            FinishIfNeeded();
+        }
+
+        /// <summary>
+        /// Finishes the activity once the game loop has ended.
+        ///
+        /// <para>Without this a game that exits on its own — WP7 titles quit themselves from their
+        /// own menus, and the hardware Back button reaches them as <c>GamePad.Buttons.Back</c> —
+        /// left a dead activity on screen: the loop had unwound but nothing tore the activity down.
+        /// <c>Finish()</c> is called directly rather than posted, because the UI thread may already
+        /// be inside <see cref="OnDestroy"/> and a posted action would never run.</para>
+        /// </summary>
+        private static void FinishIfNeeded()
+        {
+            try
+            {
+                if (CurrentActivity != null && !CurrentActivity.IsFinishing)
+                {
+                    CurrentActivity.Finish();
+                }
+            }
+            catch { /* activity may already be gone */ }
         }
     }
 }
