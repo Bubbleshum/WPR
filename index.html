@@ -84,23 +84,29 @@
   .card .meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center}
   .card .sdot{width:8px;height:8px;border-radius:50%}
   .card .slabel{font-size:11px;color:var(--fg2)} .card .ach{font-size:12px}
+  /* "All platforms" grid card: a labelled dot per platform, since 116px has no room for words */
+  .card .plat{display:inline-flex;align-items:center;gap:3px}
+  .card .pk{font-style:normal;font-size:9px;font-weight:700;color:var(--fg2);letter-spacing:.5px}
 
   .empty{padding:40px;text-align:center;color:var(--fg2)}
   footer{margin-top:26px;color:var(--fg2);font-size:12.5px;line-height:1.7}
-  @media (max-width:720px){ td.dev,th.dev{display:none} .wrap{padding:18px 12px 48px} header h1{font-size:23px} }
+  /* Phone layout: drop Developer and Notes (the widest column, min-width 240px) rather than the
+     Android verdict — a phone is exactly where the Android column matters most. Leaves
+     Game / Windows / Android / Achv, which fits a 375px viewport. */
+  @media (max-width:720px){ td.dev,th.dev,td.notes,th.notes{display:none} .wrap{padding:18px 12px 48px} header h1{font-size:23px} }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <h1>WPR — Windows Phone <span class="live">Xbox LIVE</span> Compatibility</h1>
-    <p class="sub">Every Xbox&nbsp;LIVE&ndash;enabled Windows Phone game WPR aims to run, with its current status on the .NET&nbsp;8&nbsp;+&nbsp;Avalonia&nbsp;11.3.9 fork. Most titles are still <b>Untested</b> &mdash; that&rsquo;s the to-do list, not a verdict.</p>
+    <p class="sub">Every Xbox&nbsp;LIVE&ndash;enabled Windows Phone game WPR aims to run, with a separate verdict for <b>Windows&nbsp;desktop</b> and <b>Android</b> on the .NET&nbsp;8&nbsp;+&nbsp;Avalonia&nbsp;11.3.9 fork. Most titles are still <b>Untested</b> &mdash; that&rsquo;s the to-do list, not a verdict &mdash; and Android testing has only just started, so nearly every Android verdict is still blank.</p>
     <p class="meta">
       Source list: <a href="https://en.wikipedia.org/wiki/List_of_Xbox_Live_games_on_Windows_Phone" target="_blank" rel="noopener">Xbox LIVE games on Windows Phone</a>
       &nbsp;·&nbsp; Box art: <a href="https://www.trueachievements.com/windows-phone/games" target="_blank" rel="noopener">TrueAchievements</a>
       &nbsp;·&nbsp; <a href="https://github.com/Bubbleshum/WPR" target="_blank" rel="noopener">Repository</a>
       &nbsp;·&nbsp; <a href="https://github.com/Bubbleshum/WPR/wiki" target="_blank" rel="noopener">Wiki</a>
-      &nbsp;·&nbsp; Updated <span id="updated">27 June 2026</span>
+      &nbsp;·&nbsp; Updated <span id="updated">29 August 2026</span>
     </p>
   </header>
 
@@ -113,6 +119,7 @@
     </label>
     <label class="toggle"><input type="checkbox" id="achvOnly"> Achievement catalogue only</label>
     <select id="typeFilter" class="tsel" title="Filter by runtime"><option value="all">All runtimes</option><option value="XNA">XNA</option><option value="Silverlight">Silverlight</option><option value="Native">Native</option></select>
+    <span class="seg" id="platSeg" title="Which platform's verdict to show"><button id="pAll" class="on">All</button><button id="pWin">Windows</button><button id="pAnd">Android</button></span>
     <span class="seg"><button id="vGrid" class="on">Grid</button><button id="vTable">Table</button></span>
     <span class="count" id="count"></span>
   </div>
@@ -122,9 +129,10 @@
       <thead><tr>
         <th class="sortable game" data-key="name">Game <span class="arr"></span></th>
         <th class="sortable dev" data-key="dev">Developer <span class="arr"></span></th>
-        <th class="sortable" data-key="status">Status <span class="arr"></span></th>
+        <th class="sortable" data-key="status">Windows <span class="arr"></span></th>
+        <th class="sortable andr" data-key="android">Android <span class="arr"></span></th>
         <th class="sortable center" data-key="achv">Achv <span class="arr"></span></th>
-        <th>Notes</th>
+        <th class="notes">Notes</th>
       </tr></thead>
       <tbody id="rows"></tbody>
     </table>
@@ -138,7 +146,11 @@
     <span class="pill part">Partial</span> boots, but glitches / wrong orientation / can&rsquo;t finish &nbsp;
     <span class="pill brok">Broken</span> doesn&rsquo;t boot or crashes early &nbsp;
     <span class="pill unt">Untested</span> not yet verified on this fork.<br>
-    <span class="tag sl">SL</span> Silverlight package (not XNA). &nbsp;
+    <b>Two verdicts per title.</b> <b>W</b> = Windows desktop, <b>A</b> = Android &mdash; use the
+    All&nbsp;/&nbsp;Windows&nbsp;/&nbsp;Android switch above. A title with no Android verdict yet counts as
+    <span class="pill unt">Untested</span> there; on <b>All</b> a title shows its better verdict of the two.<br>
+    <span class="tag sl">SL</span> Silverlight package (not XNA) &mdash; these are <b>Broken on Android</b> as a class:
+    the Android host has no Silverlight rail at all, so every one of them fails at launch. &nbsp;
     <span class="tag dag">&dagger;</span> not in the canonical Wikipedia list. &nbsp;
     <b>Achv</b> = a hardcoded achievement catalogue is loaded. &nbsp;
     Box art from <a href="https://www.trueachievements.com/windows-phone/games" target="_blank" rel="noopener">TrueAchievements</a>; &copy; their respective publishers, shown for identification.
@@ -149,15 +161,28 @@
 let DATA = [];
 const RANK = {Playable:0, Partial:1, Broken:2, Untested:3};
 const CLS  = {Playable:'play', Partial:'part', Broken:'brok', Untested:'unt'};
-const state = {status:'all', type:'all', q:'', achvOnly:false, sortKey:'name', sortDir:1, view:'grid'};
+const state = {status:'all', type:'all', q:'', achvOnly:false, sortKey:'name', sortDir:1, view:'grid', plat:'all'};
+
+// Two independent verdicts per title. `status` is the Windows desktop verdict (kept under its
+// original key so every historic value and commit message still reads correctly); `android` is
+// the Android one and is OPTIONAL — a title never tested on Android simply has no key.
+const WS = x => x.status  || 'Untested';
+const AS = x => x.android || 'Untested';
+// RANK is already a total order over the four verdicts, so it doubles as "which is better".
+const best = (a,b) => RANK[a] <= RANK[b] ? a : b;
+// The verdict the chips, filter, sort and grid card operate on. On "All platforms" that is the
+// best of the two — i.e. "does this run on WPR anywhere?", not "does it run everywhere".
+const ST = x => state.plat==='win' ? WS(x)
+              : state.plat==='and' ? AS(x)
+              : best(WS(x), AS(x));
 
 const CHIP_DEFS = [
   {key:'all',      label:'All',      dot:'all',  count:d=>d.length},
-  {key:'tested',   label:'Tested',   dot:'test', count:d=>d.filter(x=>x.status!=='Untested').length},
-  {key:'Playable', label:'Playable', dot:'play', count:d=>d.filter(x=>x.status==='Playable').length},
-  {key:'Partial',  label:'Partial',  dot:'part', count:d=>d.filter(x=>x.status==='Partial').length},
-  {key:'Broken',   label:'Broken',   dot:'brok', count:d=>d.filter(x=>x.status==='Broken').length},
-  {key:'Untested', label:'Untested', dot:'unt',  count:d=>d.filter(x=>x.status==='Untested').length},
+  {key:'tested',   label:'Tested',   dot:'test', count:d=>d.filter(x=>ST(x)!=='Untested').length},
+  {key:'Playable', label:'Playable', dot:'play', count:d=>d.filter(x=>ST(x)==='Playable').length},
+  {key:'Partial',  label:'Partial',  dot:'part', count:d=>d.filter(x=>ST(x)==='Partial').length},
+  {key:'Broken',   label:'Broken',   dot:'brok', count:d=>d.filter(x=>ST(x)==='Broken').length},
+  {key:'Untested', label:'Untested', dot:'unt',  count:d=>d.filter(x=>ST(x)==='Untested').length},
 ];
 function buildChips(){
   const el=document.getElementById('chips'); el.innerHTML='';
@@ -177,16 +202,17 @@ function tags(x){return (x.type==='Silverlight'?'<span class="tag sl">SL</span>'
 function filtered(){
   const q=state.q.trim().toLowerCase();
   let list=DATA.filter(x=>{
-    if(state.status==='tested'){ if(x.status==='Untested') return false; }
-    else if(state.status!=='all'){ if(x.status!==state.status) return false; }
+    if(state.status==='tested'){ if(ST(x)==='Untested') return false; }
+    else if(state.status!=='all'){ if(ST(x)!==state.status) return false; }
     if(state.type!=='all'&&(x.type||'XNA')!==state.type) return false;
     if(state.achvOnly&&!x.achv) return false;
-    if(q&&!(x.name+' '+x.dev+' '+x.notes).toLowerCase().includes(q)) return false;
+    if(q&&!(x.name+' '+x.dev+' '+x.notes+' '+WS(x)+' '+AS(x)).toLowerCase().includes(q)) return false;
     return true;
   });
   const k=state.sortKey,dir=state.sortDir;
   list.sort((a,b)=>{let av,bv;
-    if(k==='status'){av=RANK[a.status];bv=RANK[b.status];}
+    if(k==='status'){av=RANK[WS(a)];bv=RANK[WS(b)];}
+    else if(k==='android'){av=RANK[AS(a)];bv=RANK[AS(b)];}
     else if(k==='achv'){av=a.achv?0:1;bv=b.achv?0:1;}
     else{av=(a[k]||'').toLowerCase();bv=(b[k]||'').toLowerCase();}
     if(av<bv)return -dir; if(av>bv)return dir; return a.name.toLowerCase()<b.name.toLowerCase()?-1:1;});
@@ -198,14 +224,22 @@ function render(){
     document.getElementById('rows').innerHTML=list.map(x=>`<tr>
       <td class="game"><div class="gamecell">${cover(x,'thumb')}<span>${esc(x.name)}${tags(x)}</span></div></td>
       <td class="dev">${esc(x.dev||'—')}</td>
-      <td><span class="pill ${CLS[x.status]}">${x.status}</span></td>
+      <td><span class="pill ${CLS[WS(x)]}">${WS(x)}</span></td>
+      <td class="andr"><span class="pill ${CLS[AS(x)]}">${AS(x)}</span></td>
       <td class="center">${x.achv?'<span class="achv">✅</span>':'<span class="achv no">—</span>'}</td>
       <td class="notes">${esc(x.notes||'—')}</td></tr>`).join('');
   } else {
-    document.getElementById('gridWrap').innerHTML=list.map(x=>`<div class="card" title="${esc(x.notes||'')}">
+    document.getElementById('gridWrap').innerHTML=list.map(x=>`<div class="card" title="Windows: ${WS(x)} · Android: ${AS(x)}${x.notes?'\n'+esc(x.notes):''}">
       ${cover(x,'cover')}
       <div class="gt">${esc(x.name)}${tags(x)}</div>
-      <div class="meta"><span class="sdot" style="background:var(--${CLS[x.status]})"></span><span class="slabel">${x.status}</span>${x.achv?'<span class="ach">✅</span>':''}</div>
+      <div class="meta">${
+        // On a single-platform view the card is exactly what it has always been. On "All" the
+        // 116px card cannot fit two words, so it degrades to two labelled dots (W ● / A ●) and
+        // the words move into the tooltip.
+        state.plat==='all'
+          ? `<span class="plat"><i class="pk">W</i><span class="sdot" style="background:var(--${CLS[WS(x)]})"></span></span><span class="plat"><i class="pk">A</i><span class="sdot" style="background:var(--${CLS[AS(x)]})"></span></span>`
+          : `<span class="sdot" style="background:var(--${CLS[ST(x)]})"></span><span class="slabel">${ST(x)}</span>`
+      }${x.achv?'<span class="ach">✅</span>':''}</div>
     </div>`).join('');
   }
   document.getElementById('empty').hidden=list.length>0;
@@ -221,6 +255,15 @@ document.querySelectorAll('th.sortable').forEach(th=>th.addEventListener('click'
 function setView(v){state.view=v;document.getElementById('vGrid').classList.toggle('on',v==='grid');document.getElementById('vTable').classList.toggle('on',v==='table');render();}
 document.getElementById('vGrid').onclick=()=>setView('grid');
 document.getElementById('vTable').onclick=()=>setView('table');
+// Chip COUNTS depend on the selected platform, so this must rebuild the chips as well as re-render.
+function setPlat(p){state.plat=p;
+  document.getElementById('pAll').classList.toggle('on',p==='all');
+  document.getElementById('pWin').classList.toggle('on',p==='win');
+  document.getElementById('pAnd').classList.toggle('on',p==='and');
+  buildChips();render();}
+document.getElementById('pAll').onclick=()=>setPlat('all');
+document.getElementById('pWin').onclick=()=>setPlat('win');
+document.getElementById('pAnd').onclick=()=>setPlat('and');
 function buildTypeFilter(){const sel=document.getElementById('typeFilter');const cnt=t=>DATA.filter(x=>(x.type||'XNA')===t).length;sel.options[1].text='XNA ('+cnt('XNA')+')';sel.options[2].text='Silverlight ('+cnt('Silverlight')+')';sel.options[3].text='Native ('+cnt('Native')+')';}
 fetch('data.json').then(r=>r.json()).then(d=>{DATA=d;buildChips();buildTypeFilter();render();}).catch(e=>console.error('data.json failed to load',e));
 </script>
