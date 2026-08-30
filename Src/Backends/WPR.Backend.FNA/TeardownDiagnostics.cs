@@ -13,7 +13,7 @@ namespace WPR.Backend.FNA
 	/// UNRESPONSIVE TOP-LEVEL WINDOW — roughly 17 s after the game's teardown has already completed
 	/// cleanly (see <c>wpr_teardown.log</c>). FNA creates its SDL game window inside the launcher's own
 	/// process, so a window that outlives the game loop is a top-level window of
-	/// <c>WPR.UI.Desktop.exe</c> with nothing pumping its messages — which is exactly what Windows
+	/// <c>WPR.Platform.Windows.exe</c> with nothing pumping its messages — which is exactly what Windows
 	/// kills a process for. The same lingering <c>Game</c> would also explain the ALC never unloading.
 	/// </para>
 	///

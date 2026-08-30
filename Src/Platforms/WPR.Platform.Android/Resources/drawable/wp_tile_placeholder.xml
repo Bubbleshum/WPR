@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Stand-in art for a game whose XAP carried no icon. Flat accent square with the
+     game glyph knocked out of it, matching the look of a WP secondary tile. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+  <item><color android:color="@color/wp_chrome" /></item>
+  <item android:drawable="@drawable/ic_wp_games"
+        android:width="32dp" android:height="32dp" android:gravity="center" />
+</layer-list>

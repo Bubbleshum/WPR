@@ -8,7 +8,7 @@ using WPR.Xna.Rhi;
 namespace WPR.Backend.FNA
 {
 	/// <summary>
-	/// FAudio implementation of <see cref="IAudioBackend"/> — Stage 5c-3 (docs/STAGE5C-SCOPE.md).
+	/// FAudio implementation of <see cref="IAudioBackend"/> — Stage 5c-3 (Plans/STAGE5C-SCOPE.md).
 	///
 	/// <para>This class owns ALL of the FAudio/F3DAudio native struct surface: the context, the
 	/// mastering voice, the 3D handle blob, and the reverb submix chain (effect chain + descriptors +

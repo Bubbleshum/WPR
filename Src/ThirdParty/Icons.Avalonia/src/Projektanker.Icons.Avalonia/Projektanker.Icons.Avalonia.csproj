@@ -7,6 +7,13 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <!-- CVE-2026-39959 / GHSA-xrw6-gwf8-vvr9 (High, CVSS 7.1): Tmds.DBus.Protocol < 0.21.3
+             lets malicious D-Bus peers spoof signals and exhaust file descriptors. Avalonia
+             pulls 0.21.2 transitively. Pinned to the in-line fix 0.21.3 (0.92.0 is the other
+             patched version but a different API generation). Mirrors the pin in
+             WPR.Platform.Windows; kept here too so this vendored project audits clean on its
+             own rather than only when consumed by the head. -->
+        <PackageReference Include="Tmds.DBus.Protocol" Version="0.21.3" />
         <PackageReference Include="Avalonia" Version="11.3.9" />
         <PackageReference Include="Avalonia.Desktop" Version="11.3.9" />
         <PackageReference Include="Avalonia.Diagnostics" Version="11.3.9" />

@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    WPR.Diagnostics — logging/tracing foundation (docs/ARCHITECTURE-MIGRATION.md,
+    WPR.Diagnostics — logging/tracing foundation (Plans/ARCHITECTURE-MIGRATION.md,
     Stage 1). Dependency-free (no FNA, no WPR project references). Runtime and the
     layers above route diagnostics through IWprLog. Existing ad-hoc logging (e.g.
     the per-game wpr_game_debug.log) migrates onto this as consumers are touched in

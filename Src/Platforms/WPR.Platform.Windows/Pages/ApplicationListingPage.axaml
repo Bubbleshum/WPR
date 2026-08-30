@@ -1,0 +1,520 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:p="clr-namespace:WPR.Platform.Windows.Properties"
+             xmlns:nst="clr-namespace:WPR.Platform.Windows.Views"
+             xmlns:ic="clr-namespace:Projektanker.Icons.Avalonia;assembly=Projektanker.Icons.Avalonia"
+             xmlns:vm="clr-namespace:WPR.Platform.Windows.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="760"
+             x:Class="WPR.Platform.Windows.Pages.ApplicationListingPage">
+  <Grid>
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="320"/>
+      <ColumnDefinition Width="*"/>
+    </Grid.ColumnDefinitions>
+
+    <!-- Library list pane -->
+    <Border Grid.Column="0"
+            Background="#13202d"
+            BorderBrush="{StaticResource WprPanelBorderBrush}"
+            BorderThickness="0,0,1,0">
+      <DockPanel LastChildFill="True">
+        <StackPanel DockPanel.Dock="Top" Margin="16,16,16,8" Spacing="10">
+          <TextBlock Classes="eyebrow" Text="LIBRARY"/>
+          <TextBox Classes="search"
+                   Name="searchBarTextBox"
+                   Text="{Binding SearchText}"
+                   Watermark="{x:Static p:Resources.SearchForAppSearchBar}"/>
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <Border Background="#0e151c" CornerRadius="3" Padding="8,3">
+              <TextBlock FontSize="11"
+                         Foreground="{StaticResource WprTextDimBrush}"
+                         Text="{Binding Applications.Count, StringFormat='{}{0} installed'}"/>
+            </Border>
+          </StackPanel>
+        </StackPanel>
+
+        <Button DockPanel.Dock="Top"
+                Margin="16,0,16,8"
+                Padding="10,8"
+                CornerRadius="4"
+                Background="#0e151c"
+                BorderBrush="{StaticResource WprAccentBrush}"
+                BorderThickness="1"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Stretch"
+                Cursor="Hand"
+                Command="{Binding ShowInstallProgressCommand}"
+                ToolTip.Tip="View install progress"
+                IsVisible="{Binding Installing, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <Grid ColumnDefinitions="32,*">
+            <Border Grid.Column="0"
+                    Width="28" Height="28"
+                    CornerRadius="3"
+                    ClipToBounds="True"
+                    VerticalAlignment="Center">
+              <Image Source="{Binding Installing.Icon}" Stretch="UniformToFill"/>
+            </Border>
+            <StackPanel Grid.Column="1" Margin="8,0,0,0" Spacing="4" VerticalAlignment="Center">
+              <TextBlock Text="{Binding Installing.Name}"
+                         FontSize="12"
+                         Foreground="{DynamicResource WprTextBrush}"
+                         TextTrimming="CharacterEllipsis"/>
+              <ProgressBar Minimum="0" Maximum="100"
+                           Height="4"
+                           Value="{Binding Installing.Progress}"/>
+            </StackPanel>
+          </Grid>
+        </Button>
+
+        <ListBox Classes="library"
+                 Name="appListBox"
+                 ItemsSource="{Binding Applications}"
+                 SelectedItem="{Binding ChoosenApp}"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+          <ListBox.ContextMenu>
+            <ContextMenu>
+              <MenuItem Header="Run"
+                        Command="{Binding $parent[ListBox].((vm:ApplicationListingPageViewModel)DataContext).RunAppCommand}"
+                        CommandParameter="{Binding}"/>
+              <MenuItem Header="Uninstall"
+                        Command="{Binding $parent[ListBox].((vm:ApplicationListingPageViewModel)DataContext).DeleteAppCommand}"
+                        CommandParameter="{Binding}"/>
+            </ContextMenu>
+          </ListBox.ContextMenu>
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <nst:ApplicationView />
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+    </Border>
+
+    <!-- Detail pane -->
+    <Grid Grid.Column="1">
+      <!-- Empty state -->
+      <StackPanel HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  Spacing="12"
+                  IsVisible="{Binding IsDetailEmpty}">
+        <TextBlock Classes="eyebrow" Text="NO APP SELECTED" HorizontalAlignment="Center"/>
+        <TextBlock Classes="dim" HorizontalAlignment="Center"
+                   Text="Select an app from your library, or install a new one with the + button."/>
+      </StackPanel>
+
+      <!-- Detail view -->
+      <Grid IsVisible="{Binding IsDetailApp}">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="280"/>
+          <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Hero -->
+        <Grid Grid.Row="0" ClipToBounds="True">
+          <Image Source="{Binding ChoosenApp.Icon}"
+                 Stretch="UniformToFill"
+                 Opacity="0.45">
+            <Image.Effect>
+              <BlurEffect Radius="40"/>
+            </Image.Effect>
+          </Image>
+          <Border>
+            <Border.Background>
+              <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0.0" Color="#001b2838"/>
+                <GradientStop Offset="0.65" Color="#991b2838"/>
+                <GradientStop Offset="1.0" Color="#ff1b2838"/>
+              </LinearGradientBrush>
+            </Border.Background>
+          </Border>
+          <Grid Margin="40,40,40,32" VerticalAlignment="Bottom">
+            <StackPanel Orientation="Horizontal" Spacing="24">
+              <Border CornerRadius="8" ClipToBounds="True"
+                      Width="140" Height="140"
+                      BoxShadow="0 4 24 0 #80000000">
+                <Image Source="{Binding ChoosenApp.Icon}" Stretch="UniformToFill"/>
+              </Border>
+              <StackPanel VerticalAlignment="Bottom" Spacing="8">
+                <TextBlock Classes="eyebrow"
+                           Text="{Binding ChoosenApp.TypeLabel}"/>
+                <TextBlock Classes="h1"
+                           Text="{Binding ChoosenApp.Name}"
+                           TextWrapping="Wrap"
+                           MaxLines="2"
+                           TextTrimming="CharacterEllipsis"/>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Classes="dim" Text="by"/>
+                  <TextBlock FontSize="12"
+                             Foreground="{StaticResource WprAccentBrush}"
+                             Text="{Binding ChoosenApp.Author}"/>
+                  <TextBlock Classes="dim" Text="·"/>
+                  <TextBlock Classes="dim"
+                             Text="{Binding ChoosenApp.Version, StringFormat='v{0}'}"/>
+                </StackPanel>
+              </StackPanel>
+            </StackPanel>
+          </Grid>
+        </Grid>
+
+        <!-- Body. Inset lives on the StackPanel Margin, not the ScrollViewer
+             Padding: ScrollViewer padding isn't part of the scrollable extent in
+             Avalonia, so a bottom Padding clips the last item at max scroll. The
+             96px bottom also clears the floating "+" button (56 + 24 margin). -->
+        <ScrollViewer Grid.Row="1">
+          <StackPanel Spacing="24"
+                      Margin="40,24,40,96">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <Button Classes="play"
+                      Command="{Binding ChoosenApp.RunAppCommand}"
+                      IsVisible="{Binding ChoosenApp.IsInstalled}">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <TextBlock Text="▶" FontSize="14" VerticalAlignment="Center"/>
+                  <TextBlock Text="PLAY" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="ghost"
+                      Command="{Binding ChoosenApp.EditAppCommand}"
+                      Content="{x:Static p:Resources.EditApp}"
+                      ToolTip.Tip="{x:Static p:Resources.EditAppToolTip}"
+                      IsVisible="{Binding ChoosenApp.IsEditable}"/>
+              <Button Classes="ghost"
+                      Command="{Binding ChoosenApp.RepatchAppCommand}"
+                      Content="Repatch"
+                      ToolTip.Tip="Re-run the WPR patcher on this game without re-extracting the XAP. Use this after a WPR update that changed the patcher table, instead of uninstall + reinstall."
+                      IsVisible="{Binding ChoosenApp.IsInstalled}"/>
+              <Button Classes="ghost"
+                      Command="{Binding ChoosenApp.UninstallAppCommand}"
+                      Content="Uninstall"
+                      IsVisible="{Binding ChoosenApp.IsInstalled}"/>
+              <Button Classes="play"
+                      Command="{Binding ChoosenApp.InstallAppCommand}"
+                      IsVisible="{Binding ChoosenApp.IsAvailable}">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <TextBlock Text="↓" FontSize="14" VerticalAlignment="Center"/>
+                  <TextBlock Text="INSTALL" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+            </StackPanel>
+
+            <Border Background="{StaticResource WprPanelBrush}"
+                    CornerRadius="6"
+                    Padding="20,16">
+              <StackPanel Spacing="10">
+                <TextBlock Classes="eyebrow" Text="ABOUT"/>
+                <TextBlock Classes="body"
+                           TextWrapping="Wrap"
+                           Text="{Binding ChoosenApp.Description}"/>
+              </StackPanel>
+            </Border>
+
+            <Border Background="{StaticResource WprPanelBrush}"
+                    CornerRadius="6"
+                    Padding="20,16">
+              <StackPanel Spacing="14">
+                <TextBlock Classes="eyebrow" Text="DETAILS"/>
+                <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+                  <TextBlock Grid.Row="0" Grid.Column="0" Classes="dim" Text="Publisher" Margin="0,0,0,8"/>
+                  <TextBlock Grid.Row="0" Grid.Column="1" Classes="body" Margin="0,0,0,8"
+                             Text="{Binding ChoosenApp.Publisher}"/>
+
+                  <TextBlock Grid.Row="1" Grid.Column="0" Classes="dim" Text="Author" Margin="0,0,0,8"/>
+                  <TextBlock Grid.Row="1" Grid.Column="1" Classes="body" Margin="0,0,0,8"
+                             Text="{Binding ChoosenApp.Author}"/>
+
+                  <TextBlock Grid.Row="2" Grid.Column="0" Classes="dim" Text="Type" Margin="0,0,0,8"/>
+                  <TextBlock Grid.Row="2" Grid.Column="1" Classes="body" Margin="0,0,0,8"
+                             Text="{Binding ChoosenApp.ApplicationType}"/>
+
+                  <TextBlock Grid.Row="3" Grid.Column="0" Classes="dim" Text="Version" Margin="0,0,0,8"/>
+                  <TextBlock Grid.Row="3" Grid.Column="1" Classes="body" Margin="0,0,0,8"
+                             Text="{Binding ChoosenApp.Version}"/>
+
+                  <TextBlock Grid.Row="4" Grid.Column="0" Classes="dim" Text="Installed"
+                             Margin="0,0,0,8"
+                             IsVisible="{Binding ChoosenApp.IsInstalled}"/>
+                  <TextBlock Grid.Row="4" Grid.Column="1" Classes="body"
+                             Margin="0,0,0,8"
+                             Text="{Binding ChoosenApp.InstalledTime, StringFormat='{}{0:MMM d, yyyy}'}"
+                             IsVisible="{Binding ChoosenApp.IsInstalled}"/>
+
+                  <TextBlock Grid.Row="5" Grid.Column="0" Classes="dim" Text="Source" Margin="0,0,0,8"
+                             IsVisible="{Binding ChoosenApp.IsAvailable}"/>
+                  <TextBlock Grid.Row="5" Grid.Column="1" Classes="body" Margin="0,0,0,8"
+                             Text="{Binding ChoosenApp.XapFilePath}"
+                             TextTrimming="CharacterEllipsis"
+                             IsVisible="{Binding ChoosenApp.IsAvailable}"/>
+
+                  <!-- Game ID: only shown for games with no achievement catalogue yet, so the
+                       product id can be read off / copied to add the game to the catalogue. -->
+                  <TextBlock Grid.Row="6" Grid.Column="0" Classes="dim" Text="Game ID"
+                             IsVisible="{Binding ChoosenApp.IsNotInCatalogue}"/>
+                  <!-- Not Classes="body": the TextBlock.body style selector matches the exact
+                       type, not the SelectableTextBlock subclass, so its setters are inlined here. -->
+                  <SelectableTextBlock Grid.Row="6" Grid.Column="1"
+                                       FontSize="13"
+                                       LineHeight="20"
+                                       Foreground="{StaticResource WprTextBrush}"
+                                       Text="{Binding ChoosenApp.ProductId}"
+                                       TextWrapping="Wrap"
+                                       IsVisible="{Binding ChoosenApp.IsNotInCatalogue}"/>
+                </Grid>
+              </StackPanel>
+            </Border>
+
+            <!-- Achievements section: only shown when the game has rows in the
+                 local catalogue (seeded at install time by XnaAchievementSeeder). -->
+            <Border Background="{StaticResource WprPanelBrush}"
+                    CornerRadius="6"
+                    Padding="20,16"
+                    IsVisible="{Binding HasAchievements}">
+              <StackPanel Spacing="14">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Grid.Column="0" Classes="eyebrow" Text="ACHIEVEMENTS"
+                             VerticalAlignment="Center"/>
+                  <StackPanel Grid.Column="1"
+                              Orientation="Horizontal"
+                              Spacing="10"
+                              VerticalAlignment="Center">
+                    <TextBlock FontSize="12"
+                               Foreground="{StaticResource WprAccentBrush}"
+                               Text="{Binding ProgressLabel}"
+                               VerticalAlignment="Center"/>
+                    <TextBlock Classes="dim" Text="·" VerticalAlignment="Center"/>
+                    <TextBlock Classes="dim"
+                               Text="{Binding ScoreLabel}"
+                               VerticalAlignment="Center"/>
+                  </StackPanel>
+                </Grid>
+                <ProgressBar Height="6"
+                             Minimum="0" Maximum="100"
+                             Value="{Binding ProgressPercent}"/>
+                <ItemsControl ItemsSource="{Binding Achievements}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:AchievementItemViewModel">
+                      <Border Background="#0e151c"
+                              CornerRadius="6"
+                              Padding="14,10"
+                              Margin="0,0,0,8">
+                        <Grid ColumnDefinitions="56,*,Auto">
+                          <Border Grid.Column="0"
+                                  Width="48" Height="48"
+                                  CornerRadius="4"
+                                  ClipToBounds="True"
+                                  VerticalAlignment="Center">
+                            <Grid>
+                              <Image Source="{Binding Icon}" Stretch="UniformToFill"/>
+                              <Border Background="#aa000000"
+                                      IsVisible="{Binding IsLocked}"/>
+                              <ic:Icon Value="fa-solid fa-lock"
+                                       FontSize="16"
+                                       Foreground="White"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       IsVisible="{Binding IsLocked}"/>
+                            </Grid>
+                          </Border>
+                          <StackPanel Grid.Column="1"
+                                      Margin="12,0,12,0"
+                                      VerticalAlignment="Center"
+                                      Spacing="3">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                              <TextBlock Text="{Binding Name}"
+                                         FontSize="13"
+                                         FontWeight="SemiBold"
+                                         Foreground="{DynamicResource WprTextStrongBrush}"
+                                         TextTrimming="CharacterEllipsis"/>
+                              <Border Background="{StaticResource WprAccentDimBrush}"
+                                      CornerRadius="3"
+                                      Padding="6,1"
+                                      VerticalAlignment="Center"
+                                      IsVisible="{Binding IsEarned}">
+                                <TextBlock Text="UNLOCKED"
+                                           FontSize="9"
+                                           LetterSpacing="1.5"
+                                           Foreground="White"/>
+                              </Border>
+                            </StackPanel>
+                            <TextBlock Text="{Binding Description}"
+                                       Classes="body"
+                                       TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding EarnedDateText, StringFormat='Earned {0}'}"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource WprTextDimBrush}"
+                                       IsVisible="{Binding IsEarned}"/>
+                          </StackPanel>
+                          <StackPanel Grid.Column="2"
+                                      VerticalAlignment="Center"
+                                      HorizontalAlignment="Right"
+                                      Spacing="2">
+                            <TextBlock Text="{Binding GamerScore}"
+                                       FontSize="18"
+                                       FontWeight="SemiBold"
+                                       HorizontalAlignment="Right"
+                                       Foreground="{StaticResource WprAccentBrush}"/>
+                            <TextBlock Text="G"
+                                       FontSize="9"
+                                       LetterSpacing="1.5"
+                                       HorizontalAlignment="Right"
+                                       Foreground="{DynamicResource WprTextDimBrush}"/>
+                          </StackPanel>
+                        </Grid>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+
+      <!-- Installing view; placed last in the parent so it draws on top of other states.
+           Only shown when the user is focused on the install (default while installing,
+           or after clicking the sidebar progress widget). Selecting another app from the
+           library list flips to that app's detail without canceling the install. -->
+      <Grid x:Name="installingDetailPane"
+            IsVisible="{Binding IsDetailInstalling}"
+            Background="{StaticResource WprWindowBackdrop}">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="280"/>
+          <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Hero (mirrors the detail hero) -->
+        <Grid Grid.Row="0" ClipToBounds="True">
+          <Image Source="{Binding Installing.Icon}"
+                 Stretch="UniformToFill"
+                 Opacity="0.45">
+            <Image.Effect>
+              <BlurEffect Radius="40"/>
+            </Image.Effect>
+          </Image>
+          <Border>
+            <Border.Background>
+              <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0.0" Color="#001b2838"/>
+                <GradientStop Offset="0.65" Color="#991b2838"/>
+                <GradientStop Offset="1.0" Color="#ff1b2838"/>
+              </LinearGradientBrush>
+            </Border.Background>
+          </Border>
+          <Grid Margin="40,40,40,32" VerticalAlignment="Bottom">
+            <StackPanel Orientation="Horizontal" Spacing="24">
+              <Border CornerRadius="8" ClipToBounds="True"
+                      Width="140" Height="140"
+                      BoxShadow="0 4 24 0 #80000000">
+                <Image Source="{Binding Installing.Icon}" Stretch="UniformToFill"/>
+              </Border>
+              <StackPanel VerticalAlignment="Bottom" Spacing="8">
+                <TextBlock Classes="eyebrow"
+                           Text="{x:Static p:Resources.InstallingApp}"/>
+                <TextBlock Classes="h1"
+                           Text="{Binding Installing.Name}"
+                           TextTrimming="CharacterEllipsis"/>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Classes="dim" Text="by"/>
+                  <TextBlock FontSize="12"
+                             Foreground="{StaticResource WprAccentBrush}"
+                             Text="{Binding Installing.Author}"/>
+                  <TextBlock Classes="dim" Text="·"/>
+                  <TextBlock Classes="dim"
+                             Text="{Binding Installing.Version, StringFormat='v{0}'}"/>
+                </StackPanel>
+              </StackPanel>
+            </StackPanel>
+          </Grid>
+        </Grid>
+
+        <!-- Body: progress + cancel -->
+        <ScrollViewer Grid.Row="1" Padding="40,24,40,24">
+          <StackPanel Spacing="24">
+            <Border Background="{StaticResource WprPanelBrush}"
+                    CornerRadius="6"
+                    Padding="20,16">
+              <StackPanel Spacing="12">
+                <TextBlock Classes="eyebrow" Text="INSTALL PROGRESS"/>
+                <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                  <ProgressBar Grid.Column="0"
+                               Minimum="0" Maximum="100"
+                               Height="10"
+                               Value="{Binding Installing.Progress}"
+                               VerticalAlignment="Center"/>
+                  <TextBlock Grid.Column="1"
+                             Margin="12,0,0,0"
+                             VerticalAlignment="Center"
+                             Foreground="{DynamicResource WprTextDimBrush}"
+                             Text="{Binding Installing.Progress, StringFormat='{}{0}%'}"/>
+                </Grid>
+                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                  <Button Classes="ghost"
+                          Command="{Binding Installing.CancelCommand}"
+                          Content="Cancel"/>
+                </StackPanel>
+              </StackPanel>
+            </Border>
+
+            <Border Background="{StaticResource WprPanelBrush}"
+                    CornerRadius="6"
+                    Padding="20,16"
+                    IsVisible="{Binding Installing.Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+              <StackPanel Spacing="10">
+                <TextBlock Classes="eyebrow" Text="ABOUT"/>
+                <TextBlock Classes="body"
+                           TextWrapping="Wrap"
+                           Text="{Binding Installing.Description}"/>
+              </StackPanel>
+            </Border>
+
+            <Border Background="{StaticResource WprPanelBrush}"
+                    CornerRadius="6"
+                    Padding="20,16">
+              <StackPanel Spacing="14">
+                <TextBlock Classes="eyebrow" Text="DETAILS"/>
+                <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto">
+                  <TextBlock Grid.Row="0" Grid.Column="0" Classes="dim" Text="Publisher" Margin="0,0,0,8"/>
+                  <TextBlock Grid.Row="0" Grid.Column="1" Classes="body" Margin="0,0,0,8"
+                             Text="{Binding Installing.Publisher}"/>
+
+                  <TextBlock Grid.Row="1" Grid.Column="0" Classes="dim" Text="Author" Margin="0,0,0,8"/>
+                  <TextBlock Grid.Row="1" Grid.Column="1" Classes="body" Margin="0,0,0,8"
+                             Text="{Binding Installing.Author}"/>
+
+                  <TextBlock Grid.Row="2" Grid.Column="0" Classes="dim" Text="Version"/>
+                  <TextBlock Grid.Row="2" Grid.Column="1" Classes="body"
+                             Text="{Binding Installing.Version}"/>
+                </Grid>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+    </Grid>
+
+    <!-- Floating install button -->
+    <Button x:Name="addNewAppButton"
+            Grid.Column="1"
+            Width="56" Height="56"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Bottom"
+            HorizontalContentAlignment="Center"
+            VerticalContentAlignment="Center"
+            FontSize="28"
+            FontWeight="Bold"
+            Foreground="White"
+            Margin="24"
+            CornerRadius="28"
+            Background="{StaticResource WprAccentBrush}"
+            BorderThickness="0"
+            Cursor="Hand"
+            Content="+"
+            IsVisible="{Binding Installing, Converter={x:Static ObjectConverters.IsNull}}"
+            ToolTip.Tip="{x:Static p:Resources.InstallNewAppToolTip}">
+      <Button.Effect>
+        <DropShadowEffect BlurRadius="16" OffsetX="0" OffsetY="4" Color="Black" Opacity="0.5"/>
+      </Button.Effect>
+    </Button>
+  </Grid>
+</UserControl>

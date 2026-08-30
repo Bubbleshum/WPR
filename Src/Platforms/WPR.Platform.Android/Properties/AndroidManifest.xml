@@ -1,0 +1,15 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!--
+     No android:versionName here on purpose. It used to say 0.0.18 and SILENTLY WON over
+     -p:ApplicationDisplayVersion, so every release APK shipped 0.0.18 no matter what version the
+     release workflow was given (verified: passing 0.0.99 produced versionCode=99 but
+     versionName=0.0.18). versionName now comes from $(ApplicationDisplayVersion), i.e.
+     $(WprVersion) in Src/Directory.Build.props, overridden per release by release.yml.
+     versionCode likewise comes from $(ApplicationVersion). Do not re-add either attribute.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.wpr.android">
+ <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+      <uses-permission android:name="android.permission.INTERNET"/>
+	<application android:label="WPR" android:icon="@drawable/icon">
+	</application>
+</manifest>

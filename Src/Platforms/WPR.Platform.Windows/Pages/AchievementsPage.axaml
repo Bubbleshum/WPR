@@ -1,0 +1,233 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ic="clr-namespace:Projektanker.Icons.Avalonia;assembly=Projektanker.Icons.Avalonia"
+             xmlns:vm="clr-namespace:WPR.Platform.Windows.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="760"
+             x:Class="WPR.Platform.Windows.Pages.AchievementsPage"
+             x:DataType="vm:AchievementsPageViewModel">
+  <Grid>
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="320"/>
+      <ColumnDefinition Width="*"/>
+    </Grid.ColumnDefinitions>
+
+    <!-- Game list pane -->
+    <Border Grid.Column="0"
+            Background="#13202d"
+            BorderBrush="{StaticResource WprPanelBorderBrush}"
+            BorderThickness="0,0,1,0">
+      <DockPanel LastChildFill="True">
+        <StackPanel DockPanel.Dock="Top" Margin="16,16,16,8" Spacing="10">
+          <TextBlock Classes="eyebrow" Text="ACHIEVEMENTS"/>
+          <TextBlock Classes="dim"
+                     Text="{Binding Games.Count, StringFormat='{}{0} games tracked'}"/>
+        </StackPanel>
+
+        <Border DockPanel.Dock="Top"
+                Margin="16,0,16,8"
+                Padding="10,8"
+                CornerRadius="4"
+                Background="#0e151c"
+                IsVisible="{Binding IsLoading}">
+          <TextBlock FontSize="12"
+                     Foreground="{StaticResource WprAccentBrush}"
+                     Text="Loading achievements..."/>
+        </Border>
+
+        <ListBox Classes="library"
+                 Name="gameListBox"
+                 ItemsSource="{Binding Games}"
+                 SelectedItem="{Binding SelectedGame}"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+          <ListBox.ItemTemplate>
+            <DataTemplate DataType="vm:AchievementGameItemViewModel">
+              <Grid ColumnDefinitions="40,*" Height="48">
+                <Border Grid.Column="0"
+                        Width="36" Height="36"
+                        CornerRadius="3"
+                        ClipToBounds="True"
+                        VerticalAlignment="Center">
+                  <Image Source="{Binding Icon}" Stretch="UniformToFill"/>
+                </Border>
+                <StackPanel Grid.Column="1"
+                            Margin="6,0,0,0"
+                            VerticalAlignment="Center"
+                            Spacing="2">
+                  <TextBlock Text="{Binding Name}"
+                             FontSize="13"
+                             Foreground="{DynamicResource WprTextBrush}"
+                             TextTrimming="CharacterEllipsis"/>
+                  <TextBlock Text="{Binding Progress}"
+                             FontSize="11"
+                             Foreground="{DynamicResource WprTextDimBrush}"/>
+                </StackPanel>
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+    </Border>
+
+    <!-- Detail pane -->
+    <Grid Grid.Column="1">
+      <!-- Empty state -->
+      <StackPanel HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  Spacing="12"
+                  IsVisible="{Binding HasSelection, Converter={x:Static BoolConverters.Not}}">
+        <ic:Icon Value="fa-solid fa-trophy"
+                 FontSize="48"
+                 Foreground="{StaticResource WprTextDimBrush}"
+                 HorizontalAlignment="Center"/>
+        <TextBlock Classes="eyebrow" Text="NO ACHIEVEMENTS YET" HorizontalAlignment="Center"/>
+        <TextBlock Classes="dim" HorizontalAlignment="Center"
+                   Text="Run a game that supports achievements to start tracking unlocks here."/>
+      </StackPanel>
+
+      <!-- Detail view -->
+      <Grid IsVisible="{Binding HasSelection}">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="220"/>
+          <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Hero -->
+        <Grid Grid.Row="0" ClipToBounds="True">
+          <Image Source="{Binding SelectedGame.Icon}"
+                 Stretch="UniformToFill"
+                 Opacity="0.45">
+            <Image.Effect>
+              <BlurEffect Radius="40"/>
+            </Image.Effect>
+          </Image>
+          <Border>
+            <Border.Background>
+              <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0.0" Color="#001b2838"/>
+                <GradientStop Offset="0.65" Color="#991b2838"/>
+                <GradientStop Offset="1.0" Color="#ff1b2838"/>
+              </LinearGradientBrush>
+            </Border.Background>
+          </Border>
+          <Grid Margin="40,32,40,24" VerticalAlignment="Bottom">
+            <StackPanel Orientation="Horizontal" Spacing="20">
+              <Border CornerRadius="8" ClipToBounds="True"
+                      Width="96" Height="96"
+                      BoxShadow="0 4 24 0 #80000000">
+                <Image Source="{Binding SelectedGame.Icon}" Stretch="UniformToFill"/>
+              </Border>
+              <StackPanel VerticalAlignment="Bottom" Spacing="8">
+                <TextBlock Classes="eyebrow" Text="ACHIEVEMENTS"/>
+                <TextBlock Classes="h1"
+                           Text="{Binding SelectedGame.Name}"
+                           TextTrimming="CharacterEllipsis"/>
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                  <TextBlock FontSize="13"
+                             Foreground="{StaticResource WprAccentBrush}"
+                             Text="{Binding SelectedGame.Progress, StringFormat='{}{0} unlocked'}"/>
+                  <TextBlock Classes="dim" Text="·"/>
+                  <TextBlock Classes="dim"
+                             Text="{Binding SelectedGame.EarnedScore, StringFormat='{}{0} G earned'}"/>
+                  <TextBlock Classes="dim" Text="of"/>
+                  <TextBlock Classes="dim"
+                             Text="{Binding SelectedGame.TotalScore, StringFormat='{}{0} G total'}"/>
+                </StackPanel>
+                <ProgressBar Width="240"
+                             Height="6"
+                             Minimum="0" Maximum="100"
+                             Value="{Binding SelectedGame.ProgressPercent}"/>
+              </StackPanel>
+            </StackPanel>
+          </Grid>
+        </Grid>
+
+        <!-- Achievement list. Inset lives on the ItemsControl Margin, not the
+             ScrollViewer Padding: ScrollViewer padding isn't part of the
+             scrollable extent in Avalonia, so a bottom Padding clips the last
+             row at max scroll ("scroll doesn't go far enough"). -->
+        <ScrollViewer Grid.Row="1">
+          <ItemsControl ItemsSource="{Binding Achievements}"
+                        Margin="40,16,40,32">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate DataType="vm:AchievementItemViewModel">
+                <Border Background="{StaticResource WprPanelBrush}"
+                        CornerRadius="6"
+                        Padding="16,12"
+                        Margin="0,0,0,8">
+                  <Grid ColumnDefinitions="64,*,Auto">
+                    <Border Grid.Column="0"
+                            Width="56" Height="56"
+                            CornerRadius="4"
+                            ClipToBounds="True"
+                            VerticalAlignment="Center">
+                      <Grid>
+                        <Image Source="{Binding Icon}" Stretch="UniformToFill"/>
+                        <Border Background="#aa000000"
+                                IsVisible="{Binding IsLocked}"/>
+                        <ic:Icon Value="fa-solid fa-lock"
+                                 FontSize="18"
+                                 Foreground="White"
+                                 HorizontalAlignment="Center"
+                                 VerticalAlignment="Center"
+                                 IsVisible="{Binding IsLocked}"/>
+                      </Grid>
+                    </Border>
+
+                    <StackPanel Grid.Column="1"
+                                Margin="14,0,12,0"
+                                VerticalAlignment="Center"
+                                Spacing="4">
+                      <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="{Binding Name}"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource WprTextStrongBrush}"
+                                   TextTrimming="CharacterEllipsis"/>
+                        <Border Background="{StaticResource WprAccentDimBrush}"
+                                CornerRadius="3"
+                                Padding="6,1"
+                                VerticalAlignment="Center"
+                                IsVisible="{Binding IsEarned}">
+                          <TextBlock Text="UNLOCKED"
+                                     FontSize="9"
+                                     LetterSpacing="1.5"
+                                     Foreground="White"/>
+                        </Border>
+                      </StackPanel>
+                      <TextBlock Text="{Binding Description}"
+                                 Classes="body"
+                                 TextWrapping="Wrap"/>
+                      <TextBlock Text="{Binding EarnedDateText, StringFormat='Earned {0}'}"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource WprTextDimBrush}"
+                                 IsVisible="{Binding IsEarned}"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Right"
+                                Spacing="2">
+                      <TextBlock Text="{Binding GamerScore}"
+                                 FontSize="20"
+                                 FontWeight="SemiBold"
+                                 HorizontalAlignment="Right"
+                                 Foreground="{StaticResource WprAccentBrush}"/>
+                      <TextBlock Text="GAMERSCORE"
+                                 FontSize="9"
+                                 LetterSpacing="1.5"
+                                 HorizontalAlignment="Right"
+                                 Foreground="{DynamicResource WprTextDimBrush}"/>
+                    </StackPanel>
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </Grid>
+    </Grid>
+  </Grid>
+</UserControl>

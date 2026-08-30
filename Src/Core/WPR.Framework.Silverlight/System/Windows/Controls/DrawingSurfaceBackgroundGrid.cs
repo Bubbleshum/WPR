@@ -100,6 +100,15 @@ namespace WPR.SilverlightCompability
 
         private static IBackgroundRenderer? LookupRenderer()
         {
+            // Candidate order is load-bearing and unchanged from the pre-Stage-5e inline version:
+            // app-specific renderer, then the app's own splash art on the GPU, then the branded
+            // Avalonia splash, then the test pattern. Each step falls through on failure.
+            //
+            // The GPU steps go through SilverlightBackend.SurfaceRenderer, which is null unless a
+            // launcher composed a backend in (WPR.Backend.Direct3D11 today). Null is a supported
+            // state, not an error: the net8.0 / net8.0-android legs of this framework never had a
+            // D3D path, and they take the same fall-through they always did.
+
             // App-specific renderer first.
             string? pid = HostContext.CurrentProductId;
             if (pid != null && _renderersByProductId.TryGetValue(pid, out var factory))
@@ -107,15 +116,20 @@ namespace WPR.SilverlightCompability
                 try { return factory(); } catch { /* fall through */ }
             }
 
-#if WPR_D3D11
-            // A dedicated full-screen splash image (Ken Burns) if the app ships one.
-            string? splash = TryFindSplashImage();
-            if (splash != null)
+            ISurfaceRendererBackend? backend = SilverlightBackend.SurfaceRenderer;
+
+            // A dedicated full-screen splash image (Ken Burns) if the app ships one. Finding the
+            // file is a framework concern (it is the app's install folder); drawing it is the
+            // backend's.
+            if (backend != null)
             {
-                try { return new D3D11ImageSplashRenderer(splash); }
-                catch { /* fall through */ }
+                string? splash = TryFindSplashImage();
+                if (splash != null)
+                {
+                    var renderer = backend.CreateImageSplashRenderer(splash);
+                    if (renderer != null) return renderer;
+                }
             }
-#endif
 
             // Otherwise present a branded splash built from the app's own tile/icon art — much
             // nicer than a bare test pattern for titles whose engine we can't host (e.g. AC
@@ -127,20 +141,15 @@ namespace WPR.SilverlightCompability
                 catch { /* fall through */ }
             }
 
-#if WPR_D3D11
             // Last resort: animated test pattern proves the pipeline is wired even when
             // there's nothing else to show.
-            try { return new D3D11TestPatternRenderer(); }
-            catch { return null; }
-#else
-            return null;
-#endif
+            return backend?.CreateTestPatternRenderer();
         }
 
-#if WPR_D3D11
         /// <summary>
         /// Look for a WP-style splash image in the running app's install folder. Real WP apps
         /// always ship one (it's how the OS shows something while the app boots).
+        /// Pure file lookup — no graphics dependency — so it is not backend-conditional.
         /// </summary>
         private static string? TryFindSplashImage()
         {
@@ -164,6 +173,5 @@ namespace WPR.SilverlightCompability
             }
             return null;
         }
-#endif
     }
 }

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Builds the WPR Android app (WPR.UI.Android) and drops the signed APK into Artifacts\.
+    Builds the WPR Android app (WPR.Platform.Android) and drops the signed APK into Artifacts\.
 
 .DESCRIPTION
     Windows counterpart of build-android.sh. Wraps the CLI recipe documented in
@@ -11,7 +11,7 @@
                         ships API 35/36, so the user-local %LOCALAPPDATA%\Android\Sdk is
                         normally the one that works.
       * JAVA_HOME     - Android Studio's bundled JBR, else an installed JDK 17.
-      * dotnet        - the system install; repo global.json pins SDK 8.0.421, which is
+      * dotnet        - the system install; repo global.json pins the SDK 8.0 band, which is
                         what supplies the net8.0-android34.0 ref packs.
 
     net8.0-android* maps to API 34 only (see CLAUDE.md) - do not bump the TFM without
@@ -57,7 +57,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$Project = Join-Path $Root 'Src\UI\WPR.UI.Android\WPR.UI.Android.csproj'
+$Project = Join-Path $Root 'Src\Platforms\WPR.Platform.Android\WPR.Platform.Android.csproj'
 
 if (-not (Test-Path $Project)) {
     throw "Project not found: $Project"
@@ -154,7 +154,7 @@ try {
 
     if ($Clean) {
         foreach ($dir in @('bin', 'obj')) {
-            $path = Join-Path $Root "Src\UI\WPR.UI.Android\$dir\$Configuration"
+            $path = Join-Path $Root "Src\Platforms\WPR.Platform.Android\$dir\$Configuration"
             if (Test-Path $path) {
                 Write-Host "Cleaning $path ..." -ForegroundColor DarkGray
                 Remove-Item -Recurse -Force $path
@@ -170,6 +170,10 @@ try {
         '-nodeReuse:false'
         '--nologo'
         "-p:SolutionDir=$SolutionDir"
+        # Src\Directory.Build.targets drops the net8.0-android TFM when it cannot
+        # find the workload install marker. This script IS the android build, so
+        # force the leg on and let MSBuild raise the real workload error if absent.
+        '-p:IncludeAndroidTargets=true'
         "-p:AndroidSdkDirectory=$AndroidHome"
         # Embed assemblies so an adb-installed APK runs without VS fast-deploy staging.
         '-p:EmbedAssembliesIntoApk=true'
@@ -187,7 +191,7 @@ try {
         throw "dotnet exited with code $LASTEXITCODE"
     }
 
-    $binDir = Join-Path $Root "Src\UI\WPR.UI.Android\bin\$Configuration\$TargetFramework"
+    $binDir = Join-Path $Root "Src\Platforms\WPR.Platform.Android\bin\$Configuration\$TargetFramework"
     $apk = Get-ChildItem -Path $binDir -Filter '*-Signed.apk' -ErrorAction SilentlyContinue |
            Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if ($null -eq $apk) {

@@ -1,11 +1,13 @@
 using System.Collections.Generic;
 
-// Namespace deliberately kept as WPR.WindowsCompability so that:
-//   - existing patched user IL whose typerefs say
-//     `WPR.WindowsCompability.ResourceDictionary, WPR.WindowsCompability`
-//     still works (via [TypeForwardedTo] in the WPR.WindowsCompability assembly),
-//   - and FrameworkElement.Resources here can return the type without SLC needing
-//     a project reference back to WindowsCompability (which would be circular).
+// Namespace deliberately kept as WPR.WindowsCompability. Originally that was so
+// FrameworkElement.Resources could return this type without a circular project reference;
+// since 2026-08-30 it is also what let the whole WPR.WindowsCompability project be dissolved
+// into this one without touching a single NewNamespace string in ApplicationPatcher.
+//
+// NOTE: the [TypeForwardedTo] that used to live in the WPR.WindowsCompability assembly is
+// GONE, because that assembly is gone. Patched user IL naming it no longer resolves at all —
+// ApplicationPatcher.Version 18 is the tripwire that forces such installs to be repatched.
 namespace WPR.WindowsCompability
 {
     /// <summary>

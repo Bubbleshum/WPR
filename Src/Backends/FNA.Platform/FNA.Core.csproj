@@ -21,6 +21,7 @@
   <ItemGroup>
     <Compile Include="src\WprActivationGuard.cs" />
     <Compile Include="src\WprGameThread.cs" />
+    <Compile Include="src\WprPhoneBackButton.cs" />
     <Compile Include="src\DrawableGameComponent.cs" />
     <Compile Include="src\FNALoggerEXT.cs" />
     <Compile Include="src\FNAPlatform\FNAPlatform.cs" />
@@ -50,7 +51,7 @@
   <ItemGroup>
   </ItemGroup>
   <ItemGroup>
-    <!-- Stage 5a (docs/ARCHITECTURE-MIGRATION.md): the XNA value/math types (Vector2/3/4, Matrix,
+    <!-- Stage 5a (Plans/ARCHITECTURE-MIGRATION.md): the XNA value/math types (Vector2/3/4, Matrix,
          Quaternion, Color, Rectangle, Point, Plane, Ray, Bounding*, Curve*, MathHelper, their Design
          converters, IPackedVector) were pulled OUT of FNA into WPR.Framework.Xna. FNA references them
          back so its runtime (GraphicsDevice/SpriteBatch/â€¦) and games share one value-type identity. -->

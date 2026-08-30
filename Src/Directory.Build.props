@@ -19,6 +19,56 @@
   <PropertyGroup Condition=" '$(SolutionDir)' == '' or '$(SolutionDir)' == '*Undefined*' ">
     <SolutionDir>$(MSBuildThisFileDirectory)</SolutionDir>
   </PropertyGroup>
+  <!--
+    THE version number for the product. Set it here and nowhere else.
+
+    Before 2026-08-30 it was typed by hand in five places and had already drifted: AboutPage said
+    0.0.20 while the main window title still said 0.0.18, and the android manifest pinned 0.0.18
+    in a way that silently overrode what the release workflow passed in (see
+    Platforms/WPR.Platform.Android/Properties/AndroidManifest.xml).
+
+    Consumers:
+      * WPR.Platform.Windows  — $(Version) / $(InformationalVersion); the UI reads the latter back
+        at runtime via AppVersion.Display, so the window title and About page cannot drift again.
+      * WPR.Platform.Android  — $(ApplicationDisplayVersion), i.e. the APK versionName.
+      * .github/workflows/release.yml — overrides both with -p:Version / -p:ApplicationDisplayVersion
+        from the dispatch input, so a release does not require editing this file. Bump it here
+        anyway so local/dev builds report the version you are actually working towards.
+
+    Deliberately NOT setting <Version> repo-wide: several projects pin a version that is part of a
+    WP7 assembly identity (WPR.Framework.Devices.Location is 2.0.5.0 to match System.Device), and
+    those must keep their own value. Project-level properties win over this file, but the heads are
+    the only things that should carry the product version, so they opt in explicitly.
+  -->
+  <PropertyGroup>
+    <WprVersion>0.1.0</WprVersion>
+    <WprVersionSuffix>alpha</WprVersionSuffix>
+  </PropertyGroup>
+
+  <!--
+    Single EF Core version for the whole repo.
+
+    Until 2026-08-30 this was a per-project, TFM-conditional property: 5.0.17 on
+    net8.0-windows10.0.17763.0 and 6.0.8 everywhere else, duplicated across
+    WPR.Loader / WPR.Runtime / Microsoft.Xna.Framework.GamerServices, with
+    WPR.Platform.Windows hardcoding 5.0.17 a fourth time. That split silently pinned the
+    desktop app to a .NET 5-era dependency graph and was the root of most of the security
+    advisories cleared on 2026-08-29/30.
+
+    Unifying on 8.0.x is safe here because nothing in this repo runs EF migrations: both
+    databases ship as pre-built .db files (Core/WPR.Database) that are copied into place on
+    first run, and the 2022 Migrations/ folders are never executed. The EF surface actually
+    used is AsNoTracking / SaveChanges(Async) / AddRange / RemoveRange / Find, all of which
+    behave identically from EF 5 through 8. EF 8 also wants SQLitePCLRaw.core >= 2.1.6,
+    which the 2.1.13 pin in WPR.Loader / GamerServices already satisfies.
+
+    Every consuming TFM (net8.0, net8.0-windows10.0.17763.0, net8.0-android) is net8.0+, so
+    EF 8's minimum target is met on all of them.
+  -->
+  <PropertyGroup>
+    <EFVersion>8.0.30</EFVersion>
+  </PropertyGroup>
+
   <PropertyGroup Condition="$([System.String]::Copy('$(TargetFramework)').Contains('android'))">
     <DefineConstants>$(DefineConstants);__ANDROID__;__MOBILE__</DefineConstants>
   </PropertyGroup>

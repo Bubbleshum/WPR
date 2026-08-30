@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Stage 0 safety net for the architecture migration (docs/ARCHITECTURE-MIGRATION.md).
+    Stage 0 safety net for the architecture migration (Plans/ARCHITECTURE-MIGRATION.md).
     Deliberately a LEAF project: it references only NuGet packages, never the WPR
     project graph. The fitness test inspects the *built* assemblies on disk with
     Mono.Cecil, so this project stays fast and CLI-buildable while the heavy chain

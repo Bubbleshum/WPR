@@ -1,0 +1,149 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:WPR.Platform.Windows.Pages"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="800"
+        xmlns:ic="clr-namespace:Projektanker.Icons.Avalonia;assembly=Projektanker.Icons.Avalonia"
+        xmlns:dialogHost="clr-namespace:DialogHostAvalonia;assembly=DialogHost.Avalonia"
+        x:Class="WPR.Platform.Windows.Views.MainWindowDesktop"
+        Icon="avares://WPR.Platform.Windows/Assets/logo.png"
+        Background="{StaticResource WprWindowBackdrop}"
+        MinWidth="980" MinHeight="640"
+        Name="MainWindow">
+
+  <dialogHost:DialogHost>
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="72"/>
+        <ColumnDefinition/>
+      </Grid.ColumnDefinitions>
+
+      <Border Grid.Column="0"
+              Background="{StaticResource WprSidebarBrush}"
+              BorderBrush="{StaticResource WprPanelBorderBrush}"
+              BorderThickness="0,0,1,0">
+        <DockPanel LastChildFill="True">
+          <Border DockPanel.Dock="Top" Height="56"
+                  BorderBrush="{StaticResource WprPanelBorderBrush}"
+                  BorderThickness="0,0,0,1">
+            <TextBlock Text="WPR"
+                       FontSize="18" FontWeight="Bold"
+                       Foreground="{StaticResource WprAccentBrush}"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"/>
+          </Border>
+
+          <TabControl Classes="sidebar" TabStripPlacement="Left" Name="navigationControl">
+            <TabControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Vertical"/>
+              </ItemsPanelTemplate>
+            </TabControl.ItemsPanel>
+
+            <TabItem>
+              <TabItem.Header>
+                <Grid Width="72" Height="72">
+                  <Border HorizontalAlignment="Left" Width="3"
+                          Background="{StaticResource WprAccentBrush}"
+                          IsVisible="{Binding $parent[TabItem].IsSelected}"/>
+                  <StackPanel Orientation="Vertical"
+                              VerticalAlignment="Center"
+                              HorizontalAlignment="Center"
+                              Spacing="6">
+                    <ic:Icon Value="fa-solid fa-play" FontSize="22"/>
+                    <TextBlock Text="PLAY" FontSize="10"
+                               LetterSpacing="2"
+                               HorizontalAlignment="Center"/>
+                  </StackPanel>
+                </Grid>
+              </TabItem.Header>
+            </TabItem>
+
+            <TabItem>
+              <TabItem.Header>
+                <Grid Width="72" Height="72">
+                  <Border HorizontalAlignment="Left" Width="3"
+                          Background="{StaticResource WprAccentBrush}"
+                          IsVisible="{Binding $parent[TabItem].IsSelected}"/>
+                  <StackPanel Orientation="Vertical"
+                              VerticalAlignment="Center"
+                              HorizontalAlignment="Center"
+                              Spacing="6">
+                    <ic:Icon Value="fa-solid fa-gear" FontSize="22"/>
+                    <TextBlock Text="SETTINGS" FontSize="10"
+                               LetterSpacing="2"
+                               HorizontalAlignment="Center"/>
+                  </StackPanel>
+                </Grid>
+              </TabItem.Header>
+            </TabItem>
+
+            <TabItem>
+              <TabItem.Header>
+                <Grid Width="72" Height="72">
+                  <Border HorizontalAlignment="Left" Width="3"
+                          Background="{StaticResource WprAccentBrush}"
+                          IsVisible="{Binding $parent[TabItem].IsSelected}"/>
+                  <StackPanel Orientation="Vertical"
+                              VerticalAlignment="Center"
+                              HorizontalAlignment="Center"
+                              Spacing="6">
+                    <ic:Icon Value="fa-solid fa-gamepad" FontSize="22"/>
+                    <TextBlock Text="CONTROLS" FontSize="10"
+                               LetterSpacing="2"
+                               HorizontalAlignment="Center"/>
+                  </StackPanel>
+                </Grid>
+              </TabItem.Header>
+            </TabItem>
+
+            <TabItem>
+              <TabItem.Header>
+                <Grid Width="72" Height="72">
+                  <Border HorizontalAlignment="Left" Width="3"
+                          Background="{StaticResource WprAccentBrush}"
+                          IsVisible="{Binding $parent[TabItem].IsSelected}"/>
+                  <StackPanel Orientation="Vertical"
+                              VerticalAlignment="Center"
+                              HorizontalAlignment="Center"
+                              Spacing="6">
+                    <ic:Icon Value="fa-solid fa-circle-info" FontSize="22"/>
+                    <TextBlock Text="ABOUT" FontSize="10"
+                               LetterSpacing="2"
+                               HorizontalAlignment="Center"/>
+                  </StackPanel>
+                </Grid>
+              </TabItem.Header>
+            </TabItem>
+
+            <TabItem>
+              <TabItem.Header>
+                <Grid Width="72" Height="72">
+                  <Border HorizontalAlignment="Left" Width="3"
+                          Background="{StaticResource WprAccentBrush}"
+                          IsVisible="{Binding $parent[TabItem].IsSelected}"/>
+                  <StackPanel Orientation="Vertical"
+                              VerticalAlignment="Center"
+                              HorizontalAlignment="Center"
+                              Spacing="6">
+                    <ic:Icon Value="fa-solid fa-trophy" FontSize="22"/>
+                    <TextBlock Text="TROPHIES" FontSize="10"
+                               LetterSpacing="2"
+                               HorizontalAlignment="Center"/>
+                  </StackPanel>
+                </Grid>
+              </TabItem.Header>
+            </TabItem>
+          </TabControl>
+        </DockPanel>
+      </Border>
+
+      <TransitioningContentControl Grid.Column="1" Name="contentControl">
+        <TransitioningContentControl.PageTransition>
+          <CrossFade Duration="0:00:00.150" />
+        </TransitioningContentControl.PageTransition>
+      </TransitioningContentControl>
+    </Grid>
+  </dialogHost:DialogHost>
+</Window>

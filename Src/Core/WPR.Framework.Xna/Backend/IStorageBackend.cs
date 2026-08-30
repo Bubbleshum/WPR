@@ -3,7 +3,7 @@ using System.IO;
 namespace WPR.Xna.Rhi
 {
 	/// <summary>
-	/// Where a title's saved games live — Stage 5c-5 (docs/STAGE5C-SCOPE.md). Backs
+	/// Where a title's saved games live — Stage 5c-5 (Plans/STAGE5C-SCOPE.md). Backs
 	/// <c>StorageDevice</c>/<c>StorageContainer</c>.
 	///
 	/// <para>Small, but a seam rather than a pair of hooks on <see cref="XnaBackend"/>, because this

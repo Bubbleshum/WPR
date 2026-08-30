@@ -19,25 +19,64 @@ namespace WPR
         // Bumped to 2 for the Stage 3 framework rename: the Silverlight shim assembly
         // is now "WPR.Framework.Silverlight" (was "WPR.SilverlightCompability"), so
         // already-installed games carry stale IL scopes and must be reinstalled.
-        public static int Version => 13;
+        // Bumped to 14: System.Net.Browser.WebRequestCreator is now redirected to the
+        // Silverlight shim. Games installed before this carry IL that still scopes it to
+        // System.Windows and must be reinstalled (or repatched) to pick the redirect up.
+        // Bumped to 15: the WP7 GraphicsDeviceManager override moved out of the
+        // WPR.XnaCompability shim assembly into WPR.Backend.FNA (it subclasses FNA's spine
+        // GraphicsDeviceManager, so the backend is its only correct home) and lost its "2"
+        // suffix — games are now rescoped to WPR.Backend.FNA.Compat.GraphicsDeviceManager.
+        // Version-14 installs still carry IL naming WPR.XnaCompability.GraphicsDeviceManager2
+        // and will fail to resolve it until reinstalled. In this version the GraphicsDevice /
+        // GraphicsAdapter display-mode overrides only lost their "2" suffix (they subclass
+        // WPR-owned types, not FNA, so they stayed put); MemberPatches keys them by typeof, so
+        // that rename needed no string change here.
+        // Bumped to 16: the WPR.XnaCompability shim assembly is GONE. Its last two types, the WP7
+        // display-mode overrides, moved into WPR.Framework.Xna as WPR.Xna.Compat.GraphicsDevice /
+        // GraphicsAdapter (they only ever subclassed WPR-owned types), so MemberPatches now rewrites
+        // those call sites to an assembly games already bind. Version-15 and older installs carry IL
+        // naming WPR.XnaCompability, which no longer ships — they MUST be reinstalled/repatched or
+        // they will fail to resolve it at launch.
+        // Bumped to 17: the WPR.StandardCompability shim assembly is GONE. Its only type ever, the
+        // XElement.Load redirect target, moved to WPR.WindowsCompability.XElement2 to sit with the
+        // other BCL-method redirects (Path2 / GC2 / Type2) that MemberPatches already targets.
+        // Version-16 and older installs carry IL naming WPR.StandardCompability, which no longer
+        // ships. Note this one fails LATE rather than at launch: an unused assembly reference
+        // resolves lazily, so an affected game only dies the first time it actually calls
+        // XElement.Load. Skulls of the Shogun and Crimson Dragon: Side Story both do.
+        // Bumped to 18: the WPR.WindowsCompability shim assembly is GONE. All 17 of its types moved
+        // into WPR.Framework.Silverlight, KEEPING the WPR.WindowsCompability namespace — so every
+        // NewNamespace string below is unchanged and only the Reference swapped to
+        // SilverlightCompRef. Type FullNames are therefore identical; what changed is the assembly
+        // that hosts them. Version-17 and older installs carry IL scoping those typerefs to the
+        // WPR.WindowsCompability assembly, which no longer ships, so they MUST be
+        // reinstalled/repatched. This one fails at LAUNCH, not lazily: System.Windows.Application
+        // is on the startup path for Silverlight titles.
+        // Bumped to 19: the Microsoft.Xna.Framework.GamerServices assembly is GONE. Its 42 API
+        // types moved into WPR.Framework.Xna and GamerServicesComponent (the only FNA-derived one)
+        // into WPR.Backend.FNA/Compat/. All types keep their real
+        // Microsoft.Xna.Framework.GamerServices namespace.
+        //
+        // This one is different in kind from 16/17/18. Those dissolved WPR-owned patch targets the
+        // game never named. This dissolves an IDENTITY-BINDING assembly: games reference
+        // "Microsoft.Xna.Framework.GamerServices, Version=4.0.0.0" by simple name and, until now,
+        // the patcher deliberately did NOT rename that ref — our assembly carried the WP7 identity
+        // so it bound directly. The ref is now rewritten to WPR.Framework.Xna instead, which means
+        // ANY version-18-or-older install fails at launch. All 16 test installs named it.
+        // See Plans/ARCHITECTURE-MIGRATION.md §3.2 — this deliberately departs from the
+        // "one assembly = one identity" rule recorded there.
+        public static int Version => 19;
 
-        private AssemblyNameReference FNACompRef;
+        private AssemblyNameReference FnaBackendRef;
         private AssemblyNameReference FNARef;
         private AssemblyNameReference SystemRunTimeRef;
-
-        private AssemblyNameReference WindowsCompRef;
         private AssemblyNameReference SilverlightCompRef;
         private AssemblyNameReference MicrosoftPhoneRef;
         // Stage 5a: the XNA value/math types are owned by WPR.Framework.Xna (pulled out of FNA).
         // Game typerefs to those types are rescoped straight here — no FNA forwarder needed.
         private AssemblyNameReference WprFrameworkXnaRef;
-
-        private AssemblyNameReference StandardCompRef;
         private AssemblyNameReference ServiceModelPrimitivesRef;
         private AssemblyNameReference ServiceModelHTTPRef;
-        private AssemblyNameReference GamerServicesCompRef;
-        //private AssemblyNameReference SystemSecurityCryptographyRef; //!
-        //private AssemblyNameReference SystemWindowsMediaImagingRef; //!
 
         private class TypePatchInfo
         {
@@ -315,9 +354,8 @@ namespace WPR
         public ApplicationPatcher()
         {
             FNARef = AssemblyNameReference.Parse("FNA");
-            FNACompRef = AssemblyNameReference.Parse("WPR.XnaCompability");
+            FnaBackendRef = AssemblyNameReference.Parse("WPR.Backend.FNA");
             SystemRunTimeRef = AssemblyNameReference.Parse("System.Runtime");
-            WindowsCompRef = AssemblyNameReference.Parse("WPR.WindowsCompability");
             SilverlightCompRef = AssemblyNameReference.Parse("WPR.Framework.Silverlight");
             MicrosoftPhoneRef = AssemblyNameReference.Parse("Microsoft.Phone");
             WprFrameworkXnaRef = AssemblyNameReference.Parse("WPR.Framework.Xna");
@@ -325,19 +363,11 @@ namespace WPR
             ServiceModelPrimitivesRef = AssemblyNameReference.Parse("System.ServiceModel.Primitives");
             ServiceModelHTTPRef = AssemblyNameReference.Parse("System.ServiceModel.Http");
 
-            StandardCompRef = AssemblyNameReference.Parse("WPR.StandardCompability");
+            // (There is no longer a dedicated GamerServices assembly ref. Version 19 dissolved
+            //  Microsoft.Xna.Framework.GamerServices into WPR.Framework.Xna, so the whole surface
+            //  now rides WprFrameworkXnaRef — except GamerServicesComponent, which derives from
+            //  FNA's GameComponent and is rescoped to FnaBackendRef.)
 
-            // The shim for GamerServicesComponent lives in our managed assembly
-            // Microsoft.Xna.Framework.GamerServices (Src/Core/...). The user
-            // assembly's GamerServicesComponent type refs must be rescoped to it,
-            // otherwise they stay bound to the WP7 assembly
-            // Microsoft.Xna.Framework.GamerServicesExtensions, which doesn't exist
-            // at runtime -> FileNotFoundException aborts game init (black screen).
-            GamerServicesCompRef =
-                AssemblyNameReference.Parse("Microsoft.Xna.Framework.GamerServices");
-
-            //SystemSecurityCryptographyRef = AssemblyNameReference.Parse("WPR.WindowsCompability");
-            //SystemWindowsMediaImagingRef =  AssemblyNameReference.Parse("WPR.WindowsCompability");
 
             // *** Patches ***
             Patches = new Dictionary<string, TypePatchInfo>()
@@ -349,26 +379,48 @@ namespace WPR
                 },
                 { "Microsoft.Xna.Framework.GraphicsDeviceManager", new TypePatchInfo()
                 {
-                    NewName = "GraphicsDeviceManager2",
-                    NewNamespace = "WPR.XnaCompability",
-                    Reference = FNACompRef
+                    NewName = "GraphicsDeviceManager",
+                    NewNamespace = "WPR.Backend.FNA.Compat",
+                    Reference = FnaBackendRef
                 }
                 },
                 { "System.Windows.Application", new TypePatchInfo()
                 {
-                    Reference = WindowsCompRef,
+                    Reference = SilverlightCompRef,
                     NewNamespace = "WPR.WindowsCompability"
                 }
                 },
                 { "System.Windows.ApplicationUnhandledExceptionEventArgs", new TypePatchInfo()
                 {
-                    Reference = WindowsCompRef,
+                    Reference = SilverlightCompRef,
                     NewNamespace = "WPR.WindowsCompability"
+                }
+                },
+                // Avatar-award extension methods. The assembly-ref loop below captures the
+                // Microsoft.Xna.Framework.GamerServicesExtensions reference but deliberately does
+                // NOT rename it (renaming would collide with the plain GamerServices ref when a
+                // game carries both), and the only typeref it rescopes by hand is
+                // GamerServicesComponent. So every other type from that assembly needs an entry
+                // here. Crimson Dragon: Side Story reaches this from MyGamerService.
+                { "Microsoft.Xna.Framework.GamerServices.SignedInGamerExtensions", new TypePatchInfo()
+                {
+                    Reference = WprFrameworkXnaRef
+                }
+                },
+                // Silverlight's HTTP-stack selector. Games call
+                // WebRequest.RegisterPrefix("http://", WebRequestCreator.ClientHttp) while
+                // setting up networking, often from a licence/trial check on the startup path —
+                // Crimson Dragon: Side Story does it in Microsoft.Phone.Marketplace.HttpRequest's
+                // ctor, so leaving this unpatched is a TypeLoadException before first frame.
+                { "System.Net.Browser.WebRequestCreator", new TypePatchInfo()
+                {
+                    Reference = SilverlightCompRef,
+                    NewNamespace = "WPR.SilverlightCompability"
                 }
                 },
                 { "System.IO.IsolatedStorage.IsolatedStorageSettings", new TypePatchInfo()
                 {
-                    Reference = WindowsCompRef,
+                    Reference = SilverlightCompRef,
                     NewName="IsolatedStorageSettings2", //RnD
                     NewNamespace = "WPR.WindowsCompability"
                 }
@@ -1090,26 +1142,26 @@ namespace WPR
                 },
                 { "System.Windows.Resources.StreamResourceInfo", new TypePatchInfo()
                 {
-                    Reference = WindowsCompRef,
+                    Reference = SilverlightCompRef,
                     NewNamespace = "WPR.WindowsCompability"
                 }
                 },
                 { "System.Windows.Interop.SilverlightHost", new TypePatchInfo()
                 {
-                    Reference = WindowsCompRef,
+                    Reference = SilverlightCompRef,
                     NewNamespace = "WPR.WindowsCompability"
                 }
                 },
                 { "System.Windows.Interop.Content", new TypePatchInfo()
                 {
-                    Reference = WindowsCompRef,
+                    Reference = SilverlightCompRef,
                     NewName = "SilverlightHostContent",
                     NewNamespace = "WPR.WindowsCompability"
                 }
                 },
                 { "System.Windows.Interop.Settings", new TypePatchInfo()
                 {
-                    Reference = WindowsCompRef,
+                    Reference = SilverlightCompRef,
                     NewName = "SilverlightHostSettings",
                     NewNamespace = "WPR.WindowsCompability"
                 }
@@ -1224,7 +1276,7 @@ namespace WPR
                 },
                 { "System.Windows.ResourceDictionary", new TypePatchInfo()
                 {
-                    Reference = WindowsCompRef,
+                    Reference = SilverlightCompRef,
                     NewNamespace = "WPR.WindowsCompability"
                 }
                 },
@@ -1251,7 +1303,7 @@ namespace WPR
                 //!
                 { "System.Security.Cryptography.ProtectedData", new TypePatchInfo()
                 {
-                    Reference = WindowsCompRef,
+                    Reference = SilverlightCompRef,
                     //RnD : if uncomment it, WPR.WindowsCompabilityProtectedData class will be used
                     NewName = "ProtectedData",
                     NewNamespace = "WPR.WindowsCompability"
@@ -1260,7 +1312,7 @@ namespace WPR
                 //!
                 { "System.Windows.Media.Imaging.BitmapImage", new TypePatchInfo()
                 {
-                    Reference = WindowsCompRef,
+                    Reference = SilverlightCompRef,
                     NewName = "BitmapImage",//RnD
                     NewNamespace = "WPR.WindowsCompability"
                 }
@@ -1268,32 +1320,32 @@ namespace WPR
                 //!
                 { "System.Windows.Media.Imaging.WriteableBitmap", new TypePatchInfo()
                 {
-                    Reference = WindowsCompRef,
+                    Reference = SilverlightCompRef,
                     NewNamespace = "WPR.WindowsCompability"
                 }
                 },
                  //!
                 { "System.Windows.Media.Imaging.BitmapSource", new TypePatchInfo()
                 {
-                    Reference = WindowsCompRef,
+                    Reference = SilverlightCompRef,
                     NewNamespace = "WPR.WindowsCompability"
                 }
                 },
                 { "System.Windows.MessageBox", new TypePatchInfo()
                 {
-                    Reference = WindowsCompRef,
+                    Reference = SilverlightCompRef,
                     NewNamespace = "WPR.WindowsCompability"
                 }
                 },
                 { "System.Windows.MessageBoxResult", new TypePatchInfo()
                 {
-                    Reference = WindowsCompRef,
+                    Reference = SilverlightCompRef,
                     NewNamespace = "WPR.WindowsCompability"
                 }
                 },
                 { "System.Windows.MessageBoxButton", new TypePatchInfo()
                 {
-                    Reference = WindowsCompRef,
+                    Reference = SilverlightCompRef,
                     NewNamespace = "WPR.WindowsCompability"
                 }
                 }
@@ -1358,11 +1410,11 @@ namespace WPR
                 },
                 {
                     "Microsoft.Xna.Framework.Graphics.DisplayMode Microsoft.Xna.Framework.Graphics.GraphicsDevice::get_DisplayMode()",
-                    typeof(WPR.XnaCompability.Graphics.GraphicsDevice2)
+                    typeof(WPR.Xna.Compat.GraphicsDevice)
                 },
                 {
                     "Microsoft.Xna.Framework.Graphics.DisplayMode Microsoft.Xna.Framework.Graphics.GraphicsAdapter::get_CurrentDisplayMode()",
-                    typeof(WPR.XnaCompability.Graphics.GraphicsAdapter2)
+                    typeof(WPR.Xna.Compat.GraphicsAdapter)
                 },
 
                 {
@@ -1384,7 +1436,7 @@ namespace WPR
 
                 {
                     "System.Xml.Linq.XElement System.Xml.Linq.XElement::Load(System.String)",
-                    typeof(WPR.StandardCompability.Xml.Linq.XElement2)
+                    typeof(WPR.WindowsCompability.XElement2)
                 },
 
             };
@@ -1696,10 +1748,24 @@ namespace WPR
                     {
                         //RnD
                         xnaGameServicesExtensions = refer;
+                        // Version 19: the GamerServices types live in WPR.Framework.Xna now, so
+                        // this ref must be renamed rather than merely captured. Previously it was
+                        // left alone and only individual typerefs were rescoped, which is why
+                        // SignedInGamerExtensions needed a hand-written Patches entry.
+                        refer.Name = WprFrameworkXnaRef.Name;
+                        refer.Version = WprFrameworkXnaRef.Version;
+                        refer.PublicKey = WprFrameworkXnaRef.PublicKey;
                     }
                     else if (refer.Name.Contains("GamerServices"))
                     {
                         xnaGameServices = refer;
+                        // Version 19: same. Until now this ref kept its WP7 name and bound to our
+                        // identity-matching Microsoft.Xna.Framework.GamerServices assembly. That
+                        // assembly is gone — its types were absorbed into WPR.Framework.Xna — so
+                        // the ref is rewritten instead of preserved.
+                        refer.Name = WprFrameworkXnaRef.Name;
+                        refer.Version = WprFrameworkXnaRef.Version;
+                        refer.PublicKey = WprFrameworkXnaRef.PublicKey;
                     }
                     else
                     {
@@ -1728,8 +1794,7 @@ namespace WPR
             PatchRelaxedXmlNullableAttribTextSerialize(module);
 
             // Add AssemblyReferences
-            module.AssemblyReferences.Add(FNACompRef);
-            module.AssemblyReferences.Add(WindowsCompRef);
+            module.AssemblyReferences.Add(FnaBackendRef);
             module.AssemblyReferences.Add(SilverlightCompRef);
             // Stage 5a: register the owned XNA value-type assembly so the per-typeref rescope below
             // (existingRef.Scope = WprFrameworkXnaRef) resolves. Without this, the scope is dangling
@@ -1739,10 +1804,6 @@ namespace WPR
             module.AssemblyReferences.Add(SystemRunTimeRef);
             module.AssemblyReferences.Add(ServiceModelPrimitivesRef);
             module.AssemblyReferences.Add(ServiceModelHTTPRef);
-            module.AssemblyReferences.Add(StandardCompRef);
-            module.AssemblyReferences.Add(GamerServicesCompRef);
-            //module.AssemblyReferences.Add(SystemSecurityCryptographyRef);//!
-            //module.AssemblyReferences.Add(SystemWindowsMediaImagingRef);//
 
             // create Ref. Patch Cache
             Dictionary<string, TypeReference> typeRefPatchCache
@@ -1791,16 +1852,18 @@ namespace WPR
                 if (existingRef.FullName
                     == "Microsoft.Xna.Framework.GamerServices.GamerServicesComponent")
                 {
-                    // Bind to our shim assembly directly. The captured WP7 ref
-                    // (xnaGameServices) may be absent or point at the missing
-                    // GamerServicesExtensions assembly, so don't rely on it.
-                    existingRef.Scope = GamerServicesCompRef;
+                    // GamerServicesComponent is the ONE GamerServices type that did not move to
+                    // WPR.Framework.Xna: it derives from FNA's spine GameComponent, so it lives in
+                    // WPR.Backend.FNA/Compat/ (same reasoning as GraphicsDeviceManager at v15).
+                    // It keeps its Microsoft.Xna.Framework.GamerServices namespace, so only the
+                    // scope differs from the rest of the GamerServices surface.
+                    existingRef.Scope = FnaBackendRef;
                 }
                 else if (existingRef.FullName
                     == "Microsoft.Xna.Framework.GamerServicesExtensions.GamerServicesComponent")
                 {
-                    //RnD
-                    existingRef.Scope = GamerServicesCompRef;
+                    // Same type, reached through the WP7 GamerServicesExtensions assembly.
+                    existingRef.Scope = FnaBackendRef;
                 }
                 else if (WprFrameworkXnaTypes.Contains(existingRef.FullName))
                 {

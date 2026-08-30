@@ -6,7 +6,7 @@ using Microsoft.Xna.Framework.Input.Touch;
 namespace WPR.Xna.Rhi
 {
 	/// <summary>
-	/// The XNA input-device seam — Stage 5c-5 (docs/STAGE5C-SCOPE.md). Backs
+	/// The XNA input-device seam — Stage 5c-5 (Plans/STAGE5C-SCOPE.md). Backs
 	/// <c>GamePad</c>/<c>Keyboard</c>/<c>Mouse</c>/<c>TextInputEXT</c>/<c>TouchPanel</c>.
 	///
 	/// <para><b>Why this is not <c>WPR.Abstractions.Input.IInputProvider</c>.</b> The original plan

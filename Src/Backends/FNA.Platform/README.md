@@ -29,7 +29,7 @@ silently or at runtime:
 
 ## What is actually left in `src/`
 
-After Stage 5c (see `Docs/STAGE5C-SCOPE.md`) this is down to the **spine** plus glue:
+After Stage 5c (see `Plans/STAGE5C-SCOPE.md`) this is down to the **spine** plus glue:
 
 - **Game loop + components** — `Game`, `GameComponent`, `DrawableGameComponent`,
   `GameServiceContainer`
@@ -65,8 +65,8 @@ Only three files are compiled — the C# bindings:
 
 The native C/C++ sources are kept for the ability to rebuild a native (patching FAudio for a
 WP7 quirk, adding an Android ABI), but **nothing in this repo builds them**. The shipped
-binaries are prebuilt: Android `.so`s under `Src/UI/WPR.UI.Android/Libraries/<abi>/`, desktop
-`.dll`s beside `Src/UI/WPR.UI.Desktop`. `lib/FNA3D` contributes no compile units at all — its
+binaries are prebuilt: Android `.so`s under `Src/Platforms/WPR.Platform.Android/Libraries/<abi>/`, desktop
+`.dll`s beside `Src/Platforms/WPR.Platform.Windows`. `lib/FNA3D` contributes no compile units at all — its
 C# binding is the checked-in `src/Graphics/FNA3D.cs`.
 
 ## Building

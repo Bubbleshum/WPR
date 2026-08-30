@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- WP7/WP8 "dark" theme palette. The Start screen and every page below it are
+       pure black by design: on the OLED phones this UI apes, black pixels were
+       literally off, which is why Metro leans on it so hard. -->
+  <color name="splash_background">#FF000000</color>
+
+  <color name="wp_background">#FF000000</color>
+  <color name="wp_foreground">#FFFFFFFF</color>
+  <!-- PhoneSubtleBrush: 60% white. Used for secondary list text and page sub-headers. -->
+  <color name="wp_subtle">#99FFFFFF</color>
+  <color name="wp_disabled">#59FFFFFF</color>
+  <!-- PhoneChromeBrush in the dark theme. Backs the app bar and unaccented tiles. -->
+  <color name="wp_chrome">#FF1F1F1F</color>
+  <color name="wp_appbar">#E6000000</color>
+  <color name="wp_divider">#33FFFFFF</color>
+  <color name="wp_pressed">#33FFFFFF</color>
+
+  <!-- Fallback accent = WP7's device default, "Cyan". The live value comes from
+       Configuration.AccentColor at runtime (WpTheme.Accent) so the Settings page
+       can repaint the whole shell; this constant only covers first run. -->
+  <color name="wp_accent">#FF1BA1E2</color>
+</resources>

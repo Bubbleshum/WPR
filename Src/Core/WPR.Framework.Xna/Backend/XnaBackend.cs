@@ -4,7 +4,7 @@ namespace WPR.Xna.Rhi
 {
 	/// <summary>
 	/// The injection point between the WPR-owned XNA runtime and a rendering backend — Stage 5c
-	/// (docs/STAGE5C-SCOPE.md). The XNA type system (WPR.Framework.Xna) references only this holder
+	/// (Plans/STAGE5C-SCOPE.md). The XNA type system (WPR.Framework.Xna) references only this holder
 	/// and <see cref="IGraphicsBackend"/>; a backend (<c>WPR.Backend.FNA</c>) calls
 	/// <see cref="SetGraphics"/> at host startup, before the game constructs its first
 	/// <c>GraphicsDevice</c>, and <see cref="Clear"/> on teardown.
@@ -27,10 +27,13 @@ namespace WPR.Xna.Rhi
 		private static IMediaBackend _media;
 		private static IInputBackend _input;
 		private static IStorageBackend _storage;
+		private static WPR.Xna.Achievements.IAchievementStore _achievements;
 		private static Func<string> _titleLocation;
 		private static Action<string> _logInfo;
 		private static Action<string> _logWarn;
 		private static Action<int, int> _backBufferSize;
+		private static Action<Action> _gameThreadPost;
+		private static Action<TimeSpan> _suppressFocusActivation;
 
 		/// <summary>True once a backend has registered a graphics implementation.</summary>
 		public static bool HasGraphics => _graphics != null;
@@ -117,6 +120,28 @@ namespace WPR.Xna.Rhi
 		public static void SetStorage(IStorageBackend backend) =>
 			_storage = backend ?? throw new ArgumentNullException(nameof(backend));
 
+		/// <summary>True once a host has registered an achievement store.</summary>
+		public static bool HasAchievements => _achievements != null;
+
+		/// <summary>
+		/// The achievement persistence backend (Stage 5e), supplied by <c>WPR.Database</c> and
+		/// registered by the launcher. Unlike the graphics/audio slots this one returns null rather
+		/// than throwing when unset: a game must still reach sign-in and play without achievements,
+		/// which is the same degradation the "no catalogue rows for this product" path already had.
+		/// GamerServices null-checks it.
+		///
+		/// <para>Deliberately NOT reset in <see cref="Clear"/>, which only clears the per-game
+		/// delegate hooks. The store is registered once by the launcher at startup, not per game,
+		/// so clearing it on teardown would silently leave the SECOND game launched without
+		/// achievements. It holds no game-ALC state to pin — WPR.Database loads in the default
+		/// context — so there is nothing for teardown to release.</para>
+		/// </summary>
+		public static WPR.Xna.Achievements.IAchievementStore? Achievements => _achievements;
+
+		/// <summary>Registers the achievement store. Called once by the host at startup.</summary>
+		public static void SetAchievements(WPR.Xna.Achievements.IAchievementStore backend) =>
+			_achievements = backend ?? throw new ArgumentNullException(nameof(backend));
+
 		/// <summary>
 		/// The title's content root — where a game's loose assets live. Backs the relative-URI branch
 		/// of <c>Song.FromUri</c> today and the content pipeline's asset rooting in 5c-4.
@@ -145,6 +170,42 @@ namespace WPR.Xna.Rhi
 
 		/// <summary>Emits a warning diagnostic through the registered sink (no-op if none).</summary>
 		public static void LogWarn(string message) => _logWarn?.Invoke(message);
+
+		/// <summary>Registers the game-thread marshaller. Called once by the host at startup.</summary>
+		public static void SetGameThreadPost(Action<Action> post) => _gameThreadPost = post;
+
+		/// <summary>
+		/// Runs <paramref name="action"/> on the game thread at the start of the next frame.
+		///
+		/// <para>GamerServices needs this because WP7 titles build achievement UI inside the
+		/// EndGetAchievements callback and call <c>Texture2D.FromStream(GraphicsDevice, …)</c> per
+		/// row; graphics resource calls are thread-affine, so running the callback on a thread-pool
+		/// continuation fails. The backend owns the game loop, so only it can marshal.</para>
+		///
+		/// <para>With no backend registered the action runs INLINE rather than being dropped. That
+		/// is the honest fallback: a host with no game loop has no next frame to wait for, and
+		/// silently discarding a completion callback would hang the caller instead.</para>
+		/// </summary>
+		public static void PostToGameThread(Action action)
+		{
+			if (action == null) return;
+			Action post = _gameThreadPost != null ? null : action;
+			_gameThreadPost?.Invoke(action);
+			post?.Invoke();
+		}
+
+		/// <summary>Registers the focus-activation suppressor. Called once by the host at startup.</summary>
+		public static void SetSuppressFocusActivation(Action<TimeSpan> suppress) =>
+			_suppressFocusActivation = suppress;
+
+		/// <summary>
+		/// Asks the host to ignore focus changes for <paramref name="window"/>. Used around an
+		/// achievement toast: the OS focus blip would otherwise drive the game's
+		/// OnDeactivated/OnActivated mid-tick, and some WP7 ports throw there (Fruit Ninja 2013
+		/// surfaces a bogus "memory error" and exits). No-op if no backend registered.
+		/// </summary>
+		public static void SuppressFocusActivation(TimeSpan window) =>
+			_suppressFocusActivation?.Invoke(window);
 
 		/// <summary>Hook to push the backbuffer size to the platform input devices (mouse/touch
 		/// faux-backbuffer scaling). The concrete Mouse/TouchPanel devices live in the backend, so
@@ -176,6 +237,8 @@ namespace WPR.Xna.Rhi
 			_logWarn = null;
 			_backBufferSize = null;
 			_titleLocation = null;
+			_gameThreadPost = null;
+			_suppressFocusActivation = null;
 		}
 	}
 }

@@ -1,0 +1,26 @@
+{
+  "solution": {
+    "path": "WPR.sln",
+    "projects": [
+      "Backends\\FNA.Platform\\FNA.Core.csproj",
+      "Backends\\WPR.Backend.FNA\\WPR.Backend.FNA.csproj",
+      "Backends\\WPR.Backend.Direct3D11\\WPR.Backend.Direct3D11.csproj",
+      "Core\\WPR.Abstractions\\WPR.Abstractions.csproj",
+      "Core\\WPR.Common\\WPR.Common.csproj",
+      "Core\\WPR.Database\\WPR.Database.csproj",
+      "Core\\WPR.Diagnostics\\WPR.Diagnostics.csproj",
+      "Core\\WPR.Framework.Devices.Location\\WPR.Framework.Devices.Location.csproj",
+      "Core\\WPR.Framework.Devices.Sensors\\WPR.Framework.Devices.Sensors.csproj",
+      "Core\\WPR.Framework.Phone\\WPR.Framework.Phone.csproj",
+      "Core\\WPR.Framework.Silverlight\\WPR.Framework.Silverlight.csproj",
+      "Core\\WPR.Framework.Xna\\WPR.Framework.Xna.csproj",
+      "Core\\WPR.Loader\\WPR.Loader.csproj",
+      "Core\\WPR.Runtime\\WPR.Runtime.csproj",
+      "Core\\WPR.SilverlightCompability.Tests\\WPR.SilverlightCompability.Tests.csproj",
+      "Tests\\WPR.Tests\\WPR.Tests.csproj",
+      "ThirdParty\\Icons.Avalonia\\src\\Projektanker.Icons.Avalonia.FontAwesome\\Projektanker.Icons.Avalonia.FontAwesome.csproj",
+      "ThirdParty\\Icons.Avalonia\\src\\Projektanker.Icons.Avalonia\\Projektanker.Icons.Avalonia.csproj",
+      "Platforms\\WPR.Platform.Windows\\WPR.Platform.Windows.csproj"
+    ]
+  }
+}

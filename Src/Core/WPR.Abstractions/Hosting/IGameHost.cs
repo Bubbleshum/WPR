@@ -16,7 +16,7 @@ public enum GameHostState
 /// Ordered phases of game teardown. The order is load-bearing: it mirrors the
 /// reflective dispose sequence in the legacy <c>ApplicationLaunch.cs</c> that exists
 /// to prevent the ALC-unload-failure, audio-keeps-playing, and duplicate-static-key
-/// regressions (see docs/STAGE5-SIZING.md Risk #1). An <see cref="IGameHost"/>
+/// regressions (see Plans/STAGE5-SIZING.md Risk #1). An <see cref="IGameHost"/>
 /// implementation MUST run these in ascending numeric order during shutdown.
 /// </summary>
 public enum TeardownPhase

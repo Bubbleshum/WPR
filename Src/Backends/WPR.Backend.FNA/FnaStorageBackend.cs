@@ -4,7 +4,7 @@ using WPR.Xna.Rhi;
 namespace WPR.Backend.FNA
 {
     /// <summary>
-    /// FNA implementation of <see cref="IStorageBackend"/> — Stage 5c-5 (docs/STAGE5C-SCOPE.md).
+    /// FNA implementation of <see cref="IStorageBackend"/> — Stage 5c-5 (Plans/STAGE5C-SCOPE.md).
     /// Forwards to FNA's <c>FNAPlatform</c> table, which resolves the SDL per-user preferences path.
     /// </summary>
     public sealed class FnaStorageBackend : IStorageBackend

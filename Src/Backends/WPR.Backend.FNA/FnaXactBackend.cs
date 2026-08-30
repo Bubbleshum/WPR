@@ -8,7 +8,7 @@ using WPR.Xna.Rhi;
 namespace WPR.Backend.FNA
 {
 	/// <summary>
-	/// FACT implementation of <see cref="IXactBackend"/> — Stage 5c-3b (docs/STAGE5C-SCOPE.md).
+	/// FACT implementation of <see cref="IXactBackend"/> — Stage 5c-3b (Plans/STAGE5C-SCOPE.md).
 	///
 	/// <para>Owns the whole FACT native surface on behalf of the WPR-owned XACT types: the runtime
 	/// parameters, notification descriptions, streaming parameters, renderer details, the 3D handle

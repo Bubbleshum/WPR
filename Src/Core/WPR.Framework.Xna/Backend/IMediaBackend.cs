@@ -18,7 +18,7 @@ namespace WPR.Xna.Rhi
 	}
 
 	/// <summary>
-	/// The XNA <c>Media</c> subsystem's backend seam — Stage 5c-3c (docs/STAGE5C-SCOPE.md). Two
+	/// The XNA <c>Media</c> subsystem's backend seam — Stage 5c-3c (Plans/STAGE5C-SCOPE.md). Two
 	/// regions: <b>song playback</b> (backs <c>MediaPlayer</c>/<c>Song</c>) and <b>video decode</b>
 	/// (backs <c>VideoPlayer</c>/<c>Video</c>).
 	///

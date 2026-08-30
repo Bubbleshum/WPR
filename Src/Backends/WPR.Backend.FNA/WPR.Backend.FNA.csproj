@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    WPR.Backend.FNA — the FNA rendering/host backend (Stage 4 / 5b, docs/ARCHITECTURE-MIGRATION.md).
+    WPR.Backend.FNA — the FNA rendering/host backend (Stage 4 / 5b, Plans/ARCHITECTURE-MIGRATION.md).
 
     This is the ONLY layer (with WPR.Backend.Direct3D11) permitted to reference FNA — see the
     fitness function's AllowedReferrers. It hosts the FNA game-loop driver (ApplicationLaunch,
@@ -36,15 +36,18 @@
     <ProjectReference Include="$(SolutionDir)Core\WPR.Abstractions\WPR.Abstractions.csproj" />
     <ProjectReference Include="$(SolutionDir)Core\WPR.Loader\WPR.Loader.csproj" />
     <ProjectReference Include="$(SolutionDir)Core\WPR.Common\WPR.Common.csproj" />
-    <ProjectReference Include="$(SolutionDir)Core\WPR.WindowsCompability\WPR.WindowsCompability.csproj" />
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Silverlight\WPR.Framework.Silverlight.csproj" />
     <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Phone\WPR.Framework.Phone.csproj" />
-    <ProjectReference Include="$(SolutionDir)Core\WPR.XnaCompabilityPatch\WPR.XnaCompability.csproj" />
+    <!-- No WPR.XnaCompability reference. It was here for GraphicsDeviceManager2, which moved into
+         this project's Compat/ folder on 2026-08-29 and lost its "2"; nothing here used the shim
+         assembly afterwards. Games still bind WPR.XnaCompability at runtime (the patcher rescopes
+         their IL to its GraphicsDevice/GraphicsAdapter display-mode overrides), but it reaches the
+         launcher output via WPR.Loader, which both platform heads reference. -->
     <ProjectReference Include="$(SolutionDir)Backends\FNA.Platform\FNA.Core.csproj" />
     <!-- The WPR-owned XNA type system (5a/5b). The backend implements its RHI seam
          (WPR.Xna.Rhi.IGraphicsBackend) — see FnaGraphicsBackend. Explicit ref (was
          transitive via FNA) now that the backend is a first-class RHI consumer. -->
     <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Xna\WPR.Framework.Xna.csproj" />
-    <ProjectReference Include="$(SolutionDir)Core\Microsoft.Xna.Framework.GamerServices\Microsoft.Xna.Framework.GamerServices.csproj" />
     <!-- Teardown must reset the accelerometer simulator's static state: a game that starts the
          accelerometer and exits without stopping it leaves a handler on a static event (pinning its
          ALC) and a 60Hz timer running. See ResetWprSingletons. -->

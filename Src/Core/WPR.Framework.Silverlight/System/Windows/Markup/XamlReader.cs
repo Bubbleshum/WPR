@@ -43,9 +43,23 @@ namespace WPR.SilverlightCompability
         private static readonly (string Namespace, Assembly Assembly)[] PresentationLookups =
         {
             ("WPR.SilverlightCompability", typeof(FrameworkElement).Assembly),
+            // Same assembly, second namespace: the types absorbed from WPR.WindowsCompability
+            // (BitmapImage, WriteableBitmap, ResourceDictionary, MessageBox, …) kept their
+            // original namespace, so terse XAML naming them under the presentation xmlns would
+            // otherwise fail to resolve even though they are right here.
+            ("WPR.WindowsCompability", typeof(FrameworkElement).Assembly),
         };
 
-        private const string SlcAssemblyName = "WPR.SilverlightCompability";
+        // The CLR namespace our Silverlight shims live in. NOT the assembly name — the assembly
+        // was renamed to WPR.Framework.Silverlight in Stage 3 and the two have differed since.
+        private const string SlcNamespace = "WPR.SilverlightCompability";
+
+        // Resolved from the running assembly rather than written as a literal, so a future
+        // rename cannot silently turn the redirects below into dead code again (which is exactly
+        // what happened when this was a literal "WPR.SilverlightCompability").
+        private static readonly string SlcAssemblyName =
+            typeof(FrameworkElement).Assembly.GetName().Name!;
+
         private const string PhoneAssemblyName = "Microsoft.Phone";
 
         /// <summary>
@@ -62,10 +76,10 @@ namespace WPR.SilverlightCompability
             {
                 ["Microsoft.Phone.Controls"] = ("Microsoft.Phone.Controls", PhoneAssemblyName),
                 ["Microsoft.Phone.Shell"] = ("Microsoft.Phone.Shell", PhoneAssemblyName),
-                ["System.Windows.Controls"] = (SlcAssemblyName, SlcAssemblyName),
-                ["System.Windows"] = (SlcAssemblyName, SlcAssemblyName),
-                ["System.Windows.Media"] = (SlcAssemblyName, SlcAssemblyName),
-                ["System.Windows.Navigation"] = (SlcAssemblyName, SlcAssemblyName),
+                ["System.Windows.Controls"] = (SlcNamespace, SlcAssemblyName),
+                ["System.Windows"] = (SlcNamespace, SlcAssemblyName),
+                ["System.Windows.Media"] = (SlcNamespace, SlcAssemblyName),
+                ["System.Windows.Navigation"] = (SlcNamespace, SlcAssemblyName),
             };
 
         public static object Load(string xaml)

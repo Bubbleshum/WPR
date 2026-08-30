@@ -16,7 +16,7 @@ namespace WPR
     /// Background: a Unity Windows-Phone title installs with <c>RuntimeType="Silverlight"</c>, so
     /// WPR treats it as a Silverlight app and boots it to the shell — where it hits the
     /// "no Direct3D content" placeholder, because Unity's engine is native ARM code we can't host
-    /// (see <c>Docs/Unity_WP8_Feasibility.md</c>). The supported route to a playable build is a
+    /// (see <c>Plans/Unity_WP8_Feasibility.md</c>). The supported route to a playable build is a
     /// one-time, per-game rebuild of the Unity project (via AssetRipper) into standalone Windows /
     /// Android binaries. Dropping those binaries plus this manifest into the install folder flips
     /// the game into "launch the port" mode on whichever platform WPR is running, so it still

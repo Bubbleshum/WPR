@@ -41,7 +41,7 @@ namespace WPR.Xna.Rhi
 
 	/// <summary>
 	/// The XACT (Cross-platform Audio Creation Tool) backend seam — Stage 5c-3b
-	/// (docs/STAGE5C-SCOPE.md). Backs the WPR-owned <c>AudioEngine</c>/<c>SoundBank</c>/
+	/// (Plans/STAGE5C-SCOPE.md). Backs the WPR-owned <c>AudioEngine</c>/<c>SoundBank</c>/
 	/// <c>WaveBank</c>/<c>Cue</c>/<c>AudioCategory</c>, which are the XNA API over the .xgs/.xsb/.xwb
 	/// projects WP7 games ship.
 	///

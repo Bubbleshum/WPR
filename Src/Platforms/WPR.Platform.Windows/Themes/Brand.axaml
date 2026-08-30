@@ -1,0 +1,44 @@
+<!--
+  WPR brand palette: colours and the brushes built from them.
+
+  Lives here rather than inline in App.axaml because each platform head
+  (WPR.Platform.Windows, WPR.Platform.Android) owns its own Application class and
+  therefore its own App.axaml. Two inline copies of this palette would drift.
+  Merged into Application.Resources by every head, so pages keep resolving
+  {StaticResource WprTextBrush} exactly as they did when it was inline.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Color x:Key="WprBg">#1b2838</Color>
+  <Color x:Key="WprBgDeep">#10151c</Color>
+  <Color x:Key="WprSidebar">#171a21</Color>
+  <Color x:Key="WprPanel">#22384f</Color>
+  <Color x:Key="WprPanelHi">#3c5d7a</Color>
+  <Color x:Key="WprPanelBorder">#2a3b4f</Color>
+  <Color x:Key="WprAccent">#66c0f4</Color>
+  <Color x:Key="WprAccentDim">#417a9b</Color>
+  <Color x:Key="WprPlay">#5ba32b</Color>
+  <Color x:Key="WprPlayHover">#71c136</Color>
+  <Color x:Key="WprText">#c7d5e0</Color>
+  <Color x:Key="WprTextDim">#8f98a0</Color>
+  <Color x:Key="WprTextStrong">#ffffff</Color>
+
+  <SolidColorBrush x:Key="WprBgBrush" Color="{StaticResource WprBg}"/>
+  <SolidColorBrush x:Key="WprBgDeepBrush" Color="{StaticResource WprBgDeep}"/>
+  <SolidColorBrush x:Key="WprSidebarBrush" Color="{StaticResource WprSidebar}"/>
+  <SolidColorBrush x:Key="WprPanelBrush" Color="{StaticResource WprPanel}"/>
+  <SolidColorBrush x:Key="WprPanelHiBrush" Color="{StaticResource WprPanelHi}"/>
+  <SolidColorBrush x:Key="WprPanelBorderBrush" Color="{StaticResource WprPanelBorder}"/>
+  <SolidColorBrush x:Key="WprAccentBrush" Color="{StaticResource WprAccent}"/>
+  <SolidColorBrush x:Key="WprAccentDimBrush" Color="{StaticResource WprAccentDim}"/>
+  <SolidColorBrush x:Key="WprPlayBrush" Color="{StaticResource WprPlay}"/>
+  <SolidColorBrush x:Key="WprPlayHoverBrush" Color="{StaticResource WprPlayHover}"/>
+  <SolidColorBrush x:Key="WprTextBrush" Color="{StaticResource WprText}"/>
+  <SolidColorBrush x:Key="WprTextDimBrush" Color="{StaticResource WprTextDim}"/>
+  <SolidColorBrush x:Key="WprTextStrongBrush" Color="{StaticResource WprTextStrong}"/>
+
+  <LinearGradientBrush x:Key="WprWindowBackdrop" StartPoint="0%,0%" EndPoint="0%,100%">
+    <GradientStop Color="#1b2838" Offset="0.0"/>
+    <GradientStop Color="#171a21" Offset="1.0"/>
+  </LinearGradientBrush>
+</ResourceDictionary>

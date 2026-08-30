@@ -253,7 +253,92 @@ namespace Microsoft.Xna.Framework.Content
 
 		#region Protected Methods
 
+		/// <summary>
+		/// If <paramref name="assetName"/> redundantly repeats <see cref="RootDirectory"/>,
+		/// return it with that prefix removed; otherwise null.
+		///
+		/// <para>XNA asset names are relative to RootDirectory, and a name that already
+		/// carries the root can never load — <c>Path.Combine</c> would ask for
+		/// <c>Content/Content/…</c>. WP7 games nevertheless produce such names on this
+		/// runtime, because a very common idiom is to build the full path with
+		/// <c>Path.Combine</c> and then strip the root back off with a <b>hardcoded
+		/// backslash</b>:</para>
+		///
+		/// <code>
+		/// // Angry Birds, u::j — the loose-file loader's ContentManager fallback
+		/// name = name.Replace(content.RootDirectory + "\\", "");
+		/// content.Load&lt;Texture2D&gt;(name);
+		/// </code>
+		///
+		/// <para>On the phone <c>Path.Combine</c> joined with <c>'\'</c>, so the Replace hit
+		/// and the name came out relative. On Android and Linux it joins with <c>'/'</c>,
+		/// the Replace matches nothing, and the game asks for
+		/// <c>Content/Content/data/images/800x480/SPLASHES_SHEET_1</c>. Angry Birds took
+		/// that load failure inside <c>Initialize</c>, left its whole scene graph
+		/// unconstructed, and then threw NullReferenceException out of every single
+		/// <c>Update</c> — a white screen with no other symptom.</para>
+		///
+		/// <para>Comparison is separator-insensitive for the same reason; the returned
+		/// substring keeps the caller's own separators, which <c>TitleContainer</c>
+		/// normalises anyway.</para>
+		/// </summary>
+		private string StripRedundantRootDirectory(string assetName)
+		{
+			string root = RootDirectory;
+			if (string.IsNullOrEmpty(root) || string.IsNullOrEmpty(assetName))
+			{
+				return null;
+			}
+
+			string normalizedRoot = root.Replace('\\', '/').TrimEnd('/');
+			string normalizedAsset = assetName.Replace('\\', '/');
+
+			if (normalizedRoot.Length == 0 ||
+			    normalizedAsset.Length <= normalizedRoot.Length + 1 ||
+			    !normalizedAsset.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase) ||
+			    normalizedAsset[normalizedRoot.Length] != '/')
+			{
+				return null;
+			}
+
+			return assetName.Substring(normalizedRoot.Length + 1);
+		}
+
 		protected virtual Stream OpenStream(string assetName)
+		{
+			try
+			{
+				return OpenStreamExact(assetName);
+			}
+			catch (ContentLoadException)
+			{
+				// Only ever a retry after the honest path has already failed, so a game that
+				// really does ship Content/Content/… keeps working and nothing else changes
+				// behaviour. See StripRedundantRootDirectory for why the name arrives doubled.
+				string relative = StripRedundantRootDirectory(assetName);
+				if (relative == null)
+				{
+					throw;
+				}
+
+				try
+				{
+					Stream stream = OpenStreamExact(relative);
+					WprDebugTrace.WriteLine(
+						"[wpr-content] OpenStream: \"" + assetName + "\" repeated RootDirectory \"" +
+						RootDirectory + "\"; loaded as \"" + relative + "\"");
+					return stream;
+				}
+				catch (ContentLoadException)
+				{
+					// The de-duplicated name is no better; report the original failure.
+				}
+
+				throw;
+			}
+		}
+
+		private Stream OpenStreamExact(string assetName)
 		{
 			Stream stream;
 			try
@@ -275,6 +360,47 @@ namespace Microsoft.Xna.Framework.Content
 				throw new ContentLoadException("Opening stream error.", exception);
 			}
 			return stream;
+		}
+
+		/// <summary>
+		/// Resolve <paramref name="assetName"/> to an on-disk raw (non-XNB) asset by probing
+		/// the extensions the reader for <typeparamref name="T"/> understands. Null when the
+		/// type has no raw form, or nothing matched. Extracted from <see cref="ReadAsset"/>
+		/// so the redundant-RootDirectory retry can run the same probe on a second name.
+		/// </summary>
+		private string NormalizeRawAssetName<T>(string assetName)
+		{
+			string candidate = MonoGame.Utilities.FileHelpers.NormalizeFilePathSeparators(
+				Path.Combine(RootDirectoryFullPath, assetName)
+			);
+
+			if (typeof(T) == typeof(Texture2D) || typeof(T) == typeof(Texture))
+			{
+				return Texture2DReader.Normalize(candidate);
+			}
+			if (typeof(T) == typeof(TextureCube))
+			{
+				return Texture2DReader.Normalize(candidate);
+			}
+			if (typeof(T) == typeof(SoundEffect))
+			{
+				return SoundEffectReader.Normalize(candidate);
+			}
+			if (typeof(T) == typeof(Effect))
+			{
+				return EffectReader.Normalize(candidate);
+			}
+			if (typeof(T) == typeof(Song))
+			{
+				return SongReader.Normalize(candidate);
+			}
+			if (typeof(T) == typeof(Video))
+			{
+				return VideoReader.Normalize(candidate);
+			}
+
+			// No raw format available, disregard!
+			return null;
 		}
 
 		protected T ReadAsset<T>(string assetName, Action<IDisposable> recordDisposableObject)
@@ -299,37 +425,24 @@ namespace Microsoft.Xna.Framework.Content
 			{
 				// Okay, so we couldn't open it. Maybe it needs a different extension?
 				// FIXME: This only works for files on the disk, what about custom streams? -flibit
-				modifiedAssetName = MonoGame.Utilities.FileHelpers.NormalizeFilePathSeparators(
-					Path.Combine(RootDirectoryFullPath, assetName)
-				);
-				if (typeof(T) == typeof(Texture2D) || typeof(T) == typeof(Texture))
+				modifiedAssetName = NormalizeRawAssetName<T>(assetName);
+
+				// Loose-file assets (a .wav with no .xnb, say) never reach OpenStream's own
+				// retry, so the redundant-root case has to be handled again here. Same rule:
+				// only after the name as given has failed to resolve.
+				if (String.IsNullOrEmpty(modifiedAssetName))
 				{
-					modifiedAssetName = Texture2DReader.Normalize(modifiedAssetName);
-				}
-				else if (typeof(T) == typeof(TextureCube))
-				{
-					modifiedAssetName = Texture2DReader.Normalize(modifiedAssetName);
-				}
-				else if ((typeof(T) == typeof(SoundEffect)))
-				{
-					modifiedAssetName = SoundEffectReader.Normalize(modifiedAssetName);
-				}
-				else if ((typeof(T) == typeof(Effect)))
-				{
-					modifiedAssetName = EffectReader.Normalize(modifiedAssetName);
-				}
-				else if ((typeof(T) == typeof(Song)))
-				{
-					modifiedAssetName = SongReader.Normalize(modifiedAssetName);
-				}
-				else if ((typeof(T) == typeof(Video)))
-				{
-					modifiedAssetName = VideoReader.Normalize(modifiedAssetName);
-				}
-				else
-				{
-					// No raw format available, disregard!
-					modifiedAssetName = null;
+					string relative = StripRedundantRootDirectory(assetName);
+					if (relative != null)
+					{
+						modifiedAssetName = NormalizeRawAssetName<T>(relative);
+						if (!String.IsNullOrEmpty(modifiedAssetName))
+						{
+							WprDebugTrace.WriteLine(
+								"[wpr-content] ReadAsset: \"" + assetName + "\" repeated RootDirectory \"" +
+								RootDirectory + "\"; loaded raw as \"" + relative + "\"");
+						}
+					}
 				}
 
 				// Did we get anything...?

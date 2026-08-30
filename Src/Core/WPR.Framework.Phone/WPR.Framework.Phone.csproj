@@ -16,7 +16,7 @@
          so patched game IL and Silverlight XAML (assembly=Microsoft.Phone) bind the REAL
          implementation directly — no forwarder shim, no ApplicationPatcher change, no reinstall.
          Project name ≠ assembly name on purpose: clean layer organisation + preserved WP7 identity
-         (see docs/ARCHITECTURE-MIGRATION.md §3). Types stay in namespace Microsoft.Phone.*;
+         (see Plans/ARCHITECTURE-MIGRATION.md §3). Types stay in namespace Microsoft.Phone.*;
          RootNamespace kept as Microsoft.Phone so resource/default-namespace logical names match. -->
     <AssemblyName>Microsoft.Phone</AssemblyName>
     <RootNamespace>Microsoft.Phone</RootNamespace>
@@ -28,6 +28,12 @@
        reference back (it would recreate the cycle these moves were meant to break). -->
   <ItemGroup>
     <ProjectReference Include="..\WPR.Framework.Silverlight\WPR.Framework.Silverlight.csproj" />
+    <!-- System.Device (assembly name of WPR.Framework.Devices.Location) — for
+         System.Device.Location.GeoCoordinate on BingMapsTask.Center. Real WP7's Microsoft.Phone.dll
+         references System.Device.dll for exactly this, so the edge mirrors the platform rather than
+         being a WPR invention. Devices.Location carries a net8.0 leg specifically so this project's
+         own net8.0 leg can resolve it. -->
+    <ProjectReference Include="..\WPR.Framework.Devices.Location\WPR.Framework.Devices.Location.csproj" />
   </ItemGroup>
 
   <!-- The test project reaches PhoneApplicationFrameView.ConvertBrush (internal). -->

@@ -2,7 +2,7 @@
 
   <!--
     WPR.Runtime — application launch / lifecycle / host coordination
-    (docs/ARCHITECTURE-MIGRATION.md, Stage 2). Upper layer of the split from the old
+    (Plans/ARCHITECTURE-MIGRATION.md, Stage 2). Upper layer of the split from the old
     `WPR` core; depends on WPR.Loader (one-way). Still references FNA + the XNA facades
     because the game-loop host (ApplicationLaunch.cs) drives them directly — that
     coupling is removed in Stage 5b when ApplicationLaunch moves behind IGameHost into
@@ -19,8 +19,6 @@
   </PropertyGroup>
   <PropertyGroup>
     <CheckEolWorkloads>false</CheckEolWorkloads>
-    <EFVersion Condition="'$(TargetFramework)' == 'net8.0-windows10.0.17763.0'">5.0.17</EFVersion>
-    <EFVersion Condition="'$(TargetFramework)' != 'net8.0-windows10.0.17763.0'">6.0.8</EFVersion>
     <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net8.0-android'">21.0</SupportedOSPlatformVersion>
     <Nullable>enable</Nullable>
   </PropertyGroup>
@@ -38,10 +36,9 @@
          moved into WPR.Backend.FNA in Stage 4, so Runtime no longer binds any FNA/XNA-runtime
          type (verified: WPR.Runtime.dll's only XNA ref is GamerServices). This completes the
          Stage-4/5b intent of making Runtime FNA-free. -->
-    <ProjectReference Include="$(SolutionDir)\Core\Microsoft.Xna.Framework.GamerServices\Microsoft.Xna.Framework.GamerServices.csproj" />
-    <ProjectReference Include="$(SolutionDir)\Core\WPR.XnaCompabilityPatch\WPR.XnaCompability.csproj" />
+    <ProjectReference Include="$(SolutionDir)\Core\WPR.Framework.Xna\WPR.Framework.Xna.csproj" />
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Framework.Phone\WPR.Framework.Phone.csproj" />
-    <ProjectReference Include="$(SolutionDir)\Core\WPR.WindowsCompability\WPR.WindowsCompability.csproj" />
+    <ProjectReference Include="$(SolutionDir)\Core\WPR.Framework.Silverlight\WPR.Framework.Silverlight.csproj" />
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Framework.Devices.Sensors\WPR.Framework.Devices.Sensors.csproj" />
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Framework.Devices.Location\WPR.Framework.Devices.Location.csproj" />
   </ItemGroup>

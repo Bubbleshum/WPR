@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Backend.Direct3D11 — the Silverlight/WinRT DrawingSurface rendering backend
+    (Stage 5e, Plans/ARCHITECTURE-MIGRATION.md §1.3).
+
+    The ADR's §1.3 finding was that WPR has TWO live rendering backends, not one: FNA drives
+    the XNA game path, and Vortice/Direct3D11 drives the Silverlight DrawingSurfaceBackgroundGrid
+    path. This project is the second one, a peer of WPR.Backend.FNA. Together they are the only
+    two assemblies permitted a backend edge — see the fitness function's AllowedReferrers.
+
+    Windows-only, unconditionally: D3D11 has no non-Windows leg, and the Vortice references it
+    replaces were already conditioned on exactly this TFM inside WPR.Framework.Silverlight.
+    The Android/net8.0 legs of that framework never had a D3D path and are unaffected — they
+    simply leave WPR.Xaml.SilverlightBackend.SurfaceRenderer null and fall through to the
+    pure-Avalonia BrandedSplashRenderer, exactly as they did before.
+
+    Direction of the reference is Backend -> Framework (same as WPR.Backend.FNA -> WPR.Framework.Xna):
+    the framework owns the ISurfaceRendererBackend seam and the IBackgroundRenderer contract; this
+    project implements them and is composed in by the launcher (WPR.Platform.Windows/ServicesSetup).
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows10.0.17763.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <!-- D3D11SurfaceRenderer maps the staging texture and copies BGRA rows through raw byte*. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AvaloniaVersion>11.3.9</AvaloniaVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Silverlight\WPR.Framework.Silverlight.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The renderers blit their finished frame into an Avalonia DrawingContext via a
+         WriteableBitmap, so the backend needs Avalonia itself — not just the framework. -->
+    <PackageReference Include="Avalonia" Version="$(AvaloniaVersion)" />
+    <!-- Vortice is the actively-maintained modern .NET binding for Direct3D 11/12. These three
+         package references used to sit in WPR.Framework.Silverlight; moving them here is the
+         whole point of Stage 5e. -->
+    <PackageReference Include="Vortice.Direct3D11" Version="3.6.2" />
+    <PackageReference Include="Vortice.DXGI" Version="3.6.2" />
+    <PackageReference Include="Vortice.D3DCompiler" Version="3.6.2" />
+  </ItemGroup>
+
+</Project>

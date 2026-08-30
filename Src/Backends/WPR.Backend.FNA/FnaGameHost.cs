@@ -55,7 +55,7 @@ namespace WPR.Backend.FNA
         {
             _state = GameHostState.Running;
 
-            // 5c-0 (docs/STAGE5C-SCOPE.md): publish the FNA graphics RHI so the WPR-owned XNA
+            // 5c-0 (Plans/STAGE5C-SCOPE.md): publish the FNA graphics RHI so the WPR-owned XNA
             // runtime (WPR.Framework.Xna) can reach the GPU through IGraphicsBackend without
             // referencing FNA. Registered here — before the game constructs its GraphicsDevice —
             // and cleared in finally (a backend registry must not outlive the run; ADR Risk #1).
@@ -69,6 +69,13 @@ namespace WPR.Backend.FNA
             XnaBackend.SetTitleLocation(() => Microsoft.Xna.Framework.TitleLocation.Path);
             XnaBackend.SetLogInfo(msg => Microsoft.Xna.Framework.FNALoggerEXT.LogInfo?.Invoke(msg));
             XnaBackend.SetLogWarn(msg => Microsoft.Xna.Framework.FNALoggerEXT.LogWarn?.Invoke(msg));
+            // GamerServices lives in WPR.Framework.Xna since patcher version 19, so it can no
+            // longer call FNA's WprGameThread / WprActivationGuard directly (FNA.Core references
+            // WPR.Framework.Xna, so a reference back would be circular). It goes through these
+            // two hooks instead — the same inversion every other slot on XnaBackend uses.
+            XnaBackend.SetGameThreadPost(Microsoft.Xna.Framework.WprGameThread.Post);
+            XnaBackend.SetSuppressFocusActivation(
+                Microsoft.Xna.Framework.WprActivationGuard.SuppressFocusActivation);
             XnaBackend.SetBackBufferSizeHook((w, h) =>
             {
                 Microsoft.Xna.Framework.Input.Mouse.INTERNAL_BackBufferWidth = w;
@@ -90,6 +97,14 @@ namespace WPR.Backend.FNA
         /// <summary><see cref="IGameHost.Run"/> — synchronous blocking conformance. Launchers use
         /// <see cref="RunAsync"/>; this exists for callers holding the interface synchronously.</summary>
         public void Run() => RunAsync().GetAwaiter().GetResult();
+
+        /// <summary>
+        /// Delivers one WP7 hardware-Back press to the running game — the same edge the desktop
+        /// head produces from Esc / SDLK_AC_BACK, i.e. <c>GamePad.Buttons.Back</c> for exactly one
+        /// frame. For hosts whose platform Back never reaches SDL as a key event (Android, where
+        /// the activity gets it); the desktop head needs no such call. Thread-safe.
+        /// </summary>
+        public void PressPhoneBackButton() => WprPhoneBackButton.Press();
 
         /// <summary>Asks the running game to exit at the next safe point. Thread-safe.</summary>
         public void RequestExit()

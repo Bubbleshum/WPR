@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One row of the games list: the tile art carried in the XAP at WPs 62px list-icon
+     size, title in the light face, runtime type and version underneath in the subtle
+     brush. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="@dimen/wp_page_margin"
+    android:paddingEnd="@dimen/wp_page_margin"
+    android:paddingTop="10dp"
+    android:paddingBottom="10dp">
+
+  <ImageView
+      android:id="@+id/gameIcon"
+      android:layout_width="@dimen/wp_list_icon"
+      android:layout_height="@dimen/wp_list_icon"
+      android:scaleType="centerCrop"
+      android:src="@drawable/wp_tile_placeholder"
+      android:contentDescription="@null" />
+
+  <LinearLayout
+      android:layout_width="0dp"
+      android:layout_weight="1"
+      android:layout_height="wrap_content"
+      android:orientation="vertical"
+      android:layout_marginStart="14dp">
+
+    <TextView
+        android:id="@+id/gameName"
+        style="@style/WpListPrimary"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+
+    <TextView
+        android:id="@+id/gameSubtitle"
+        style="@style/WpListSecondary"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="3dp" />
+  </LinearLayout>
+</LinearLayout>

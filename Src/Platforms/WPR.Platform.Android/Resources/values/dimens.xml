@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- WP7 page metrics. The 12px/24px left gutter and the 187px header block are
+       the values from the Metro design guidance, converted 1:1 to dp. -->
+  <dimen name="wp_page_margin">24dp</dimen>
+  <dimen name="wp_tile_gap">12dp</dimen>
+  <dimen name="wp_appbar_height">72dp</dimen>
+  <dimen name="wp_appbar_button">48dp</dimen>
+  <dimen name="wp_list_icon">62dp</dimen>
+</resources>

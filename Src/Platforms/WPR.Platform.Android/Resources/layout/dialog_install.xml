@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Install / repatch progress. Modelled on the WP Marketplace download sheet: name,
+     the stage the installer is in, and a flat accent bar with no rounded corners. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@color/wp_chrome"
+    android:padding="22dp">
+
+  <TextView
+      android:id="@+id/installTitle"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:fontFamily="sans-serif-light"
+      android:includeFontPadding="false"
+      android:textColor="@color/wp_foreground"
+      android:textSize="24sp" />
+
+  <TextView
+      android:id="@+id/installStage"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="6dp"
+      android:fontFamily="sans-serif"
+      android:textColor="@color/wp_subtle"
+      android:textSize="13sp"
+      android:text="preparing…" />
+
+  <ProgressBar
+      android:id="@+id/installProgress"
+      style="?android:attr/progressBarStyleHorizontal"
+      android:layout_width="match_parent"
+      android:layout_height="6dp"
+      android:layout_marginTop="16dp"
+      android:max="100"
+      android:progressDrawable="@drawable/wp_progress_track" />
+</LinearLayout>

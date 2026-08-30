@@ -9,7 +9,7 @@ namespace WPR.Tests
 {
     /// <summary>
     /// Architecture fitness function for the layered migration
-    /// (see <c>docs/ARCHITECTURE-MIGRATION.md</c>, Stage 0).
+    /// (see <c>Plans/ARCHITECTURE-MIGRATION.md</c>, Stage 0).
     ///
     /// It scans the solution's build outputs and asserts that the set of
     /// WPR-owned assemblies with a direct reference to a rendering backend
@@ -58,19 +58,44 @@ namespace WPR.Tests
                 // project itself — games are rescoped to FNA/WPR.Framework.Xna directly by the patcher,
                 // so the forwarder assemblies had no runtime consumer. GamerServices below is a REAL
                 // impl (not a facade) and stays.
-                "Microsoft.Xna.Framework.GamerServices", // -> FNA; real EF/scraper impl, de-FNA is Stage 5d
-                "Microsoft.Devices.Sensors",              // -> FNA (Vector3); built by the WPR.Framework.Devices.Sensors project, AssemblyName kept as the WP7 identity (no forwarder). De-FNA is Stage 5d. Its sibling System.Device (WPR.Framework.Devices.Location) is FNA-clean.
-                "WPR.XnaCompability",                     // patch-target lib -> FNA
-                "WPR.Framework.Silverlight",              // -> Vortice.Direct3D11 (renamed from WPR.SilverlightCompability in Stage 3)
+                // Microsoft.Xna.Framework.GamerServices was here (-> FNA for GameComponent).
+                // Removed 2026-08-30: the assembly no longer exists. Its 42 API types moved into
+                // WPR.Framework.Xna, and the single FNA-derived type — GamerServicesComponent,
+                // which subclasses FNA's spine GameComponent — moved to WPR.Backend.FNA/Compat/,
+                // where a backend reference is expected rather than a leak. That was the whole of
+                // the "de-FNA is Stage 5d" work this entry was holding open.
+                // (ApplicationPatcher.Version 19, reinstall-forcing.)
+                // Microsoft.Devices.Sensors was here (-> FNA for Vector3). Removed 2026-08-29
+                // (Stage 5d): Vector3 has lived in WPR.Framework.Xna since 5a, so the project now
+                // references that directly instead of reaching it through FNA.Core. Its sibling
+                // System.Device (WPR.Framework.Devices.Location) was always FNA-clean.
+
+                // WPR.XnaCompability was here (-> FNA). The assembly no longer exists at all:
+                // its FNA-derived type (the WP7 GraphicsDeviceManager override) moved to
+                // WPR.Backend.FNA/Compat/, and its remaining two — the GraphicsDevice /
+                // GraphicsAdapter display-mode overrides, which only ever subclassed WPR-owned
+                // types — moved to WPR.Framework.Xna as WPR.Xna.Compat.*. Project deleted
+                // 2026-08-29 (ApplicationPatcher.Version 16, reinstall-forcing).
+
+                // WPR.Framework.Silverlight was here (-> Vortice.Direct3D11/DXGI/D3DCompiler).
+                // Removed 2026-08-29 (Stage 5e): the three D3D11 renderers moved into the new
+                // WPR.Backend.Direct3D11 — the second backend the ADR §1.3 called for — and the
+                // framework now sees only the ISurfaceRendererBackend seam, filled in by the
+                // launcher. This was the last non-spine leak in the baseline.
 
                 // Surfaced by this fitness test itself (not a direct FNA
                 // ProjectReference — FNA types flow in through the WPR core and
-                // are used in these assemblies' IL). WPR.UI is shared UI that
-                // should end up FNA-free (burn down); WPR.UI.Android is a launcher
-                // and, once split into WPR.Android, moves to AllowedReferrers.
-                // Reclassified at Stage 6/7.
-                "WPR.UI",
-                "WPR.UI.Android",
+                // are used in these assemblies' IL). Both are the platform heads.
+                // These are ASSEMBLY names: as of 2026-08-29 both heads were renamed
+                // (WPR.UI.Desktop -> WPR.Platform.Windows, WPR.UI.Android ->
+                // WPR.Platform.Android), so project and assembly now agree for both.
+                // The launchers and XNA tilt components that used to sit in the shared
+                // WPR.UI project moved into the Windows head when that project was
+                // dissolved, taking its FNA usage with them.
+                // Both leak only spine types (Game/GameComponent/GameWindow), so they
+                // clear with the spine stage, not at Stage 6/7 as first thought.
+                "WPR.Platform.Windows",
+                "WPR.Platform.Android",
             };
 
         [Fact]
@@ -82,7 +107,7 @@ namespace WPR.Tests
                 "Could not locate WPR.sln above the test output directory " +
                 $"('{AppContext.BaseDirectory}').");
 
-            var searchRoots = new[] { "Core", "UI", "Backends" }
+            var searchRoots = new[] { "Core", "Backends", "Platforms" }
                 .Select(s => Path.Combine(srcDir!, s))
                 .Where(Directory.Exists)
                 .ToList();
@@ -125,7 +150,7 @@ namespace WPR.Tests
 
             Assert.True(
                 scanned > 0,
-                "No WPR-owned assemblies were found under Core/ or UI/ bin folders. " +
+                "No WPR-owned assemblies were found under Core/, Backends/ or Platforms/ bin folders. " +
                 "Build the whole solution in your IDE before running this fitness test.");
 
             var offenders = backendRefs

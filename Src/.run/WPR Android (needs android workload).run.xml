@@ -1,0 +1,21 @@
+<component name="ProjectRunConfigurationManager">
+  <!--
+    Builds and deploys the Android head to the selected device or emulator.
+
+    Prerequisites are in the name on purpose. Without the .NET android workload installed
+    *for the 8.0 band* this fails with NETSDK1147, and without Android SDK platform 34 it
+    fails looking for android.jar. Neither error explains itself, and neither is something a
+    run configuration can fix - see README "Android" for the setup.
+
+    This configuration only resolves when Src/WPR.sln or Src/WPR.Android.slnf is open.
+    WPR.Windows.slnf deliberately leaves WPR.Platform.Android out, so it shows as broken
+    there. That is expected, not a bad checkout.
+  -->
+  <configuration name="WPR Android (needs android workload)" type="XamarinAndroidProject" factoryName="Xamarin.Android">
+    <option name="PROJECT_PATH" value="$PROJECT_DIR$/Platforms/WPR.Platform.Android/WPR.Platform.Android.csproj" />
+    <option name="PROGRAM_PARAMETERS" value="" />
+    <option name="TARGET_SELECTION_MODE" value="DEVICE_AND_SNAPSHOT_COMBO_BOX" />
+    <option name="DEPLOY_BEHAVIOUR_NAME" value="Default" />
+    <method v="2" />
+  </configuration>
+</component>

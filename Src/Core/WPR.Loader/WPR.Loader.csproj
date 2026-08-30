@@ -2,9 +2,9 @@
 
   <!--
     WPR.Loader — discovery / install / IL-patch / assembly-synthesis + the EF-Core
-    catalogue DB (docs/ARCHITECTURE-MIGRATION.md, Stage 2). Lower layer of the split
+    catalogue DB (Plans/ARCHITECTURE-MIGRATION.md, Stage 2). Lower layer of the split
     from the old `WPR` core. FNA-free at the code level (FNA arrives only transitively
-    via the GamerServices/XnaCompability project refs used by the patcher/seeder).
+    via the GamerServices/Framework.Xna project refs used by the patcher/seeder).
     Types remain in `namespace WPR` (+ WPR.Models) — the split is by assembly, not
     namespace, so consumers compile unchanged.
   -->
@@ -19,16 +19,48 @@
   </PropertyGroup>
   <PropertyGroup>
     <CheckEolWorkloads>false</CheckEolWorkloads>
-    <EFVersion Condition="'$(TargetFramework)' == 'net8.0-windows10.0.17763.0'">5.0.17</EFVersion>
-    <EFVersion Condition="'$(TargetFramework)' != 'net8.0-windows10.0.17763.0'">6.0.8</EFVersion>
     <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net8.0-android'">21.0</SupportedOSPlatformVersion>
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- CVE-2021-24112 / GHSA-rxg9-xrhp-64gj (CRITICAL, CVSS 9.8): System.Drawing.Common 5.0.0
+         through 5.0.2 allows remote code execution when parsing crafted graphics files, on
+         Linux/macOS only. FFMpegCore 4.8.0 below depends on exactly 5.0.2. Pinned to the patched
+         5.0.3 for EVERY TFM.
+
+         It was android-only at first, because Microsoft.Windows.Compatibility 6.0.0 used to pull
+         the windows leg up to 6.0.0 (above the affected range) as a side effect. That package was
+         removed from GamerServices on 2026-08-30 as unused — which dropped windows straight back
+         onto FFMpegCore's 5.0.2 and re-opened the Critical. Hence: no TFM condition here. Do not
+         re-add one on the assumption that windows is covered by something else.
+
+         5.0.3 rather than 6.0.0+, even on windows where either would do: System.Drawing.Common
+         6.0.0 made every non-Windows platform throw PlatformNotSupportedException unless the
+         System.Drawing.EnableUnixSupport runtimeconfig switch is set, and 7.0+ dropped non-Windows
+         support outright. Android is non-Windows, so 6.0.0 could turn a working FFMpegCore path
+         into a runtime throw. 5.0.3 is the smallest change that closes the CVE on both legs and
+         keeps them on one version. -->
+    <PackageReference Include="System.Drawing.Common" Version="5.0.3" />
     <PackageReference Include="FFMpegCore" Version="4.8.0" />
+    <!-- CVE-2024-43485 / GHSA-8g4q-xg66-9fp4 (High, CVSS 8.8): System.Text.Json 6.0.0-6.0.9 —
+         algorithmic-complexity DoS on models with a [JsonExtensionData] property. FFMpegCore 4.8.0
+         above depends on 6.0.2. The windows leg was incidentally lifted to 8.0.6 by the vendored
+         Projektanker.Icons.Avalonia.FontAwesome, but android does not reference that project, so it
+         kept shipping 6.0.2 — pinned here, where FFMpegCore actually lives, so both legs are
+         covered by the same reference. Fix landed in 8.0.5. -->
+    <PackageReference Include="System.Text.Json" Version="8.0.6" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="$(EFVersion)" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="$(EFVersion)" />
+    <!-- CVE-2025-6965 / GHSA-2m69-gcr7-jv3q (High, CVSS 7.2): the native SQLite bundled by
+         SQLitePCLRaw <= 2.1.11 is affected by a memory-corruption bug (aggregate terms can exceed
+         the available columns; CWE-197), fixed in SQLite 3.50.2. EF Core Sqlite pulls
+         SQLitePCLRaw.bundle_e_sqlite3 2.0.4 transitively, which drags lib.e_sqlite3 with it.
+         Pinned to 2.1.13, above the advisory's affected range; the bundle lifts core,
+         lib.e_sqlite3 and provider.dynamic_cdecl together, so one pin covers all of them.
+         Note the advisory itself lists "no patched version" — that field is stale, its affected
+         range stops at 2.1.11 and the maintainer has shipped 2.1.12/2.1.13 since. -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.13" />
     <PackageReference Include="Mono.Cecil" Version="0.11.4" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
     <PackageReference Include="System.Reactive" Version="5.0.0" />
@@ -37,10 +69,17 @@
   <ItemGroup>
     <ProjectReference Condition="'$(TargetFramework)' == 'net8.0-android'" Include="$(SolutionDir)\JavaBindings\com.arthenica.ffmpegkit\com.arthenica.ffmpegkit.csproj" />
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Common\WPR.Common.csproj" />
-    <ProjectReference Include="$(SolutionDir)\Core\WPR.WindowsCompability\WPR.WindowsCompability.csproj" />
-    <ProjectReference Include="$(SolutionDir)\Core\WPR.XnaCompabilityPatch\WPR.XnaCompability.csproj" />
-    <ProjectReference Include="$(SolutionDir)\Core\WPR.StandardCompability\WPR.StandardCompability.csproj" />
-    <ProjectReference Include="$(SolutionDir)\Core\Microsoft.Xna.Framework.GamerServices\Microsoft.Xna.Framework.GamerServices.csproj" />
+    <!-- The catalogue schema (WPR.Models.ApplicationContext / Application / ApplicationType) and
+         its migrations moved to Core/WPR.Database on 2026-08-30. Namespaces are unchanged, so the
+         code here compiles as before — only the assembly boundary moved. -->
+    <ProjectReference Include="$(SolutionDir)\Core\WPR.Database\WPR.Database.csproj" />
+    <ProjectReference Include="$(SolutionDir)\Core\WPR.Framework.Silverlight\WPR.Framework.Silverlight.csproj" />
+    <!-- The WPR-owned XNA type system. Needed at compile time for the two typeof(...) entries in
+         ApplicationPatcher.MemberPatches (WPR.Xna.Compat.GraphicsDevice / GraphicsAdapter, the WP7
+         display-mode overrides). Replaced the WPR.XnaCompability project reference when that
+         project was deleted on 2026-08-29 and its last two types moved here. No cycle:
+         WPR.Framework.Xna references nothing. -->
+    <ProjectReference Include="$(SolutionDir)\Core\WPR.Framework.Xna\WPR.Framework.Xna.csproj" />
   </ItemGroup>
 
 </Project>

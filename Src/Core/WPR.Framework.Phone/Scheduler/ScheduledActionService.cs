@@ -29,5 +29,18 @@ namespace Microsoft.Phone.Scheduler
 
             Actions.Add(action.Name!, action);
         }
+
+        /// <summary>
+        /// Unschedule a named action. Real WP7 throws
+        /// <see cref="InvalidOperationException"/> when the name isn't scheduled, but games
+        /// routinely call Remove unguarded to clear a stale agent before re-adding it —
+        /// Kinectimals does exactly that in Main.MainGame.RemoveAgent — so removing a name that
+        /// was never added is treated as success. Throwing here would turn a defensive cleanup
+        /// call into a crash.
+        /// </summary>
+        public static void Remove(string name)
+        {
+            Actions.Remove(name);
+        }
     }
 }

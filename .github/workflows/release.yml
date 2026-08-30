@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version, e.g. 0.0.18 (no leading v)"
+        description: "Version, e.g. 0.1.0 (no leading v). Overrides $(WprVersion) from Src/Directory.Build.props."
         required: true
         type: string
       android_version_code:
@@ -85,7 +85,7 @@ jobs:
       - name: Publish (self-contained win-x64)
         shell: pwsh
         run: >
-          dotnet publish Src/UI/WPR.UI.Desktop/WPR.UI.Desktop.csproj
+          dotnet publish Src/Platforms/WPR.Platform.Windows/WPR.Platform.Windows.csproj
           -c Release
           -f net8.0-windows10.0.17763.0
           -r win-x64
@@ -99,13 +99,29 @@ jobs:
 
       # The csproj's "Copy pre-made database" target is AfterTargets="Build" and
       # writes to $(OutputPath), so it never reaches the publish folder.
+      #
+      # Source path moved 2026-08-30: Src/Database -> Src/Core/WPR.Database/Data when the
+      # database was centralised into its own project. The assertions below exist because a
+      # stale path here is the difference between a working installer and one that ships with
+      # no catalogue at all — the app would install and then fail on first run.
       - name: Stage pre-made database
         shell: pwsh
         run: |
+          $src = "Src/Core/WPR.Database/Data"
+          if (-not (Test-Path $src)) { throw "seed database source '$src' not found - has it moved again?" }
+
           New-Item -ItemType Directory -Force publish/desktop/Database | Out-Null
-          Copy-Item Src/Database/* publish/desktop/Database -Recurse -Force
-          if (-not (Test-Path publish/desktop/WPR.UI.Desktop.exe)) {
-            throw "publish succeeded but WPR.UI.Desktop.exe is missing"
+          Copy-Item "$src/*" publish/desktop/Database -Recurse -Force
+
+          foreach ($f in @("applications.db", "achievements.db")) {
+            if (-not (Test-Path "publish/desktop/Database/$f")) { throw "staged payload is missing $f" }
+          }
+          $catalogues = (Get-ChildItem publish/desktop/Database/Achievements -Directory -ErrorAction SilentlyContinue).Count
+          if ($catalogues -lt 1) { throw "staged payload has no achievement catalogues" }
+          Write-Host "Staged both databases and $catalogues achievement catalogues."
+
+          if (-not (Test-Path publish/desktop/WPR.Platform.Windows.exe)) {
+            throw "publish succeeded but WPR.Platform.Windows.exe is missing"
           }
 
       - name: Install Inno Setup
@@ -191,11 +207,12 @@ jobs:
           fi
 
           # A plain Release *build* stops short of packaging, hence SignAndroidPackage.
-          dotnet build Src/UI/WPR.UI.Android/WPR.UI.Android.csproj \
+          dotnet build Src/Platforms/WPR.Platform.Android/WPR.Platform.Android.csproj \
             -c Release \
             -f net8.0-android34.0 \
             -t:SignAndroidPackage \
             -p:SolutionDir="$GITHUB_WORKSPACE/Src/" \
+            -p:IncludeAndroidTargets=true \
             -p:ApplicationDisplayVersion="$VERSION" \
             -p:ApplicationVersion="$VERSION_CODE" \
             -p:EmbedAssembliesIntoApk=true \
@@ -210,7 +227,7 @@ jobs:
           VERSION: ${{ needs.validate.outputs.version }}
         run: |
           mkdir -p dist
-          BIN=Src/UI/WPR.UI.Android/bin/Release/net8.0-android34.0
+          BIN=Src/Platforms/WPR.Platform.Android/bin/Release/net8.0-android34.0
           APK=$(ls "$BIN"/*-Signed.apk 2>/dev/null | head -1)
           if [[ -z "$APK" ]]; then
             echo "::error::no signed APK produced in $BIN"
@@ -235,28 +252,119 @@ jobs:
     if: ${{ inputs.publish_release }}
     runs-on: ubuntu-latest
     steps:
+      # Checkout FIRST, before download-artifact. actions/checkout cleans the workspace by
+      # default, so running it after the download would delete dist/ and the release would
+      # publish with no files attached.
+      #
+      # fetch-depth: 0 because the changelog below walks git history; the default shallow
+      # single-commit fetch would produce an empty log.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
 
-      # Notes go via a file: a quoted heredoc keeps backticks and pipes literal,
-      # which an inline --notes string does not.
-      - name: Write release notes
+      # Release notes are generated from the commits since the previous v* tag, grouped by
+      # Conventional-Commit prefix. The repo does not use those prefixes consistently — plenty of
+      # commits are plain sentences — so anything unrecognised lands under "Other changes" rather
+      # than being dropped. Merge commits are skipped.
+      #
+      # First release (no previous tag) walks the whole history, which is why the range is chosen
+      # rather than hardcoded to a tag that may not exist.
+      - name: Generate release notes
         env:
           VERSION: ${{ needs.validate.outputs.version }}
         run: |
-          cat > notes.md <<'EOF'
-          Prebuilt WPR __VERSION__.
+          set -euo pipefail
 
-          | Download | Platform |
-          | --- | --- |
-          | `WPR-Setup-__VERSION__.exe` | Windows x64 — self-contained, no .NET install required |
-          | `WPR-__VERSION__.apk` | Android — API 21+, arm64-v8a / x86_64 |
+          PREV=$(git tag --list 'v*' --sort=-v:refname | head -1 || true)
+          if [[ -n "$PREV" ]]; then
+            RANGE="$PREV..HEAD"
+            COMPARE="Changes since [$PREV](https://github.com/$GITHUB_REPOSITORY/releases/tag/$PREV)."
+          else
+            RANGE=""
+            COMPARE="First tagged release — this summarises the history to date."
+          fi
 
-          Built from commit __SHA__.
-          EOF
-          sed -i "s/__VERSION__/$VERSION/g; s/__SHA__/$GITHUB_SHA/g" notes.md
+          # Subject lines only, oldest first, merges excluded.
+          git log --no-merges --reverse --pretty=format:'%s' ${RANGE:+$RANGE} > raw.txt || true
+          printf '\n' >> raw.txt
+
+          # Two clean-ups the real history needs:
+          #  * drop placeholder subjects ("." and friends) — there are a dozen of them;
+          #  * cap length. One commit has an entire multi-paragraph body as its subject
+          #    (no blank line after the summary), which would otherwise swallow the notes.
+          awk 'NF' raw.txt \
+            | grep -vE '^[[:space:]]*\.*[[:space:]]*$' \
+            | awk 'length($0) > 3' \
+            | cut -c1-140 \
+            > commits.txt || true
+          echo "changelog: $(wc -l < commits.txt) usable commits in range '${RANGE:-<all history>}'"
+
+          CONV='^(feat|fix|perf|chore|build|ci|refactor|test|style|docs)(\([^)]*\))?!?:'
+
+          emit() {          # emit <heading> <regex> [max]
+            local heading="$1" pattern="$2" max="${3:-0}" body total
+            body=$(grep -iE "$pattern" commits.txt | sed -E 's/^[a-zA-Z]+(\([^)]*\))?!?:[[:space:]]*//' || true)
+            if [[ -z "$body" ]]; then return 0; fi   # not `&&` : under set -e a false test aborts the script
+            total=$(printf '%s\n' "$body" | wc -l)
+            if [[ "$max" -gt 0 && "$total" -gt "$max" ]]; then
+              printf '### %s\n\n%s\n\n_…and %d more._\n\n' \
+                "$heading" "$(printf '%s\n' "$body" | head -"$max" | sed 's/^/- /')" "$((total - max))" >> body.md
+            else
+              printf '### %s\n\n%s\n\n' "$heading" "$(printf '%s\n' "$body" | sed 's/^/- /')" >> body.md
+            fi
+          }
+
+          : > body.md
+          emit "Features"    '^feat(\([^)]*\))?!?:'
+          emit "Fixes"       '^fix(\([^)]*\))?!?:'
+          emit "Performance" '^perf(\([^)]*\))?!?:'
+          emit "Chores"      '^(chore|build|ci|refactor|test|style|docs)(\([^)]*\))?!?:'
+          # Unprefixed commits still matter — this repo only partly uses Conventional Commits —
+          # but they are the noisiest, so they are capped. grep -E has no negative lookahead,
+          # hence the inverted match rather than an emit() call.
+          OTHER=$(grep -ivE "$CONV" commits.txt || true)
+          if [[ -n "$OTHER" ]]; then
+            OTHER_N=$(printf '%s\n' "$OTHER" | wc -l)
+            if [[ "$OTHER_N" -gt 20 ]]; then
+              printf '### Other changes\n\n%s\n\n_…and %d more._\n\n' \
+                "$(printf '%s\n' "$OTHER" | head -20 | sed 's/^/- /')" "$((OTHER_N - 20))" >> body.md
+            else
+              printf '### Other changes\n\n%s\n\n' "$(printf '%s\n' "$OTHER" | sed 's/^/- /')" >> body.md
+            fi
+          fi
+
+          [[ -s body.md ]] || printf '_No changes recorded._\n\n' > body.md
+
+          # A hand-written summary for this version, if one exists. A generated commit list is
+          # fine for a patch release but says little useful about a large one, so an optional
+          # Docs/ReleaseNotes/<version>.md is prepended as "Highlights" when present.
+          HIGHLIGHTS="Docs/ReleaseNotes/$VERSION.md"
+          if [[ -f "$HIGHLIGHTS" ]]; then
+            echo "changelog: prepending curated highlights from $HIGHLIGHTS"
+          else
+            echo "changelog: no $HIGHLIGHTS found - generated commit list only"
+          fi
+
+          {
+            printf 'Prebuilt WPR %s.\n\n' "$VERSION"
+            printf '| Download | Platform |\n| --- | --- |\n'
+            printf '| `WPR-Setup-%s.exe` | Windows x64 — self-contained, no .NET install required |\n' "$VERSION"
+            printf '| `WPR-%s.apk` | Android — API 21+, arm64-v8a / x86_64 |\n\n' "$VERSION"
+            printf "## What's changed\n\n%s\n\n" "$COMPARE"
+            if [[ -f "$HIGHLIGHTS" ]]; then
+              printf '## Highlights\n\n'
+              cat "$HIGHLIGHTS"
+              printf '\n## All changes\n\n'
+            fi
+            cat body.md
+            printf 'Built from commit %s.\n' "$GITHUB_SHA"
+          } > notes.md
+
           cat notes.md
 
       - name: Create GitHub Release

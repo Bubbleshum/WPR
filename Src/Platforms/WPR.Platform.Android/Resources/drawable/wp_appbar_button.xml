@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- WP7 app-bar buttons are a 2px white ring with a transparent centre; pressing one
+     fills the ring with the theme accent. The pressed fill is re-tinted at runtime
+     (WpTheme.ApplyAppBarButton) so it tracks the user's chosen accent colour. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+  <item android:state_pressed="true">
+    <shape android:shape="oval">
+      <solid android:color="@color/wp_accent" />
+      <stroke android:width="2dp" android:color="@color/wp_foreground" />
+    </shape>
+  </item>
+  <item>
+    <shape android:shape="oval">
+      <solid android:color="#00000000" />
+      <stroke android:width="2dp" android:color="@color/wp_foreground" />
+    </shape>
+  </item>
+</selector>

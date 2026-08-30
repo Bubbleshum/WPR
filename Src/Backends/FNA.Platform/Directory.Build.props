@@ -1,4 +1,13 @@
 <Project>
+  <!--
+    Nearest-wins: this file shadows Src/Directory.Build.props for everything under
+    FNA.Platform, so it must import the parent explicitly. Without the import,
+    $(SolutionDir) is undefined here and FNA.Core.csproj cannot resolve
+    $(SolutionDir)Core\WPR.Framework.Xna - the build then cascades into CS0246 on
+    every XNA type unless the caller passes -p:SolutionDir= by hand.
+  -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
   <PropertyGroup Condition="$(MSBuildProjectName.Contains('FNA.Core'))">
     <BaseIntermediateOutputPath>obj_core\</BaseIntermediateOutputPath>
   </PropertyGroup>

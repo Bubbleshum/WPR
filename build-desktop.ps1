@@ -1,12 +1,12 @@
 <#
 .SYNOPSIS
-    Builds the WPR desktop app (WPR.UI.Desktop) into a runnable folder under Artifacts\.
+    Builds the WPR desktop app (WPR.Platform.Windows) into a runnable folder under Artifacts\.
 
 .DESCRIPTION
     Wraps the CLI build recipe documented in CLAUDE.md:
       * explicit TFM so the broken Android leg is never touched
       * -maxcpucount:1 -nodeReuse:false to dodge the MSBuild CS0006 race
-      * uses the system .NET at "C:\Program Files\dotnet" (repo global.json pins 8.0.421)
+      * uses the system .NET at "C:\Program Files\dotnet" (repo global.json pins the 8.0 band)
 
     By default it runs `dotnet publish` into Artifacts\desktop\<Configuration>, then
     copies Src\Database\** alongside the exe. That copy is needed because the csproj's
@@ -24,7 +24,7 @@
     Bundle the .NET runtime (win-x64). Much larger output, runs without .NET installed.
 
 .PARAMETER NoPublish
-    Only `dotnet build`; leaves output in Src\UI\WPR.UI.Desktop\bin\<Configuration>\<tfm>.
+    Only `dotnet build`; leaves output in Src\Platforms\WPR.Platform.Windows\bin\<Configuration>\<tfm>.
 
 .PARAMETER Clean
     Delete the output directory before building.
@@ -53,7 +53,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$Project = Join-Path $Root 'Src\UI\WPR.UI.Desktop\WPR.UI.Desktop.csproj'
+$Project = Join-Path $Root 'Src\Platforms\WPR.Platform.Windows\WPR.Platform.Windows.csproj'
 $DatabaseDir = Join-Path $Root 'Src\Database'
 $Tfm = 'net8.0-windows10.0.17763.0'
 
@@ -84,11 +84,11 @@ try {
     $sdkVersion = & $Dotnet --version
     Write-Host "SDK           : $sdkVersion  ($Dotnet)" -ForegroundColor DarkGray
     if ($sdkVersion -notlike '8.*') {
-        Write-Warning "global.json pins 8.0.421 but the resolved SDK is $sdkVersion. Build may behave unexpectedly."
+        Write-Warning "global.json pins the .NET 8.0 band but the resolved SDK is $sdkVersion. Install the .NET 8 SDK: https://dotnet.microsoft.com/download/dotnet/8.0"
     }
 
     if ($NoPublish) {
-        $OutputDir = Join-Path $Root "Src\UI\WPR.UI.Desktop\bin\$Configuration\$Tfm"
+        $OutputDir = Join-Path $Root "Src\Platforms\WPR.Platform.Windows\bin\$Configuration\$Tfm"
     }
     elseif ([string]::IsNullOrWhiteSpace($OutputDir)) {
         # Self-contained gets its own folder: `dotnet publish -o` does not clear the
@@ -155,7 +155,7 @@ try {
         }
     }
 
-    $exe = Join-Path $OutputDir 'WPR.UI.Desktop.exe'
+    $exe = Join-Path $OutputDir 'WPR.Platform.Windows.exe'
     if (-not (Test-Path $exe)) {
         throw "Build reported success but $exe is missing."
     }

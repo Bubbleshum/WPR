@@ -300,6 +300,27 @@ namespace Microsoft.Xna.Framework
 				);
 			}
 
+			/* WPR: on Android, keep SDL's hands off the hardware Back button.
+			 * Left at SDL's default ("0") a Back press is "handled as usual for
+			 * the system": SDLActivity finishes the activity, which for us kills
+			 * the game process — Back quits the game outright. On WP7 Back is a
+			 * *game* input (one frame of GamePad.Buttons.Back, see PollEvents)
+			 * that titles use to walk back through their own screens, exiting
+			 * only at the root. Trapping it hands the press to WPR instead,
+			 * whichever way it arrives: natively as SDLK_AC_BACK when SDL's
+			 * surface consumed the key, or via GameActivity.OnBackPressed →
+			 * WprPhoneBackButton.Press when the activity got it. This also stops
+			 * SDL's own native back path (SDLActivity.manualBackButton →
+			 * super.onBackPressed), which bypasses GameActivity's override.
+			 */
+			if (OSVersion.Equals("Android"))
+			{
+				SDL.SDL_SetHint(
+					SDL.SDL_HINT_ANDROID_TRAP_BACK_BUTTON,
+					"1"
+				);
+			}
+
 
 			// Set any hints to match XNA4 behavior...
 			string hint = SDL.SDL_GetHint(SDL.SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS);
@@ -934,7 +955,12 @@ namespace Microsoft.Xna.Framework
 			// Update does KEY_STATUS|=BACK whenever Buttons.Back==1) registered ONE Esc press
 			// as MANY Backs, cascading through menus into the pause menu. Clearing per frame
 			// (rather than on KEYUP) is also immune to a dropped KEYUP on focus loss.
-			PhoneBackButtonPressed = false;
+			//
+			// Draining WprPhoneBackButton here (rather than just clearing) folds in presses that
+			// never reached SDL as a key event: on Android the system Back key is dispatched to
+			// the activity, not to SDL's surface, so GameActivity.OnBackPressed queues it there.
+			// Consuming the queue is what keeps that path one-frame as well.
+			PhoneBackButtonPressed = WprPhoneBackButton.ConsumePending();
 
 			while (SDL.SDL_PollEvent(out evt) == 1)
 			{

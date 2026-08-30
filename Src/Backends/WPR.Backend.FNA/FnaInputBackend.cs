@@ -9,7 +9,7 @@ using FNAPlatform = Microsoft.Xna.Framework.FNAPlatform;
 namespace WPR.Backend.FNA
 {
     /// <summary>
-    /// FNA implementation of <see cref="IInputBackend"/> — Stage 5c-5 (docs/STAGE5C-SCOPE.md).
+    /// FNA implementation of <see cref="IInputBackend"/> — Stage 5c-5 (Plans/STAGE5C-SCOPE.md).
     ///
     /// <para>A straight forward to FNA's <c>FNAPlatform</c> delegate table, which SDL2 populates at
     /// static-init. Deliberately calls the table rather than SDL directly: the table is where FNA's

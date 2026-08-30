@@ -85,6 +85,17 @@ namespace Microsoft.Devices.Sensors
             Stop();
         }
 
+        /// <summary>
+        /// Releasing the accelerometer just means stopping it — there is no unmanaged handle on
+        /// either backend. <see cref="Stop"/> is already idempotent via <c>_Started</c>, so a
+        /// double dispose is harmless.
+        /// </summary>
+        protected override void Dispose(bool disposing)
+        {
+            Stop();
+            base.Dispose(disposing);
+        }
+
         public event EventHandler<AccelerometerReadingEventArgs>? ReadingChanged;
 
         public SensorState State { get; private set; }

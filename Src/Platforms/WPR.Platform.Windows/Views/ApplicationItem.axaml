@@ -1,0 +1,82 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="48"
+             x:Class="WPR.Platform.Windows.Views.ApplicationView">
+  <Grid ColumnDefinitions="40,*,Auto" Background="Transparent" ToolTip.Tip="{Binding Tooltip}" Height="44">
+    <Grid.ContextMenu>
+      <ContextMenu>
+        <MenuItem Header="Run" Command="{Binding RunAppCommand}" IsVisible="{Binding IsInstalled}"/>
+        <MenuItem Header="Install" Command="{Binding InstallAppCommand}" IsVisible="{Binding IsAvailable}"/>
+        <MenuItem Header="Edit..." Command="{Binding EditAppCommand}" IsVisible="{Binding IsEditable}"/>
+        <MenuItem Header="Uninstall" Command="{Binding UninstallAppCommand}" IsVisible="{Binding IsInstalled}"/>
+      </ContextMenu>
+    </Grid.ContextMenu>
+
+    <Border Grid.Column="0"
+            Width="32" Height="32"
+            CornerRadius="3"
+            ClipToBounds="True"
+            VerticalAlignment="Center"
+            HorizontalAlignment="Left">
+      <Image Source="{Binding Icon}" Stretch="UniformToFill"/>
+    </Border>
+
+    <StackPanel Grid.Column="1"
+                Orientation="Vertical"
+                VerticalAlignment="Center"
+                Margin="4,0,0,0"
+                Spacing="1">
+      <TextBlock Text="{Binding Name}"
+                 FontSize="13"
+                 Foreground="{DynamicResource WprTextBrush}"
+                 TextTrimming="CharacterEllipsis"/>
+      <!-- Installed/available rows show the author here.
+           In-flight installs replace the author line with a slim progress bar
+           so the user gets at-a-glance feedback in the library list. -->
+      <TextBlock Text="{Binding Author}"
+                 FontSize="11"
+                 Foreground="{DynamicResource WprTextDimBrush}"
+                 TextTrimming="CharacterEllipsis"
+                 IsVisible="{Binding !IsInstalling}"/>
+      <ProgressBar Minimum="0" Maximum="100"
+                   Height="3"
+                   Margin="0,3,0,0"
+                   Value="{Binding Progress}"
+                   IsVisible="{Binding IsInstalling}"/>
+    </StackPanel>
+
+    <Border Grid.Column="2"
+            Margin="6,0,0,0"
+            Padding="6,2"
+            CornerRadius="3"
+            VerticalAlignment="Center"
+            Background="#0e151c"
+            BorderBrush="{StaticResource WprAccentBrush}"
+            BorderThickness="1"
+            IsVisible="{Binding IsAvailable}">
+      <TextBlock Text="INSTALL"
+                 FontSize="9"
+                 LetterSpacing="1"
+                 Foreground="{StaticResource WprAccentBrush}"/>
+    </Border>
+
+    <!-- Right-column "INSTALLING" pill mirrors the "INSTALL" badge layout
+         so column 2 stays the same width across all three row states. -->
+    <Border Grid.Column="2"
+            Margin="6,0,0,0"
+            Padding="6,2"
+            CornerRadius="3"
+            VerticalAlignment="Center"
+            Background="#0e151c"
+            BorderBrush="{StaticResource WprAccentBrush}"
+            BorderThickness="1"
+            IsVisible="{Binding IsInstalling}">
+      <TextBlock Text="INSTALLING"
+                 FontSize="9"
+                 LetterSpacing="1"
+                 Foreground="{StaticResource WprAccentBrush}"/>
+    </Border>
+  </Grid>
+</UserControl>

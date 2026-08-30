@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Start screen. Tile heights are square and set in code (StartActivity.LayoutTiles)
+     from the measured content width, so the grid keeps WP's 1:1 tile proportion on any
+     display without a pile of size buckets. -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/wp_background"
+    android:fillViewport="true"
+    android:scrollbars="none">
+
+  <LinearLayout
+      android:id="@+id/startRoot"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:orientation="vertical"
+      android:paddingStart="@dimen/wp_page_margin"
+      android:paddingEnd="@dimen/wp_page_margin"
+      android:paddingTop="28dp"
+      android:paddingBottom="32dp">
+
+    <TextView
+        android:id="@+id/appTitle"
+        style="@style/WpAppTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="WINDOWS PHONE RUNTIME" />
+
+    <TextView
+        android:id="@+id/pageTitle"
+        style="@style/WpPageTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:layout_marginBottom="22dp"
+        android:text="start" />
+
+    <!-- Row 1: wide "games" tile -->
+    <FrameLayout
+        android:id="@+id/tileGames"
+        android:layout_width="match_parent"
+        android:layout_height="160dp"
+        android:clickable="true"
+        android:focusable="true">
+
+      <ImageView
+          android:layout_width="34dp"
+          android:layout_height="34dp"
+          android:layout_gravity="top|start"
+          android:layout_margin="14dp"
+          android:src="@drawable/ic_wp_games"
+          android:contentDescription="@null" />
+
+      <TextView
+          android:id="@+id/tileGamesCount"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:layout_gravity="top|end"
+          android:layout_margin="12dp"
+          android:fontFamily="sans-serif-light"
+          android:includeFontPadding="false"
+          android:textColor="@color/wp_foreground"
+          android:textSize="46sp"
+          android:text="0" />
+
+      <TextView
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:layout_gravity="bottom|start"
+          android:layout_margin="12dp"
+          android:fontFamily="sans-serif"
+          android:textColor="@color/wp_foreground"
+          android:textSize="17sp"
+          android:text="games" />
+    </FrameLayout>
+
+    <!-- Row 2 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="@dimen/wp_tile_gap">
+
+      <FrameLayout
+          android:id="@+id/tileAdd"
+          android:layout_width="0dp"
+          android:layout_weight="1"
+          android:layout_height="160dp"
+          android:clickable="true"
+          android:focusable="true">
+        <ImageView
+            android:layout_width="34dp" android:layout_height="34dp"
+            android:layout_gravity="top|start" android:layout_margin="14dp"
+            android:src="@drawable/ic_wp_add" android:contentDescription="@null" />
+        <TextView
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_gravity="bottom|start" android:layout_margin="12dp"
+            android:fontFamily="sans-serif" android:textColor="@color/wp_foreground"
+            android:textSize="17sp" android:text="add game" />
+      </FrameLayout>
+
+      <View android:layout_width="@dimen/wp_tile_gap" android:layout_height="1dp" />
+
+      <FrameLayout
+          android:id="@+id/tileAchievements"
+          android:layout_width="0dp"
+          android:layout_weight="1"
+          android:layout_height="160dp"
+          android:clickable="true"
+          android:focusable="true">
+        <ImageView
+            android:layout_width="34dp" android:layout_height="34dp"
+            android:layout_gravity="top|start" android:layout_margin="14dp"
+            android:src="@drawable/ic_wp_trophy" android:contentDescription="@null" />
+        <TextView
+            android:id="@+id/tileAchievementsCount"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_gravity="top|end" android:layout_margin="12dp"
+            android:fontFamily="sans-serif-light" android:includeFontPadding="false"
+            android:textColor="@color/wp_foreground" android:textSize="34sp" android:text="0" />
+        <TextView
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_gravity="bottom|start" android:layout_margin="12dp"
+            android:fontFamily="sans-serif" android:textColor="@color/wp_foreground"
+            android:textSize="17sp" android:text="achievements" />
+      </FrameLayout>
+    </LinearLayout>
+
+    <!-- Row 3 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="@dimen/wp_tile_gap">
+
+      <FrameLayout
+          android:id="@+id/tileSettings"
+          android:layout_width="0dp"
+          android:layout_weight="1"
+          android:layout_height="160dp"
+          android:clickable="true"
+          android:focusable="true">
+        <ImageView
+            android:layout_width="34dp" android:layout_height="34dp"
+            android:layout_gravity="top|start" android:layout_margin="14dp"
+            android:src="@drawable/ic_wp_settings" android:contentDescription="@null" />
+        <TextView
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_gravity="bottom|start" android:layout_margin="12dp"
+            android:fontFamily="sans-serif" android:textColor="@color/wp_foreground"
+            android:textSize="17sp" android:text="settings" />
+      </FrameLayout>
+
+      <View android:layout_width="@dimen/wp_tile_gap" android:layout_height="1dp" />
+
+      <FrameLayout
+          android:id="@+id/tileAbout"
+          android:layout_width="0dp"
+          android:layout_weight="1"
+          android:layout_height="160dp"
+          android:clickable="true"
+          android:focusable="true">
+        <ImageView
+            android:layout_width="34dp" android:layout_height="34dp"
+            android:layout_gravity="top|start" android:layout_margin="14dp"
+            android:src="@drawable/ic_wp_info" android:contentDescription="@null" />
+        <TextView
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_gravity="bottom|start" android:layout_margin="12dp"
+            android:fontFamily="sans-serif" android:textColor="@color/wp_foreground"
+            android:textSize="17sp" android:text="about" />
+      </FrameLayout>
+    </LinearLayout>
+
+  </LinearLayout>
+</ScrollView>

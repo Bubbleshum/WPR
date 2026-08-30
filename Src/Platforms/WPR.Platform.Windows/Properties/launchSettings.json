@@ -1,0 +1,16 @@
+{
+  "profiles": {
+    "WPR.Platform.Windows": {
+      "commandName": "Project",
+      "nativeDebugging": true
+    },
+    "Repatch installed games": {
+      "commandName": "Project",
+      "commandLineArgs": "--repatch-installed"
+    },
+    "Reinstall all library games": {
+      "commandName": "Project",
+      "commandLineArgs": "--reinstall-all"
+    }
+  }
+}

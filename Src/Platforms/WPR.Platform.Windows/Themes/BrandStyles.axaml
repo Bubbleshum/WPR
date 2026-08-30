@@ -1,0 +1,134 @@
+<!--
+  WPR shared control styles (typography, buttons, search box, library list,
+  sidebar tabs). Extracted from App.axaml alongside Brand.axaml so both platform
+  heads get one copy - see the comment in Brand.axaml.
+
+  FluentTheme and DialogHostStyles are deliberately NOT here: they are
+  application-level infrastructure, and each head declares them in its own
+  App.axaml so a head can pick a different base theme without editing shared code.
+
+  Styles.Resources merges Brand.axaml so the {StaticResource Wpr...} references
+  below resolve from this file's own scope, independently of whether the head
+  also merged the palette into Application.Resources. Duplicate keys across the
+  two scopes are harmless - the lookup stops at the first hit.
+-->
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Styles.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://WPR.Platform.Windows/Themes/Brand.axaml"/>
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Styles.Resources>
+
+  <Style Selector="Label">
+    <Setter Property="Foreground" Value="{StaticResource WprTextBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.h1">
+    <Setter Property="FontSize" Value="32"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Foreground" Value="{StaticResource WprTextStrongBrush}"/>
+  </Style>
+  <Style Selector="TextBlock.h2">
+    <Setter Property="FontSize" Value="20"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Foreground" Value="{StaticResource WprTextStrongBrush}"/>
+  </Style>
+  <Style Selector="TextBlock.eyebrow">
+    <Setter Property="FontSize" Value="11"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Foreground" Value="{StaticResource WprTextDimBrush}"/>
+    <Setter Property="LetterSpacing" Value="2"/>
+  </Style>
+  <Style Selector="TextBlock.body">
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="Foreground" Value="{StaticResource WprTextBrush}"/>
+    <Setter Property="LineHeight" Value="20"/>
+  </Style>
+  <Style Selector="TextBlock.dim">
+    <Setter Property="FontSize" Value="12"/>
+    <Setter Property="Foreground" Value="{StaticResource WprTextDimBrush}"/>
+  </Style>
+
+  <Style Selector="Button.play">
+    <Setter Property="Background" Value="{StaticResource WprPlayBrush}"/>
+    <Setter Property="Foreground" Value="White"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="FontSize" Value="14"/>
+    <Setter Property="Padding" Value="32,12"/>
+    <Setter Property="CornerRadius" Value="3"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Cursor" Value="Hand"/>
+  </Style>
+  <Style Selector="Button.play:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource WprPlayHoverBrush}"/>
+  </Style>
+
+  <Style Selector="Button.ghost">
+    <Setter Property="Background" Value="#2a475e"/>
+    <Setter Property="Foreground" Value="{StaticResource WprTextBrush}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Padding" Value="16,8"/>
+    <Setter Property="CornerRadius" Value="3"/>
+    <Setter Property="Cursor" Value="Hand"/>
+  </Style>
+  <Style Selector="Button.ghost:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="#3c5d7a"/>
+  </Style>
+
+  <Style Selector="TextBox.search">
+    <Setter Property="Background" Value="#0e151c"/>
+    <Setter Property="Foreground" Value="{StaticResource WprTextBrush}"/>
+    <Setter Property="BorderBrush" Value="#0e151c"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="3"/>
+    <Setter Property="Padding" Value="10,8"/>
+    <Setter Property="FontSize" Value="13"/>
+  </Style>
+  <Style Selector="TextBox.search:focus">
+    <Setter Property="BorderBrush" Value="{StaticResource WprAccentBrush}"/>
+  </Style>
+
+  <Style Selector="ListBox.library">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Padding" Value="0"/>
+  </Style>
+  <Style Selector="ListBox.library ListBoxItem">
+    <Setter Property="Padding" Value="8,4"/>
+    <Setter Property="Margin" Value="4,1"/>
+    <Setter Property="CornerRadius" Value="3"/>
+    <Setter Property="Cursor" Value="Hand"/>
+  </Style>
+  <Style Selector="ListBox.library ListBoxItem:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="#22384f"/>
+  </Style>
+  <Style Selector="ListBox.library ListBoxItem:selected /template/ ContentPresenter">
+    <Setter Property="Background" Value="#2a4f6e"/>
+  </Style>
+  <Style Selector="ListBox.library ListBoxItem:selected:focus /template/ ContentPresenter">
+    <Setter Property="Background" Value="#2a4f6e"/>
+  </Style>
+
+  <Style Selector="TabControl.sidebar">
+    <Setter Property="Background" Value="{StaticResource WprSidebarBrush}"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="BorderThickness" Value="0"/>
+  </Style>
+  <Style Selector="TabControl.sidebar TabItem">
+    <Setter Property="Foreground" Value="{StaticResource WprTextDimBrush}"/>
+    <Setter Property="FontSize" Value="11"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="MinHeight" Value="0"/>
+    <Setter Property="Margin" Value="0"/>
+    <Setter Property="Cursor" Value="Hand"/>
+  </Style>
+  <Style Selector="TabControl.sidebar TabItem:pointerover">
+    <Setter Property="Foreground" Value="{StaticResource WprTextBrush}"/>
+  </Style>
+  <Style Selector="TabControl.sidebar TabItem:selected">
+    <Setter Property="Foreground" Value="{StaticResource WprAccentBrush}"/>
+  </Style>
+</Styles>

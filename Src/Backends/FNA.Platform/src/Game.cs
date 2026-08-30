@@ -1406,7 +1406,7 @@ namespace Microsoft.Xna.Framework
 			// gather metrics or save state here and frequently NRE when the user closes
 			// during early boot — e.g. Tentacles' MetricsSender.CreateTearDownExtendedKeys
 			// dereferences GlobalManager.Instance.currentProfile, which is null until the
-			// preloader finishes. Catch + log so the host (WPR.UI.Desktop) doesn't show its
+			// preloader finishes. Catch + log so the host (WPR.Platform.Windows) doesn't show its
 			// "unexpected error" dialog every time the user closes a game that's still
 			// initialising. The process is exiting anyway.
 			try

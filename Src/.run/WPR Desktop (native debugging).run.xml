@@ -1,0 +1,33 @@
+<component name="ProjectRunConfigurationManager">
+  <!--
+    The desktop head with mixed-mode (managed + native) debugging turned on.
+
+    The everyday desktop run does NOT need this file. The profiles in
+    Platforms/WPR.Platform.Windows/Properties/launchSettings.json already appear in the run
+    dropdown by themselves, and the same profiles work in Visual Studio and from the CLI via
+    "dotnet run" with the launch-profile switch. This configuration exists because mixed-mode
+    debugging is the one thing a launchSettings profile cannot express for Rider: the
+    profile's "nativeDebugging" key is Visual Studio only, and Rider reads MIXED_MODE_DEBUG
+    from the run configuration instead.
+
+    Reach for this when a crash lands inside SDL2.dll / FNA3D.dll / FAudio.dll / FNWP72.dll
+    rather than in managed code. It costs noticeably slower startup, which is why it is a
+    separate entry rather than the default.
+  -->
+  <configuration name="WPR Desktop (native debugging)" type="LaunchSettings" factoryName=".NET Launch Settings Profile">
+    <option name="LAUNCH_PROFILE_PROJECT_FILE_PATH" value="$PROJECT_DIR$/Platforms/WPR.Platform.Windows/WPR.Platform.Windows.csproj" />
+    <option name="LAUNCH_PROFILE_TFM" value="net8.0-windows10.0.17763.0" />
+    <option name="LAUNCH_PROFILE_NAME" value="WPR.Platform.Windows" />
+    <option name="USE_MONO" value="0" />
+    <option name="RUNTIME_ARGUMENTS" value="" />
+    <option name="GENERATE_APPLICATIONHOST_CONFIG" value="1" />
+    <option name="SHOW_IIS_EXPRESS_OUTPUT" value="0" />
+    <option name="SEND_DEBUG_REQUEST" value="1" />
+    <option name="ADDITIONAL_IIS_EXPRESS_ARGUMENTS" value="" />
+    <option name="AUTO_ATTACH_CHILDREN" value="0" />
+    <option name="MIXED_MODE_DEBUG" value="1" />
+    <method v="2">
+      <option name="Build" />
+    </method>
+  </configuration>
+</component>

@@ -10,7 +10,7 @@ namespace WPR.Backend.FNA
 {
 	/// <summary>
 	/// FNA implementation of the graphics RHI seam (<see cref="IGraphicsBackend"/>) — Stage 5c-0
-	/// (docs/STAGE5C-SCOPE.md). Every member forwards to FNA's internal <c>FNA3D</c> P/Invoke class
+	/// (Plans/STAGE5C-SCOPE.md). Every member forwards to FNA's internal <c>FNA3D</c> P/Invoke class
 	/// (reachable via <c>[InternalsVisibleTo("WPR.Backend.FNA")]</c> on FNA), so FNA's own DllImport
 	/// resolver (FNADllMap) fires for the native calls. Compound state structs cross the seam as the
 	/// layout-identical <see cref="WPR.Xna.Rhi"/> <c>Rhi*</c> structs and are converted here by field

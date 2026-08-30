@@ -104,7 +104,7 @@ namespace WPR.Xna.Rhi
 	}
 
 	/// <summary>
-	/// The audio backend seam — Stage 5c-3 (docs/STAGE5C-SCOPE.md). The WPR-owned XNA audio types
+	/// The audio backend seam — Stage 5c-3 (Plans/STAGE5C-SCOPE.md). The WPR-owned XNA audio types
 	/// (<c>SoundEffect</c>/<c>SoundEffectInstance</c>/<c>DynamicSoundEffectInstance</c>) drive playback
 	/// through this instead of calling FAudio, so they carry no native dependency.
 	///

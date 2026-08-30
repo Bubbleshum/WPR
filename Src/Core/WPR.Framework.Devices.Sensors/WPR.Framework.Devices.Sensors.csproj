@@ -5,11 +5,13 @@
     Organised in the WPR.Framework.* layer, but its OUTPUT ASSEMBLY keeps the game-facing identity
     <AssemblyName>Microsoft.Devices.Sensors</AssemblyName> so patched game IL binds the REAL
     implementation directly — no forwarder shim, no ApplicationPatcher change, no reinstall
-    (see docs/ARCHITECTURE-MIGRATION.md §3). Namespaces stay Microsoft.Devices.Sensors.*.
+    (see Plans/ARCHITECTURE-MIGRATION.md §3). Namespaces stay Microsoft.Devices.Sensors.*.
 
-    The FNA reference (AccelerometerReading.Acceleration is Microsoft.Xna.Framework.Vector3) is the
-    known Stage-5d leak — this assembly stays in the fitness baseline (as Microsoft.Devices.Sensors)
-    until owned math types land.
+    De-FNA'd 2026-08-29 (Stage 5d). AccelerometerReading.Acceleration is a
+    Microsoft.Xna.Framework.Vector3, which Stage 5a moved out of FNA into WPR.Framework.Xna — so
+    this project references the owning assembly directly instead of reaching it transitively
+    through FNA.Core. Nothing else here touches an FNA type, so the assembly is backend-clean
+    and is no longer in the BackendIsolationTests baseline. Do not re-add an FNA edge.
   -->
 
   <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
@@ -34,7 +36,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="$(SolutionDir)\Backends\FNA.Platform\FNA.Core.csproj" />
+    <ProjectReference Include="$(SolutionDir)\Core\WPR.Framework.Xna\WPR.Framework.Xna.csproj" />
   </ItemGroup>
 
 </Project>

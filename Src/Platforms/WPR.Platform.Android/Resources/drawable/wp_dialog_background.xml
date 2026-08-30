@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Flat panel for the shell dialogs. Material's default dialog background is a rounded,
+     elevated card; WP context menus and prompts were square-cornered slabs of the chrome
+     brush. The inset replaces the margin the platform drawable supplied. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:insetLeft="16dp"
+    android:insetRight="16dp"
+    android:insetTop="16dp"
+    android:insetBottom="16dp">
+  <shape android:shape="rectangle">
+    <solid android:color="@color/wp_chrome" />
+  </shape>
+</inset>

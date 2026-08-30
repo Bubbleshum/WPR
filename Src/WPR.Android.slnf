@@ -1,0 +1,26 @@
+{
+  "solution": {
+    "path": "WPR.sln",
+    "projects": [
+      "Backends\\FNA.Platform\\FNA.Core.csproj",
+      "Backends\\WPR.Backend.FNA\\WPR.Backend.FNA.csproj",
+      "Core\\WPR.Abstractions\\WPR.Abstractions.csproj",
+      "Core\\WPR.Common\\WPR.Common.csproj",
+      "Core\\WPR.Database\\WPR.Database.csproj",
+      "Core\\WPR.Diagnostics\\WPR.Diagnostics.csproj",
+      "Core\\WPR.Framework.Devices.Location\\WPR.Framework.Devices.Location.csproj",
+      "Core\\WPR.Framework.Devices.Sensors\\WPR.Framework.Devices.Sensors.csproj",
+      "Core\\WPR.Framework.Phone\\WPR.Framework.Phone.csproj",
+      "Core\\WPR.Framework.Silverlight\\WPR.Framework.Silverlight.csproj",
+      "Core\\WPR.Framework.Xna\\WPR.Framework.Xna.csproj",
+      "Core\\WPR.Loader\\WPR.Loader.csproj",
+      "Core\\WPR.Runtime\\WPR.Runtime.csproj",
+      "JavaBindings\\Org.Libsdl.App\\Org.Libsdl.App.csproj",
+      "JavaBindings\\com.arthenica.ffmpegkit\\com.arthenica.ffmpegkit.csproj",
+      "JavaBindings\\com.arthenica.smartexception.java\\com.arthenica.smartexception.java.csproj",
+      "JavaBindings\\com.arthenica.smartexception\\com.arthenica.smartexception.csproj",
+      "Platforms\\WPR.Platform.Android\\WPR.Platform.Android.csproj",
+      "ThirdParty\\assembly-store-reader\\assembly-store-reader.csproj"
+    ]
+  }
+}

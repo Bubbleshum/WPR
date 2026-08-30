@@ -5,7 +5,7 @@
     Organised in the WPR.Framework.* layer, but its OUTPUT ASSEMBLY keeps the game-facing identity
     <AssemblyName>System.Device</AssemblyName> so patched game IL and any reflection/XAML that names
     the assembly bind the REAL implementation directly — no forwarder shim, no ApplicationPatcher
-    change, no reinstall (see docs/ARCHITECTURE-MIGRATION.md §3). Namespaces stay System.Device.*.
+    change, no reinstall (see Plans/ARCHITECTURE-MIGRATION.md §3). Namespaces stay System.Device.*.
 
     FNA-free: unlike the Sensors sibling this assembly has no backend edge, so it is NOT in the
     fitness baseline.
@@ -17,7 +17,14 @@
   </PropertyGroup>
   <PropertyGroup Condition=" '$(OS)' == 'Windows_NT' ">
     <CheckEolWorkloads>false</CheckEolWorkloads>
-    <TargetFrameworks>net8.0-windows10.0.17763.0;net8.0-android</TargetFrameworks>
+    <!-- net8.0 is in this list even on Windows, unlike its sibling WPR.Framework.Devices.Sensors.
+         WPR.Framework.Phone multi-targets net8.0 (the SL test project consumes that leg) and
+         references this project for System.Device.Location.GeoCoordinate, so a Windows build
+         without a net8.0 leg here fails Phone's net8.0 inner build with no compatible TFM.
+         Costs nothing: every source file in this project is portable — no Windows API, no
+         conditional compilation — which is exactly why the non-Windows list above already
+         builds net8.0. Sensors does NOT need this; nothing references it from a net8.0 leg. -->
+    <TargetFrameworks>net8.0;net8.0-windows10.0.17763.0;net8.0-android</TargetFrameworks>
   </PropertyGroup>
   <PropertyGroup>
     <CheckEolWorkloads>false</CheckEolWorkloads>

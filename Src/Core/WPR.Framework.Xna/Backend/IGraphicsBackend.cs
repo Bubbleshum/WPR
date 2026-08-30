@@ -7,7 +7,7 @@ namespace WPR.Xna.Rhi
 {
 	/// <summary>
 	/// The graphics RHI (rendering hardware interface) seam — Stage 5c
-	/// (docs/STAGE5C-SCOPE.md). The WPR-owned XNA runtime
+	/// (Plans/STAGE5C-SCOPE.md). The WPR-owned XNA runtime
 	/// (<c>GraphicsDevice</c>/<c>SpriteBatch</c>/<c>Texture2D</c>/<c>Effect</c>/buffers/states)
 	/// issues every GPU operation through this interface instead of calling native code, so the
 	/// XNA type system stays backend-agnostic. A rendering backend implements it:

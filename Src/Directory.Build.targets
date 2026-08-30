@@ -1,0 +1,130 @@
+<Project>
+
+  <!--
+    ============================================================================
+    Android leg gating  (see README "Building without the Android workload")
+    ============================================================================
+
+    18 projects in this repo multi-target `net8.0-android` alongside their
+    desktop TFM. MSBuild builds *every* TFM of a project reference, so on a
+    machine without the .NET Android workload installed the android leg fails
+    (NETSDK1147 "the following workloads must be installed: android") and takes
+    the desktop build down with it - a fresh clone cannot build WPR.Platform.Windows
+    at all, even though the desktop app needs nothing from Android.
+
+    So: detect the workload, and drop `*-android` from $(TargetFrameworks) when
+    it is not there. Desktop-only contributors get a working clone with nothing
+    beyond the .NET 8 SDK; machines that DO have the workload are unaffected.
+
+    Override explicitly with -p:IncludeAndroidTargets=true|false (it also works
+    as an environment variable). build-android.ps1, build-android.sh and
+    .github/workflows/release.yml all pass `true`, so the Android build never
+    depends on detection succeeding.
+
+    Why .targets and not .props: .props is imported before the project body, so
+    it cannot see - let alone rewrite - a $(TargetFrameworks) that the csproj
+    sets itself. .targets is imported after the body, and the inner-build list
+    is expanded from the property later still, at execution time.
+
+    Why a property function and not an item glob: MSBuild forbids item
+    references (@(...)) in properties and property conditions outside a target,
+    so the detection has to be a [System.IO.Directory] call.
+  -->
+
+  <!-- The API level `net8.0-android` resolves to. Microsoft locked this per
+       .NET band and it is not negotiable: net8.0-android -> API 34,
+       net9.0 -> 35, net10.0 -> 36. Moving off 34 means moving the whole repo
+       to net10 + Avalonia 12 (Avalonia.Android skipped .NET 9 entirely), so
+       this stays 34 until that migration happens. -->
+  <PropertyGroup>
+    <WprAndroidApiLevel Condition=" '$(WprAndroidApiLevel)' == '' ">34</WprAndroidApiLevel>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(IncludeAndroidTargets)' == '' ">
+
+    <!-- dotnet root: NetCoreRoot when the SDK defines it, else derived from
+         $(MSBuildExtensionsPath), which is <dotnet-root>/sdk/<version>. -->
+    <_WprDotnetRoot Condition=" '$(NetCoreRoot)' != '' ">$([MSBuild]::EnsureTrailingSlash('$(NetCoreRoot)'))</_WprDotnetRoot>
+    <_WprDotnetRoot Condition=" '$(_WprDotnetRoot)' == '' ">$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(MSBuildExtensionsPath)/../..'))))</_WprDotnetRoot>
+
+    <!-- Detection: the API-34 *reference* pack specifically.
+
+         Do NOT relax this to a Microsoft.Android.Sdk.* glob. `dotnet workload
+         install android` installs into whichever SDK band resolves at the time,
+         and the bands do not share packs. Install it under .NET 10 (e.g. by
+         running the command from a directory where this repo's global.json does
+         not apply) and packs/ fills up with Microsoft.Android.Sdk.Windows/36.x
+         and Microsoft.Android.Ref.36 while the 8.0 band still has no android
+         workload at all - `dotnet workload list` under 8.0.4xx prints nothing.
+         A glob reports "installed", the android legs get built, and all 14
+         multi-targeting projects fail NETSDK1147 "workloads must be installed:
+         android" from an SDK whose packs/ is visibly full of android.
+
+         The ref pack for the API level we actually target is the honest signal:
+         it exists only if the workload was installed for a band that can build
+         net8.0-android. Fix a false negative with
+             dotnet workload install android, run from the repo root so that
+             global.json pins the resolved SDK to the 8.0 band (there is no
+             flag for this - the band follows the resolved SDK).
+
+         Deliberately NOT checking sdk-manifests/ - workload *manifests* ship
+         with the SDK whether or not the workload is installed, so that would
+         report true on every machine. -->
+    <_WprPacksDir>$(_WprDotnetRoot)packs</_WprPacksDir>
+    <_WprAndroidRefPack>$(_WprPacksDir)\Microsoft.Android.Ref.$(WprAndroidApiLevel)</_WprAndroidRefPack>
+
+    <IncludeAndroidTargets>false</IncludeAndroidTargets>
+    <IncludeAndroidTargets Condition=" Exists('$(_WprAndroidRefPack)') ">true</IncludeAndroidTargets>
+
+  </PropertyGroup>
+
+  <!-- Strip the android legs.
+
+       The [MSBuild]::Unescape below is load-bearing, not decoration. MSBuild
+       *escapes* the return value of a property function, so Regex::Replace hands
+       back "net8.0%3bnet8.0-windows10.0.17763.0" - a single value carrying an
+       escaped semicolon, no longer a list. $(TargetFrameworks) still reads
+       correctly in a Message or a Condition, which is what makes this so
+       confusing, but _ComputeTargetFrameworkItems (in the SDK's
+       Microsoft.Common.CrossTargeting.targets) cannot split it, so every inner
+       build is launched with TargetFramework set to the entire string. Its
+       moniker comes back "Unsupported,Version=v0.0", nearest-TFM matching fails,
+       and every ProjectReference to a multi-targeting project dies with
+         "Project '...\WPR.Framework.Phone.csproj' targets
+          'net8.0;net8.0-windows10.0.17763.0'. It cannot be referenced by a
+          project that targets '.NETCoreApp,Version=v8.0'."
+       - an error naming two frameworks that are in fact compatible, so it reads
+       as nonsense and sends you hunting a TFM mismatch that isn't there.
+
+       Verify a change here with:
+         dotnet msbuild <proj> -getTargetResult:GetTargetFrameworks
+       TargetFrameworkMonikers must read ".NETCoreApp,Version=v8.0" once per
+       remaining TFM. If it reads "Unsupported,Version=v0.0", the list got
+       re-escaped somewhere. -->
+  <PropertyGroup Condition=" '$(IncludeAndroidTargets)' != 'true' and '$(TargetFrameworks)' != '' ">
+    <_WprTargetFrameworksNoAndroid>$([System.Text.RegularExpressions.Regex]::Replace('$(TargetFrameworks)', '(^|;)net[0-9.]+-android[^;]*', ''))</_WprTargetFrameworksNoAndroid>
+    <_WprTargetFrameworksNoAndroid>$([MSBuild]::Unescape($(_WprTargetFrameworksNoAndroid.Trim(';'))))</_WprTargetFrameworksNoAndroid>
+
+    <!-- Never strip a project down to nothing: an android-only project that
+         spells its TFM as <TargetFrameworks>net8.0-android</TargetFrameworks>
+         would end up with an empty list, which fails far from here. Those
+         projects (WPR.Platform.Android, the Java bindings) are excluded from
+         WPR.Windows.slnf instead. -->
+    <TargetFrameworks Condition=" '$(_WprTargetFrameworksNoAndroid)' != '' ">$(_WprTargetFrameworksNoAndroid)</TargetFrameworks>
+  </PropertyGroup>
+
+  <!-- Announce the decision once, on the entry project, so a detection miss
+       shows up as this line rather than as a baffling
+       "project does not target net8.0-android" further down. -->
+  <Target Name="_WprReportAndroidGating"
+          BeforeTargets="Build"
+          Condition=" '$(MSBuildProjectName)' == 'WPR.Platform.Windows' ">
+    <Message Importance="high"
+             Condition=" '$(IncludeAndroidTargets)' != 'true' "
+             Text="WPR: .NET Android workload for API $(WprAndroidApiLevel) not detected - net8.0-android targets skipped (desktop build unaffected). To build Android: run 'dotnet workload install android' from the repo root, so global.json pins it to the $(NETCoreSdkVersion) band. To override: -p:IncludeAndroidTargets=true" />
+    <Message Importance="normal"
+             Condition=" '$(IncludeAndroidTargets)' == 'true' "
+             Text="WPR: .NET Android workload detected - net8.0-android targets included." />
+  </Target>
+
+</Project>

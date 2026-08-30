@@ -17,7 +17,6 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using WPR.XnaCompability;
 
 namespace WPR
 {
@@ -282,6 +281,10 @@ namespace WPR
 
             // Setting game folder path
             WindowsCompability.Application.Current.ProductId = app.ProductId;
+            // Same value on the neutral ambient holder. GamerServices reads it from here rather
+            // than off the Silverlight Application shim, so the XNA layer needs no dependency on
+            // the Silverlight/Avalonia stack. Both are set so either host path behaves identically.
+            WPR.Common.WprHostEnvironment.CurrentProductId = app.ProductId;
             // Derive fresh (never through CurrentProductFolder — that would return the PREVIOUS
             // launch's captured folder), then pin it for the rest of this launch INCLUDING teardown,
             // where the singleton it is derived from has already been reset.
@@ -541,7 +544,7 @@ namespace WPR
                     TouchPanel.MouseAsTouch = true;
 #endif
 
-                    GraphicsDeviceManager2.RequestOrientation = requestOrientation;
+                    WPR.Backend.FNA.Compat.GraphicsDeviceManager.RequestOrientation = requestOrientation;
                     GamerServicesDispatcher.WindowHandle = obj.Window.Handle;
 
                     WprTrace("[wpr-trace] ApplicationLaunch: subscribing to obj.Activated");
@@ -573,7 +576,7 @@ namespace WPR
                     {
                         manager.PreparingDeviceSettings += (obj, args) =>
                         {
-                            GraphicsDeviceManager2.RequestOrientationChange(
+                            WPR.Backend.FNA.Compat.GraphicsDeviceManager.RequestOrientationChange(
                                 args.GraphicsDeviceInformation.PresentationParameters.BackBufferWidth,
                                 args.GraphicsDeviceInformation.PresentationParameters.BackBufferHeight
                             );
@@ -675,7 +678,7 @@ namespace WPR
                     // just the game: FNA creates the window on this thread, which is a thread-POOL
                     // thread, and a pool thread returns to the pool instead of exiting — so Windows
                     // never auto-destroys the thread's windows the way it would for a real thread exit.
-                    // The result is a visible top-level window of WPR.UI.Desktop.exe with nothing
+                    // The result is a visible top-level window of WPR.Platform.Windows.exe with nothing
                     // pumping its messages, and Windows terminates the whole process as hung
                     // ("Application Hang", Hang Type 0x8000000). Confirmed for Storm in a Teacup: a live
                     // class="SDL_app" window remained after a clean teardown, which also pinned the ALC.

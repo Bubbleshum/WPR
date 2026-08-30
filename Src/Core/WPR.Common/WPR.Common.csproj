@@ -5,7 +5,13 @@
   </PropertyGroup>
   <PropertyGroup Condition=" '$(OS)' == 'Windows_NT' ">
     <CheckEolWorkloads>false</CheckEolWorkloads>
-   <TargetFrameworks>net8.0-windows10.0.17763.0;net8.0-android</TargetFrameworks>
+    <!-- net8.0 is in this list even on Windows, for the same reason as
+         WPR.Framework.Devices.Location: WPR.Framework.Silverlight multi-targets net8.0 (reached
+         from the SL test project via WPR.Framework.Phone) and now references this project for
+         WprHostEnvironment / Configuration, which the types absorbed from WPR.WindowsCompability
+         need. Without a net8.0 leg here, Silverlight's net8.0 inner build fails with no compatible
+         TFM. The non-Windows list above already builds net8.0, so the sources are known portable. -->
+    <TargetFrameworks>net8.0;net8.0-windows10.0.17763.0;net8.0-android</TargetFrameworks>
   </PropertyGroup>
   <PropertyGroup>
     <CheckEolWorkloads>false</CheckEolWorkloads>

@@ -4,11 +4,27 @@
         <Description>A library to easily display FontAwesome icons in an Avalonia App.</Description>
     </PropertyGroup>
     <ItemGroup>
+        <!-- CVE-2026-39959 / GHSA-xrw6-gwf8-vvr9 (High, CVSS 7.1): Tmds.DBus.Protocol < 0.21.3
+             lets malicious D-Bus peers spoof signals and exhaust file descriptors. Avalonia
+             pulls 0.21.2 transitively. Pinned to the in-line fix 0.21.3 (0.92.0 is the other
+             patched version but a different API generation). Mirrors the pin in
+             WPR.Platform.Windows; kept here too so this vendored project audits clean on its
+             own rather than only when consumed by the head. -->
+        <PackageReference Include="Tmds.DBus.Protocol" Version="0.21.3" />
         <EmbeddedResource Include="Assets\icons.json" />
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="System.Text.Json" Version="6.0.2" />
+        <!-- CVE-2024-43485 / GHSA-8g4q-xg66-9fp4 (High, CVSS 8.8): System.Text.Json 6.0.0-6.0.9 is
+             vulnerable to an algorithmic-complexity DoS when deserializing into a model with a
+             [JsonExtensionData] property. Was 6.0.2 here — the only direct reference to the package
+             in the repo, and the source of the advisory in both platform heads.
+             Raised to 8.0.6 (fix landed in 8.0.5; 6.0.10 is the equivalent 6.x fix, but 6.x is out
+             of support and both heads target net8.0, so the 8.x band is the right home).
+             netstandard2.0 is a supported target of System.Text.Json 8.x, so this project's TFM is
+             unaffected. This is a vendored copy of Projektanker.Icons.Avalonia — upstream still
+             ships 6.0.2, so re-vendoring will reintroduce it. -->
+        <PackageReference Include="System.Text.Json" Version="8.0.6" />
     </ItemGroup>
 
     <ItemGroup>

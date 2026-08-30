@@ -21,3 +21,16 @@ x64/
 # subprocess. Our patch script lives at Src/Core/WPR/GameMaker/wpr_patch.csx (MIT).
 /Tools/UTMT/
 /Tools/UTMT_CLI.zip
+
+# Per-machine IDE state. WPR.sln.DotSettings.user used to be committed, which
+# pushed one developer's Rider MSBuild path onto everyone who cloned the repo.
+*.user
+*.suo
+.idea/
+
+# Seed databases live once, in Src/Core/WPR.Database/Data. The android head used to copy them
+# into its own project dir to glob as AndroidAsset, and 1115 of those copies got committed
+# (2026-08-30). That target is gone — assets are now linked straight from WPR.Database — but
+# these entries stop the duplication returning if anyone reinstates a copy step.
+Src/Platforms/WPR.Platform.Android/Database/
+Src/Platforms/WPR.Platform.Windows/Database/

@@ -9,11 +9,12 @@ export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 SOLUTION_DIR="$ROOT/Src"
-PROJECT="$SOLUTION_DIR/UI/WPR.UI.Android/WPR.UI.Android.csproj"
+PROJECT="$SOLUTION_DIR/Platforms/WPR.Platform.Android/WPR.Platform.Android.csproj"
 FRAMEWORK="${1:-net8.0-android34.0}"
 
 dotnet build "$PROJECT" \
   -p:SolutionDir="$SOLUTION_DIR/" \
+  -p:IncludeAndroidTargets=true \
   -f "$FRAMEWORK" \
   -p:EmbedAssembliesIntoApk=true \
   -p:AndroidEnableAssemblyCompression=false \

@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- WP7 application bar: a dark strip of ring-outlined glyph buttons with a small
+     lowercase caption under each. Buttons a page does not use are hidden by that
+     page rather than by shipping several app-bar layouts. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/appBar"
+    android:layout_width="match_parent"
+    android:layout_height="@dimen/wp_appbar_height"
+    android:orientation="horizontal"
+    android:gravity="center"
+    android:background="@color/wp_appbar">
+
+  <LinearLayout
+      android:id="@+id/appBarAdd"
+      android:layout_width="0dp"
+      android:layout_weight="1"
+      android:layout_height="match_parent"
+      android:orientation="vertical"
+      android:gravity="center"
+      android:clickable="true"
+      android:focusable="true">
+    <ImageView
+        android:id="@+id/appBarAddIcon"
+        android:layout_width="@dimen/wp_appbar_button"
+        android:layout_height="@dimen/wp_appbar_button"
+        android:padding="11dp"
+        android:background="@drawable/wp_appbar_button"
+        android:src="@drawable/ic_wp_add"
+        android:contentDescription="add" />
+    <TextView
+        android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_marginTop="3dp" android:textSize="11sp"
+        android:textColor="@color/wp_subtle" android:text="add" />
+  </LinearLayout>
+
+  <LinearLayout
+      android:id="@+id/appBarAchievements"
+      android:layout_width="0dp"
+      android:layout_weight="1"
+      android:layout_height="match_parent"
+      android:orientation="vertical"
+      android:gravity="center"
+      android:clickable="true"
+      android:focusable="true">
+    <ImageView
+        android:id="@+id/appBarAchievementsIcon"
+        android:layout_width="@dimen/wp_appbar_button"
+        android:layout_height="@dimen/wp_appbar_button"
+        android:padding="11dp"
+        android:background="@drawable/wp_appbar_button"
+        android:src="@drawable/ic_wp_trophy"
+        android:contentDescription="achievements" />
+    <TextView
+        android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_marginTop="3dp" android:textSize="11sp"
+        android:textColor="@color/wp_subtle" android:text="achievements" />
+  </LinearLayout>
+
+  <LinearLayout
+      android:id="@+id/appBarRefresh"
+      android:layout_width="0dp"
+      android:layout_weight="1"
+      android:layout_height="match_parent"
+      android:orientation="vertical"
+      android:gravity="center"
+      android:clickable="true"
+      android:focusable="true">
+    <ImageView
+        android:id="@+id/appBarRefreshIcon"
+        android:layout_width="@dimen/wp_appbar_button"
+        android:layout_height="@dimen/wp_appbar_button"
+        android:padding="11dp"
+        android:background="@drawable/wp_appbar_button"
+        android:src="@drawable/ic_wp_refresh"
+        android:contentDescription="refresh" />
+    <TextView
+        android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_marginTop="3dp" android:textSize="11sp"
+        android:textColor="@color/wp_subtle" android:text="refresh" />
+  </LinearLayout>
+</LinearLayout>

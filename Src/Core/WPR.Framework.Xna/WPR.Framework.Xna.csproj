@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    WPR.Framework.Xna — WPR-owned XNA type system (Stage 5a, docs/ARCHITECTURE-MIGRATION.md).
+    WPR.Framework.Xna — WPR-owned XNA type system (Stage 5a, Plans/ARCHITECTURE-MIGRATION.md).
 
     First step of severing FNA. This assembly owns the pure, backend-independent XNA VALUE/MATH
     types (vendored from FNA's MIT source, now WPR-maintained): Vector2/3/4, Matrix, Quaternion,
@@ -57,6 +57,59 @@
     </EmbeddedResource>
     <EmbeddedResource Include="Graphics\Effect\YUVToRGBA\YUVToRGBAEffect.fxb">
       <LogicalName>Microsoft.Xna.Framework.Graphics.Effect.Resources.YUVToRGBAEffect.fxb</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <!--
+    GamerServices/ — absorbed from the Microsoft.Xna.Framework.GamerServices project when it was
+    dissolved (2026-08-30, ApplicationPatcher.Version 19). The types keep their real
+    Microsoft.Xna.Framework.GamerServices namespace; only the host assembly changed, and the
+    patcher now rescopes games' GamerServices assembly refs here.
+
+    Its one FNA-derived type, GamerServicesComponent (: GameComponent), did NOT come with them —
+    it went to WPR.Backend.FNA/Compat/, exactly as GraphicsDeviceManager did at version 15. That
+    is what keeps this project free of an FNA reference, which matters because FNA.Core
+    references THIS project: taking FNA.Core back would be a circular reference, not merely a
+    layering smell.
+
+    The EF Core dependency is the achievements database (AchievementContext + Migrations/). It is
+    the first non-trivial dependency this assembly has ever had; the XNA value/math types above
+    remain untouched by it.
+  -->
+  <!--
+    No EF Core / Sqlite / SQLitePCLRaw here any more. Stage 5e (2026-08-30) moved
+    AchievementContext and its migrations into Core/WPR.Database and left behind the
+    WPR.Xna.Achievements.IAchievementStore seam, which the host registers via
+    XnaBackend.SetAchievements. GamerServices now states what it needs and WPR.Database supplies
+    it, so the database stack no longer rides along in the assembly patched games bind.
+
+    Re-adding a data-access package here would put EF back into every game's binding closure.
+    If something in this project needs persistence, extend IAchievementStore (or add a sibling
+    seam) and implement it in WPR.Database instead.
+  -->
+  <ItemGroup>
+    <!-- Retained: the hardcoded achievement catalogues under WPR.Database/Data/Achievements are
+         JSON, and GamerServices deserialises them. Pinned to 8.0.6 for CVE-2024-43485. -->
+    <PackageReference Include="System.Text.Json" Version="8.0.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- For Configuration / WprHostEnvironment.CurrentProductId, which is how GamerServices now
+         scopes achievement rows to the running game. It used to read
+         Application.Current.ProductId off the Silverlight shim, which would have dragged the
+         whole Avalonia stack in here. -->
+    <ProjectReference Include="$(SolutionDir)\Core\WPR.Common\WPR.Common.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Update="GamerServices\Properties\Resources.Designer.cs">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
+    <EmbeddedResource Update="GamerServices\Properties\Resources.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
   </ItemGroup>
 

@@ -4,7 +4,7 @@ using WPR.Xna.Rhi;
 namespace WPR.Backend.FNA
 {
     /// <summary>
-    /// FNA implementation of <see cref="IMediaBackend"/> — Stage 5c-3c (docs/STAGE5C-SCOPE.md).
+    /// FNA implementation of <see cref="IMediaBackend"/> — Stage 5c-3c (Plans/STAGE5C-SCOPE.md).
     /// Forwards song playback to FAudio's <c>XNA_*</c> entry points and video decode to Theorafile.
     ///
     /// <para>Both binding classes live in the <b>global namespace</b> inside FNA.dll, which matters:

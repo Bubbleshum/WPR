@@ -1,0 +1,141 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-android34.0</TargetFramework>
+    <RootNamespace>WPR.Platform.Android</RootNamespace>
+    <!-- Assembly name follows the project name (renamed from WPR.UI.Android on 2026-08-29,
+         alongside the Windows head). Stated explicitly rather than left to default because
+         it is easy to change by accident and nothing fails loudly if it drifts.
+         Nothing game- or user-facing keys off it, which is what made the rename safe:
+           * the apk/package identity is the manifest package (com.wpr.android), not this;
+           * every real activity pins its Java class name with [Register("com.wpr.android.X")],
+             so the ACWs do not move (only the unreferenced SplashActivity uses a
+             hash-derived crc64 name, and the manifest is regenerated each build anyway);
+           * release.yml globs *-Signed.apk rather than naming the assembly;
+           * Properties/Resources is looked up as $(RootNamespace).Properties.Resources.
+         Note ApplicationId below (com.MediaExplorer.WPR) still does not match the manifest
+         package - pre-existing, the manifest wins. -->
+    <AssemblyName>WPR.Platform.Android</AssemblyName>
+    <!-- 21 (Android 5.0) matches the TargetPlatformVersion that the
+         installed .NET 10 Android workload (android 36.1.43/10.0.100)
+         assigns to net8.0-android* — it has no net8.0-android manifest,
+         so it falls back to 21. Higher SOSV triggers NETSDK1135. -->
+    <SupportedOSPlatformVersion>21.0</SupportedOSPlatformVersion>
+    <Nullable>enable</Nullable>
+    <AvaloniaVersion>11.3.9</AvaloniaVersion>
+    <ApplicationId>com.MediaExplorer.WPR</ApplicationId>
+    <ApplicationVersion>1</ApplicationVersion>
+    <!-- From $(WprVersion) in Src/Directory.Build.props; release.yml overrides it per release. -->
+    <ApplicationDisplayVersion>$(WprVersion)</ApplicationDisplayVersion>
+    <AndroidPackageFormat>apk</AndroidPackageFormat>
+    <EmbedAssembliesIntoApk>True</EmbedAssembliesIntoApk>
+    <PublishTrimmed>False</PublishTrimmed>
+    <!-- android-arm (32-bit ARM, RID linux-bionic-arm) dropped: Google Play
+         has required 64-bit since 2019, and the 32-bit ARM runtime pack is
+         not installed on this machine (NU1101 for
+         Microsoft.NETCore.App.Runtime.linux-bionic-arm). -->
+    <RuntimeIdentifiers>android-arm64;android-x64</RuntimeIdentifiers>
+    <XamarinGoogleGuavaListenableFutureOptOut>true</XamarinGoogleGuavaListenableFutureOptOut>
+    <XamarinGoogleGuavaOptOut>true</XamarinGoogleGuavaOptOut>
+  </PropertyGroup>
+  <!--
+    Seed databases + per-game achievement catalogues, taken straight from the shared
+    Core/WPR.Database/Data and linked to Database/... inside the APK, which is the path
+    WprStartup.CopyFileFromAssets reads on first run.
+
+    This replaced a CopyPremadeDb target that copied $(SolutionDir)Database\**\*.* into
+    $(ProjectDir)\Database\ and then globbed the copies. That worked, but the copies landed
+    inside the project and 1115 of them were committed, duplicating the whole data set in git.
+    Linking the originals removes the intermediate copy entirely, so the duplication cannot
+    come back — and it drops the ordering hazard where the static AndroidAsset items below were
+    evaluated at project load, before the copy target had run.
+  -->
+  <ItemGroup>
+    <AndroidAsset Include="$(SolutionDir)Core\WPR.Database\Data\**\*.*"
+                  Link="Database\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Localized launcher strings. Picked up as an EmbeddedResource by the SDK's default
+         **/*.resx glob under the manifest name $(RootNamespace).Properties.Resources, which
+         is what Resources.Designer.cs hands to ResourceManager. The desktop head carries its
+         own copy of this file — the two are meant to stay in sync. The metadata below only
+         keeps the IDE regenerating the designer when the .resx is edited. -->
+    <EmbeddedResource Update="Properties\Resources.resx">
+      <Generator>PublicResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
+    <Compile Update="Properties\Resources.Designer.cs">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
+
+
+  <PropertyGroup Condition="'$(Configuration)'=='Release' Or '$(Configuration)'=='RelWithDebInfo'">
+    <PublishTrimmed>False</PublishTrimmed>
+    <AotAssemblies>False</AotAssemblies>
+    <RunAOTCompilation>False</RunAOTCompilation>
+    <EmbedAssembliesIntoApk>True</EmbedAssembliesIntoApk>
+  </PropertyGroup>
+
+  <!-- Embed assemblies so adb-installed APKs run without VS fast-deploy (.__override__). -->
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <EmbedAssembliesIntoApk>True</EmbedAssembliesIntoApk>
+    <AndroidEnableAssemblyCompression>false</AndroidEnableAssemblyCompression>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The launcher shell is native (no Avalonia application is ever started here), but
+         this package still supplies the AndroidX AppCompat resources that
+         @style/MyTheme.NoActionBar parents onto for GameActivity and the splash. -->
+    <PackageReference Include="Avalonia.Android" Version="$(AvaloniaVersion)" />
+    <!-- MessageBoxUtils / ServicesSetup are typed against MessageBox.Avalonia's button and
+         icon enums (the shared vocabulary Guide.ShowMessageBoxFunc speaks); the Android
+         implementation renders them with AlertDialog. Came in transitively from WPR.UI. -->
+    <PackageReference Include="MessageBox.Avalonia" Version="2.2.0" />
+    <!-- Backs the staged Notifications/AndroidNotificationManager.cs (NotificationManagerCompat,
+         IconCompat). Kept so the file compiles even though the wiring in MainActivity is
+         currently commented out. Pinned to 1.12.0.2 to match the version Avalonia.Android
+         already pulls in transitively (a lower version triggers NU1605 downgrade-as-error). -->
+    <PackageReference Include="Xamarin.AndroidX.Core" Version="1.12.0.2" />
+    <!-- Bumped 2.0.6 -> 2.1.13 alongside the SQLitePCLRaw.bundle_e_sqlite3 pin in WPR.Loader /
+         GamerServices (CVE-2025-6965). Keeping the explicit provider ref on the same version as
+         the bundle avoids a split graph where the android leg loads a 2.0.x provider against a
+         2.1.x core. -->
+    <PackageReference Include="SQLitePCLRaw.provider.dynamic_cdecl" Version="2.1.13" />
+    <PackageReference Include="System.ServiceModel.Http" Version="4.10.0" />
+    <!-- CVE-2024-38095 / GHSA-447r-wph3-92pm (High, CVSS 8.7): System.Formats.Asn1 through 6.0.0
+         (and 8.0.0) burns excessive CPU parsing a malicious X.509 certificate — denial of service.
+         Reached here at 5.0.0 via System.ServiceModel.* -> System.Private.ServiceModel 4.10.0 ->
+         System.Security.Cryptography.Pkcs 5.0.0. Pinned to 8.0.1, the fix in the 8.x band that
+         matches this head's TFM (6.0.1 is the equivalent 6.x fix). -->
+    <PackageReference Include="System.Formats.Asn1" Version="8.0.1" />
+    <!-- CVE-2022-34716 / GHSA-vh55-786g-wjwj (Moderate, CVSS 5.9): System.Security.Cryptography.Xml
+         5.0.0-6.0.0 can disclose privileged information (XML signature verification). Reached at
+         5.0.0 via System.ServiceModel.* -> System.Private.ServiceModel 4.10.0. Pinned to 8.0.4 — NOT 8.0.0,
+         which carries eight High advisories of its own (incl. CVE-2026-33116, patched 8.0.3). Not a High like its
+         neighbours above, but it is the last advisory in the repo and the same one-line pin. -->
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="8.0.4" />
+    <PackageReference Include="System.ServiceModel.Primitives" Version="4.10.0" />
+    <!--PackageReference Include="Xamarin.AndroidX.AppCompat" Version="1.5.0" /-->
+    <!--PackageReference Include="Xamarin.AndroidX.Lifecycle.ViewModel" Version="2.5.1" /-->
+    <PackageReference Include="XamlNameReferenceGenerator" Version="1.3.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(SolutionDir)\JavaBindings\Org.Libsdl.App\Org.Libsdl.App.csproj" />
+    <ProjectReference Include="$(SolutionDir)\ThirdParty\assembly-store-reader\assembly-store-reader.csproj" />
+    <ProjectReference Include="$(SolutionDir)\Core\WPR.Runtime\WPR.Runtime.csproj" />
+    <ProjectReference Include="$(SolutionDir)\Core\WPR.Loader\WPR.Loader.csproj" />
+    <!-- FNA game-loop host driver (ApplicationLaunch + FnaGameHost/IGameHost) — Stage 4. -->
+    <ProjectReference Include="$(SolutionDir)\Backends\WPR.Backend.FNA\WPR.Backend.FNA.csproj" />
+  </ItemGroup>
+</Project>
+  
+  
+
+  

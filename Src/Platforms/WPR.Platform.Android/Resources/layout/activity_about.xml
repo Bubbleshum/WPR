@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/wp_background"
+    android:fillViewport="true">
+
+  <LinearLayout
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:orientation="vertical"
+      android:paddingStart="@dimen/wp_page_margin"
+      android:paddingEnd="@dimen/wp_page_margin"
+      android:paddingTop="28dp"
+      android:paddingBottom="36dp">
+
+    <TextView
+        android:id="@+id/appTitle"
+        style="@style/WpAppTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="WINDOWS PHONE RUNTIME" />
+
+    <TextView
+        android:id="@+id/pageTitle"
+        style="@style/WpPageTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:layout_marginBottom="26dp"
+        android:text="about" />
+
+    <TextView
+        android:id="@+id/aboutVersion"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:fontFamily="sans-serif-light"
+        android:textColor="@color/wp_foreground"
+        android:textSize="26sp" />
+
+    <TextView
+        android:id="@+id/aboutBuild"
+        style="@style/WpListSecondary"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:singleLine="false" />
+
+    <TextView
+        style="@style/WpSectionHeader"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="28dp"
+        android:text="CREDITS" />
+
+    <TextView
+        style="@style/WpBody"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:lineSpacingExtra="4dp"
+        android:text="(C) Lin Yan :: MediaExplorer :: Bubbleshum\n2022 :: 2026" />
+
+    <TextView
+        style="@style/WpSectionHeader"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="28dp"
+        android:text="LICENSE" />
+
+    <TextView
+        style="@style/WpBody"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="MIT" />
+
+    <TextView
+        style="@style/WpSectionHeader"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="28dp"
+        android:text="SHELL" />
+
+    <TextView
+        android:id="@+id/aboutShell"
+        style="@style/WpBody"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:lineSpacingExtra="4dp"
+        android:text="native Android views throughout the launcher. games are hosted by FNA over SDL in their own process." />
+
+  </LinearLayout>
+</ScrollView>

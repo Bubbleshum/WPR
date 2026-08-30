@@ -2,7 +2,7 @@
 
   <!--
     WPR.Abstractions — the linchpin of the layered architecture
-    (docs/ARCHITECTURE-MIGRATION.md, Stage 1). Pure interface + primitive-DTO
+    (Plans/ARCHITECTURE-MIGRATION.md, Stage 1). Pure interface + primitive-DTO
     contracts. Has NO dependencies: no FNA, no Vortice, no Avalonia, no WPR
     project references. Backends (WPR.Backend.*) and Platforms (WPR.Platform.*)
     implement these; Runtime and Frameworks consume only these.
