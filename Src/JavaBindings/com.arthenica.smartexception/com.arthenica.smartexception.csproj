@@ -1,11 +1,20 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <SupportedOSPlatformVersion>26</SupportedOSPlatformVersion>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <!-- Was `net8.0` until 2026-08-31. A Java binding is only generated on an
+         android TFM: on plain net8.0 the EmbeddedJar item is inert, class-parse
+         never runs, and the project builds a 4 KB assembly with no types in it.
+         See com.arthenica.ffmpegkit.csproj for what that cost. -->
+    <TargetFramework>net8.0-android</TargetFramework>
+    <!-- 21.0, matching Org.Libsdl.App. Higher trips NETSDK1135. -->
+    <SupportedOSPlatformVersion>21.0</SupportedOSPlatformVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <IsBindingProject>true</IsBindingProject>
+    <AndroidClassParser>class-parse</AndroidClassParser>
+    <AndroidCodegenTarget>XAJavaInterop1</AndroidCodegenTarget>
   </PropertyGroup>
   <ItemGroup>
-	<EmbeddedJar Include="Jar\com.arthenica.smartexception.jar" />
+    <EmbeddedJar Include="Jar\com.arthenica.smartexception.jar" />
   </ItemGroup>
 </Project>

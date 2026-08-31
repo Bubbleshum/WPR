@@ -1,0 +1,84 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="700"
+        x:Class="WPR.Platform.Windows.Views.GameInfoDialog"
+        Title="Game info"
+        Width="640" Height="700"
+        MinWidth="480" MinHeight="360"
+        CanResize="True"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource WprWindowBackdrop}">
+  <Grid Margin="20" RowDefinitions="Auto,Auto,*,Auto">
+    <TextBlock Grid.Row="0"
+               Classes="eyebrow"
+               Text="GAME INFO"
+               Margin="0,0,0,6"/>
+    <TextBlock Grid.Row="1"
+               Name="gameNameText"
+               Classes="h2"
+               TextTrimming="CharacterEllipsis"
+               Margin="0,0,0,16"/>
+
+    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+      <ItemsControl Name="sectionsList">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <Border Background="{StaticResource WprPanelBrush}"
+                    CornerRadius="6"
+                    Padding="20,16"
+                    Margin="0,0,0,12">
+              <StackPanel Spacing="12">
+                <TextBlock Classes="eyebrow"
+                           Text="{Binding Title}"
+                           Foreground="{StaticResource WprAccentBrush}"/>
+                <ItemsControl ItemsSource="{Binding Fields}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Grid ColumnDefinitions="150,*" Margin="0,0,0,8">
+                        <TextBlock Grid.Column="0"
+                                   Classes="dim"
+                                   Text="{Binding Label}"
+                                   TextWrapping="Wrap"
+                                   VerticalAlignment="Top"/>
+                        <!-- Not Classes="body": the TextBlock.body style selector matches the
+                             exact type, not the SelectableTextBlock subclass, so its setters
+                             are inlined here. Selectable so a product id or path can be
+                             dragged out with the mouse as well as via Copy all. -->
+                        <SelectableTextBlock Grid.Column="1"
+                                             FontSize="13"
+                                             LineHeight="20"
+                                             Foreground="{StaticResource WprTextBrush}"
+                                             Text="{Binding Value}"
+                                             TextWrapping="Wrap"/>
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+
+    <StackPanel Grid.Row="3"
+                Orientation="Horizontal"
+                HorizontalAlignment="Right"
+                Spacing="8"
+                Margin="0,14,0,0">
+      <TextBlock Name="copyStatusText"
+                 Classes="dim"
+                 VerticalAlignment="Center"
+                 Margin="0,0,6,0"/>
+      <Button Name="copyAllButton"
+              Classes="ghost"
+              Content="Copy all"
+              ToolTip.Tip="Put this whole report on the clipboard, ready to paste into a bug report."/>
+      <Button Name="closeButton"
+              Classes="ghost"
+              Content="Close"/>
+    </StackPanel>
+  </Grid>
+</Window>

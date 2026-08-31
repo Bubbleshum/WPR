@@ -1,4 +1,21 @@
 {
   "Name": "de Blob Revolution",
-  "Achievements": []
+  "Description": "Universomo's puzzle spin-off of THQ's de Blob for Windows Phone. Draw a route for Blob through each floor of a tower block, painting it in colour and freeing the Graydians without crossing your own trail. Three building types - Rescue, Speed Rescue and INKT Chase - feed three rankings: green for care, blue for speed, orange for challenge.",
+  "Achievements": [
+    { "Key": "ACHIEVEMENT_FAST_ENOUGH",              "Name": "Fast Enough?",              "GamerScore": 10, "Icon": "", "Description": "Reached a total ranking of 210 and unlocked the Speed Rescue buildings" },
+    { "Key": "ACHIEVEMENT_BRAVE_ENOUGH",             "Name": "Brave Enough?",             "GamerScore": 10, "Icon": "", "Description": "Reached a total ranking of 750 and unlocked the INKT Chase buildings" },
+    { "Key": "ACHIEVEMENT_ACCESS",                   "Name": "Access",                    "GamerScore": 15, "Icon": "", "Description": "Reached a total ranking of 1800 and unlocked the extremely difficult buildings" },
+    { "Key": "ACHIEVEMENT_RANK_1000",                "Name": "Rank 1000",                 "GamerScore": 10, "Icon": "", "Description": "Reached a total ranking of 1000" },
+    { "Key": "ACHIEVEMENT_RANK_2000",                "Name": "Rank 2000",                 "GamerScore": 15, "Icon": "", "Description": "Reached a total ranking of 2000" },
+    { "Key": "ACHIEVEMENT_RANK_3000",                "Name": "Rank 3000",                 "GamerScore": 20, "Icon": "", "Description": "Reached the maximum total ranking of 3000" },
+    { "Key": "ACHIEVEMENT_FIRST_WAVE_OF_REVOLUTION", "Name": "First Wave of Revolution",  "GamerScore":  5, "Icon": "", "Description": "Completed a Rescue building" },
+    { "Key": "ACHIEVEMENT_PEOPLES_BLOB",             "Name": "People's Blob",             "GamerScore": 10, "Icon": "", "Description": "Freed every Graydian in a Rescue building" },
+    { "Key": "ACHIEVEMENT_GREEN_REVOLUTION",         "Name": "Green Revolution",          "GamerScore": 15, "Icon": "", "Description": "Freed 1000 Graydians in Rescue buildings" },
+    { "Key": "ACHIEVEMENT_QUICK_LIBERATOR",          "Name": "Quick Liberator",           "GamerScore": 15, "Icon": "", "Description": "Completed a Speed Rescue building freeing every Graydian and beating the par time on every floor" },
+    { "Key": "ACHIEVEMENT_BLUE_REVOLUTION",          "Name": "Blue Revolution",           "GamerScore": 15, "Icon": "", "Description": "Freed 2000 Graydians in Speed Rescue buildings" },
+    { "Key": "ACHIEVEMENT_SECOND_SPLITTER",          "Name": "Second Splitter",           "GamerScore": 15, "Icon": "", "Description": "Beat the par time on 30 Speed Rescue floors" },
+    { "Key": "ACHIEVEMENT_FEARLESS_SAVIOR",          "Name": "Fearless Savior",           "GamerScore": 15, "Icon": "", "Description": "Freed every Graydian in an extremely difficult INKT Chase building" },
+    { "Key": "ACHIEVEMENT_ESCAPE_ARTIST",            "Name": "Escape Artist",             "GamerScore": 10, "Icon": "", "Description": "Completed an extremely difficult INKT Chase building" },
+    { "Key": "ACHIEVEMENT_ORANGE_REVOLUTION",        "Name": "Orange Revolution",         "GamerScore": 20, "Icon": "", "Description": "Freed 3000 Graydians in INKT Chase buildings" }
+  ]
 }

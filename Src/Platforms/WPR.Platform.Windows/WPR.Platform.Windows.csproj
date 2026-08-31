@@ -95,12 +95,41 @@
     <PackageReference Include="MessageBox.Avalonia" Version="2.2.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="$(EFVersion)" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="$(EFVersion)" />
+    <!-- Moved here from WPR.Loader on 2026-08-31, with FFMpegCoreAudioTranscoder. FFMpegCore drives
+         an `ffmpeg` CHILD PROCESS — the ffmpeg.exe this csproj already copies to the output dir
+         below — which makes it desktop-only by construction. On a shared Core project it was both
+         unusable on Android (no executable to spawn, so WP7 .wma soundtracks were never transcoded
+         and every XNA game was mute there) and shipped inside the APK for nothing. Android's half
+         of the IAudioTranscoder seam is the FFmpegKit JNI binding instead. -->
+    <PackageReference Include="FFMpegCore" Version="4.8.0" />
+    <!-- CVE-2021-24112 / GHSA-rxg9-xrhp-64gj (CRITICAL, CVSS 9.8): System.Drawing.Common 5.0.0
+         through 5.0.2 allows remote code execution when parsing crafted graphics files. FFMpegCore
+         4.8.0 above depends on exactly 5.0.2, so it is pinned to the patched 5.0.3.
+
+         This pin travelled with FFMpegCore from WPR.Loader and must stay wherever FFMpegCore is.
+         The history worth not repeating: it was once conditioned to android only, on the reasoning
+         that Microsoft.Windows.Compatibility 6.0.0 lifted the windows leg above the affected range
+         as a side effect. That package was dropped from GamerServices as unused on 2026-08-30,
+         which put windows straight back on 5.0.2 and re-opened the Critical. Do not condition this
+         reference on anything.
+
+         5.0.3 rather than 6.0.0+: System.Drawing.Common 6.0.0 made every non-Windows platform
+         throw PlatformNotSupportedException without a runtimeconfig switch, and 7.0+ dropped
+         non-Windows support outright. 5.0.3 is the smallest change that closes the CVE. -->
+    <PackageReference Include="System.Drawing.Common" Version="5.0.3" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Runtime\WPR.Runtime.csproj" />
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Loader\WPR.Loader.csproj" />
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Common\WPR.Common.csproj" />
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Framework.Silverlight\WPR.Framework.Silverlight.csproj" />
+    <!-- Input/: this head implements WPR.Abstractions.Sensors.ISensorProvider from the keyboard
+         emulator and registers it into WPR.Sensors.SensorBackend (which ships inside the sensors
+         framework, beside its consumer, exactly like SilverlightBackend). Both were reached
+         transitively via WPR.Backend.FNA before; explicit now that the head is a first-class
+         implementer rather than an accidental consumer. -->
+    <ProjectReference Include="$(SolutionDir)\Core\WPR.Abstractions\WPR.Abstractions.csproj" />
+    <ProjectReference Include="$(SolutionDir)\Core\WPR.Framework.Devices.Sensors\WPR.Framework.Devices.Sensors.csproj" />
     <!-- FNA game-loop host driver (ApplicationLaunch + FnaGameHost/IGameHost), used by
          SilverlightLauncher / XnaLauncher. -->
     <ProjectReference Include="$(SolutionDir)\Backends\WPR.Backend.FNA\WPR.Backend.FNA.csproj" />

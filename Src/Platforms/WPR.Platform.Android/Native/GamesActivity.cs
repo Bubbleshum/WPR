@@ -143,27 +143,38 @@ namespace WPR.Platform.Android.Native
         /// </summary>
         private async Task ShowContextSheetAsync(GameEntry entry)
         {
-            string[] actions = { "play", "achievements", "re-patch", "uninstall" };
+            string[] actions = { "play", "achievements", "info", "re-patch", "uninstall" };
             int choice = await WpDialogs.ChooseAsync(this, entry.Name, actions);
 
-            switch (choice)
+            // Dismissal returns -1. Dispatching on the label rather than the index keeps
+            // this switch correct when an action is inserted into the list above.
+            if (choice < 0 || choice >= actions.Length) return;
+
+            switch (actions[choice])
             {
-                case 0:
+                case "play":
                     GameLauncher.Launch(this, entry.Model);
                     break;
 
-                case 1:
+                case "achievements":
                     Intent intent = new Intent(this, typeof(AchievementsActivity));
                     intent.PutExtra(AchievementsActivity.ExtraProductId, entry.ProductId);
                     intent.PutExtra(AchievementsActivity.ExtraGameName, entry.Name);
                     StartActivity(intent);
                     break;
 
-                case 2:
+                case "info":
+                    Intent info = new Intent(this, typeof(GameInfoActivity));
+                    info.PutExtra(GameInfoActivity.ExtraProductId, entry.ProductId);
+                    info.PutExtra(GameInfoActivity.ExtraGameName, entry.Name);
+                    StartActivity(info);
+                    break;
+
+                case "re-patch":
                     await RepatchAsync(entry);
                     break;
 
-                case 3:
+                case "uninstall":
                     await UninstallAsync(entry);
                     break;
             }

@@ -24,31 +24,24 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- CVE-2021-24112 / GHSA-rxg9-xrhp-64gj (CRITICAL, CVSS 9.8): System.Drawing.Common 5.0.0
-         through 5.0.2 allows remote code execution when parsing crafted graphics files, on
-         Linux/macOS only. FFMpegCore 4.8.0 below depends on exactly 5.0.2. Pinned to the patched
-         5.0.3 for EVERY TFM.
-
-         It was android-only at first, because Microsoft.Windows.Compatibility 6.0.0 used to pull
-         the windows leg up to 6.0.0 (above the affected range) as a side effect. That package was
-         removed from GamerServices on 2026-08-30 as unused — which dropped windows straight back
-         onto FFMpegCore's 5.0.2 and re-opened the Critical. Hence: no TFM condition here. Do not
-         re-add one on the assumption that windows is covered by something else.
-
-         5.0.3 rather than 6.0.0+, even on windows where either would do: System.Drawing.Common
-         6.0.0 made every non-Windows platform throw PlatformNotSupportedException unless the
-         System.Drawing.EnableUnixSupport runtimeconfig switch is set, and 7.0+ dropped non-Windows
-         support outright. Android is non-Windows, so 6.0.0 could turn a working FFMpegCore path
-         into a runtime throw. 5.0.3 is the smallest change that closes the CVE on both legs and
-         keeps them on one version. -->
-    <PackageReference Include="System.Drawing.Common" Version="5.0.3" />
-    <PackageReference Include="FFMpegCore" Version="4.8.0" />
+    <!-- FFMpegCore and its System.Drawing.Common pin MOVED to WPR.Platform.Windows on 2026-08-31.
+         FFMpegCore spawns an `ffmpeg` child process, so it was only ever the desktop story; it sat
+         here serving AudioCompabilityConverter under a comment claiming it was "the implementation
+         for all platforms", which meant Android silently transcoded nothing and every WP7 .wma
+         soundtrack was mute. The transcode now goes through WPR.Abstractions.Audio.IAudioTranscoder
+         (registry: AudioTranscoderBackend), implemented per head — FFMpegCore on Windows, the
+         FFmpegKit JNI binding on Android. Do not re-add FFMpegCore here: a shared Core project is
+         the one place this dependency cannot live, because it also ships it inside the APK.
+         System.Drawing.Common went with it — nothing in this project uses it directly, it existed
+         purely to lift FFMpegCore's transitive 5.0.2 off CVE-2021-24112. -->
     <!-- CVE-2024-43485 / GHSA-8g4q-xg66-9fp4 (High, CVSS 8.8): System.Text.Json 6.0.0-6.0.9 —
-         algorithmic-complexity DoS on models with a [JsonExtensionData] property. FFMpegCore 4.8.0
-         above depends on 6.0.2. The windows leg was incidentally lifted to 8.0.6 by the vendored
-         Projektanker.Icons.Avalonia.FontAwesome, but android does not reference that project, so it
-         kept shipping 6.0.2 — pinned here, where FFMpegCore actually lives, so both legs are
-         covered by the same reference. Fix landed in 8.0.5. -->
+         algorithmic-complexity DoS on models with a [JsonExtensionData] property. This pin arrived
+         to cover FFMpegCore 4.8.0's transitive 6.0.2, but it STAYS now that FFMpegCore has left:
+         HardcodedAchievementCatalogue.cs uses System.Text.Json directly, so this is a first-party
+         dependency rather than a transitive lift. The windows leg is incidentally lifted to 8.0.6
+         by the vendored Projektanker.Icons.Avalonia.FontAwesome, but android does not reference
+         that project, so without this reference android would resolve whatever the SDK's own
+         baseline gives it. Fix landed in 8.0.5. -->
     <PackageReference Include="System.Text.Json" Version="8.0.6" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="$(EFVersion)" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="$(EFVersion)" />
@@ -67,7 +60,15 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Condition="'$(TargetFramework)' == 'net8.0-android'" Include="$(SolutionDir)\JavaBindings\com.arthenica.ffmpegkit\com.arthenica.ffmpegkit.csproj" />
+    <!-- The com.arthenica.ffmpegkit binding MOVED to WPR.Platform.Android on 2026-08-31, alongside
+         FFMpegCore moving to WPR.Platform.Windows. It was referenced here, for the android TFM
+         only, by a project that had no code able to call it — and could not have: the binding
+         targeted plain net8.0, so class-parse never ran and it built an assembly with no types.
+         Both transcoders now live in their own head behind IAudioTranscoder. -->
+    <!-- The IAudioTranscoder contract AudioCompabilityConverter and AudioTranscoderBackend speak.
+         Explicit rather than transitive-through-Framework.Silverlight: this project consumes the
+         contract in its own code now. -->
+    <ProjectReference Include="$(SolutionDir)\Core\WPR.Abstractions\WPR.Abstractions.csproj" />
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Common\WPR.Common.csproj" />
     <!-- The catalogue schema (WPR.Models.ApplicationContext / Application / ApplicationType) and
          its migrations moved to Core/WPR.Database on 2026-08-30. Namespaces are unchanged, so the

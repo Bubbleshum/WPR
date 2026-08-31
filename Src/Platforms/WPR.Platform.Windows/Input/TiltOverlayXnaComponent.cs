@@ -1,9 +1,8 @@
 using System;
-using Microsoft.Devices.Sensors;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 
-namespace WPR.Platform.Windows
+namespace WPR.Platform.Windows.Input
 {
     /// <summary>
     /// XNA <see cref="DrawableGameComponent"/> that paints a simple tilt indicator over
@@ -64,7 +63,7 @@ namespace WPR.Platform.Windows
 
             // Screen-relative reading so the dot mirrors the user's key presses 1:1 — even
             // though the game itself is reading the rotated device-frame reading.
-            var reading = KeyboardAccelerometerHost.CurrentScreenReading.Acceleration;
+            var reading = KeyboardAccelerometerHost.CurrentScreenAcceleration;
 
             _batch.Begin();
             // Dark backing rectangle behind the dial — easier than drawing a filled

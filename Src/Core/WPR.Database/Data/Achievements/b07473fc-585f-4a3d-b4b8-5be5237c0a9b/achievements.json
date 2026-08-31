@@ -1,4 +1,26 @@
 {
   "Name": "Mirror's Edge",
-  "Achievements": []
+  "Description": "EA's side-scrolling take on the first-person parkour thriller. Run, wall-run, zipline and slide Faith across the rooftops of a sterile city over six chapters, outpacing the police, collecting hidden bags and chasing speed-run times.",
+  "Achievements": [
+    { "Key": "ACHIEVEMENT_COLLECT_STARS",     "Name": "On the clock",        "GamerScore": 5,  "Icon": "on_the_clock.png",        "Description": "Earn one star in speed run mode" },
+    { "Key": "ACHIEVEMENT_COLLECT_NUM_STARS", "Name": "Still counting",      "GamerScore": 10, "Icon": "still_counting.png",      "Description": "Earn 20 stars in speed run mode" },
+    { "Key": "ACHIEVEMENT_COLLECT_ALL_STARS", "Name": "Superstar",           "GamerScore": 15, "Icon": "superstar.png",           "Description": "Earn all stars in speed run mode" },
+    { "Key": "ACHIEVEMENT_COMPLETE_GAME",     "Name": "That's a wrap",       "GamerScore": 15, "Icon": "thats_a_wrap.png",        "Description": "Complete the game" },
+    { "Key": "ACHIEVEMENT_COLLECT_BAG",       "Name": "Bag lady",            "GamerScore": 5,  "Icon": "bag_lady.png",            "Description": "Collect a bag" },
+    { "Key": "ACHIEVEMENT_COLLECT_BAGS",      "Name": "Hoarder",             "GamerScore": 10, "Icon": "hoarder.png",             "Description": "Collect 20 bags" },
+    { "Key": "ACHIEVEMENT_BALANCE_DISTANCE",  "Name": "Balancing act",       "GamerScore": 10, "Icon": "balancing_act.png",       "Description": "Balance 200 meters" },
+    { "Key": "ACHIEVEMENT_FALL_DISTANCE",     "Name": "Free falling",        "GamerScore": 10, "Icon": "free_falling.png",        "Description": "Fall 1000 meters" },
+    { "Key": "ACHIEVEMENT_DEFEAT_ENEMY",      "Name": "Tango down",          "GamerScore": 5,  "Icon": "tango_down.png",          "Description": "Defeat an enemy" },
+    { "Key": "ACHIEVEMENT_RAMPAGE",           "Name": "Rampage",             "GamerScore": 15, "Icon": "rampage.png",             "Description": "Defeat 10 enemies in 60 seconds" },
+    { "Key": "ACHIEVEMENT_DISARM_ENEMY",      "Name": "I'll take that",      "GamerScore": 5,  "Icon": "ill_take_that.png",       "Description": "Disarm an enemy" },
+    { "Key": "ACHIEVEMENT_DISARM_ENEMY_N",    "Name": "Neutralizer",         "GamerScore": 10, "Icon": "neutralizer.png",         "Description": "Disarm 20 enemies" },
+    { "Key": "ACHIEVEMENT_RUNNER",            "Name": "Tag, you're it",      "GamerScore": 5,  "Icon": "tag_youre_it.png",        "Description": "Defeat a Runner" },
+    { "Key": "ACHIEVEMENT_RUNNER_N",          "Name": "Thrill of the chase", "GamerScore": 15, "Icon": "thrill_of_the_chase.png", "Description": "Defeat 10 Runners" },
+    { "Key": "ACHIEVEMENT_FALL_ENEMY",        "Name": "Falling down",        "GamerScore": 5,  "Icon": "falling_down.png",        "Description": "Make an enemy fall" },
+    { "Key": "ACHIEVEMENT_FALL_ENEMY_N",      "Name": "Scream for me",       "GamerScore": 10, "Icon": "scream_for_me.png",       "Description": "Make 10 enemies fall" },
+    { "Key": "ACHIEVEMENT_TWO_ENEMIES",       "Name": "Economist",           "GamerScore": 10, "Icon": "economist.png",           "Description": "Defeat 2 enemies with 1 attack" },
+    { "Key": "ACHIEVEMENT_ZIPLINE_KICK",      "Name": "Death from above",    "GamerScore": 10, "Icon": "death_from_above.png",    "Description": "Drop from a zipline and kick an enemy" },
+    { "Key": "ACHIEVEMENT_SCRUFFY",           "Name": "Scruffy",             "GamerScore": 15, "Icon": "scruffy.png",             "Description": "Find the Scruffy graffiti" },
+    { "Key": "ACHIEVEMENT_RADIO",             "Name": "I heart 88.7",        "GamerScore": 15, "Icon": "i_heart_88_7.png",        "Description": "Find the pirate radio frequency graffiti" }
+  ]
 }

@@ -24,7 +24,10 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
-    <PackageReference Include="Xamarin.Essentials" Version="1.7.3" />
+    <!-- No Xamarin.Essentials. It was here until 2026-08-30 with no C# in this project using it,
+         which put an Android sensor package in the dependency closure of nearly every assembly
+         in the repo, desktop legs included. The one real consumer is
+         WPR.Platform.Android/Input/AndroidSensorProvider. -->
   </ItemGroup>
 
   <!-- Default gamer-picture choices (the 9 stock WP7 avatars). Lives at the

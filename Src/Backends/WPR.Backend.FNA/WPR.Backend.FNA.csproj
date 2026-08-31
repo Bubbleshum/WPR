@@ -48,9 +48,12 @@
          (WPR.Xna.Rhi.IGraphicsBackend) — see FnaGraphicsBackend. Explicit ref (was
          transitive via FNA) now that the backend is a first-class RHI consumer. -->
     <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Xna\WPR.Framework.Xna.csproj" />
-    <!-- Teardown must reset the accelerometer simulator's static state: a game that starts the
-         accelerometer and exits without stopping it leaves a handler on a static event (pinning its
-         ALC) and a 60Hz timer running. See ResetWprSingletons. -->
+    <!-- For WPR.Sensors.SensorBackend only. Teardown must drop the sensor provider's subscribers:
+         a game that starts the accelerometer and exits without stopping it leaves a handler on an
+         event held by a launcher-lifetime object, pinning its ALC (and, on the desktop emulator,
+         leaving a 60Hz timer running). See ResetWprSingletons. This backend never names a platform
+         implementation — it goes through ISensorProvider, which is what lets the same code path
+         serve the Windows keyboard emulator and the Android hardware sensor. -->
     <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Devices.Sensors\WPR.Framework.Devices.Sensors.csproj" />
   </ItemGroup>
 

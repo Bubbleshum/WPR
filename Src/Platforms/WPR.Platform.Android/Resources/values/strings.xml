@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- The product name, shown in the WP7 "application title" slot — the small tracked
+       caps line that sits above the larger page title in every Metro header block.
+
+       One definition because the literal used to be repeated verbatim in all five page
+       layouts, and all five carried the wrong name ("WINDOWS PHONE RUNTIME") until
+       2026-08-31. A rename is now a single edit.
+
+       Stored already uppercased rather than left to android:textAllCaps, because that is
+       how it has always rendered here and WpAppTitle does not set the attribute — the
+       tracking in that style is tuned against caps. Matches the name in README.md and
+       the desktop head's Start Menu entry (Program.cs, WindowsAppDisplayName). -->
+  <string name="app_title">WINDOWS PHONE RUNNER</string>
+</resources>

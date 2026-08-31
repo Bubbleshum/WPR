@@ -3,9 +3,8 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Threading;
-using Microsoft.Devices.Sensors;
 
-namespace WPR.Platform.Windows
+namespace WPR.Platform.Windows.Input
 {
     /// <summary>
     /// Lightweight HUD that sits over a running Silverlight game and shows the current
@@ -15,7 +14,7 @@ namespace WPR.Platform.Windows
     /// </summary>
     /// <remarks>
     /// Lives entirely in the host process — independent of the user game's rendering. We
-    /// poll <see cref="KeyboardAccelerometerHost.CurrentReading"/> from a DispatcherTimer
+    /// poll <see cref="KeyboardAccelerometerHost.CurrentAcceleration"/> from a DispatcherTimer
     /// rather than subscribing to <c>ReadingTick</c> because that fires on the simulator
     /// timer thread and we'd have to marshal each invalidation anyway.
     /// </remarks>
@@ -52,7 +51,7 @@ namespace WPR.Platform.Windows
 
             // Screen-relative reading so the dot tracks the user's key presses directly,
             // even when the game's running landscape and the device-frame reading is rotated.
-            var reading = KeyboardAccelerometerHost.CurrentScreenReading.Acceleration;
+            var reading = KeyboardAccelerometerHost.CurrentScreenAcceleration;
 
             // 110px crosshair anchored top-right with a 12px margin from the edge.
             const double pad = 12;

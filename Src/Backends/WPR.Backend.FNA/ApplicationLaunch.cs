@@ -1153,8 +1153,11 @@ namespace WPR
             // which is why the ALC never unloaded and every launch's assemblies/textures/audio stayed
             // resident (progressively slowing the machine over a session). The accelerometer one also
             // left a 60Hz timer running, invoking an ever-growing handler list. Found 2026-08-08.
-            try { Microsoft.Devices.Sensors.KeyboardAccelerometerHost.ResetForNewLaunch(); }
-            catch (Exception ex) { Log.Warn(LogCategory.AppList, $"Accelerometer host reset threw: {ex.Message}"); }
+            // Through the seam, not at a concrete host: which provider is registered is the
+            // platform head's business (keyboard emulator on Windows, hardware sensor on
+            // Android), and this backend runs under both. Null when no head registered one.
+            try { WPR.Sensors.SensorBackend.Provider?.ResetForNewLaunch(); }
+            catch (Exception ex) { Log.Warn(LogCategory.AppList, $"Sensor provider reset threw: {ex.Message}"); }
 
             try { WPR.SilverlightCompability.CompositionTarget.ResetForNewLaunch(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"CompositionTarget reset threw: {ex.Message}"); }

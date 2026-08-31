@@ -1,10 +1,9 @@
 using System;
-using Microsoft.Devices.Sensors;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using XnaKeys = Microsoft.Xna.Framework.Input.Keys;
 
-namespace WPR.Platform.Windows
+namespace WPR.Platform.Windows.Input
 {
     /// <summary>
     /// XNA <see cref="GameComponent"/> that polls <see cref="Keyboard.GetState"/> each Update

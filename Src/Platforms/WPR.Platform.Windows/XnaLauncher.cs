@@ -6,6 +6,7 @@ using Avalonia;
 using Avalonia.Media.Imaging;
 using Microsoft.Xna.Framework;
 using WPR.Common;
+using WPR.Platform.Windows.Input;
 using WPRModel = WPR.Models.Application;
 
 namespace WPR.Platform.Windows

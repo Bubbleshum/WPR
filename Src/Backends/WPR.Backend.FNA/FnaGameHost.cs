@@ -63,7 +63,9 @@ namespace WPR.Backend.FNA
             XnaBackend.SetGraphics(new FnaGraphicsBackend());
             XnaBackend.SetAudio(new FnaAudioBackend());
             XnaBackend.SetXact(new FnaXactBackend());
-            XnaBackend.SetMedia(new FnaMediaBackend());
+            // Not `new FnaMediaBackend()` directly: a head may replace the song path. Android does,
+            // because FAudio's XNA_Song starves its voice once per second (see MediaBackendOverride).
+            XnaBackend.SetMedia(MediaBackendOverride.Create());
             XnaBackend.SetInput(new FnaInputBackend());
             XnaBackend.SetStorage(new FnaStorageBackend());
             XnaBackend.SetTitleLocation(() => Microsoft.Xna.Framework.TitleLocation.Path);

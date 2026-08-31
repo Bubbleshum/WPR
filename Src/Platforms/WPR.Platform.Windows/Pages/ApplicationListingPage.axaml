@@ -186,6 +186,11 @@
                       ToolTip.Tip="Re-run the WPR patcher on this game without re-extracting the XAP. Use this after a WPR update that changed the patcher table, instead of uninstall + reinstall."
                       IsVisible="{Binding ChoosenApp.IsInstalled}"/>
               <Button Classes="ghost"
+                      Command="{Binding ChoosenApp.InfoAppCommand}"
+                      Content="Info"
+                      ToolTip.Tip="Product id, install folder, patcher version and achievement catalogue state for this game. Read-only; Copy all puts the report on the clipboard."
+                      IsVisible="{Binding ChoosenApp.IsInstalled}"/>
+              <Button Classes="ghost"
                       Command="{Binding ChoosenApp.UninstallAppCommand}"
                       Content="Uninstall"
                       IsVisible="{Binding ChoosenApp.IsInstalled}"/>
