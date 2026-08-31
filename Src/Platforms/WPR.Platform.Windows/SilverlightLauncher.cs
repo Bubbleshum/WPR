@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using Microsoft.Devices.Sensors;
+using WPR.Platform.Windows.Input;
 using WPR.Common;
 using WPR;
 using SLFrameView = Microsoft.Phone.Controls.PhoneApplicationFrameView;

@@ -55,6 +55,7 @@ namespace WPR.Platform.Windows.Pages
 
             vm.InstallRequested += OnDiscoveredAppInstallRequested;
             vm.EditRequested += OnAppEditRequested;
+            vm.InfoRequested += OnAppInfoRequested;
 
             this.Get<Button>("addNewAppButton").Click += AddNewAppButton_Click;
 
@@ -66,6 +67,28 @@ namespace WPR.Platform.Windows.Pages
                     ApplicationLaunchRequest.Ask(ViewModel.ChoosenApp.Model);
                 }
             };
+        }
+
+        /// <summary>
+        /// Open the read-only diagnostics dialog. Mirrors the Android head's info activity;
+        /// both read their facts from <see cref="GameDiagnostics"/>.
+        /// </summary>
+        private async void OnAppInfoRequested(object? sender, ApplicationItemViewModel appItem)
+        {
+            if (appItem?.Model == null) return;
+
+            try
+            {
+                var dialog = new GameInfoDialog();
+                dialog.Load(appItem.ProductId, appItem.Name);
+                await dialog.ShowDialog(GetWindow());
+            }
+            catch (Exception ex)
+            {
+                await MessageBoxUtils.ShowSelectableErrorAsync(
+                    title: Properties.Resources.AppRunError,
+                    body: ex.ToString());
+            }
         }
 
         private async void OnAppEditRequested(object? sender, ApplicationItemViewModel appItem)

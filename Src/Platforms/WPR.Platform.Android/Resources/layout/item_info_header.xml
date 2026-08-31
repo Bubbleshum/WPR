@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Section break on the game info page. Accented in code from WpTheme.Accent, the
+     same way the app title is on every other page. -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/infoHeader"
+    style="@style/WpSectionHeader"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:paddingStart="@dimen/wp_page_margin"
+    android:paddingEnd="@dimen/wp_page_margin"
+    android:paddingTop="22dp"
+    android:paddingBottom="2dp" />

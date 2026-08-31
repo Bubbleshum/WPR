@@ -93,6 +93,300 @@ game teardown and does *not* clear this slot; clearing it would leave the second
 without achievements. If no store is registered, GamerServices degrades to "no achievements"
 rather than throwing, matching the existing unseeded-product path.
 
+### Platform input: sensors are behind a seam, everything else already lives in a head
+
+Motion input follows the same three-part shape as achievements (2026-08-30):
+
+* **Contract** — `WPR.Abstractions.Sensors.ISensorProvider`. It speaks
+  `System.Numerics.Vector3` on purpose: the WP7 vocabulary (`AccelerometerReading`, the XNA
+  `Vector3`) lives in the assemblies that *consume* this contract, so using it here would
+  cycle. That is the same reasoning that put `IInputBackend` in `WPR.Xna.Rhi` — the difference
+  is that a motion sample is three floats, so a neutral type costs one conversion instead of a
+  whole vocabulary.
+* **Registry** — `WPR.Sensors.SensorBackend`, inside the `Microsoft.Devices.Sensors` assembly
+  beside its consumer, exactly like `SilverlightBackend`. Deliberately in a `WPR.*` namespace,
+  not `Microsoft.Devices.Sensors`: that namespace is the WP7 contract games bind by identity.
+  It is **not** cleared at teardown (the provider is launcher-lifetime); what *is* cleared is
+  the subscriber list, via `ISensorProvider.ResetForNewLaunch()` from `ResetWprSingletons`.
+  Skipping that reset reintroduces the 2026-08-08 ALC leak.
+* **Implementations** — `WPR.Platform.Windows/Input/WindowsSensorProvider.cs` (over the
+  `KeyboardAccelerometerHost` keyboard emulator) and
+  `WPR.Platform.Android/Input/AndroidSensorProvider.cs` (Xamarin.Essentials, the package's only
+  consumer in the repo). Both registered in their head's `ServicesSetup.Start()`.
+
+`Start/StopAccelerometer` are **counted, not idempotent**. One provider is shared by every
+`Accelerometer` a game holds, so it refcounts its readers and powers the sensor down on the
+last stop — on a phone that is battery, and it is why WP7 titles stop their sensor per screen.
+Two consequences for anyone adding a provider: subscribe to your source *idempotently* (a
+second start must not double-deliver, which a per-instance subscription used to prevent for
+free), and make `ResetForNewLaunch` stop unconditionally rather than honouring the count — a
+game that exited without stopping is the case it exists for. `Accelerometer` holds the exact
+provider instance it started against so the pairing can't drift.
+
+**Exactly one already-in-flight sample can land after a stop or reset**, and that is inherent,
+not a bug to chase. `KeyboardAccelerometerHost.OnTick` raises its event *outside* its own lock
+on purpose — invoking a game handler under that lock would let a slow handler block the 60Hz
+timer or deadlock against it — so a tick already past the lock cannot be recalled. Both
+providers short-circuit on `_consumers == 0`, which makes the post-`Stop()` case exact and
+narrows the teardown one to a single sample. It cannot pin an ALC either way: the subscriber
+list is already empty, so no new reference forms.
+
+**Diagnosing tilt.** Both providers write `[wpr-accel]` lines to the per-game
+`wpr_game_debug.log` (via `Trace`, which `ApplicationLaunch` routes there): one per
+start/stop with the reader count, and a sampled `tick #N reading=(…) orient=… readers=N`
+roughly every two seconds. That trace is the first thing to look at when tilt is reported
+unresponsive — it says whether readings flow at all, and which orientation the key intent is
+being rotated into. The desktop half of it predates the split; Android had no equivalent
+until the providers separated.
+
+`Microsoft.Devices.Sensors.Accelerometer` is now platform-free; before this it carried both
+implementations behind `#if __MOBILE__ || __ANDROID__`, which shipped the desktop emulator
+inside the APK and put an Android sensor package on a shared framework project.
+
+**Everything else input-shaped is already in the right head** and needs no seam — the WP7 bezel
+buttons (`PhoneHardwareButtons`, Avalonia) and the keyboard→tilt bindings on Windows, the Back
+key routing in `GameActivity.OnBackPressed` on Android. The XNA device API (keyboard, mouse,
+gamepad, touch) is a separate, already-solved seam: `WPR.Xna.Rhi.IInputBackend`, implemented by
+`WPR.Backend.FNA` over SDL for both platforms.
+
+### Android graphics: FNA3D picks a driver, and which one it picks matters
+
+`FNA3D_PrepareWindowAttributes` walks `drivers[]` in order and takes the first whose
+`PrepareWindowAttributes` succeeds. The compiled-in set differs per platform:
+
+| head | drivers available | what actually gets picked |
+| --- | --- | --- |
+| Windows | D3D11, OpenGL | **D3D11** |
+| Android | OpenGL, Vulkan | OpenGL is offered first and **declined**, so it fell through to **Vulkan** — until `fna3d.env` started forcing OpenGL |
+
+Vulkan is the one FNA3D's own source still gates behind
+`/* TODO: Bump this to the top when Vulkan is done! */` (`FNA3D.c:45`). This is the **only**
+graphics-stack difference between the two heads, so it is the first thing to suspect for anything
+that renders correctly on desktop and wrongly on Android.
+
+**This is confirmed, not theorised** (2026-08-31). Mirror's Edge drew its world, lighting and
+reflections perfectly on Android while every skinned character stayed in bind pose — a T-pose —
+and forcing the OpenGL driver fixed it on real hardware. It animates via the stock
+`SkinnedEffect`, whose vertex shader carries `float4x3 Bones[72]` at `_vs(c26)` indexed by a vertex
+attribute (~242 uniform vec4s, relative-addressed): exactly what the unfinished Vulkan driver
+mistranslates. Windows, on D3D11, animated it correctly all along.
+
+**Expect this to have fixed more than one game.** Nothing about the failure is Mirror's Edge
+specific — any XNA title using `SkinnedEffect` for 3D character animation was T-posing on Android
+for the same reason. Worth re-testing the Android column of the compat list against this.
+
+`Src/Platforms/WPR.Platform.Android/fna3d.env` now forces `FNA3D_FORCE_DRIVER=OpenGL` via
+`@(AndroidEnvironment)`. Three things to know before touching it:
+
+- **It must be a real process environment variable.** FNA3D reads the hint through `SDL_GetHint`,
+  which falls back to `SDL_getenv`; .NET's `Environment.SetEnvironmentVariable` does **not**
+  propagate to the native environ on Unix, so FNA's own `gldevice` launch-parameter path
+  (`FNAPlatform.cs:54`) cannot set it on Android.
+- **Forcing is a hard selection, not a preference.** The loop `continue`s past every driver whose
+  `Name` doesn't `strcmp`-match, so if the forced driver declines you get "No supported FNA3D driver
+  found!" and device creation fails — the game won't start at all rather than falling back. The name
+  is exactly `"OpenGL"` (`FNA3D_Driver_OpenGL.c:6179`).
+- **The emulator cannot render the OpenGL path**, so it does not validate it. On Pixel_Dev
+  (API 36 x86_64) the GL driver initialises and reports `OpenGL ES 3.1`, then the screen stays on
+  the game's own clear colour — for Mirror's Edge a flat white, which is why it reads as "nothing
+  draws" — with no FNA3D error and no managed exception. Judge the GL path on real hardware only.
+
+  Two red herrings, both of which cost time on 2026-08-31 and neither of which is the renderer:
+  the `E libEGL: called unimplemented OpenGL ES API` flood is emitted **once per second by a
+  `.NET TP Worker` thread**, not per frame by `SDLThread` — that is the emulator's per-thread GL
+  dispatch stubbing out a call made with no current EGL context, and it appears under Vulkan's
+  absence too. And a white screen is not necessarily a dead one: `wpr_game_debug.log` showed
+  `GraphicsDevice.Clear ... color=(1.00,1.00,1.00,1.00)` repeating, i.e. the game clearing happily.
+
+**Which driver a launch gets is decided at runtime, not by the env file alone** (2026-08-31). The
+env var forcing OpenGL is still the default, but `GameActivity.SDLMain` calls
+`Graphics.GraphicsDriverPolicy.Apply(...)` before the host builds the game, and that relaxes the
+force on the emulator so it renders (verified: full Mirror's Edge menu, `FNA3D Driver: Vulkan`, and
+the libEGL flood at zero). Physical devices take a deliberate **do-nothing** branch and keep the
+forced OpenGL path.
+
+- The lever is `WPR.Backend.FNA.GraphicsDriverSelection.Apply(name)` —
+  `SDL_SetHintWithPriority(..., SDL_HINT_OVERRIDE)`, the one thing that beats the process env var
+  (`SDL_GetHint` consults its hint list first and an OVERRIDE-priority hint wins). Pass **null**,
+  never `""`, to restore automatic order: an empty string is still non-NULL to `SDL_GetHint` and
+  would `strcmp` against every driver name and match none.
+- Policy lives in the head (`Graphics/GraphicsDriverPolicy.cs`), plumbing in the backend. "Is this
+  an emulator" is not something a graphics backend should reason about.
+- **Keep the failure direction.** Detection is biased to false negatives on purpose: a missed
+  emulator only means the emulator renders nothing, whereas a false positive puts a real phone back
+  on the T-posing Vulkan driver. Never invert this into "force OpenGL only when we detect hardware".
+- **A declined driver falls through by name, it does not throw** (2026-08-31).
+  `SDL2_FNAPlatform.PrepareWindowAttributesWithFallback` walks an explicit ladder — the requested
+  driver first, then `OpenGL`, `Vulkan`, then automatic — logging each attempt. The earlier shape
+  ("on failure clear the force and let FNA3D choose") crashed a user's device with
+  `No supported FNA3D driver found!`, for two reasons worth not re-introducing: **automatic order is
+  not a safety net on Android**, because FNA3D offers OpenGL first and it is declined there, so
+  "automatic" effectively means Vulkan — walking away from the one driver that may work; and
+  `IsDriverForced()` read the hint, which the head legitimately clears (emulator policy, the
+  override file), so a failure looked like "nothing was forced, nothing to fall back to" and
+  rethrew. **Whatever was requested stays first in the ladder — including "automatic"**, or the
+  fallback silently overrules the emulator policy and puts it back on the non-rendering GL path.
+- No rebuild needed to re-test a driver: a `fna3d_driver.txt` next to the app's external files
+  (containing `OpenGL`, `Vulkan` or `auto`) overrides both branches. Useful for a phone whose GL
+  driver misbehaves.
+
+  ```powershell
+  adb shell "echo Vulkan > /storage/emulated/0/Android/data/com.wpr.android/files/fna3d_driver.txt"
+  ```
+
+### Install-time audio transcoding is behind a seam too
+
+Same three-part shape as sensors and achievements (2026-08-31):
+
+* **Contract** — `WPR.Abstractions.Audio.IAudioTranscoder` (+ the `AudioTranscodeResult` DTO). Its
+  whole vocabulary is file paths, so unlike `IAchievementStore` it has no reason to live outside
+  Abstractions.
+* **Registry** — `WPR.Core.AudioTranscoderBackend`, in `WPR.Loader` beside its consumer
+  `AudioCompabilityConverter`, exactly like `SensorBackend` sits beside `Accelerometer`.
+* **Implementations** — `WPR.Platform.Windows/Audio/FFMpegCoreAudioTranscoder.cs` (FFMpegCore over
+  the bundled `ffmpeg.exe`) and `WPR.Platform.Android/Audio/FFmpegKitAudioTranscoder.cs`
+  (ffmpeg-kit over JNI). Registered in each head's `ServicesSetup.Start()`.
+
+**Why it exists.** WP7 XNA titles ship soundtracks as `.wma` (Mirror's Edge has 40+ tracks under
+`Content/music/`, each with a 129-byte `.xnb` Song stub), but the song backend decodes Ogg Vorbis
+only — FAudio's `XNA_PlaySong` is stb_vorbis. `ApplicationInstaller` therefore transcodes at install
+time. That code used to call FFMpegCore directly from `WPR.Loader` under a comment claiming it was
+the implementation "for all platforms". It was not: **FFMpegCore spawns an `ffmpeg` child process**,
+and an APK has no executable to spawn. On Android every transcode failed, the exception was
+swallowed per file, the install still reported success, and the game was silently mute — sound
+effects worked, because those are XNB `SoundEffect` and need no conversion. This is the same mistake
+the sensors split fixed: a desktop-only implementation on a shared Core project, also shipped inside
+the APK for nothing.
+
+**A missing transcoder now fails the install** (`ApplicationInstallError.ConvertFailed`) rather than
+degrading. That is the deliberate difference from `SensorBackend`, where "no provider" means "no
+readings": a missing transcoder produces a game that installs cleanly and plays no music, which the
+user cannot see or diagnose. Individual files are still per-file warnings — one bad track shouldn't
+block an install — but *every* track failing throws, because that is the transcoder not working.
+Consequence: **any code path that installs must compose a transcoder.** `BatchReinstall`
+(`--reinstall-all` / `--repatch-installed`) does its own registration because `Program` runs it and
+`Environment.Exit(0)`s without ever reaching `ServicesSetup.Start()`, which lives in
+`MainWindowDesktop`'s ctor.
+
+`RepatchAsync` re-runs the transcode as a **non-fatal** step (it did not touch audio at all before
+this). That is the cheap path for a game already installed on Android and therefore mute — a repatch
+fixes its soundtrack without a full uninstall/reinstall, and the Android head already exposes one in
+`GamesActivity`. It's idempotent and nearly free when there's nothing to do: the converter sniffs
+each file's container (`OggS` vs the ASF magic) and skips what's already converted.
+
+**The transcoded file keeps the `.wma` filename** — the `.xnb` Song stub names that path and is not
+rewritten, so the extension deliberately lies about the container afterwards. That is exactly why
+`MediaPlayer.IsSupportedSongPath` sniffs for `OggS` instead of trusting the extension; don't
+"simplify" it back to an extension check.
+
+**The `com.arthenica.ffmpegkit` binding was a shell until this change.** It, and both
+`com.arthenica.smartexception*` projects, targeted plain `net8.0` — and a Java binding is only
+generated on an *android* TFM, so `class-parse` never ran and all three built ~4 KB assemblies with
+no types in them. Nothing in the repo could call FFmpegKit because there was no FFmpegKit to call.
+All three now target `net8.0-android` with `IsBindingProject` / `AndroidClassParser=class-parse`,
+modelled on `Org.Libsdl.App`, which was the only binding project here that was ever correct. Check
+the fix survives by looking for the Java class in the APK, not just for a green build:
+
+```powershell
+# expect a non-zero count; it was 0 before 2026-08-31
+unzip -p <apk> classes.dex | Select-String -Encoding Byte "com/arthenica/ffmpegkit/FFmpegKit"
+```
+
+The native side needed nothing: `libffmpegkit.so` / `libavcodec.so` / `libavformat.so` /
+`libswresample.so` were already checked in under `Libraries/<abi>/` and already in the APK, the
+bundled ffmpeg is configured `--enable-libvorbis` (the encoder), and `libavcodec` carries the
+`wmav1` / `wmav2` / `wmapro` decoders. The bundled build is
+`ffmpeg-kit-audio-<abi>-4.5.1-lts` (ffmpeg v4.5-dev).
+
+**Songs do not go through FAudio on Android.** `FnaGameHost` composes the `IMediaBackend` slot per
+game launch, but it asks `WPR.Backend.FNA.MediaBackendOverride.Create()` rather than newing
+`FnaMediaBackend` directly, and the Android head registers
+`AndroidMediaBackend` (platform `Android.Media.MediaPlayer`) through
+`MediaBackendOverride.SetFactory(...)` in `ServicesSetup.Start()`. An *override factory* rather
+than a plain registry because that slot is per-launch and cleared on teardown — a head that called
+`XnaBackend.SetMedia` at startup would be overwritten by the next launch.
+
+The reason is a defect in FAudio's own song player, not in WPR. `XNA_SongSubmitBuffer`
+(`XNA_Song.c`) decodes exactly `sample_rate * channels` frames — **one full second** — into a
+single reusable cache, with a **queue depth of one**, refilled from `OnBufferEnd`. `OnBufferEnd`
+fires when the buffer has already finished, so at every boundary the voice has nothing queued
+*and* the audio thread is decoding a second of Vorbis inside the mixer callback. Desktop absorbs
+it; on a phone it is an audible click **exactly once per second**, which is the tell.
+
+Rebuilding FAudio with a double-buffered `XNA_SongSubmitBuffer` (two caches, prime twice,
+alternate) is the better fix and would help desktop too — but `libFAudio.so` / `FAudio.dll` ship
+**prebuilt and checked in**, the vendored `lib/FAudio/src/*.c` is not compiled by any build here,
+and this machine has neither an NDK nor cmake. Hence the platform-player swap.
+
+Two things about `AndroidMediaBackend` worth knowing: it delegates the **entire video half** to
+`FnaMediaBackend` (Theorafile is fine and shouldn't be duplicated), and it relies on MediaPlayer
+sniffing **content, not extension** — our transcoded songs keep the `.wma` filename. That
+assumption is verified: logcat shows `allocate(c2.android.vorbis.decoder)` and
+`read media type: audio/vorbis` on a `.wma`-named file. If songs ever silently fail to start,
+re-check that first.
+
+**Owning the song player means owning its lifecycle — three things FAudio used to do for free.**
+Each of these was a real defect, not a hypothetical:
+
+- **Nothing else will stop the music.** Sound effects go quiet when the app backgrounds because SDL
+  pauses FAudio's audio device as part of the Android activity lifecycle; a platform `MediaPlayer`
+  is ours alone and played on over the home screen. `GameActivity.OnPause`/`OnResume` now call
+  `AndroidMediaBackend.SuspendForBackground()`/`RestoreFromForeground()`. It claims only a song that
+  was *actually playing*, so a game that paused or stopped its own music on deactivation keeps that
+  state instead of having music restarted under its pause menu.
+- **A paused player may not survive the background.** Android can reclaim the audio track while the
+  app is away, so `ResumeSong` cannot just call `Start()` — it captures the offset on every pause
+  and rebuilds the player with `SeekTo` if the resume throws. Swallowing that exception (the
+  original code) silently killed music for the rest of the session, because nothing upstream ever
+  re-issues `PlaySong` for a song it believes is merely paused.
+- **An errored player never raises Completion**, so `_ended` must be latched from the `Error`
+  callback too, or the XNA queue polls `GetSongEnded()` forever and every later track is lost.
+
+**Backgrounding restarts the music, and that is correct** — do not "fix" it. A WP7 title stops its
+own song from its `Deactivated` handler (real hardware tombstoned the app) and calls `Play()` again
+on reactivation; XNA 4.0 on Windows Phone has no `Play(Song, TimeSpan)`, so `Play` means "from the
+beginning". Measured for Mirror's Edge: our background pause at 37665 ms, then
+`StopSong (suspended=True, ended=False)` from the **game thread** 103 ms later. The `ended=False` is
+the load-bearing part — no `Completion` fired, so this is not the XNA queue advancing, it is the
+game. Carrying the offset across that stop/replay was built and then deliberately reverted
+(2026-08-31): it sounds nicer but silently overrides a game that restarts a track on purpose.
+Position is preserved only where XNA actually defines it — `Pause` then `Resume`.
+
+The `[wpr-media] StopSong (suspended=…, ended=…)` line exists precisely to tell those two apart;
+they are otherwise indistinguishable from inside the backend.
+
+**Do not use the emulator to judge any of this.** API 36 mutes and tears down background playback
+by itself — logcat says `AS.AudioService: AudioHardening background playback would be muted` — so
+the song track dies on backgrounding there whether or not we handle it. That masked the first bug
+above completely; it was reported from a real device.
+
+**Use ffmpeg-kit's ASYNC entry point (`ExecuteWithArgumentsAsync` + a completion callback), never
+the synchronous one.** Both failure modes of the sync API were observed on the emulator and neither
+is obvious from a build:
+
+| how the sync API was called | what happened |
+| --- | --- |
+| on the UI thread (the natural result of `await`ing an install started from an activity) | works, but the main thread sits in `sem_wait` inside `libmonosgen` for the whole soundtrack — a multi-minute ANR, "WPR isn't responding" |
+| on a .NET thread-pool thread (`Task.Run`) | **never returns.** ffmpeg emits no session log at all, the conversion stalls on the first file, and the app stays responsive — so it looks like a hang with no error anywhere |
+
+The async overload hands the work to ffmpeg-kit's own executor and returns immediately;
+`FFmpegKitAudioTranscoder` bridges its callback to a `TaskCompletionSource`. With that, 36 tracks
+convert in under 25 s on an x86_64 emulator, versus ~10 s *per file* on the UI-thread path.
+
+Independently, `ScanWmaAndConvert` uses `ConfigureAwait(false)` and both call sites wrap it in
+`Task.Run` — the install is kicked off from the UI thread in both heads, so without that its
+continuations (container sniffs, `File.Move`s) all post back there.
+
+**No `ApplicationPatcher.Version` bump for any of this** — no patcher table changed and no IL is
+rewritten. Audio conversion is a file operation, so a *reinstall* (or the repatch above) is what
+picks it up, not a patcher-version-driven staleness check.
+
+Verified end to end on the `Pixel_Dev` emulator (API 36 x86_64) on 2026-08-31: Mirror's Edge
+installed through the document picker, `[AppAudioConverter] FFmpegKit available (ffmpeg
+v4.5-dev-…)` → `Transcoding 36 .wma file(s)`, all 36 rewritten to `OggS` with `.wma.original`
+siblings kept and no `.new.ogg` left behind, no ANR, UI taps ~60 ms throughout. Byte sizes match
+the desktop FFMpegCore output (e.g. `Ambience_01` 860,416 vs 860,415).
+
 
 **Namespaces did not change with the move** — the catalogue types are still `WPR.Models`,
 exactly as the Stage 2 split intended ("split by assembly, not namespace"). The ~30 files
@@ -277,7 +571,8 @@ There is no shared UI project any more. `Src/UI/WPR.UI` was dissolved on
 2026-08-29: the Avalonia UI (`Pages/`, `ViewModels/`, `Views/`, `Themes/`,
 `ViewLocator`), the three launchers (`SilverlightLauncher`, `XnaLauncher`,
 `UnityPortLauncher`), the tilt stack (`KeyboardTiltBinding`, `TiltOverlay`,
-`TiltInputXnaComponent`, `TiltOverlayXnaComponent`) and `PhoneHardwareButtons` /
+`TiltInputXnaComponent`, `TiltOverlayXnaComponent` — since 2026-08-30 under
+`Input/`, namespace `WPR.Platform.Windows.Input`) and `PhoneHardwareButtons` /
 `WP7AccentColors` all went to `WPR.Platform.Windows`, because the Android shell is
 native and used none of them. `PixelToGridLengthConverter`, `ProgressView`,
 `RegistrationPage`, `RegistrationService` and `System.Windows.MessageBoxButton`
@@ -290,7 +585,7 @@ Six files were needed by **both** heads, so each head now owns a copy:
 | `ApplicationLaunchRequest.cs` | Android copy keeps the `WPR.Common.Log` call the `#if __ANDROID__` block used to guard |
 | `LocaleUtils.cs` | identical apart from namespace |
 | `MessageBoxUtils.cs` | the two halves of the old `#if __ANDROID__` file: Avalonia windows on Windows, `AlertDialog` on Android |
-| `ServicesSetup.cs` | identical apart from namespace |
+| `ServicesSetup.cs` | **no longer identical.** Each head is the composition root and registers its own platform implementations — since 2026-08-30 that includes `SensorBackend.SetProvider(...)`, which is `WindowsSensorProvider` (keyboard emulator) on one side and `AndroidSensorProvider` (hardware) on the other, and since 2026-08-31 `AudioTranscoderBackend.SetTranscoder(...)` — `FFMpegCoreAudioTranscoder` (spawns `ffmpeg.exe`) vs `FFmpegKitAudioTranscoder` (JNI). The `Guide`/`MessageBox` half still tracks line for line |
 | `System/Windows/MessageBox.cs` | internal placeholder `ShowSimpleImpl` holder |
 | `Properties/Resources.resx` + `Resources.Designer.cs` | the localized launcher strings; the designer's `ResourceManager` name follows each head's `$(RootNamespace)` |
 

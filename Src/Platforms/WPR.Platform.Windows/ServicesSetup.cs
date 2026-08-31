@@ -1,4 +1,5 @@
 ﻿using Microsoft.Xna.Framework.GamerServices;
+using WPR.Platform.Windows.Input;
 using WPR.Backend.Direct3D11;
 using WPR.SilverlightCompability;
 using System.Linq;
@@ -27,6 +28,22 @@ namespace WPR.Platform.Windows
             // launched, and is idempotent (assignment, not accumulation) — MainWindowDesktop can
             // be reconstructed without leaking.
             SilverlightBackend.SurfaceRenderer = new Direct3D11SurfaceRendererBackend();
+
+            // Supply this head's motion sensors. A desktop PC has none, so the provider reads
+            // the keyboard emulator the Controls page binds — the WP7 Accelerometer shim in
+            // Microsoft.Devices.Sensors sees only ISensorProvider and never learns which it got.
+            // Registered once here, not per game, for the same reason as the achievement store:
+            // nothing re-runs Start() between launches. The per-game state that DOES need
+            // clearing is the subscriber list, which ApplicationLaunch drops through
+            // ISensorProvider.ResetForNewLaunch.
+            WPR.Sensors.SensorBackend.SetProvider(new WindowsSensorProvider());
+
+            // Supply the install-time audio transcoder — FFMpegCore over the ffmpeg.exe this head
+            // ships beside the executable. WP7 XNA titles ship .wma soundtracks and the song
+            // backend decodes Ogg Vorbis only, so ApplicationInstaller transcodes at install time.
+            // This is the behaviour desktop already had; it moved out of WPR.Loader and behind
+            // IAudioTranscoder on 2026-08-31 so that Android could have a working half too.
+            WPR.Core.AudioTranscoderBackend.SetTranscoder(new Audio.FFMpegCoreAudioTranscoder());
 
             Guide.ShowInputBoxFunc = async (title, description, defaultText) =>
             {

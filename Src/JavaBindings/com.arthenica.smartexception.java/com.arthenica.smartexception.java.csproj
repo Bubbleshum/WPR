@@ -1,11 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <SupportedOSPlatformVersion>26</SupportedOSPlatformVersion>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <!-- See the sibling com.arthenica.smartexception.csproj: an android TFM is
+         what makes this a binding project rather than an empty assembly. -->
+    <TargetFramework>net8.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>21.0</SupportedOSPlatformVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <IsBindingProject>true</IsBindingProject>
+    <AndroidClassParser>class-parse</AndroidClassParser>
+    <AndroidCodegenTarget>XAJavaInterop1</AndroidCodegenTarget>
   </PropertyGroup>
   <ItemGroup>
-	<EmbeddedJar Include="Jar\com.arthenica.smartexception.java.jar" />
+    <EmbeddedJar Include="Jar\com.arthenica.smartexception.java.jar" />
   </ItemGroup>
 </Project>

@@ -1,7 +1,11 @@
 using System;
-using Microsoft.Xna.Framework;
+using System.Numerics;
+// Aliased rather than a plain `using Microsoft.Xna.Framework;`: that namespace also defines a
+// Vector3, and readings here are System.Numerics.Vector3 — the ISensorProvider vocabulary.
+// Orientation is the one XNA type this file needs.
+using DisplayOrientation = Microsoft.Xna.Framework.DisplayOrientation;
 
-namespace Microsoft.Devices.Sensors
+namespace WPR.Platform.Windows.Input
 {
     /// <summary>
     /// Direction the user wants to tilt the (virtual) phone. Forward = top edge moves away
@@ -16,12 +20,24 @@ namespace Microsoft.Devices.Sensors
     }
 
     /// <summary>
-    /// Desktop-only keyboard-to-accelerometer bridge. The launcher (Silverlight or XNA host)
-    /// translates configured keys into <see cref="NotifyTiltKey"/> calls; this class smooths
-    /// the per-axis target toward the current value and fires <see cref="ReadingTick"/> at
-    /// ~60Hz while at least one consumer (an <see cref="Accelerometer"/> or an overlay) has
-    /// called <see cref="Acquire"/>. Consumers reading <see cref="CurrentReading"/> ad-hoc
+    /// Desktop keyboard-to-accelerometer bridge — this head's stand-in for hardware the machine
+    /// does not have. The launcher (Silverlight frame or XNA <see cref="TiltInputXnaComponent"/>)
+    /// translates configured keys into <see cref="NotifyTiltKey"/> calls; this class smooths the
+    /// per-axis target toward the current value and fires <see cref="ReadingTick"/> at ~60Hz
+    /// while at least one consumer (a <see cref="WindowsSensorProvider"/> or an overlay) has
+    /// called <see cref="Acquire"/>. Consumers reading <see cref="CurrentAcceleration"/> ad-hoc
     /// (e.g. an overlay's Render path) still see the latest smoothed value.
+    ///
+    /// <para><b>Lives in the Windows head, not in the sensors framework.</b> It moved here on
+    /// 2026-08-30: a keyboard emulator is platform code by definition, and while it sat in
+    /// <c>Microsoft.Devices.Sensors</c> it was compiled into the Android APK where nothing could
+    /// ever call it. Games reach it only through the WP7 <c>Accelerometer</c> shim, which now
+    /// talks to <see cref="WindowsSensorProvider"/> across
+    /// <see cref="WPR.Abstractions.Sensors.ISensorProvider"/>.</para>
+    ///
+    /// <para>Readings are <see cref="System.Numerics.Vector3"/> — the seam's vocabulary. The
+    /// conversion to the XNA <c>Vector3</c> games bind happens once, inside the framework's
+    /// <c>Accelerometer</c>.</para>
     /// </summary>
     public static class KeyboardAccelerometerHost
     {
@@ -68,14 +84,14 @@ namespace Microsoft.Devices.Sensors
         /// <see cref="Acquire"/>. Subscribers run on the timer thread — do not touch UI
         /// state without marshalling.
         /// </summary>
-        public static event EventHandler<AccelerometerReading>? ReadingTick;
+        public static event EventHandler<Vector3>? ReadingTick;
 
         /// <summary>
-        /// Latest synthesized reading, rotated into the device-portrait frame the WP7
+        /// Latest synthesized acceleration, rotated into the device-portrait frame the WP7
         /// Accelerometer contract expects games to read. Use this when handing the value
         /// to a user game.
         /// </summary>
-        public static AccelerometerReading CurrentReading
+        public static Vector3 CurrentAcceleration
         {
             get
             {
@@ -87,12 +103,12 @@ namespace Microsoft.Devices.Sensors
         }
 
         /// <summary>
-        /// Latest synthesized reading in screen-relative coords — +X = screen-right, +Y =
+        /// Latest synthesized acceleration in screen-relative coords — +X = screen-right, +Y =
         /// screen-up ("forward"). Use this for on-screen visualisation so the indicator dial
         /// always tracks the user's key presses (W moves the dot up regardless of whether
         /// the game is landscape) instead of mirroring the device-frame rotation.
         /// </summary>
-        public static AccelerometerReading CurrentScreenReading
+        public static Vector3 CurrentScreenAcceleration
         {
             get
             {
@@ -177,10 +193,11 @@ namespace Microsoft.Devices.Sensors
         /// <summary>
         /// Drops ALL simulator state left behind by a game that has exited: clears the
         /// <see cref="ReadingTick"/> subscriber list, zeroes the refcount and stops the tick timer.
-        /// The host MUST call this when a game shuts down.
+        /// The host MUST call this when a game shuts down — it reaches here through
+        /// <see cref="WPR.Abstractions.Sensors.ISensorProvider.ResetForNewLaunch"/>.
         ///
         /// <para><b>Why (found 2026-08-08).</b> <c>Accelerometer.Start()</c> subscribes an INSTANCE
-        /// method to this STATIC event and calls <see cref="Acquire"/>; only <c>Accelerometer.Stop()</c>
+        /// method to a STATIC event and calls <see cref="Acquire"/>; only <c>Accelerometer.Stop()</c>
         /// undoes both, and WP7 games routinely just exit without stopping their sensors. The result was
         /// a permanent leak per launch: this static event kept the <c>Accelerometer</c> alive, which kept
         /// the GAME's own reading handlers alive, which pinned the game's collectible AssemblyLoadContext
@@ -201,7 +218,7 @@ namespace Microsoft.Devices.Sensors
             }
         }
 
-        private static AccelerometerReading BuildReading_NoLock(bool applyOrientation)
+        private static Vector3 BuildReading_NoLock(bool applyOrientation)
         {
             double xs = _currentX, ys = _currentY;
             double xd, yd;
@@ -245,16 +262,12 @@ namespace Microsoft.Devices.Sensors
                 mag2 = 1.0;
             }
             double zd = -Math.Sqrt(1.0 - mag2);
-            return new AccelerometerReading
-            {
-                Acceleration = new Vector3((float)xd, (float)yd, (float)zd),
-                Timestamp = DateTimeOffset.Now,
-            };
+            return new Vector3((float)xd, (float)yd, (float)zd);
         }
 
         private static void OnTick(object? sender, System.Timers.ElapsedEventArgs e)
         {
-            AccelerometerReading r;
+            Vector3 r;
             lock (_gate)
             {
                 DateTime now = DateTime.UtcNow;

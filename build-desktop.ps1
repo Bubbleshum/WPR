@@ -9,9 +9,9 @@
       * uses the system .NET at "C:\Program Files\dotnet" (repo global.json pins the 8.0 band)
 
     By default it runs `dotnet publish` into Artifacts\desktop\<Configuration>, then
-    copies Src\Database\** alongside the exe. That copy is needed because the csproj's
-    "Copy pre-made database" target is AfterTargets="Build" and writes to $(OutputPath),
-    so it never reaches the publish folder on its own.
+    copies Src\Core\WPR.Database\Data\** alongside the exe. That copy is needed because the
+    csproj's "Copy pre-made database" target is AfterTargets="Build" and writes to
+    $(OutputPath), so it never reaches the publish folder on its own.
 
 .PARAMETER Configuration
     Release (default) or Debug. Release drops the Avalonia.Diagnostics package
@@ -54,7 +54,10 @@ $ErrorActionPreference = 'Stop'
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Project = Join-Path $Root 'Src\Platforms\WPR.Platform.Windows\WPR.Platform.Windows.csproj'
-$DatabaseDir = Join-Path $Root 'Src\Database'
+# Moved 2026-08-30: Src\Database -> Src\Core\WPR.Database\Data when the database was
+# centralised into its own project. Kept in step with the same path in
+# .github\workflows\release.yml ("Stage pre-made database").
+$DatabaseDir = Join-Path $Root 'Src\Core\WPR.Database\Data'
 $Tfm = 'net8.0-windows10.0.17763.0'
 
 # Passed as an MSBuild *global* property so it reaches every transitive
@@ -142,17 +145,32 @@ try {
 
     # --- stage the pre-made SQLite databases + achievement catalogues ---------
     # The csproj target only handles the build output dir, not the publish dir.
+    #
+    # Failures here are fatal rather than a warning, matching the release workflow. A publish
+    # with no Database\ folder still produces a runnable exe, so a warning scrolls past and the
+    # breakage only shows up on a clean machine: Program.cs seeds %LocalAppData%\WPR\Database
+    # from $(OutputPath)\Database on first run, so an empty stage means no catalogue and no
+    # achievements for any game. That is exactly how the stale source path above survived.
     if (-not $NoPublish) {
-        if (Test-Path $DatabaseDir) {
-            $dbTarget = Join-Path $OutputDir 'Database'
-            Write-Host ''
-            Write-Host "Staging Database\ -> $dbTarget" -ForegroundColor Cyan
-            if (-not (Test-Path $dbTarget)) { New-Item -ItemType Directory -Path $dbTarget -Force | Out-Null }
-            Copy-Item -Path (Join-Path $DatabaseDir '*') -Destination $dbTarget -Recurse -Force
+        if (-not (Test-Path $DatabaseDir)) {
+            throw "Seed database source '$DatabaseDir' not found - has it moved again?"
         }
-        else {
-            Write-Warning "Src\Database not found - skipping database staging."
+
+        $dbTarget = Join-Path $OutputDir 'Database'
+        Write-Host ''
+        Write-Host "Staging Database\ -> $dbTarget" -ForegroundColor Cyan
+        if (-not (Test-Path $dbTarget)) { New-Item -ItemType Directory -Path $dbTarget -Force | Out-Null }
+        Copy-Item -Path (Join-Path $DatabaseDir '*') -Destination $dbTarget -Recurse -Force
+
+        foreach ($f in @('applications.db', 'achievements.db')) {
+            if (-not (Test-Path (Join-Path $dbTarget $f))) {
+                throw "Staged payload is missing $f."
+            }
         }
+
+        $catalogues = @(Get-ChildItem (Join-Path $dbTarget 'Achievements') -Directory -ErrorAction SilentlyContinue).Count
+        if ($catalogues -lt 1) { throw 'Staged payload has no achievement catalogues.' }
+        Write-Host "  $catalogues achievement catalogues staged" -ForegroundColor DarkGray
     }
 
     $exe = Join-Path $OutputDir 'WPR.Platform.Windows.exe'

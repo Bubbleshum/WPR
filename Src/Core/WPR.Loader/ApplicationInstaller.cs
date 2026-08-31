@@ -71,7 +71,9 @@ namespace WPR
                 ApplicationPreview preview = new ApplicationPreview
                 {
                     Name = titleAttrib.Value,
-                    Version = versionAttrib.Value,
+                    // Not versionAttrib.Value directly: half the library never bumped that
+                    // attribute off the 1.0.0.0 template default. See ApplicationVersionResolver.
+                    Version = ApplicationVersionResolver.Resolve(archive, versionAttrib.Value, titleAttrib.Value),
                     ProductId = productAttrib.Value.Trim('{').Trim('}'),
                     Author = appNode.Attributes?["Author"]?.Value ?? "Unknown",
                     Publisher = appNode.Attributes?["Publisher"]?.Value ?? "Unknown",
@@ -308,7 +310,9 @@ namespace WPR
                 {
                     Name = titleAttrib.Value,
                     ApplicationType = runtimeTypeParsed,
-                    Version = versionAttrib.Value,
+                    // See ApplicationVersionResolver: the manifest attribute is the placeholder
+                    // 1.0.0.0 for half the library, so the entry assembly is consulted when it is.
+                    Version = ApplicationVersionResolver.Resolve(archive, versionAttrib.Value, titleAttrib.Value),
                     IconPath = (iconPath == null) ? "" : Path.Combine(productStoreFolderRelative, iconPath),
                     Publisher = (publisherAttrib == null) ? "Unknown" : publisherAttrib.Value,
                     Author = (authorAttrib == null) ? "Unknown" : authorAttrib.Value,
@@ -431,9 +435,15 @@ namespace WPR
                 {
                     try
                     {
-                        await AudioCompabilityConverter.ScanWmaAndConvert(appDataFolder,
+                        // Task.Run for the same reason the patch step above uses it: this is called
+                        // from the UI thread in both heads, and the work before the converter's
+                        // first await (an external-storage directory walk, plus loading the
+                        // transcoder's native library) is enough to stutter the progress dialog on
+                        // its own. Inside Task.Run there is no SynchronizationContext to capture, so
+                        // nothing in the conversion loop can be posted back to the UI thread.
+                        await Task.Run(() => AudioCompabilityConverter.ScanWmaAndConvert(appDataFolder,
                             progress => progressSet(80 + (int)((double)progress / 5)),
-                            cancelSource);
+                            cancelSource));
                     } catch (Exception exception)
                     {
                         Log.Error(LogCategory.AppInstall, $"Application WMA conversion failed with exception:\n{exception}");
@@ -559,15 +569,59 @@ namespace WPR
                     ApplicationPatcher patcher = new ApplicationPatcher();
                     patcher.Patch(
                         installFolder,
-                        progress => progressSet(30 + (int)(progress * 0.7)),
+                        progress => progressSet(30 + (int)(progress * 0.5)),
                         cancelToken);
                 }, cancelToken);
+
+                if (cancelToken.IsCancellationRequested) return ApplicationInstallError.Canceled;
+
+                // 2b) Re-run the .wma -> Ogg Vorbis transcode. Added 2026-08-31, when the transcode
+                //     moved behind IAudioTranscoder and Android gained a working implementation for
+                //     the first time: without this, every XNA game already installed on Android is
+                //     mute and the ONLY way to get its soundtrack is a full uninstall + reinstall.
+                //     A repatch is far cheaper and the Android head already exposes one
+                //     (GamesActivity), so it is worth doing here.
+                //
+                //     Idempotent, and cheap when there is nothing to do: the converter sniffs each
+                //     file's container and skips anything that is already Ogg, so a repatch of an
+                //     install whose audio is fine does no work beyond the directory walk.
+                //
+                //     NON-FATAL, unlike the install path. Repatch's contract is "re-apply the
+                //     current patcher", and that has already succeeded by this point; a head with
+                //     no transcoder composed in should not lose its IL repatch over the audio.
+                if (app.ApplicationType == ApplicationType.XNA)
+                {
+                    try
+                    {
+                        // Task.Run: see the matching call in Install — keeps the whole conversion
+                        // off the caller's UI thread.
+                        await Task.Run(() => AudioCompabilityConverter.ScanWmaAndConvert(
+                            installFolder,
+                            progress => progressSet(80 + (int)(progress * 0.2)),
+                            cancelToken));
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Warn(LogCategory.AppInstall,
+                            $"Repatch: .wma transcode failed for {app.Name} (repatch itself " +
+                            $"succeeded; the game's music will be silent): {ex.Message}");
+                    }
+                }
 
                 if (cancelToken.IsCancellationRequested) return ApplicationInstallError.Canceled;
 
                 // 3) Stamp the new patcher version on the DB row so the UI can tell whether
                 //    a reinstall is still needed for any future patcher changes.
                 app.PatchedVersion = ApplicationPatcher.Version;
+
+                //    Also take the chance to correct a placeholder version. Games installed
+                //    before ApplicationVersionResolver existed recorded WMAppManifest's
+                //    App@Version verbatim, which is 1.0.0.0 for about half the library. The
+                //    entry assembly is right here on disk, so a repatch can fix that without
+                //    the user re-extracting the XAP. Reads the patched DLL, which is fine —
+                //    patching preserves both version sources.
+                app.Version = ApplicationVersionResolver.ResolveFromInstallFolder(
+                    installFolder, app.Assembly, app.Version, app.Name);
                 ApplicationContext.Current.Applications!.Update(app);
                 await ApplicationContext.Current.SaveChangesAsync();
 

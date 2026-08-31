@@ -1,10 +1,9 @@
 using System;
 using System.Collections.Generic;
-using Microsoft.Devices.Sensors;
 using WPR.Common;
 using AvKey = Avalonia.Input.Key;
 
-namespace WPR.Platform.Windows
+namespace WPR.Platform.Windows.Input
 {
     /// <summary>
     /// Maps a configured key name (the enum-name string we persist into Configuration)

@@ -106,6 +106,66 @@ namespace WPR.Platform.Android
             base.OnWindowFocusChanged(hasFocus);
         }
 
+        /// <summary>
+        /// Silences the song while the app is not in the foreground.
+        ///
+        /// <para>Sound effects need no help — they play through FAudio, and SDL pauses its audio
+        /// device as part of this same lifecycle. The song is the exception: since the Android head
+        /// swapped FAudio's <c>XNA_Song</c> for a platform <c>MediaPlayer</c>, the music is ours
+        /// alone and nothing else will stop it, so it carried on playing over the home screen and
+        /// other apps. API 36 mutes background playback itself, which hides this on a current
+        /// emulator image but not on real devices.</para>
+        ///
+        /// <para><c>OnPause</c> rather than <c>OnStop</c>: the game is no longer interactive as soon
+        /// as it is obscured, and that is the point at which WP7 considered an app deactivated.</para>
+        /// </summary>
+        protected override void OnPause()
+        {
+            // base FIRST. SDLActivity.OnPause drives the native pause and the EGL/surface teardown;
+            // anything of ours that runs ahead of it and blocks or throws leaves SDL's lifecycle
+            // half-applied. The music pause gains nothing from being first — the player is ours and
+            // stays reachable either way — and the media lock CAN be held by the game thread across
+            // a synchronous MediaPlayer.Prepare, so going first risks stalling the UI thread inside
+            // a lifecycle callback.
+            base.OnPause();
+            SuspendMusicSafely();
+        }
+
+        /// <summary>
+        /// Undoes <see cref="OnPause"/>'s suspend. Only a song this activity actually paused is
+        /// resumed — a game that stopped or paused its own music keeps that state.
+        /// </summary>
+        protected override void OnResume()
+        {
+            base.OnResume();
+
+            try
+            {
+                Audio.AndroidMediaBackend.Current?.RestoreFromForeground();
+            }
+            catch (Exception ex)
+            {
+                // Never let background music take down a lifecycle callback: an exception escaping
+                // OnResume is an unhandled crash of the :game process.
+                Common.Log.Warn(Common.LogCategory.AppList,
+                    $"[wpr-media] foreground restore threw: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        private static void SuspendMusicSafely()
+        {
+            try
+            {
+                Audio.AndroidMediaBackend.Current?.SuspendForBackground();
+            }
+            catch (Exception ex)
+            {
+                Common.Log.Warn(Common.LogCategory.AppList,
+                    $"[wpr-media] background suspend threw: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+
         // Activity.OnBackPressed is deprecated from API 33 in favour of OnBackInvokedCallback,
         // which requires android:enableOnBackInvokedCallback in the manifest. We do not opt in,
         // so the system still dispatches KEYCODE_BACK and this override is still the hook.
@@ -200,6 +260,17 @@ namespace WPR.Platform.Android
 
             try
             {
+                // Pick the FNA3D driver before the host builds the game: FNA3D reads the force hint
+                // exactly once, inside FNA3D_PrepareWindowAttributes during device creation.
+                // fna3d.env forces OpenGL for the whole process (the Vulkan driver T-poses
+                // SkinnedEffect on real hardware); this relaxes it on the emulator, which cannot
+                // render the OpenGL path.
+                //
+                // Inside the try deliberately: SDLMain is invoked from native code, so an escaping
+                // exception here is an unhandled crash of the :game process with nothing shown to
+                // the user, rather than the launch error the catch below reports.
+                Graphics.GraphicsDriverPolicy.Apply(Configuration.Current?.DataStorePath);
+
                 var host = new WPR.Backend.FNA.FnaGameHost(TargetLaunchApplication!, orientation =>
                 {
                     CurrentActivity.RunOnUiThread(() =>

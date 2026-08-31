@@ -47,6 +47,7 @@ namespace WPR.Platform.Windows.ViewModels
 
         public event EventHandler<ApplicationItemViewModel>? InstallRequested;
         public event EventHandler<ApplicationItemViewModel>? EditRequested;
+        public event EventHandler<ApplicationItemViewModel>? InfoRequested;
 
 
         public string SearchText
@@ -284,6 +285,7 @@ namespace WPR.Platform.Windows.ViewModels
                     appItem.InstallRequested += OnAppInstallRequested;
                     appItem.RepatchRequested += OnAppRepatchRequested;
                     appItem.EditRequested += OnAppEditRequested;
+                    appItem.InfoRequested += OnAppInfoRequested;
                 }
             }
             catch (Exception ex)
@@ -311,6 +313,12 @@ namespace WPR.Platform.Windows.ViewModels
         private void OnAppRepatchRequested(object? sender, ApplicationItemViewModel appItem)
         {
             _ = RepatchApplicationAsync(appItem);
+        }
+
+        private void OnAppInfoRequested(object? sender, ApplicationItemViewModel appItem)
+        {
+            // The page owns dialogs (modal Window lifetime, MainWindow as owner).
+            InfoRequested?.Invoke(this, appItem);
         }
 
         private void OnAppEditRequested(object? sender, ApplicationItemViewModel appItem)

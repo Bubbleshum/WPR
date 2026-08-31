@@ -3,7 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using Microsoft.Devices.Sensors;
+using WPR.Platform.Windows.Input;
 using WPR.Common;
 
 namespace WPR.Platform.Windows.Pages

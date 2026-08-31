@@ -371,6 +371,170 @@ namespace Microsoft.Xna.Framework
 
 		#region Window Methods
 
+		/* WPR addition. FNA3D_PrepareWindowAttributes, plus a one-shot retry with automatic
+		 * driver selection when a FORCED driver turns out to be unusable.
+		 *
+		 * Why this is needed: FNA3D_FORCE_DRIVER is a hard selection, not a preference.
+		 * FNA3D_PrepareWindowAttributes `continue`s past every driver whose Name does not
+		 * strcmp-match the hint, so if the forced driver's own PrepareWindowAttributes declines,
+		 * the loop ends with selectedDriver still -1 — FNA3D logs "No supported FNA3D driver
+		 * found!", every later entry point bails, and FNA3D_CreateDevice returns NULL, which
+		 * surfaces to the player as NoSuitableGraphicsDeviceException. There is no fallback to
+		 * the driver FNA3D would have picked on its own.
+		 *
+		 * That matters because the Android head forces OpenGL (see fna3d.env — it is what fixes
+		 * skinned animation, which the unfinished Vulkan driver renders as a T-pose). OpenGL is
+		 * confirmed working on real hardware, but "works on the devices we tried" is not the same
+		 * as "works everywhere", and the failure mode without this retry is the game not starting
+		 * at all rather than starting with wrong animation.
+		 *
+		 * Detection: on failure the function returns its untouched `result` of 0, and on success
+		 * it always sets at least one window flag (SDL_WINDOW_OPENGL 0x2 / SDL_WINDOW_VULKAN
+		 * 0x10000000), so zero is an unambiguous "no driver selected".
+		 *
+		 * Clearing the hint needs SDL_SetHintWithPriority with SDL_HINT_OVERRIDE and a NULL
+		 * value, not SDL_SetHint: our value arrives from the process ENVIRONMENT (an
+		 * @(AndroidEnvironment) entry), and SDL_GetHint prefers the environment over a
+		 * normal-priority hint. Passing null lands as a real NULL through SDL2-CS's Utf8Encode,
+		 * which is what makes FNA3D's `hint != NULL` check go false — an empty string would still
+		 * be non-NULL and would match no driver at all, failing a second time.
+		 *
+		 * NOT covered: a driver that passes PrepareWindowAttributes and then fails in
+		 * CreateDevice. Recovering from that means tearing down a window already created with the
+		 * wrong flags, so it stays a genuine NoSuitableGraphicsDeviceException. */
+		private static uint PrepareWindowAttributesWithFallback()
+		{
+			/* Try each candidate EXPLICITLY rather than leaning on FNA3D's automatic order.
+			 *
+			 * The previous shape — "try whatever is forced, and on failure clear the force and let
+			 * FNA3D choose" — has two holes that produced a real crash on a user's device
+			 * (2026-08-31, "No supported FNA3D driver found!" escaping this very method):
+			 *
+			 *   1. Automatic order is not a safety net on Android. FNA3D offers OpenGL first and it
+			 *      DECLINES there, so "automatic" effectively means Vulkan — the driver we force
+			 *      OpenGL to avoid, and one a device may not support at all. Falling back to
+			 *      automatic could therefore fail on a device where plain OpenGL would have worked.
+			 *   2. IsDriverForced() reads the hint, and the Android head may legitimately have
+			 *      cleared it to NULL (emulator policy / the fna3d_driver.txt override). A failure
+			 *      then looked like "nothing was forced, nothing to fall back to" and rethrew,
+			 *      even though named drivers were still worth trying.
+			 *
+			 * An explicit ladder has neither problem: every compiled-in driver gets a turn by name,
+			 * in a deliberate order, whatever the hint happened to say on entry. */
+			string requested = SDL.SDL_GetHint(ForceDriverHintName);
+
+			/* What was asked for goes FIRST, always — including "nothing", which is a real request
+			 * and not an absence of one. The Android head deliberately clears the force on the
+			 * emulator (where the OpenGL path renders nothing), so putting a named driver ahead of
+			 * automatic here would silently overrule that policy and undo the fix. Everything after
+			 * the first entry is fallback that only runs once the requested choice has failed, so
+			 * this can rescue a launch but never change a working one. */
+			List<string> candidates = new List<string>();
+			candidates.Add(string.IsNullOrEmpty(requested) ? null : requested);
+
+			foreach (string name in DriverPreferenceOrder)
+			{
+				if (!candidates.Contains(name))
+				{
+					candidates.Add(name);
+				}
+			}
+
+			/* Automatic as a catch-all for a platform whose driver is not named above (D3D11 on
+			 * Windows, GNMX, anything added upstream) — unless it was already the first choice. */
+			if (!candidates.Contains(null))
+			{
+				candidates.Add(null);
+			}
+
+			Exception lastFailure = null;
+			foreach (string candidate in candidates)
+			{
+				SetForcedDriver(candidate);
+
+				uint attributes;
+				try
+				{
+					attributes = FNA3D.FNA3D_PrepareWindowAttributes();
+				}
+				catch (InvalidOperationException ex)
+				{
+					/* Selection failure normally arrives HERE, not as a 0 return:
+					 * FNALoggerEXT.FNA3DLogError turns FNA3D's own FNA3D_LogError into a managed
+					 * throw, and FNA3D logs "No supported FNA3D driver found!" before returning, so
+					 * the native call never completes. Re-calling it afterwards is safe — it is a
+					 * pure loop over the driver table with nothing to clean up. */
+					lastFailure = ex;
+					FNALoggerEXT.LogWarn?.Invoke(
+						"FNA3D driver '" + DescribeCandidate(candidate) + "' is not usable here: " +
+						ex.Message
+					);
+					continue;
+				}
+
+				/* Belt and braces: if that throw ever goes away upstream, a failure shows up as the
+				 * untouched result of 0 instead (success always sets at least SDL_WINDOW_OPENGL 0x2
+				 * or SDL_WINDOW_VULKAN 0x10000000). */
+				if (attributes == 0)
+				{
+					FNALoggerEXT.LogWarn?.Invoke(
+						"FNA3D driver '" + DescribeCandidate(candidate) +
+						"' declined (no window attributes)."
+					);
+					continue;
+				}
+
+				if (candidate != requested)
+				{
+					FNALoggerEXT.LogWarn?.Invoke(
+						"Falling back to FNA3D driver '" + DescribeCandidate(candidate) +
+						"' after '" + DescribeCandidate(requested) + "' failed. The forced driver " +
+						"was requested for a reason — expect whatever it was working around to be back."
+					);
+				}
+
+				return attributes;
+			}
+
+			/* Every named driver and automatic selection all declined: no driver on this device
+			 * works at all. That is an honest failure rather than something to swallow. */
+			if (lastFailure != null)
+			{
+				throw lastFailure;
+			}
+
+			throw new InvalidOperationException(
+				"No supported FNA3D driver found! Tried: " + string.Join(", ", candidates.ConvertAll(DescribeCandidate))
+			);
+		}
+
+		private const string ForceDriverHintName = "FNA3D_FORCE_DRIVER";
+
+		/* Order matters. OpenGL before Vulkan on purpose: FNA3D's own table has Vulkan behind a
+		 * "TODO: Bump this to the top when Vulkan is done!" and its unfinished shader translation
+		 * T-poses SkinnedEffect on Android. Prefer the driver that renders correctly, and reach
+		 * for Vulkan only when OpenGL cannot run at all. D3D11 is not listed because Windows
+		 * selects it automatically and never reaches this ladder in practice. */
+		private static readonly string[] DriverPreferenceOrder = { "OpenGL", "Vulkan" };
+
+		private static string DescribeCandidate(string candidate) =>
+			string.IsNullOrEmpty(candidate) ? "(automatic)" : candidate;
+
+		private static void SetForcedDriver(string driverName)
+		{
+			/* OVERRIDE priority is required, not stylistic: the driver may have been forced through
+			 * a real process environment variable (Android's fna3d.env), and SDL_GetHint prefers the
+			 * environment over any hint set at lower priority.
+			 *
+			 * Pass null, never "": an empty string is still non-NULL to SDL_GetHint, so it would be
+			 * strcmp'd against every driver name, match none, and fail every time. */
+			SDL.SDL_SetHintWithPriority(
+				ForceDriverHintName,
+				string.IsNullOrEmpty(driverName) ? null : driverName,
+				SDL.SDL_HintPriority.SDL_HINT_OVERRIDE
+			);
+		}
+
 		public static GameWindow CreateWindow()
 		{
 			// Set the hint so that game and test window does not change the orientation
@@ -386,7 +550,7 @@ namespace Microsoft.Xna.Framework
 				SDL.SDL_WindowFlags.SDL_WINDOW_HIDDEN |
 				SDL.SDL_WindowFlags.SDL_WINDOW_INPUT_FOCUS |
 				SDL.SDL_WindowFlags.SDL_WINDOW_MOUSE_FOCUS
-			) | (SDL.SDL_WindowFlags) FNA3D.FNA3D_PrepareWindowAttributes();
+			) | (SDL.SDL_WindowFlags) PrepareWindowAttributesWithFallback();
 
 			if ((initFlags & SDL.SDL_WindowFlags.SDL_WINDOW_VULKAN) == SDL.SDL_WindowFlags.SDL_WINDOW_VULKAN)
 			{

@@ -28,11 +28,13 @@ namespace WPR.Platform.Windows.ViewModels
         public ReactiveCommand<Unit, Unit> InstallAppCommand { get; }
         public ReactiveCommand<Unit, Unit> RepatchAppCommand { get; }
         public ReactiveCommand<Unit, Unit> EditAppCommand { get; }
+        public ReactiveCommand<Unit, Unit> InfoAppCommand { get; }
 
         public event EventHandler<ApplicationItemViewModel>? UninstallRequested;
         public event EventHandler<ApplicationItemViewModel>? InstallRequested;
         public event EventHandler<ApplicationItemViewModel>? RepatchRequested;
         public event EventHandler<ApplicationItemViewModel>? EditRequested;
+        public event EventHandler<ApplicationItemViewModel>? InfoRequested;
 
         public ApplicationItemViewModel(Application app)
         {
@@ -42,6 +44,7 @@ namespace WPR.Platform.Windows.ViewModels
             InstallAppCommand = ReactiveCommand.Create(() => { });
             RepatchAppCommand = ReactiveCommand.Create(RepatchApp);
             EditAppCommand = ReactiveCommand.Create(EditApp);
+            InfoAppCommand = ReactiveCommand.Create(ShowInfo);
         }
 
         public ApplicationItemViewModel(string xapFilePath, ApplicationPreview preview)
@@ -53,6 +56,7 @@ namespace WPR.Platform.Windows.ViewModels
             InstallAppCommand = ReactiveCommand.Create(InstallApp);
             RepatchAppCommand = ReactiveCommand.Create(() => { });
             EditAppCommand = ReactiveCommand.Create(() => { });
+            InfoAppCommand = ReactiveCommand.Create(() => { });
         }
 
         /// <summary>
@@ -70,6 +74,7 @@ namespace WPR.Platform.Windows.ViewModels
             InstallAppCommand = ReactiveCommand.Create(() => { });
             RepatchAppCommand = ReactiveCommand.Create(() => { });
             EditAppCommand = ReactiveCommand.Create(() => { });
+            InfoAppCommand = ReactiveCommand.Create(() => { });
 
             // Re-raise PropertyChanged for our Progress when the installer ticks.
             _InstallingProgressSub = installing.WhenAnyValue(i => i.Progress)
@@ -235,6 +240,13 @@ namespace WPR.Platform.Windows.ViewModels
         private void RepatchApp()
         {
             RepatchRequested?.Invoke(this, this);
+        }
+
+        /// <summary>Ask the page to open the read-only diagnostics dialog for this game.</summary>
+        private void ShowInfo()
+        {
+            if (!IsInstalled) return;
+            InfoRequested?.Invoke(this, this);
         }
 
         private void EditApp()

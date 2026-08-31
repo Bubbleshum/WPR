@@ -43,7 +43,25 @@ namespace WPR.Backend.FNA
 			IntPtr ctx;
 			try
 			{
-				FAudio.FAudioCreate(out ctx, 0, FAudio.FAUDIO_DEFAULT_PROCESSOR);
+				/* Mix quantum. FAudio's SDL2 platform backend derives the audio buffer from this:
+				 * the default is `want.samples = want.freq / 100`, i.e. a 10 ms buffer, and
+				 * FAUDIO_1024_QUANTUM asks for 21.33 ms instead (1024 frames at 48 kHz).
+				 *
+				 * 10 ms is fine on desktop and too tight on Android, where the callback competes
+				 * with a GC'd runtime for a non-realtime thread and underruns land as audible
+				 * stutter — the "jerky sound" reported on hardware 2026-08-31. Doubling the buffer
+				 * is the cheapest headroom available and needs no per-device tuning.
+				 *
+				 * Android only, deliberately: this raises output latency, which desktop has no
+				 * reason to pay for. Paired with SDL_AUDIO_FREQUENCY=48000 in the head's
+				 * AndroidEnvironment file so the quantum lands on a whole 1024 frames and the
+				 * device needs no output resample. */
+#if __ANDROID__
+				const uint engineFlags = FAudio.FAUDIO_1024_QUANTUM;
+#else
+				const uint engineFlags = 0;
+#endif
+				FAudio.FAudioCreate(out ctx, engineFlags, FAudio.FAUDIO_DEFAULT_PROCESSOR);
 			}
 			catch (Exception e)
 			{
