@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Exploratory probe, deliberately NOT part of WPR.sln.
+
+    It proves out the WP8 "Modern Native" execution path: load an ARMv7 Thumb-2 PE,
+    run it under an emulated CPU, and trap every call that leaves the binary. If the
+    approach graduates, PeImage / ArmEmulator / HostStubs lift out of here into a real
+    backend project; nothing in them depends on this being a console app.
+
+    Native library note: UnicornEngine.Unicorn 2.1.3 ships runtimes for linux-x64,
+    linux-arm64, linux-ppc64le and osx-x64 only - there is NO win-x64 unicorn.dll in
+    the package. See README.md for how to run it.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>WPR.Wp8Native</RootNamespace>
+    <AssemblyName>WPR.Wp8Probe</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="UnicornEngine.Unicorn" Version="2.1.3" />
+  </ItemGroup>
+
+</Project>
