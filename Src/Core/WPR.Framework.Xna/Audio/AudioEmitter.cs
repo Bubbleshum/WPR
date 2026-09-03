@@ -21,7 +21,7 @@ namespace Microsoft.Xna.Framework.Audio
 		 * one. The struct now lives behind the audio seam, so values are kept here as plain XNA-space
 		 * data and the BACKEND applies the handedness flip plus the fixed "unused variable" defaults
 		 * XNA implies (single channel, unit channel radius, pinned stereo azimuths, no cones or
-		 * custom curves) — see FnaAudioBackend.Calculate3D. Same public API, no native dependency.
+		 * custom curves) — see FAudioSoundBackend.Calculate3D. Same public API, no native dependency.
 		 */
 
 		#region Public Properties

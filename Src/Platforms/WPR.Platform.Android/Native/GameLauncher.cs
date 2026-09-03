@@ -1,3 +1,4 @@
+using WPR.Shell;
 using System;
 using System.IO;
 using System.Linq;
@@ -51,7 +52,7 @@ namespace WPR.Platform.Android.Native
             }
 
             WpProgressDialog progress = WpProgressDialog.Show(
-                host, app.Name ?? "game", WPR.Platform.Android.Properties.Resources.LaunchingInProcess, indeterminate: true);
+                host, app.Name ?? "game", WPR.Shell.Resources.LaunchingInProcess, indeterminate: true);
 
             Task.Run(() =>
             {
@@ -226,7 +227,7 @@ namespace WPR.Platform.Android.Native
                 if (host.IsFinishing || host.IsDestroyed) return;
 
                 new AlertDialog.Builder(host)!
-                    .SetTitle(WPR.Platform.Android.Properties.Resources.AppRunError)!
+                    .SetTitle(WPR.Shell.Resources.AppRunError)!
                     .SetMessage(message)!
                     .SetPositiveButton("OK", (IDialogInterfaceOnClickListener?)null)!
                     .Show();

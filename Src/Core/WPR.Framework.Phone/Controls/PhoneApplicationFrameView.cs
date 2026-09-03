@@ -1,25 +1,23 @@
 using System;
 using System.Collections.Generic;
-using Avalonia;
-using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using WPR.SilverlightCompability;
-using AvSize = Avalonia.Size;
 using AvBrush = Avalonia.Media.IBrush;
+using AvSize = Avalonia.Size;
+using Border = WPR.SilverlightCompability.Border;
+using Brush = WPR.SilverlightCompability.Brush;
+using Button = WPR.SilverlightCompability.Button;
+using ContentControl = WPR.SilverlightCompability.ContentControl;
+using Panel = WPR.SilverlightCompability.Panel;
 // This host adapter moved into the Microsoft.Phone assembly alongside PhoneApplicationFrame/Page.
 // It pulls in both Avalonia and WPR.SilverlightCompability, which share several simple type
 // names. Alias the shared names to the SL shims so the bare usages below keep resolving to them;
 // the Avalonia equivalents are always reached through explicit global::Avalonia.* qualification
 // (or the AvSize/AvBrush aliases).
 using Point = WPR.SilverlightCompability.Point;
-using Size = WPR.SilverlightCompability.Size;
 using Rect = WPR.SilverlightCompability.Rect;
-using Panel = WPR.SilverlightCompability.Panel;
-using Border = WPR.SilverlightCompability.Border;
-using Button = WPR.SilverlightCompability.Button;
-using ContentControl = WPR.SilverlightCompability.ContentControl;
-using Brush = WPR.SilverlightCompability.Brush;
+using Size = WPR.SilverlightCompability.Size;
 
 namespace Microsoft.Phone.Controls
 {

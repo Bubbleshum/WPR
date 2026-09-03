@@ -8,6 +8,7 @@
 #endregion
 
 #region Using Statements
+using WPR.Engine.Audio;
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -31,7 +32,7 @@ namespace Microsoft.Xna.Framework.Audio
 			get
 			{
 				uint state;
-				state = (uint) XnaBackend.Xact.GetWaveBankState(handle);
+				state = (uint) AudioBackendRegistry.Xact.GetWaveBankState(handle);
 				return (state & (uint) XactState.Prepared) != 0;
 			}
 		}
@@ -41,7 +42,7 @@ namespace Microsoft.Xna.Framework.Audio
 			get
 			{
 				uint state;
-				state = (uint) XnaBackend.Xact.GetWaveBankState(handle);
+				state = (uint) AudioBackendRegistry.Xact.GetWaveBankState(handle);
 				return (state & (uint) XactState.InUse) != 0;
 			}
 		}
@@ -81,13 +82,13 @@ namespace Microsoft.Xna.Framework.Audio
 				throw new ArgumentNullException("nonStreamingWaveBankFilename");
 			}
 
-			bankData = XnaBackend.Xact.ReadFileToPointer(
+			bankData = AudioBackendRegistry.Xact.ReadFileToPointer(
 				nonStreamingWaveBankFilename,
 				out int bankLength
 			);
 			bankDataLen = (IntPtr) bankLength;
 
-			handle = XnaBackend.Xact.CreateInMemoryWaveBank(
+			handle = AudioBackendRegistry.Xact.CreateInMemoryWaveBank(
 				audioEngine.handle,
 				bankData,
 				bankLength
@@ -118,7 +119,7 @@ namespace Microsoft.Xna.Framework.Audio
 			 * the backend along with the native fopen: both are platform concerns, and doing them
 			 * here would drag FNA's TitleLocation/FileHelpers back into this assembly.
 			 */
-			handle = XnaBackend.Xact.CreateStreamingWaveBank(
+			handle = AudioBackendRegistry.Xact.CreateStreamingWaveBank(
 				audioEngine.handle,
 				streamingWaveBankFilename,
 				offset,
@@ -180,7 +181,7 @@ namespace Microsoft.Xna.Framework.Audio
 					// If this is disposed, stop leaking memory!
 					if (!engine.IsDisposed)
 					{
-						XnaBackend.Xact.DestroyWaveBank(handle);
+						AudioBackendRegistry.Xact.DestroyWaveBank(handle);
 					}
 					OnWaveBankDestroyed();
 				}
@@ -198,12 +199,12 @@ namespace Microsoft.Xna.Framework.Audio
 			{
 				if (bankDataLen != IntPtr.Zero)
 				{
-					XnaBackend.Xact.FreeFilePointer(bankData);
+					AudioBackendRegistry.Xact.FreeFilePointer(bankData);
 					bankDataLen = IntPtr.Zero;
 				}
 				else
 				{
-					XnaBackend.Xact.CloseStreamingFile(bankData);
+					AudioBackendRegistry.Xact.CloseStreamingFile(bankData);
 				}
 				bankData = IntPtr.Zero;
 			}

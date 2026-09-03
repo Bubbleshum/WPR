@@ -55,8 +55,12 @@ co-locating the contract with it is not a layering violation — and it keeps
 - `WPR.Framework.Xna` owns the seams and its `GraphicsDevice`/`SpriteBatch`/… call
   `IGraphicsBackend`. It references almost nothing — it stays a dependency-light,
   fitness-clean leaf.
-- `WPR.Backend.FNA` holds `FnaGraphicsBackend : IGraphicsBackend` and its six siblings,
-  which P/Invoke `FNA3D`/`FAudio`/`SDL2`/`Theorafile`.
+- `WPR.Backend.FNA` holds `FnaGraphicsBackend : IGraphicsBackend` and its siblings, which
+  P/Invoke `FNA3D`/`SDL2`. **Superseded 2026-09-01 for the audio three:** the FAudio, FACT
+  and `XNA_Song`+Theorafile adapters moved to `Src/Modules/Audio/WPR.Audio.FAudio` and are composed
+  through `AudioBackendRegistry` rather than registered directly — see
+  ARCHITECTURE-MIGRATION §5, "Audio split". The seam design below is unchanged; only the
+  host assembly moved.
 - **Injection** inverts FNA's own `FNAPlatform` static-delegate-table pattern: at
   `FnaGameHost.RunAsync` startup the backend registers its impls into the `XnaBackend`
   registry **before** the game's `GraphicsDevice` is constructed, and **clears them on
@@ -65,10 +69,11 @@ co-locating the contract with it is not a layering violation — and it keeps
   `PresentationParameters.DeviceWindowHandle`, and WPR's `GraphicsDevice` passes it
   straight to `IGraphicsBackend.CreateDevice`. That opacity is what makes the split viable.
 
-Seven seams are registered in `FnaGameHost.RunAsync` today: `IGraphicsBackend`,
-`IAudioBackend`, `IXactBackend`, `IMediaBackend`, `IInputBackend`, `IStorageBackend`, plus
-the `XnaBackend` hook set (`TitleLocation`, `LogInfo`, `LogWarn`, back-buffer size,
-game-thread post, focus-activation suppression).
+Seven seams are filled in `FnaGameHost.RunAsync` today: `IGraphicsBackend`, `IPlatformBackend`,
+`IInputBackend` and `IStorageBackend` registered directly, the audio three
+(`IAudioBackend`, `IXactBackend`, `IMediaBackend`) composed by `AudioBackendRegistry` from
+the registered `IAudioModule`s, plus the `XnaBackend` hook set (`TitleLocation`, `LogInfo`,
+`LogWarn`, back-buffer size, game-thread post, focus-activation suppression).
 
 ## The two shape rules — apply these to every new seam
 

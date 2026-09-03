@@ -27,8 +27,8 @@
     <ApplicationId>com.MediaExplorer.WPR</ApplicationId>
     <!-- Android versionCode. Must strictly increase between releases or a device refuses the
          sideload as a downgrade, so it is bumped per release independently of the version NAME
-         (release.yml overrides it with the workflow run number). 1 -> 2 for 0.1.01. -->
-    <ApplicationVersion>2</ApplicationVersion>
+         (release.yml overrides it with the workflow run number). 1 -> 2 for 0.1.01, 2 -> 3 for 0.1.02. -->
+    <ApplicationVersion>3</ApplicationVersion>
     <!-- From $(WprVersion) in Src/Directory.Build.props; release.yml overrides it per release. -->
     <ApplicationDisplayVersion>$(WprVersion)</ApplicationDisplayVersion>
     <AndroidPackageFormat>apk</AndroidPackageFormat>
@@ -70,8 +70,14 @@
     evaluated at project load, before the copy target had run.
   -->
   <ItemGroup>
-    <AndroidAsset Include="$(SolutionDir)Core\WPR.Database\Data\**\*.*"
-                  Link="Database\%(RecursiveDir)%(Filename)%(Extension)" />
+    <AndroidAsset Include="$(SolutionDir)Core\WPR.Database\Data\**\*.*" Link="Database\%(RecursiveDir)%(Filename)%(Extension)" />
+    <!-- The Engine tier: this head declares its platform through PlatformDescriptor and the
+         composition root fills every registry (Stage 6). -->
+    <ProjectReference Include="$(SolutionDir)Engine/WPR.Engine/WPR.Engine.csproj" />
+    <!-- Notifications/: this head implements INotificationManager over Android channels. -->
+    <ProjectReference Include="$(SolutionDir)Engine/WPR.Engine.Notifications/WPR.Engine.Notifications.csproj" />
+    <!-- Notification module: INotificationManager over Android notification channels. -->
+    <ProjectReference Include="$(SolutionDir)Modules/Notifications/WPR.Notifications.AndroidChannel/WPR.Notifications.AndroidChannel.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -82,22 +88,10 @@
     <AndroidEnvironment Include="fna3d.env" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- Localized launcher strings. Picked up as an EmbeddedResource by the SDK's default
-         **/*.resx glob under the manifest name $(RootNamespace).Properties.Resources, which
-         is what Resources.Designer.cs hands to ResourceManager. The desktop head carries its
-         own copy of this file — the two are meant to stay in sync. The metadata below only
-         keeps the IDE regenerating the designer when the .resx is edited. -->
-    <EmbeddedResource Update="Properties\Resources.resx">
-      <Generator>PublicResXFileCodeGenerator</Generator>
-      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
-    </EmbeddedResource>
-    <Compile Update="Properties\Resources.Designer.cs">
-      <DesignTime>True</DesignTime>
-      <AutoGen>True</AutoGen>
-      <DependentUpon>Resources.resx</DependentUpon>
-    </Compile>
-  </ItemGroup>
+  <!-- The localized launcher strings used to live here as Properties/Resources.resx, byte
+       identical to the desktop head's copy and, per the comment that used to sit here, "meant to
+       stay in sync" by hand. They moved to WPR.Shell on 2026-09-02, where both heads share one
+       copy. Reach them as WPR.Shell.Resources. -->
 
 
 
@@ -149,13 +143,12 @@
     <!--PackageReference Include="Xamarin.AndroidX.AppCompat" Version="1.5.0" /-->
     <!--PackageReference Include="Xamarin.AndroidX.Lifecycle.ViewModel" Version="2.5.1" /-->
     <PackageReference Include="XamlNameReferenceGenerator" Version="1.3.4" />
-    <!-- Backs Input/AndroidSensorProvider — the device accelerometer behind ISensorProvider.
+    <!-- Backs Input/AndroidAccelerometerProvider — the device accelerometer behind IAccelerometerProvider.
          Moved here 2026-08-30 from WPR.Framework.Devices.Sensors (and a dead copy in
          WPR.Common), where it was resolved for the desktop leg too even though the only code
          using it was inside #if __ANDROID__. This is the sole consumer in the repo, and the one
          API it uses is Accelerometer; the package is EOL, so if it ever needs replacing the swap
          is Android's own SensorManager, entirely inside this file's neighbour. -->
-    <PackageReference Include="Xamarin.Essentials" Version="1.7.3" />
   </ItemGroup>
 
   <ItemGroup>
@@ -175,12 +168,18 @@
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Loader\WPR.Loader.csproj" />
     <!-- FNA game-loop host driver (ApplicationLaunch + FnaGameHost/IGameHost) — Stage 4. -->
     <ProjectReference Include="$(SolutionDir)\Backends\WPR.Backend.FNA\WPR.Backend.FNA.csproj" />
-    <!-- Input/: this head implements WPR.Abstractions.Sensors.ISensorProvider over the device's
+    <!-- Song playback over android.media.MediaPlayer, registered into AudioBackendRegistry by
+         ServicesSetup. It lived in this head's Audio/ folder until 2026-09-01; it is a framework
+         seam implementation, not head code, so it is now a peer of WPR.Audio.FAudio under
+         Src/Audio/ and this is a composition reference only. -->
+    <ProjectReference Include="$(SolutionDir)\Modules\Audio\WPR.Audio.AndroidMediaPlayer\WPR.Audio.AndroidMediaPlayer.csproj" />
+    <!-- Input/: this head implements WPR.Engine.Sensors.IAccelerometerProvider over the device's
          accelerometer and registers it into WPR.Sensors.SensorBackend (which ships inside the
          sensors framework, beside its consumer). Both were reached transitively via
          WPR.Backend.FNA before; explicit now that the head is a first-class implementer. -->
-    <ProjectReference Include="$(SolutionDir)\Core\WPR.Abstractions\WPR.Abstractions.csproj" />
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Framework.Devices.Sensors\WPR.Framework.Devices.Sensors.csproj" />
+    <ProjectReference Include="..\..\Core\WPR.Shell\WPR.Shell.csproj" />
+    <ProjectReference Include="..\..\Modules\Input\WPR.Input.XamarinEssentials\WPR.Input.XamarinEssentials.csproj" />
   </ItemGroup>
 </Project>
   

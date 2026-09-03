@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Engine.GameLoop - the contract for driving a game's run loop and tearing it down.
+
+    Holds IGameHost, GameHostState and TeardownPhase. Implemented by WPR.Backend.FNA (FnaGameHost)
+    and, once the Stage-4 host promotion lands, consumed by WPR.Runtime so the launcher drives a
+    game through the interface rather than constructing the FNA host concretely - which is what
+    both heads still do today.
+
+    THIS PROJECT DISSOLVED WPR.Abstractions (2026-09-01). That project was meant to be the
+    linchpin every layer implemented; it ended up holding 14 types of which 11 had no consumer at
+    all, and the three that did belonged next to the registry that hands them out - IAudioTranscoder
+    to WPR.Engine.Audio, IAccelerometerProvider to WPR.Engine.Sensors, and this. The lesson worth keeping:
+    a contract belongs with the subsystem that composes it, not in a shared bucket named after the
+    fact that it is abstract.
+
+    Dependency-free on purpose, and it is the one engine project that can stay that way - the game
+    loop's vocabulary is two enums and five members. A backend referencing this does NOT pull in
+    the platform-composition root (WPR.Engine), which is exactly why the contract is here and not
+    there.
+  -->
+
+  <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+  </PropertyGroup>
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net8.0-android</TargetFrameworks>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <AssemblyName>WPR.Engine.GameLoop</AssemblyName>
+    <RootNamespace>WPR.Engine.GameLoop</RootNamespace>
+    <Nullable>enable</Nullable>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net8.0-android'">21.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+</Project>

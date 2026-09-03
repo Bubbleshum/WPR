@@ -1,5 +1,6 @@
 ﻿using Microsoft.Xna.Framework.GamerServices;
-using WPR.Platform.Android.Input;
+using WPR.Engine;
+using WPR.Common;
 using System.Linq;
 using System.Windows;
 
@@ -9,35 +10,20 @@ namespace WPR.Platform.Android
     {
         public static void Start()
         {
-            // Stage 5e: supply the GamerServices achievement store. WPR.Framework.Xna holds only
-            // the IAchievementStore seam now, so without this registration a game reaches sign-in
-            // and plays but reports no achievements. Registered once here, at launcher startup —
-            // NOT per game — because XnaBackend.Clear() runs on each game teardown and would
-            // otherwise leave the second game launched without a store.
-            WPR.Xna.Rhi.XnaBackend.SetAchievements(new WPR.Database.Achievements.EfAchievementStore());
-
-            // Supply this head's motion sensors — the device's real accelerometer. The WP7
-            // Accelerometer shim in Microsoft.Devices.Sensors sees only ISensorProvider, so the
-            // hardware code (and its Xamarin.Essentials dependency) stays in this head. Start()
-            // runs in the launcher process AND again in GameActivity's :game process, which needs
-            // its own registration because no static crosses that boundary.
-            WPR.Sensors.SensorBackend.SetProvider(new AndroidSensorProvider());
-
-            // Supply the install-time audio transcoder. WP7 XNA titles ship their soundtracks as
-            // .wma and the song backend decodes Ogg Vorbis only, so ApplicationInstaller transcodes
-            // at install time — through FFmpegKit's JNI entry point here, because FFMpegCore (the
-            // Windows half) spawns an ffmpeg process and an APK has none to spawn. Without this
-            // registration the install FAILS with ConvertFailed rather than silently producing a
-            // mute game, which is what used to happen.
-            WPR.Core.AudioTranscoderBackend.SetTranscoder(new Audio.FFmpegKitAudioTranscoder());
-
-            // Replace FAudio's song player with Android's own MediaPlayer. FAudio's XNA_Song
-            // decodes a full second of Vorbis per buffer with a queue depth of one, refilled from
-            // OnBufferEnd — so once per second the voice is starved while the audio thread decodes,
-            // which is audible on a phone as a click exactly once per second. A factory rather than
-            // a direct XnaBackend.SetMedia call because that slot is composed per game launch by
-            // FnaGameHost and cleared on teardown; see MediaBackendOverride.
-            WPR.Backend.FNA.MediaBackendOverride.SetFactory(() => new Audio.AndroidMediaBackend());
+            // Everything this platform HAS is declared in one place — see AndroidPlatform, which
+            // is meant to be read against the Windows head's WindowsPlatform. The composition root
+            // turns that into registry writes; this head no longer knows which registries exist.
+            //
+            // Runs in the launcher process AND again in GameActivity's :game process — no static
+            // crosses that boundary, so both need it. Applying twice is safe by construction: every
+            // registry underneath is set-by-assignment, and the audio module stack de-duplicates by
+            // module name.
+            //
+            // Application context, never an activity: what this builds outlives any one screen, and
+            // holding an activity in the :game process would pin it for the whole game run.
+            PlatformComposition.Apply(new AndroidPlatform(
+                global::Android.App.Application.Context,
+                Configuration.Current?.DataStorePath));
 
             Guide.ShowInputBoxFunc = async (title, description, defaultText) =>
             {

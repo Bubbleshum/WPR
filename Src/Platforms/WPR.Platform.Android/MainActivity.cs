@@ -1,3 +1,4 @@
+using WPR.Shell;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
@@ -14,7 +15,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Xna.Framework.GamerServices;
 
 using WPR.Common;
-using WPR.Models;
 using WPR.Platform.Android.Native;
 
 namespace WPR.Platform.Android
@@ -41,7 +41,7 @@ namespace WPR.Platform.Android
     [Activity(
         Label = "WPR",
         Theme = "@style/WprTheme",
-        Icon = "@drawable/icon",
+        Icon = "@mipmap/ic_launcher",
         MainLauncher = true,
         LaunchMode = LaunchMode.SingleTask,
         ScreenOrientation = ScreenOrientation.Portrait,
@@ -66,6 +66,8 @@ namespace WPR.Platform.Android
             MessageBoxUtils.MainActivity = this;
             ServicesSetup.Start();
 
+            RequestNotificationPermissionIfNeeded();
+
             // Anything that asks to launch a game through the shared UI abstraction rather
             // than calling GameLauncher directly still works.
             _LaunchRequestHandler = (_, args) => RunOnUiThread(() => GameLauncher.Launch(this, args.Target));
@@ -76,6 +78,53 @@ namespace WPR.Platform.Android
             PaintAccent();
 
             global::Android.Util.Log.Info("WPR", "MainActivity OnCreate completed (native shell)");
+        }
+
+        /// <summary>Request code for the POST_NOTIFICATIONS prompt. The result is not acted on —
+        /// see <see cref="RequestNotificationPermissionIfNeeded"/>.</summary>
+        private const int NotificationPermissionRequestCode = 4301;
+
+        /// <summary>
+        /// Asks for POST_NOTIFICATIONS on API 33+, where it became a runtime permission.
+        ///
+        /// <para>Without it <c>NotificationManagerCompat.Notify</c> is a silent no-op, so an
+        /// achievement unlock would award and persist correctly and still show the player nothing.
+        /// Asked here rather than in <c>GameActivity</c> on purpose: permissions are per-app, not
+        /// per-process, so the grant this obtains covers the <c>:game</c> process too — and a
+        /// system permission dialog appearing over a game that is mid-launch would be worse than
+        /// no notification at all.</para>
+        ///
+        /// <para>The answer is deliberately not acted on. A player who declines simply gets no
+        /// unlock notifications; nothing else in the launcher depends on the permission, and
+        /// re-asking on every start would be nagging. Android itself stops re-prompting after two
+        /// refusals.</para>
+        /// </summary>
+        private void RequestNotificationPermissionIfNeeded()
+        {
+            if (!OperatingSystem.IsAndroidVersionAtLeast(33))
+            {
+                // Install-time permission below API 33 — already granted by the manifest entry.
+                return;
+            }
+
+            try
+            {
+                if (CheckSelfPermission(global::Android.Manifest.Permission.PostNotifications)
+                    == Permission.Granted)
+                {
+                    return;
+                }
+
+                RequestPermissions(
+                    new[] { global::Android.Manifest.Permission.PostNotifications },
+                    NotificationPermissionRequestCode);
+            }
+            catch (Exception ex)
+            {
+                // Never let a permission prompt take down the Start screen.
+                global::Android.Util.Log.Warn("WPR",
+                    "POST_NOTIFICATIONS request failed: " + ex);
+            }
         }
 
         protected override void OnDestroy()

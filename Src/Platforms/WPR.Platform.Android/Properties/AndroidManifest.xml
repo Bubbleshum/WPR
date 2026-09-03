@@ -10,6 +10,20 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.wpr.android">
  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
       <uses-permission android:name="android.permission.INTERNET"/>
-	<application android:label="WPR" android:icon="@drawable/icon">
+      <!--
+           Achievement unlocks post a notification (SignedInGamer.BeginAwardAchievement ->
+           NativeUI.NotificationManager). From API 33 this is a runtime permission and
+           NotificationManagerCompat.Notify is a silent no-op without it, so MainActivity
+           asks for it on first launch. Declared unconditionally: on API 32 and below it is
+           install-time and granted automatically.
+      -->
+      <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+	<!--
+	     @mipmap/ic_launcher, not @drawable/icon: mipmap resources survive the density
+	     stripping applied to drawables, and the name resolves to the adaptive icon
+	     (mipmap-anydpi-v26) on API 26+ and to the per-density bitmaps below that.
+	     @drawable/icon is still the splash centre image (Resources/drawable/splash_screen.xml).
+	-->
+	<application android:label="WPR" android:icon="@mipmap/ic_launcher">
 	</application>
 </manifest>

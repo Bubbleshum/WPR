@@ -1,0 +1,74 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Shell - the launcher shell's logic, minus its UI.
+
+    Both platform heads are a shell around the same game library: the same catalogue, the same
+    achievements, the same install pipeline, the same localized strings. Only the widgets differ -
+    Avalonia on Windows, native Activities on Android. Everything in this project is the half that
+    does NOT differ, and it was previously duplicated: the .resx was byte-identical across the two
+    heads, LocaleUtils was identical, ApplicationLaunchRequest differed by one log line, and the
+    WP7 accent palette carried a comment telling the reader to edit both copies by hand.
+
+    The invariant that makes it work: NOTHING HERE MAY NAME A UI TYPE. No Avalonia Control/Window/
+    IBrush, no Android Activity/Context/View. That is what lets an Avalonia head and a native
+    Android head share it, and it is the line to check before adding anything. A head that wants a
+    brush or a Drawable builds one from the data here; it does not push the type back down.
+
+    Sits in Core beside WPR.Loader (install/patch) and WPR.Database (the catalogue), which is where
+    its collaborators already live. It is NOT an Engine project: the engine tier composes the game
+    runtime (PlatformComposition and the subsystem registries), whereas this is launcher-shell
+    domain and nothing in it runs while a game is running.
+
+    Named "Shell", not "Launcher", deliberately - WPR.Loader is one letter away from WPR.Launcher
+    and the two would be misread for each other forever.
+  -->
+
+  <!-- TFM list mirrors WPR.Database's exactly, and must keep doing so: this project references it,
+       and on Windows that project has no plain net8.0 leg (its EF/Sqlite stack is built for the
+       -windows leg there). A bare net8.0 here fails restore with NU1201. -->
+  <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <TargetFrameworks>net8.0;net8.0-android</TargetFrameworks>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(OS)' == 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <TargetFrameworks>net8.0-windows10.0.17763.0;net8.0-android</TargetFrameworks>
+  </PropertyGroup>
+  <PropertyGroup>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <AssemblyName>WPR.Shell</AssemblyName>
+    <RootNamespace>WPR.Shell</RootNamespace>
+    <Nullable>enable</Nullable>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net8.0-android'">21.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WPR.Database: the Application catalogue row that a launch request carries and the
+         achievement roll-up groups by.
+         WPR.Framework.Xna: Achievement itself. It is a game-facing type the patcher rescopes, so
+         it lives there and cannot move; the roll-up is a pure function over it and does not drag
+         anything else in.
+         Deliberately NOT WPR.Loader - LocaleUtils is generic over Enum, so nothing here needs to
+         name ApplicationInstallError. -->
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Database\WPR.Database.csproj" />
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Xna\WPR.Framework.Xna.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The localized launcher strings, shared by both heads. Picked up as an EmbeddedResource by
+         the SDK's default **/*.resx glob under the manifest name $(RootNamespace).Resources, which
+         is what Resources.Designer.cs hands to ResourceManager. Until 2026-09-02 each head carried
+         its own byte-identical copy. -->
+    <EmbeddedResource Update="Resources.resx">
+      <Generator>PublicResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
+    <Compile Update="Resources.Designer.cs">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
+</Project>

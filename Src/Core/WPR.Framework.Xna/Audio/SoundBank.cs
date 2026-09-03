@@ -8,6 +8,7 @@
 #endregion
 
 #region Using Statements
+using WPR.Engine.Audio;
 using System;
 using System.Runtime.InteropServices;
 #endregion
@@ -30,7 +31,7 @@ namespace Microsoft.Xna.Framework.Audio
 			get
 			{
 				uint state;
-				state = (uint) XnaBackend.Xact.GetSoundBankState(handle);
+				state = (uint) AudioBackendRegistry.Xact.GetSoundBankState(handle);
 				return (state & (uint) XactState.InUse) != 0;
 			}
 		}
@@ -71,11 +72,11 @@ namespace Microsoft.Xna.Framework.Audio
 				throw new ArgumentNullException("filename");
 			}
 
-			IntPtr buffer = XnaBackend.Xact.ReadFileToPointer(filename, out int bufferLength);
+			IntPtr buffer = AudioBackendRegistry.Xact.ReadFileToPointer(filename, out int bufferLength);
 
-			handle = XnaBackend.Xact.CreateSoundBank(audioEngine.handle, buffer, bufferLength);
+			handle = AudioBackendRegistry.Xact.CreateSoundBank(audioEngine.handle, buffer, bufferLength);
 
-			XnaBackend.Xact.FreeFilePointer(buffer);
+			AudioBackendRegistry.Xact.FreeFilePointer(buffer);
 
 			engine = audioEngine;
 			selfReference = new WeakReference(this, true);
@@ -131,7 +132,7 @@ namespace Microsoft.Xna.Framework.Audio
 					// If this is disposed, stop leaking memory!
 					if (!engine.IsDisposed)
 					{
-						XnaBackend.Xact.DestroySoundBank(handle);
+						AudioBackendRegistry.Xact.DestroySoundBank(handle);
 					}
 					OnSoundBankDestroyed();
 				}
@@ -149,7 +150,7 @@ namespace Microsoft.Xna.Framework.Audio
 				throw new ArgumentNullException("name");
 			}
 
-			int cue = XnaBackend.Xact.GetCueIndex(handle, name);
+			int cue = AudioBackendRegistry.Xact.GetCueIndex(handle, name);
 
 			if (cue < 0)
 			{
@@ -158,7 +159,7 @@ namespace Microsoft.Xna.Framework.Audio
 				);
 			}
 
-			IntPtr result = XnaBackend.Xact.PrepareCue(handle, cue);
+			IntPtr result = AudioBackendRegistry.Xact.PrepareCue(handle, cue);
 			return new Cue(result, name, this);
 		}
 
@@ -169,7 +170,7 @@ namespace Microsoft.Xna.Framework.Audio
 				throw new ArgumentNullException("name");
 			}
 
-			int cue = XnaBackend.Xact.GetCueIndex(handle, name);
+			int cue = AudioBackendRegistry.Xact.GetCueIndex(handle, name);
 
 			if (cue < 0)
 			{
@@ -178,7 +179,7 @@ namespace Microsoft.Xna.Framework.Audio
 				);
 			}
 
-			XnaBackend.Xact.PlayCueFireAndForget(handle, cue);
+			AudioBackendRegistry.Xact.PlayCueFireAndForget(handle, cue);
 		}
 
 		public void PlayCue(
@@ -199,7 +200,7 @@ namespace Microsoft.Xna.Framework.Audio
 				throw new ArgumentNullException("emitter");
 			}
 
-			int cue = XnaBackend.Xact.GetCueIndex(handle, name);
+			int cue = AudioBackendRegistry.Xact.GetCueIndex(handle, name);
 
 			if (cue < 0)
 			{
@@ -208,7 +209,7 @@ namespace Microsoft.Xna.Framework.Audio
 				);
 			}
 
-			XnaBackend.Xact.PlayCue3D(
+			AudioBackendRegistry.Xact.PlayCue3D(
 				engine.handle,
 				handle,
 				cue,
@@ -230,14 +231,14 @@ namespace Microsoft.Xna.Framework.Audio
 		) {
 			return new Audio3DParams
 			{
-				ListenerForward = listener.Forward,
-				ListenerUp = listener.Up,
-				ListenerPosition = listener.Position,
-				ListenerVelocity = listener.Velocity,
-				EmitterForward = emitter.Forward,
-				EmitterUp = emitter.Up,
-				EmitterPosition = emitter.Position,
-				EmitterVelocity = emitter.Velocity,
+				ListenerForward = listener.Forward.ToNumerics(),
+				ListenerUp = listener.Up.ToNumerics(),
+				ListenerPosition = listener.Position.ToNumerics(),
+				ListenerVelocity = listener.Velocity.ToNumerics(),
+				EmitterForward = emitter.Forward.ToNumerics(),
+				EmitterUp = emitter.Up.ToNumerics(),
+				EmitterPosition = emitter.Position.ToNumerics(),
+				EmitterVelocity = emitter.Velocity.ToNumerics(),
 				EmitterDopplerScale = emitter.DopplerScale,
 				CurveDistanceScaler = float.MaxValue,
 				SourceChannels = 1,

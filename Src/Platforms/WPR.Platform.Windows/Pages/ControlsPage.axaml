@@ -3,7 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="540"
-             xmlns:p="clr-namespace:WPR.Platform.Windows.Properties"
+             xmlns:p="clr-namespace:WPR.Shell;assembly=WPR.Shell"
              x:Class="WPR.Platform.Windows.Pages.ControlsPage">
   <ScrollViewer>
     <StackPanel Margin="20" Spacing="6">
@@ -90,6 +90,27 @@
                   Margin="0,8,0,0"
                   Content="{x:Static p:Resources.ResetTiltDefaults}"/>
         </StackPanel>
+      </Border>
+
+      <!-- Hardware buttons: the same keyboard, bound to a different emulated device. -->
+      <TextBlock Text="{x:Static p:Resources.HardwareButtonControls}"
+                 FontSize="16" FontWeight="SemiBold"
+                 Foreground="White"
+                 Margin="0,20,0,6"/>
+      <TextBlock Text="{x:Static p:Resources.HardwareButtonControlsHint}"
+                 Foreground="#BFFFFFFF" FontSize="11" TextWrapping="Wrap"
+                 Margin="0,0,0,6"/>
+
+      <Border BorderBrush="#3FFFFFFF" BorderThickness="1" CornerRadius="3" Padding="12">
+        <Grid VerticalAlignment="Center">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="160" />
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
+          <Label Grid.Column="0" Padding="0,0,10,0" VerticalContentAlignment="Center"
+                 Content="{x:Static p:Resources.BackButtonKey}" Foreground="White"/>
+          <ComboBox Grid.Column="1" Name="backKeyBox" HorizontalAlignment="Stretch"/>
+        </Grid>
       </Border>
 
       <!-- Live preview -->

@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Engine.Sensors - the sensor subsystem's composition layer (Stage 6).
+
+    Holds SensorBackend, the registry a platform head fills with its IAccelerometerProvider (hardware on
+    Android, the keyboard emulator on Windows). Moved out of WPR.Framework.Devices.Sensors, which
+    ships as the WP7 identity Microsoft.Devices.Sensors and should carry the API surface, not the
+    composition.
+
+    Unlike WPR.Engine.Audio this needs no framework reference at all: IAccelerometerProvider lives in
+    this project and speaks System.Numerics.Vector3, precisely because a motion sample is three
+    floats and cost one conversion rather than a whole vocabulary. Dependency runs
+    Microsoft.Devices.Sensors -> WPR.Engine.Sensors, which depends on nothing.
+  -->
+
+  <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+  </PropertyGroup>
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net8.0-android</TargetFrameworks>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <AssemblyName>WPR.Engine.Sensors</AssemblyName>
+    <RootNamespace>WPR.Engine.Sensors</RootNamespace>
+    <Nullable>enable</Nullable>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net8.0-android'">21.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+  </ItemGroup>
+
+</Project>

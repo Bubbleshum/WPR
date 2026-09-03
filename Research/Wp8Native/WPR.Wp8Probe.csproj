@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Exploratory probe, deliberately NOT part of WPR.sln.
+
+    It proves out the WP8 "Modern Native" execution path: load an ARMv7 Thumb-2 PE,
+    run it under an emulated CPU, and trap every call that leaves the binary. If the
+    approach graduates, PeImage / ArmEmulator / HostStubs lift out of here into a real
+    backend project; nothing in them depends on this being a console app.
+
+    Native library note: UnicornEngine.Unicorn 2.1.3 ships runtimes for linux-x64,
+    linux-arm64, linux-ppc64le and osx-x64 only - there is NO win-x64 unicorn.dll in
+    the package. See README.md for how to run it.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>WPR.Wp8Native</RootNamespace>
+    <AssemblyName>WPR.Wp8Probe</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <!--
+    Desktop/ is the WinForms host, a separate project that compiles these same sources. It has
+    to be kept out of this project's default glob or the console probe picks up a second
+    Program and a dependency on System.Windows.Forms it cannot have under WSL.
+  -->
+  <ItemGroup>
+    <Compile Remove="Desktop\**" />
+    <None Remove="Desktop\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="UnicornEngine.Unicorn" Version="2.1.3" />
+  </ItemGroup>
+
+  <!--
+    A win-x64 unicorn.dll dropped next to this file is copied to the output and picked up
+    automatically: the binding P/Invokes "unicorn", which .NET resolves to unicorn.dll on
+    Windows and libunicorn.so on Linux. Nothing else about the probe is platform-specific,
+    so that one file is the whole difference between WSL-only and native.
+  -->
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\unicorn.dll')">
+    <None Include="unicorn.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

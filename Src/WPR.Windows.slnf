@@ -3,12 +3,10 @@
     "path": "WPR.sln",
     "projects": [
       "Backends\\FNA.Platform\\FNA.Core.csproj",
-      "Backends\\WPR.Backend.FNA\\WPR.Backend.FNA.csproj",
       "Backends\\WPR.Backend.Direct3D11\\WPR.Backend.Direct3D11.csproj",
-      "Core\\WPR.Abstractions\\WPR.Abstractions.csproj",
+      "Backends\\WPR.Backend.FNA\\WPR.Backend.FNA.csproj",
       "Core\\WPR.Common\\WPR.Common.csproj",
       "Core\\WPR.Database\\WPR.Database.csproj",
-      "Core\\WPR.Diagnostics\\WPR.Diagnostics.csproj",
       "Core\\WPR.Framework.Devices.Location\\WPR.Framework.Devices.Location.csproj",
       "Core\\WPR.Framework.Devices.Sensors\\WPR.Framework.Devices.Sensors.csproj",
       "Core\\WPR.Framework.Phone\\WPR.Framework.Phone.csproj",
@@ -16,11 +14,21 @@
       "Core\\WPR.Framework.Xna\\WPR.Framework.Xna.csproj",
       "Core\\WPR.Loader\\WPR.Loader.csproj",
       "Core\\WPR.Runtime\\WPR.Runtime.csproj",
+      "Core\\WPR.Shell\\WPR.Shell.csproj",
       "Core\\WPR.SilverlightCompability.Tests\\WPR.SilverlightCompability.Tests.csproj",
+      "Engine\\WPR.Engine.Audio\\WPR.Engine.Audio.csproj",
+      "Engine\\WPR.Engine.GameLoop\\WPR.Engine.GameLoop.csproj",
+      "Engine\\WPR.Engine.Graphics\\WPR.Engine.Graphics.csproj",
+      "Engine\\WPR.Engine.Notifications\\WPR.Engine.Notifications.csproj",
+      "Engine\\WPR.Engine.Sensors\\WPR.Engine.Sensors.csproj",
+      "Engine\\WPR.Engine\\WPR.Engine.csproj",
+      "Modules\\Audio\\WPR.Audio.FAudio\\WPR.Audio.FAudio.csproj",
+      "Modules\\Input\\WPR.Input.Keyboard\\WPR.Input.Keyboard.csproj",
+      "Modules\\Notifications\\WPR.Notifications.WindowsToast\\WPR.Notifications.WindowsToast.csproj",
+      "Platforms\\WPR.Platform.Windows\\WPR.Platform.Windows.csproj",
       "Tests\\WPR.Tests\\WPR.Tests.csproj",
       "ThirdParty\\Icons.Avalonia\\src\\Projektanker.Icons.Avalonia.FontAwesome\\Projektanker.Icons.Avalonia.FontAwesome.csproj",
-      "ThirdParty\\Icons.Avalonia\\src\\Projektanker.Icons.Avalonia\\Projektanker.Icons.Avalonia.csproj",
-      "Platforms\\WPR.Platform.Windows\\WPR.Platform.Windows.csproj"
+      "ThirdParty\\Icons.Avalonia\\src\\Projektanker.Icons.Avalonia\\Projektanker.Icons.Avalonia.csproj"
     ]
   }
 }

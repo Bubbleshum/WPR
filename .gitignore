@@ -34,3 +34,15 @@ x64/
 # these entries stop the duplication returning if anyone reinstates a copy step.
 Src/Platforms/WPR.Platform.Android/Database/
 Src/Platforms/WPR.Platform.Windows/Database/
+
+# The win-x64 Unicorn native, fetched per machine - see Research/Wp8Native/README.md
+Research/Wp8Native/unicorn.dll
+
+# Android signing keys. Never commit these: the release keystore is what proves an
+# APK is genuinely this app, and a leaked one lets anyone ship an "update" for it.
+# A lost one is just as bad — no future release can install over an existing one.
+# Keep the file backed up somewhere outside the repo; CI reads it from the
+# ANDROID_KEYSTORE_BASE64 secret, not from here.
+*.keystore
+*.jks
+*.p12

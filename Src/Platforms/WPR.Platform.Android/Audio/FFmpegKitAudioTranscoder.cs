@@ -3,7 +3,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Com.Arthenica.Ffmpegkit;
-using WPR.Abstractions.Audio;
+using WPR.Engine.Audio;
 
 namespace WPR.Platform.Android.Audio
 {
@@ -79,39 +79,6 @@ namespace WPR.Platform.Android.Audio
             }
         }
 
-        /// <summary>
-        /// Bridges ffmpeg-kit's completion callback to a <see cref="TaskCompletionSource{TResult}"/>.
-        /// ffmpeg-kit invokes <see cref="Apply"/> on its own executor thread when the session ends.
-        /// </summary>
-        private sealed class CompletionCallback : Java.Lang.Object, IFFmpegSessionCompleteCallback
-        {
-            private readonly TaskCompletionSource<AudioTranscodeResult> _completion;
-            private readonly string _outputPath;
-
-            public CompletionCallback(
-                TaskCompletionSource<AudioTranscodeResult> completion,
-                string outputPath)
-            {
-                _completion = completion;
-                _outputPath = outputPath;
-            }
-
-            public void Apply(FFmpegSession? session)
-            {
-                try
-                {
-                    _completion.TrySetResult(Evaluate(session, _outputPath));
-                }
-                catch (Exception ex)
-                {
-                    // Never let an exception escape into ffmpeg-kit's executor thread: it is a Java
-                    // thread and an unhandled managed exception there takes the process down.
-                    _completion.TrySetResult(
-                        AudioTranscodeResult.Failed($"{ex.GetType().Name}: {ex.Message}"));
-                }
-            }
-        }
-
         public async Task<AudioTranscodeResult> TranscodeToOggVorbisAsync(
             string inputPath,
             string outputPath,
@@ -133,52 +100,88 @@ namespace WPR.Platform.Android.Audio
                 outputPath,
             };
 
-            /* The ASYNC entry point, deliberately — not ExecuteWithArguments wrapped in Task.Run.
-             *
-             * The synchronous overload runs ffmpeg on the calling thread, and that turned out to be
-             * usable from exactly one place: the UI thread. Called there it works but freezes the
-             * app for the whole soundtrack (a 36-track ANR, verified on the emulator); moved to a
-             * .NET thread-pool thread to fix that, it does not run at all — the call never returns
-             * and ffmpeg never emits a single session log, so the conversion stalls on the first
-             * file with the app still responsive. Both failure modes were observed on Pixel_Dev.
-             *
-             * ExecuteWithArgumentsAsync hands the work to ffmpeg-kit's OWN executor and returns
-             * immediately, which is what its API is designed for. The completion callback lands on
-             * that executor's thread and we bridge it back to a Task. */
+            /* Synchronous ffmpeg on a thread of our own. Which thread this runs on is the whole
+             * story here — see RunOnOwnThreadAsync for the three variants that were measured and
+             * why the other two break the process. */
+            return await RunOnOwnThreadAsync(
+                () =>
+                {
+                    FFmpegSession? session = FFmpegKit.ExecuteWithArguments(args);
+                    if (session == null)
+                    {
+                        return AudioTranscodeResult.Failed(
+                            "FFmpegKit.ExecuteWithArguments returned no session.");
+                    }
+
+                    return Evaluate(session, outputPath);
+                },
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Runs <paramref name="work"/> on a thread created for it and nothing else.
+        ///
+        /// <para><b>Not <see cref="Task.Run(Func{TResult})"/>.</b> ffmpeg's CLI is re-entrant-hostile
+        /// and long-running; on a .NET thread-pool thread the synchronous entry point never returns
+        /// at all (no session log, no error — verified on Pixel_Dev). A thread of our own has no
+        /// pool bookkeeping to confuse and exits as soon as the track is done.</para>
+        ///
+        /// <para><b>And not ffmpeg-kit's own executor either</b>, which is what
+        /// <c>ExecuteWithArgumentsAsync</c> uses. Its <c>pool-N-thread-*</c> threads park in a
+        /// blocking Java queue between tracks and stay alive for the life of the process, and a
+        /// completion callback makes them run managed code, which attaches them to the runtime
+        /// permanently. Owning the thread means it exits when the track does and nothing foreign is
+        /// left attached.</para>
+        ///
+        /// <para><b>None of this saves the process, and it was never meant to.</b> Running
+        /// ffmpeg-kit at all leaves the Mono runtime unable to complete another stop-the-world —
+        /// measured identically with this thread arrangement and with ffmpeg-kit's executor, so
+        /// its threads are not the mechanism. That is why this class only ever runs inside
+        /// <see cref="TranscodeService"/>'s disposable <c>:transcode</c> process; see that type for
+        /// the full diagnosis. Do not register it directly as the <c>IAudioTranscoder</c> for the
+        /// launcher — <c>RemoteAudioTranscoder</c> is what belongs there.</para>
+        /// </summary>
+        private static Task<AudioTranscodeResult> RunOnOwnThreadAsync(
+            Func<AudioTranscodeResult> work,
+            CancellationToken cancellationToken)
+        {
             var completion = new TaskCompletionSource<AudioTranscodeResult>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
 
-            using (var callback = new CompletionCallback(completion, outputPath))
+            var thread = new Thread(() =>
             {
-                FFmpegSession? session;
                 try
                 {
-                    session = FFmpegKit.ExecuteWithArgumentsAsync(args, callback);
+                    completion.TrySetResult(work());
                 }
                 catch (Exception ex)
                 {
-                    return AudioTranscodeResult.Failed($"{ex.GetType().Name}: {ex.Message}");
+                    completion.TrySetResult(
+                        AudioTranscodeResult.Failed($"{ex.GetType().Name}: {ex.Message}"));
                 }
+            })
+            {
+                IsBackground = true,
+                Name = "wpr-ffmpeg",
+            };
 
-                if (session == null)
-                {
-                    return AudioTranscodeResult.Failed(
-                        "FFmpegKit.ExecuteWithArgumentsAsync returned no session.");
-                }
+            // Cancelling the install should stop the track in flight, not merely stop waiting for
+            // it — otherwise ffmpeg keeps burning CPU on a package the user has abandoned. The
+            // thread is left to unwind on its own; FFmpegKit.CancelAll makes that prompt.
+            CancellationTokenRegistration registration = cancellationToken.Register(() =>
+            {
+                try { FFmpegKit.Cancel(); } catch (Exception) { /* nothing running */ }
+                completion.TrySetCanceled(cancellationToken);
+            });
 
-                long sessionId = session.SessionId;
+            completion.Task.ContinueWith(
+                _ => registration.Dispose(),
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
 
-                // Cancelling the install should stop the track in flight, not just stop waiting for
-                // it — otherwise ffmpeg keeps burning CPU on a package the user has abandoned.
-                using (cancellationToken.Register(() =>
-                {
-                    try { FFmpegKit.Cancel(sessionId); } catch { /* already finished */ }
-                    completion.TrySetCanceled(cancellationToken);
-                }))
-                {
-                    return await completion.Task.ConfigureAwait(false);
-                }
-            }
+            thread.Start();
+            return completion.Task;
         }
 
         private static AudioTranscodeResult Evaluate(FFmpegSession? session, string outputPath)

@@ -3,7 +3,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using FFMpegCore;
-using WPR.Abstractions.Audio;
+using WPR.Engine.Audio;
 
 namespace WPR.Platform.Windows.Audio
 {

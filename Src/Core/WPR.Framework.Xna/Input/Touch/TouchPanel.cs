@@ -102,6 +102,64 @@ namespace Microsoft.Xna.Framework.Input.Touch
 
 		internal static bool TouchDeviceExists;
 		internal static bool _MouseAsTouch = false;
+
+		/// <summary>
+		/// WPR addition. How many finger slots at the top of <c>touches[]</c> are owned by a
+		/// synthetic-touch source and must NOT be written or cleared by the platform's own drain.
+		///
+		/// <para>The drain (<c>SDL2_FNAPlatform.UpdateTouchPanelState</c>) writes real fingers
+		/// from slot 0 upwards and then clears every slot up to its limit, so without a reservation
+		/// there is no free slot: anything an injector writes is wiped in the same tick. This is
+		/// the same trick the mouse-as-touch slot already uses, generalised — reserved slots sit
+		/// immediately below the mouse slot.</para>
+		///
+		/// <para>Set by the injector when it is installed, and left alone otherwise. Zero means
+		/// "no synthetic source", which is the normal case.</para>
+		/// </summary>
+		internal static int ReservedFingerSlots = 0;
+
+		/// <summary>
+		/// Index of the first slot owned by a synthetic source — equivalently, the exclusive upper
+		/// bound of the range the platform drain may touch. The rule lives here so the drain and
+		/// the injector cannot disagree about where the boundary is.
+		/// </summary>
+		internal static int FirstReservedFingerSlot
+		{
+			get
+			{
+				int limit = (_MouseAsTouch ? MAX_TOUCHES - 1 : MAX_TOUCHES) - ReservedFingerSlots;
+				return limit < 0 ? 0 : limit;
+			}
+		}
+
+		/// <summary>
+		/// Is a real finger (or the mouse standing in for one) currently down? An injector uses
+		/// this to stay out of the way: <c>GestureDetector</c> tracks a single active finger and a
+		/// second one starts a Pinch, so overlapping a synthetic drag with a real touch produces
+		/// gestures the user never made.
+		/// </summary>
+		internal static bool HasRealTouchDown
+		{
+			get
+			{
+				int reservedFrom = FirstReservedFingerSlot;
+				for (int i = 0; i < MAX_TOUCHES; i += 1)
+				{
+					// Skip the reserved band itself — that is the injector's own finger.
+					if (i >= reservedFrom && i < MAX_TOUCHES - (_MouseAsTouch ? 1 : 0))
+					{
+						continue;
+					}
+
+					TouchLocationState s = touches[i].State;
+					if (s == TouchLocationState.Pressed || s == TouchLocationState.Moved)
+					{
+						return true;
+					}
+				}
+				return false;
+			}
+		}
 		// SDL_TouchID is a 64-bit value (on Windows it's derived from an hDevice pointer,
 		// so the upper bits matter on x64). Keep this as long so the device handle round-trips
 		// intact between SDL_FINGERDOWN and UpdateTouchPanelState's SDL_GetNumTouchFingers call —
@@ -295,6 +353,47 @@ namespace Microsoft.Xna.Framework.Input.Touch
 			}
 		}
 
+		/// <summary>
+		/// Pumps one frame of touch. Driven from <c>FrameworkDispatcher.Update()</c>, which is
+		/// itself the LAST thing <c>Game.Update</c> does — after every <c>GameComponent</c>.
+		///
+		/// <para><b>Read this before injecting synthetic touch</b> (the eventual gamepad-to-touch
+		/// mapper is the case in mind). Two things about the order below are not obvious and each
+		/// one silently breaks a naive implementation:</para>
+		///
+		/// <para><b>1. State and gestures arrive by two different routes.</b>
+		/// <see cref="SetFinger"/> fills the array <see cref="GetState"/> returns;
+		/// <see cref="INTERNAL_onTouchEvent"/> feeds <see cref="GestureDetector"/> and nothing
+		/// else. SDL pushes the latter live from <c>PollEvents</c> and services the former from
+		/// inside <c>UpdateTouchPanelState</c>. So a synthetic source must write BOTH — one that
+		/// only calls <c>SetFinger</c> produces no gesture, and one that only raises the event
+		/// produces an empty <see cref="TouchCollection"/>. Games use both APIs.</para>
+		///
+		/// <para><b>2. A <c>GameComponent</c> can inject gestures but NOT state.</b> Components
+		/// run before this method at any <c>UpdateOrder</c>, so their gesture events land ahead
+		/// of <c>GestureDetector.OnUpdate()</c> and work — but <c>UpdateTouchPanelState</c> then
+		/// rewrites every unreserved finger slot (see the clear loop in
+		/// <c>SDL2_FNAPlatform.UpdateTouchPanelState</c>) and wipes their state writes in the
+		/// same tick. <b>The tilt-emulator precedent therefore does not transfer here.</b> The
+		/// shape that works is a decorator over <c>WPR.Xna.Rhi.IInputBackend</c>, registered
+		/// where <c>FnaGameHost</c> calls <c>XnaBackend.SetInput</c>: it forwards the inner
+		/// drain first and writes afterwards, which makes it the last writer every frame with no
+		/// ordering hazard. Reserve slots the way <c>mouseSlot</c> already is, and take finger
+		/// ids from the top of the range — real SDL fingers are small positive ints and the
+		/// mouse-as-touch slot is <c>int.MaxValue</c>.</para>
+		///
+		/// <para>Two further constraints, neither of which needs new API.
+		/// <see cref="GestureDetector"/> tracks a single active finger and a single second
+		/// finger, so a real finger landing during a synthetic drag becomes the second one and
+		/// starts a Pinch — synthetic and real touch must be mutually exclusive per tick, which
+		/// <see cref="GetState"/> already answers. And one id per binding, allocated up front
+		/// rather than per press: changing the id mid-gesture aborts the drag.</para>
+		///
+		/// <para>Finally, <c>FrameworkDispatcher</c> only calls this while
+		/// <see cref="TouchDeviceExists"/> is true. On Android with a pad and no screen touch it
+		/// is false and nothing here runs at all, so a synthetic source has to set that flag
+		/// when it activates — exactly as the <see cref="MouseAsTouch"/> setter does.</para>
+		/// </summary>
 		internal static void Update()
 		{
 			// Update Gesture Detector for time-sensitive gestures

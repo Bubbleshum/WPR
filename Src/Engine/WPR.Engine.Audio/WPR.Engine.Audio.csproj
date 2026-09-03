@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Engine.Audio - the audio subsystem's composition layer (Stage 6).
+
+    Holds the two audio registries and the module contract a platform plugs into:
+      * IAudioModule / AudioModule / AudioBackendRegistry - runtime audio, composing the three
+        seams (sound, XACT, media) from whatever modules are registered. Moved out of
+        WPR.Framework.Xna: the framework CONSUMES the seams, but it never touches the registry -
+        only the game host and the platform heads do, so the registry is composition, not API.
+      * AudioTranscoderBackend - install-time transcoding. Moved out of WPR.Loader for the same
+        reason: Loader consumes a transcoder, it does not decide which one exists.
+
+    NOTE the dependency direction. This references WPR.Framework.Xna, i.e. the engine tier sits
+    ABOVE the framework, which is the reverse of the direction Plans' §2 graph drew. That is forced
+    and it is fine: IAudioBackend speaks Microphone and Vector3, IGraphicsBackend speaks Texture2D
+    - game-facing XNA identities the patcher rescopes, which therefore cannot leave the framework.
+    So the seams stay put and the engine owns composition instead. No cycle: the framework never
+    references back.
+
+    Namespaces are deliberately unchanged (WPR.Xna.Rhi, WPR.Core) so no call site churns - the
+    same project-name-is-not-namespace convention WPR.Framework.Silverlight already uses.
+  -->
+
+  <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+  </PropertyGroup>
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net8.0-android</TargetFrameworks>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <AssemblyName>WPR.Engine.Audio</AssemblyName>
+    <RootNamespace>WPR.Engine.Audio</RootNamespace>
+    <Nullable>enable</Nullable>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net8.0-android'">21.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- IAudioTranscoder only. Deliberately NO framework reference: this project is now the whole
+         audio subsystem (seams + registry + composition) and must not name a game-facing XNA type,
+         or the framework could not reference it back. Hence MicrophoneInfo and
+         System.Numerics.Vector3 in the contracts. -->
+    <!-- Log.Warn for a module whose factory throws during composition. -->
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Common\WPR.Common.csproj" />
+  </ItemGroup>
+
+</Project>

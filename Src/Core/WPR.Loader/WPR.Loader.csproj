@@ -28,7 +28,7 @@
          FFMpegCore spawns an `ffmpeg` child process, so it was only ever the desktop story; it sat
          here serving AudioCompabilityConverter under a comment claiming it was "the implementation
          for all platforms", which meant Android silently transcoded nothing and every WP7 .wma
-         soundtrack was mute. The transcode now goes through WPR.Abstractions.Audio.IAudioTranscoder
+         soundtrack was mute. The transcode now goes through WPR.Engine.Audio.IAudioTranscoder
          (registry: AudioTranscoderBackend), implemented per head — FFMpegCore on Windows, the
          FFmpegKit JNI binding on Android. Do not re-add FFMpegCore here: a shared Core project is
          the one place this dependency cannot live, because it also ships it inside the APK.
@@ -57,6 +57,8 @@
     <PackageReference Include="Mono.Cecil" Version="0.11.4" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
     <PackageReference Include="System.Reactive" Version="5.0.0" />
+    <!-- AudioTranscoderBackend moved to the engine tier (Stage 6); the installer reads the transcoder from it. -->
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Audio\WPR.Engine.Audio.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -68,7 +70,6 @@
     <!-- The IAudioTranscoder contract AudioCompabilityConverter and AudioTranscoderBackend speak.
          Explicit rather than transitive-through-Framework.Silverlight: this project consumes the
          contract in its own code now. -->
-    <ProjectReference Include="$(SolutionDir)\Core\WPR.Abstractions\WPR.Abstractions.csproj" />
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Common\WPR.Common.csproj" />
     <!-- The catalogue schema (WPR.Models.ApplicationContext / Application / ApplicationType) and
          its migrations moved to Core/WPR.Database on 2026-08-30. Namespaces are unchanged, so the

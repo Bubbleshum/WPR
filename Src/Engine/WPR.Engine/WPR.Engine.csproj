@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Engine - the composition root of the Engine tier (Stage 6).
+
+    A platform head implements PlatformDescriptor to say what its device HAS; PlatformComposition
+    turns that into registry writes. This is the only assembly that knows the full set of
+    registries, which is the point: before it, each head poked seven of them by hand across five
+    assemblies, and the two ServicesSetup.cs files had to be kept in sync by hand because - per
+    CLAUDE.md - "nothing enforces it".
+
+    It references the subsystem engine projects plus whichever assemblies still hold a registry
+    that has not been pulled into one. That list shrinking over time is the measure of the tier
+    being finished; it is not a problem while it is long.
+  -->
+
+  <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+  </PropertyGroup>
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net8.0-android</TargetFrameworks>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <AssemblyName>WPR.Engine</AssemblyName>
+    <RootNamespace>WPR.Engine</RootNamespace>
+    <Nullable>enable</Nullable>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net8.0-android'">21.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Graphics\WPR.Engine.Graphics.csproj" />
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Audio\WPR.Engine.Audio.csproj" />
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Sensors\WPR.Engine.Sensors.csproj" />
+    <!-- Registries not yet pulled into a subsystem project: XnaBackend's launcher-lifetime slots
+         (achievements, tilt emulation) and NativeUI.NotificationManager. -->
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Xna\WPR.Framework.Xna.csproj" />
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Common\WPR.Common.csproj" />
+    <ProjectReference Include="$(SolutionDir)Engine/WPR.Engine.Notifications/WPR.Engine.Notifications.csproj" />
+  </ItemGroup>
+
+</Project>

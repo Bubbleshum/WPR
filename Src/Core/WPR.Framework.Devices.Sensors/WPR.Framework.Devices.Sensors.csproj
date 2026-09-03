@@ -32,12 +32,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- The ISensorProvider seam Accelerometer reads through. No platform package belongs here:
+    <!-- The IAccelerometerProvider seam Accelerometer reads through. No platform package belongs here:
          the Xamarin.Essentials reference that used to sit in this group backed an
          #if __ANDROID__ branch inside Accelerometer.cs and was resolved for the desktop leg too,
          where nothing could use it. It moved to WPR.Platform.Android with the code (2026-08-30). -->
-    <ProjectReference Include="$(SolutionDir)\Core\WPR.Abstractions\WPR.Abstractions.csproj" />
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Framework.Xna\WPR.Framework.Xna.csproj" />
+    <!-- SensorBackend moved to the engine tier (Stage 6); Accelerometer reads the provider from it. -->
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Sensors\WPR.Engine.Sensors.csproj" />
   </ItemGroup>
 
 </Project>

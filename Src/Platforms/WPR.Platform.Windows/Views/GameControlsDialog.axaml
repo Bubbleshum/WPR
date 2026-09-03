@@ -1,0 +1,62 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:input="clr-namespace:WPR.Platform.Windows.Input"
+        mc:Ignorable="d"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        x:Class="WPR.Platform.Windows.Views.GameControlsDialog"
+        Width="880" Height="600"
+        WindowStartupLocation="CenterOwner"
+        Title="Controls">
+
+  <Grid Margin="16" RowDefinitions="Auto,*,Auto">
+
+    <StackPanel Grid.Row="0" Margin="0,0,0,12">
+      <TextBlock Name="gameNameText" FontSize="18" FontWeight="SemiBold" Foreground="White"/>
+      <TextBlock Foreground="#BFFFFFFF" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                 Text="Bind a key to a touch gesture. Draw on the phone outline: press to set where the finger goes down, drag to where it lifts, release. A click without dragging is a tap. Bindings are saved with this game only."/>
+    </StackPanel>
+
+    <Grid Grid.Row="1" ColumnDefinitions="320,16,*">
+
+      <!-- Existing bindings -->
+      <DockPanel Grid.Column="0">
+        <TextBlock DockPanel.Dock="Top" Text="BINDINGS" FontSize="12" FontWeight="SemiBold"
+                   Foreground="#BFFFFFFF" Margin="0,0,0,6"/>
+        <Button DockPanel.Dock="Bottom" Name="removeBtn" Content="Remove selected"
+                HorizontalAlignment="Stretch" Margin="0,6,0,0" IsEnabled="False"/>
+        <Border BorderBrush="#3FFFFFFF" BorderThickness="1" CornerRadius="3">
+          <ListBox Name="bindingList" Background="Transparent"/>
+        </Border>
+      </DockPanel>
+
+      <!-- Editor -->
+      <DockPanel Grid.Column="2">
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="10" Margin="0,0,0,8">
+          <TextBlock Text="Key" VerticalAlignment="Center" Foreground="White"/>
+          <ComboBox Name="keyBox" Width="120"/>
+          <TextBlock Text="Duration ms" VerticalAlignment="Center" Foreground="White"/>
+          <NumericUpDown Name="durationBox" Width="110" Minimum="34" Maximum="5000" Increment="10" Value="120"/>
+          <CheckBox Name="landscapeCheck" Content="Landscape" Foreground="White" IsChecked="True"/>
+        </StackPanel>
+
+        <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0" Spacing="6">
+          <TextBlock Name="drawnText" Foreground="#BFFFFFFF" FontFamily="Consolas" FontSize="12"
+                     Text="nothing drawn yet"/>
+          <Button Name="addBtn" Content="Add / update binding" HorizontalAlignment="Left" IsEnabled="False"/>
+        </StackPanel>
+
+        <Border BorderBrush="#3FFFFFFF" BorderThickness="1" CornerRadius="3" Padding="8">
+          <input:PhoneGesturePad Name="pad"/>
+        </Border>
+      </DockPanel>
+    </Grid>
+
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right"
+                Spacing="8" Margin="0,12,0,0">
+      <TextBlock Name="statusText" Foreground="#BFFFFFFF" VerticalAlignment="Center"/>
+      <Button Name="cancelBtn" Content="Cancel" MinWidth="90"/>
+      <Button Name="saveBtn" Content="Save" MinWidth="90"/>
+    </StackPanel>
+  </Grid>
+</Window>

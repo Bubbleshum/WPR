@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Xml.Linq;
 using Mono.Cecil;
 using Xunit;
 
@@ -41,6 +42,15 @@ namespace WPR.Tests
             {
                 "WPR.Backend.FNA",
                 "WPR.Backend.Direct3D11",
+                // The FAudio audio backend (Src/Audio/, split out of WPR.Backend.FNA on
+                // 2026-09-01). It must reference FNA for the same reason the graphics adapter
+                // does: the FAudio/FACT P/Invokes are compiled INTO FNA.dll, and FNA registers its
+                // DllImport resolver (FNADllMap) only for P/Invokes whose declaring assembly is
+                // FNA — so re-declaring the natives here would break native library resolution.
+                // Its sibling WPR.Audio.AndroidMediaPlayer is deliberately NOT here: it plugs into
+                // the same seam over a platform API and references no backend at all, which is the
+                // shape a second audio implementation is expected to have.
+                "WPR.Audio.FAudio",
             };
 
         /// <summary>The documented leak baseline as of Stage 0 (2026-08-05), read
@@ -83,19 +93,29 @@ namespace WPR.Tests
                 // framework now sees only the ISurfaceRendererBackend seam, filled in by the
                 // launcher. This was the last non-spine leak in the baseline.
 
-                // Surfaced by this fitness test itself (not a direct FNA
-                // ProjectReference — FNA types flow in through the WPR core and
-                // are used in these assemblies' IL). Both are the platform heads.
-                // These are ASSEMBLY names: as of 2026-08-29 both heads were renamed
-                // (WPR.UI.Desktop -> WPR.Platform.Windows, WPR.UI.Android ->
-                // WPR.Platform.Android), so project and assembly now agree for both.
-                // The launchers and XNA tilt components that used to sit in the shared
-                // WPR.UI project moved into the Windows head when that project was
-                // dissolved, taking its FNA usage with them.
-                // Both leak only spine types (Game/GameComponent/GameWindow), so they
-                // clear with the spine stage, not at Stage 6/7 as first thought.
-                "WPR.Platform.Windows",
-                "WPR.Platform.Android",
+                // WPR.Platform.Windows and WPR.Platform.Android were the last two entries, and
+                // both cleared on 2026-09-01 (Stage 5). Neither was ever a project reference —
+                // FNA's spine types flowed in through the WPR core and were used in the heads' IL:
+                //
+                //   Windows: TiltInputXnaComponent : GameComponent and
+                //     TiltOverlayXnaComponent : DrawableGameComponent, plus XnaLauncher reaching
+                //     Game.Window.Handle to set the SDL window icon and Game.Components to attach
+                //     them. The components moved to WPR.Backend.FNA/Input/ (they derive from spine
+                //     types, so their assembly must reference FNA); the head keeps the half that
+                //     knows what a key MEANS, behind WPR.Xna.Rhi.IKeyboardEmulationHost, because that
+                //     half shares a binding table with the Silverlight host and therefore speaks
+                //     Avalonia.Input.Key. The icon now travels down as pixels (GameWindowIcon).
+                //
+                //   Android: Game as a TYPE REFERENCE ONLY, with no member touched — purely the
+                //     Action<Game> parameter in FnaGameHost's ctor, which the head never passed
+                //     but which its call site named as part of the full signature. Replaced by
+                //     GameWindowIcon, and the hook's work moved inside the backend.
+                //
+                // Note what this did NOT require: the spine stage. A GameComponent still derives
+                // from FNA's, and Game is still a backend-defined game-facing identity — but a
+                // type deriving from a backend type is only a *leak* when it lives outside an
+                // allowed referrer. The plan asserted this baseline was blocked on the
+                // window-compositing product call; it was not.
             };
 
         [Fact]
@@ -107,10 +127,29 @@ namespace WPR.Tests
                 "Could not locate WPR.sln above the test output directory " +
                 $"('{AppContext.BaseDirectory}').");
 
-            var searchRoots = new[] { "Core", "Backends", "Platforms" }
+            // "Engine" and "Modules" joined the list on 2026-09-01 as those tiers were created;
+            // without them WPR.Engine.* and every pluggable module would escape the guard entirely.
+            // ("Audio" was here briefly; those projects now live under Modules/Audio.)
+            var searchRoots = new[] { "Core", "Backends", "Platforms", "Engine", "Modules" }
                 .Select(s => Path.Combine(srcDir!, s))
                 .Where(Directory.Exists)
                 .ToList();
+
+            // Only assemblies a project in THIS TREE actually produces are governed. The name
+            // filter below is about *which* of those WPR owns; this is about excluding binaries
+            // that merely happen to sit in a scanned bin/ folder.
+            //
+            // That is not hypothetical: CLAUDE.md documents a one-game console harness that is
+            // deliberately built into the desktop head's output directory (it needs the native
+            // SDL2/FNA3D/FAudio DLLs that only that project copies there). It references
+            // WPR.Backend.FNA, so it references FNA, and being named "wprharness" it sailed
+            // through IsWprOwned and failed this gate — for a scratch tool the architecture has
+            // no opinion about. Added 2026-09-01.
+            var governed = ProducedAssemblyNames(srcDir!);
+            Assert.True(
+                governed.Count > 0,
+                $"Found no .csproj files under '{srcDir}' — the project scan that decides which " +
+                "assemblies this test governs is broken, so nothing would be checked.");
 
             // assembly simple name -> distinct backend refs found across every
             // built copy / target framework of that assembly.
@@ -126,6 +165,7 @@ namespace WPR.Tests
                     if (IsUnderObj(dll)) continue;
 
                     var name = Path.GetFileNameWithoutExtension(dll);
+                    if (!governed.Contains(name)) continue;
                     if (!IsWprOwned(name)) continue;
 
                     AssemblyDefinition asm;
@@ -150,7 +190,7 @@ namespace WPR.Tests
 
             Assert.True(
                 scanned > 0,
-                "No WPR-owned assemblies were found under Core/, Backends/ or Platforms/ bin folders. " +
+                "No WPR-owned assemblies were found under Core/, Backends/, Platforms/, Engine/ or Modules/ bin folders. " +
                 "Build the whole solution in your IDE before running this fitness test.");
 
             var offenders = backendRefs
@@ -188,6 +228,46 @@ namespace WPR.Tests
 
         /// <summary>True for assemblies WPR authors/ships (and therefore governs),
         /// excluding this test assembly and third-party packages.</summary>
+        /// <summary>
+        /// Every assembly simple-name that a <c>.csproj</c> under <paramref name="srcDir"/>
+        /// produces — its <c>&lt;AssemblyName&gt;</c> where one is set, otherwise the project
+        /// file name.
+        ///
+        /// <para>Reading <c>AssemblyName</c> is not optional here: several projects deliberately
+        /// ship under a WP7 identity that games bind by name, so project and assembly disagree
+        /// (<c>WPR.Framework.Phone</c> → <c>Microsoft.Phone</c>,
+        /// <c>WPR.Framework.Devices.Location</c> → <c>System.Device</c>, <c>FNA.Core</c> →
+        /// <c>FNA</c>). Matching on project file names alone would drop exactly the assemblies
+        /// §3.2 of the migration plan cares most about.</para>
+        /// </summary>
+        private static HashSet<string> ProducedAssemblyNames(string srcDir)
+        {
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var proj in Directory.EnumerateFiles(srcDir, "*.csproj", SearchOption.AllDirectories))
+            {
+                if (IsUnderObj(proj)) continue;
+
+                string? assemblyName = null;
+                try
+                {
+                    assemblyName = XDocument.Load(proj)
+                        .Descendants()
+                        .FirstOrDefault(e => e.Name.LocalName == "AssemblyName")
+                        ?.Value.Trim();
+                }
+                catch
+                {
+                    // Unreadable/malformed csproj: fall back to the file name rather than
+                    // silently dropping a project out of the governed set.
+                }
+
+                names.Add(string.IsNullOrEmpty(assemblyName)
+                    ? Path.GetFileNameWithoutExtension(proj)
+                    : assemblyName!);
+            }
+            return names;
+        }
+
         private static bool IsWprOwned(string simpleName) =>
             (simpleName.StartsWith("WPR", StringComparison.OrdinalIgnoreCase)
                  && !simpleName.Equals("WPR.Tests", StringComparison.OrdinalIgnoreCase))

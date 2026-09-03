@@ -15,14 +15,21 @@
     <AssemblyName>WPR.Platform.Windows</AssemblyName>
     <!-- Product version comes from $(WprVersion) in Src/Directory.Build.props — set it there, not
          here. release.yml overrides $(Version) from the workflow input at publish time.
-         InformationalVersion carries the -alpha suffix and is what the UI displays. -->
+         InformationalVersion is what the UI displays; it carried a "-alpha" suffix until 0.1.02
+         and is now just the version. -->
     <Version>$(WprVersion)</Version>
-    <InformationalVersion>$(WprVersion)-$(WprVersionSuffix)</InformationalVersion>
+    <InformationalVersion>$(WprVersion)</InformationalVersion>
     <Nullable>enable</Nullable>
     <AvaloniaVersion>11.3.9</AvaloniaVersion>
     <TrimMode>copyused</TrimMode>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <OutputType>WinExe</OutputType>
+    <!-- Win32 icon compiled into the exe — Explorer, the taskbar, Alt+Tab and the
+         installer's UninstallDisplayIcon all read it from here, and Packaging\windows\WPR.iss
+         points SetupIconFile at the same file. Assets\wpr.ico is multi-resolution
+         (16/24/32/48/64/72/96/128, plus a PNG-compressed 256) so Windows never has to
+         downscale the large art for the 16px slots; replace all frames together, not one. -->
+    <ApplicationIcon>Assets\wpr.ico</ApplicationIcon>
     <!-- The "Copy pre-made database" target below runs AfterTargets="Build". Rider/VS
          fast up-to-date check skips invoking MSBuild entirely when only content files
          change (e.g. adding a new Database\Achievements\<id>\ catalogue and no .cs edit),
@@ -37,13 +44,21 @@
        served the old net8.0 leg is gone. -->
   <ItemGroup>
     <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
+    <!-- The Engine tier: this head declares its platform through PlatformDescriptor and the
+         composition root fills every registry (Stage 6). -->
+    <ProjectReference Include="$(SolutionDir)Engine/WPR.Engine/WPR.Engine.csproj" />
+    <!-- Notifications/: this head implements INotificationManager over Windows toasts. -->
+    <ProjectReference Include="$(SolutionDir)Engine/WPR.Engine.Notifications/WPR.Engine.Notifications.csproj" />
+    <!-- Notification module: INotificationManager over the Windows toast API. -->
+    <ProjectReference Include="$(SolutionDir)Modules/Notifications/WPR.Notifications.WindowsToast/WPR.Notifications.WindowsToast.csproj" />
   </ItemGroup>
 
   <!-- Avalonia assets. The brand logo is a linked resource sourced from the repo-root
        Images\ folder rather than a copy, so XAML reaches it at
        avares://WPR.Platform.Windows/Assets/logo.png (the avares authority is the ASSEMBLY name,
-       not the project name). Assets\avalonia-logo.ico is the Inno Setup installer icon,
-       referenced by Packaging\windows\WPR.iss. -->
+       not the project name). Assets\wpr.ico is the app icon: the Win32 exe icon (via
+       $(ApplicationIcon) above), the Avalonia window icon, and the Inno Setup installer
+       icon referenced by Packaging\windows\WPR.iss. -->
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
     <AvaloniaResource Include="..\..\..\Images\logo.png" Link="Assets\logo.png" />
@@ -123,12 +138,11 @@
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Loader\WPR.Loader.csproj" />
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Common\WPR.Common.csproj" />
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Framework.Silverlight\WPR.Framework.Silverlight.csproj" />
-    <!-- Input/: this head implements WPR.Abstractions.Sensors.ISensorProvider from the keyboard
+    <!-- Input/: this head implements WPR.Engine.Sensors.IAccelerometerProvider from the keyboard
          emulator and registers it into WPR.Sensors.SensorBackend (which ships inside the sensors
          framework, beside its consumer, exactly like SilverlightBackend). Both were reached
          transitively via WPR.Backend.FNA before; explicit now that the head is a first-class
          implementer rather than an accidental consumer. -->
-    <ProjectReference Include="$(SolutionDir)\Core\WPR.Abstractions\WPR.Abstractions.csproj" />
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Framework.Devices.Sensors\WPR.Framework.Devices.Sensors.csproj" />
     <!-- FNA game-loop host driver (ApplicationLaunch + FnaGameHost/IGameHost), used by
          SilverlightLauncher / XnaLauncher. -->
@@ -139,21 +153,13 @@
     <ProjectReference Include="$(SolutionDir)\Backends\WPR.Backend.Direct3D11\WPR.Backend.Direct3D11.csproj" />
     <ProjectReference Include="$(SolutionDir)\ThirdParty\Icons.Avalonia\src\Projektanker.Icons.Avalonia.FontAwesome\Projektanker.Icons.Avalonia.FontAwesome.csproj" />
     <ProjectReference Include="$(SolutionDir)\ThirdParty\Icons.Avalonia\src\Projektanker.Icons.Avalonia\Projektanker.Icons.Avalonia.csproj" />
+    <ProjectReference Include="..\..\Core\WPR.Shell\WPR.Shell.csproj" />
+    <ProjectReference Include="..\..\Modules\Input\WPR.Input.Keyboard\WPR.Input.Keyboard.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <!-- Picked up as an EmbeddedResource by the SDK's default **/*.resx glob; the manifest
-         name it gets ($(RootNamespace).Properties.Resources) is what Resources.Designer.cs
-         hands to ResourceManager. The metadata below only keeps the IDE regenerating the
-         designer file when the .resx is edited. -->
-    <EmbeddedResource Update="Properties\Resources.resx">
-      <Generator>PublicResXFileCodeGenerator</Generator>
-      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
-    </EmbeddedResource>
-    <Compile Update="Properties\Resources.Designer.cs">
-      <DesignTime>True</DesignTime>
-      <AutoGen>True</AutoGen>
-      <DependentUpon>Resources.resx</DependentUpon>
-    </Compile>
+    <!-- The localized launcher strings used to live here as Properties/Resources.resx. They moved
+         to WPR.Shell on 2026-09-02, where both heads share one copy; this head's were byte
+         identical to the Android head's. Reach them as WPR.Shell.Resources. -->
     <Compile Update="Views\ApplicationItem.axaml.cs">
       <DependentUpon>ApplicationItem.axaml</DependentUpon>
     </Compile>

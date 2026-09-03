@@ -39,6 +39,13 @@ namespace WPR.Common
             public bool TiltOverlayEnabled;
             // Master switch for keyboard accelerometer simulation. Default = true.
             public bool? TiltSimulationEnabled;
+            // Keyboard key bound to the WP7 hardware Back button. Same enum-name convention as
+            // the tilt keys above. Null = the default, Escape.
+            //
+            // Note the phone's own Back keycode (SDLK_AC_BACK, and Android's system Back via
+            // WprPhoneBackButton) is NOT configurable and never passes through here — that is a
+            // hardware button, not a preference. This binding only names the desktop stand-in.
+            public string? BackKey;
         };
 
         private const string ConfigurationFilePath = "config.json";
@@ -106,6 +113,9 @@ namespace WPR.Common
         public const string DefaultTiltKeyForward = "W";
         public const string DefaultTiltKeyBackward = "S";
         public const double DefaultTiltSensitivity = 0.7;
+        /// <summary>Desktop stand-in for the WP7 hardware Back button. "Escape" preserves the
+        /// behaviour that was hardcoded in SDL2_FNAPlatform.PollEvents until 2026-09-03.</summary>
+        public const string DefaultBackKey = "Escape";
 
         public string TiltKeyLeft
         {
@@ -141,6 +151,11 @@ namespace WPR.Common
         {
             get => _ConfPrivate!.TiltSimulationEnabled ?? true;
             set => _ConfPrivate!.TiltSimulationEnabled = value;
+        }
+        public string BackKey
+        {
+            get => _ConfPrivate!.BackKey ?? DefaultBackKey;
+            set => _ConfPrivate!.BackKey = string.IsNullOrEmpty(value) ? null : value;
         }
 
         public static event EventHandler<string?>? GameLibraryPathChanged;

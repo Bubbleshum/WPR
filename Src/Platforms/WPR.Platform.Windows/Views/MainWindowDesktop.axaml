@@ -7,7 +7,7 @@
         xmlns:ic="clr-namespace:Projektanker.Icons.Avalonia;assembly=Projektanker.Icons.Avalonia"
         xmlns:dialogHost="clr-namespace:DialogHostAvalonia;assembly=DialogHost.Avalonia"
         x:Class="WPR.Platform.Windows.Views.MainWindowDesktop"
-        Icon="avares://WPR.Platform.Windows/Assets/logo.png"
+        Icon="avares://WPR.Platform.Windows/Assets/wpr.ico"
         Background="{StaticResource WprWindowBackdrop}"
         MinWidth="980" MinHeight="640"
         Name="MainWindow">

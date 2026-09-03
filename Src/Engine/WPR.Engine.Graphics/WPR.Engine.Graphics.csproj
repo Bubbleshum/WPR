@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Engine.Graphics - the graphics subsystem's composition layer.
+
+    Part of the Engine tier (Plans/ARCHITECTURE-MIGRATION.md Stage 6). Note this tier sits ABOVE
+    the frameworks, not below them, which is the reverse of the direction the plan's graph drew.
+    The RHI seams cannot leave WPR.Framework.Xna: IGraphicsBackend speaks Texture2D /
+    GraphicsDevice / GraphicsAdapter / DisplayMode, which are game-facing XNA identities the
+    patcher rescopes so games bind them, and the framework's own types consume the seams. What the
+    engine tier owns instead is the platform-independent DECISION-MAKING and the registries a
+    platform head plugs into - which is what lets a head declare "I use OpenGL" rather than poking
+    a backend static.
+
+    Deliberately dependency-free: no framework, no backend, not even a logger. Everything here is
+    a choice plus a file read.
+  -->
+
+  <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+  </PropertyGroup>
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net8.0-android</TargetFrameworks>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <AssemblyName>WPR.Engine.Graphics</AssemblyName>
+    <RootNamespace>WPR.Engine.Graphics</RootNamespace>
+    <Nullable>enable</Nullable>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net8.0-android'">21.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+</Project>

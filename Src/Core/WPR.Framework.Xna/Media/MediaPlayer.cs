@@ -8,6 +8,7 @@
 #endregion
 
 #region Using Statements
+using WPR.Engine.Audio;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -43,7 +44,7 @@ namespace Microsoft.Xna.Framework.Media
 			set
 			{
 				INTERNAL_isMuted = value;
-				XnaBackend.Media.SetSongVolume(
+				AudioBackendRegistry.Media.SetSongVolume(
 					INTERNAL_isMuted ?
 						0.0f :
 						INTERNAL_volume
@@ -107,7 +108,7 @@ namespace Microsoft.Xna.Framework.Media
 					0.0f,
 					1.0f
 				);
-				XnaBackend.Media.SetSongVolume(
+				AudioBackendRegistry.Media.SetSongVolume(
 					IsMuted ? 0.0f : INTERNAL_volume
 				);
 			}
@@ -117,11 +118,11 @@ namespace Microsoft.Xna.Framework.Media
 		{
 			get
 			{
-				return XnaBackend.Media.IsSongVisualizationEnabled();
+				return AudioBackendRegistry.Media.IsSongVisualizationEnabled();
 			}
 			set
 			{
-				XnaBackend.Media.EnableSongVisualization(value);
+				AudioBackendRegistry.Media.EnableSongVisualization(value);
 			}
 		}
 
@@ -198,7 +199,7 @@ namespace Microsoft.Xna.Framework.Media
 				return;
 			}
 
-			XnaBackend.Media.PauseSong();
+			AudioBackendRegistry.Media.PauseSong();
 			timer.Stop();
 
 			State = MediaState.Paused;
@@ -252,7 +253,7 @@ namespace Microsoft.Xna.Framework.Media
 				return;
 			}
 
-			XnaBackend.Media.ResumeSong();
+			AudioBackendRegistry.Media.ResumeSong();
 			timer.Start();
 			State = MediaState.Playing;
 		}
@@ -264,7 +265,7 @@ namespace Microsoft.Xna.Framework.Media
 				return;
 			}
 
-			XnaBackend.Media.StopSong();
+			AudioBackendRegistry.Media.StopSong();
 			timer.Stop();
 			timer.Reset();
 
@@ -278,7 +279,7 @@ namespace Microsoft.Xna.Framework.Media
 
 		public static void GetVisualizationData(VisualizationData data)
 		{
-			XnaBackend.Media.GetSongVisualizationData(
+			AudioBackendRegistry.Media.GetSongVisualizationData(
 				data.freq,
 				data.samp,
 				VisualizationData.Size
@@ -294,7 +295,7 @@ namespace Microsoft.Xna.Framework.Media
 			if (	Queue == null ||
 				Queue.ActiveSong == null ||
 				State != MediaState.Playing ||
-				!XnaBackend.Media.GetSongEnded()	)
+				!AudioBackendRegistry.Media.GetSongEnded()	)
 			{
 				// Nothing to do... yet...
 				return;
@@ -343,7 +344,7 @@ namespace Microsoft.Xna.Framework.Media
 		{
 			if (initialized)
 			{
-				XnaBackend.Media.SongQuit();
+				AudioBackendRegistry.Media.SongQuit();
 				initialized = false;
 			}
 		}
@@ -449,7 +450,7 @@ namespace Microsoft.Xna.Framework.Media
 		{
 			if (!initialized)
 			{
-				XnaBackend.Media.SongInit();
+				AudioBackendRegistry.Media.SongInit();
 				initialized =  true;
 			}
 
@@ -464,7 +465,7 @@ namespace Microsoft.Xna.Framework.Media
 				return;
 			}
 
-			song.Duration = TimeSpan.FromSeconds(XnaBackend.Media.PlaySong(song.handle));
+			song.Duration = TimeSpan.FromSeconds(AudioBackendRegistry.Media.PlaySong(song.handle));
 			timer.Start();
 			State = MediaState.Playing;
 		}

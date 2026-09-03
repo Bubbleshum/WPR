@@ -11,7 +11,7 @@
     Types keep their real namespaces (Microsoft.Xna.Framework[.Design][.Graphics.PackedVector]).
     FNA.Core now REFERENCES this assembly for these types (its Vector2.cs etc. were removed), so
     FNA's runtime (GraphicsDevice, SpriteBatch, …) and games share ONE value-type identity — the
-    prerequisite for reimplementing the runtime over WPR.Abstractions in 5b/5c.
+    prerequisite for reimplementing the runtime behind seams in 5b/5c.
 
     net8.0 (NOT multi-TFM) on purpose: FNA.Core is net8.0 and references this back, so this must be
     net8.0-compatible; the net8.0-windows/android facades + consumers still consume it fine.
@@ -58,6 +58,13 @@
     <EmbeddedResource Include="Graphics\Effect\YUVToRGBA\YUVToRGBAEffect.fxb">
       <LogicalName>Microsoft.Xna.Framework.Graphics.Effect.Resources.YUVToRGBAEffect.fxb</LogicalName>
     </EmbeddedResource>
+    <!-- The audio subsystem: seams, registry and composition all live in the engine tier as of
+         2026-09-01, so the framework's SoundEffect / Cue / MediaPlayer read them from there.
+         One-way: WPR.Engine.Audio names no framework type, which is what the neutral
+         MicrophoneInfo and System.Numerics.Vector3 in its contracts are for. -->
+    <ProjectReference Include="$(SolutionDir)Engine/WPR.Engine.Audio/WPR.Engine.Audio.csproj" />
+    <!-- The achievement-unlock toast (SignedInGamer). Moved out of WPR.Common on 2026-09-01. -->
+    <ProjectReference Include="$(SolutionDir)Engine/WPR.Engine.Notifications/WPR.Engine.Notifications.csproj" />
   </ItemGroup>
 
   <!--
@@ -119,6 +126,9 @@
          and its XACT file reader shares the moved MonoGame.Utilities.FileHelpers path helpers).
          Visibility only — WPR.Framework.Xna still references nothing. -->
     <InternalsVisibleTo Include="WPR.Backend.FNA" />
+    <!-- The FAudio audio backend (Src/Audio/, split out of WPR.Backend.FNA on 2026-09-01)
+         constructs Microphone and uses MonoGame.Utilities.FileHelpers for XACT bank paths. -->
+    <InternalsVisibleTo Include="WPR.Audio.FAudio" />
   </ItemGroup>
 
 </Project>

@@ -8,6 +8,7 @@
 #endregion
 
 #region Using Statements
+using WPR.Engine.Audio;
 using System;
 
 using Microsoft.Xna.Framework.Graphics;
@@ -88,8 +89,8 @@ namespace Microsoft.Xna.Framework.Media
 			GraphicsDevice = device;
 
 			VideoPixelFormat fmt;
-			theora = XnaBackend.Media.OpenVideo(fileName);
-			XnaBackend.Media.GetVideoInfo(
+			theora = AudioBackendRegistry.Media.OpenVideo(fileName);
+			AudioBackendRegistry.Media.GetVideoInfo(
 				theora,
 				out yWidth,
 				out yHeight,
@@ -170,7 +171,7 @@ namespace Microsoft.Xna.Framework.Media
 		{
 			if (theora != IntPtr.Zero)
 			{
-				XnaBackend.Media.SetAudioTrack(theora, track);
+				AudioBackendRegistry.Media.SetAudioTrack(theora, track);
 			}
 		}
 
@@ -178,7 +179,7 @@ namespace Microsoft.Xna.Framework.Media
 		{
 			if (theora != IntPtr.Zero)
 			{
-				XnaBackend.Media.SetVideoTrack(theora, track);
+				AudioBackendRegistry.Media.SetVideoTrack(theora, track);
 			}
 		}
 
@@ -190,7 +191,7 @@ namespace Microsoft.Xna.Framework.Media
 		{
 			if (theora != IntPtr.Zero)
 			{
-				XnaBackend.Media.CloseVideo(ref theora);
+				AudioBackendRegistry.Media.CloseVideo(ref theora);
 			}
 		}
 

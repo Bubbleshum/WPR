@@ -1,3 +1,4 @@
+using WPR.Input.Keyboard;
 using System;
 using System.IO;
 using System.Threading.Tasks;
@@ -173,7 +174,7 @@ namespace WPR.Platform.Windows
             // Wire the keyboard → accelerometer bridge at the window level so a focused child
             // (a text input for instance) doesn't steal the keystrokes. Tunneling = "preview"
             // — fires before the focused control sees the event, so tilt keys always work.
-            KeyboardTiltBinding.ApplyConfigurationToHost();
+            KeyboardTiltBindings.ApplyConfigurationToHost();
             window.AddHandler(InputElement.KeyDownEvent, OnTiltKeyDown, RoutingStrategies.Tunnel);
             window.AddHandler(InputElement.KeyUpEvent,   OnTiltKeyUp,   RoutingStrategies.Tunnel);
 
@@ -217,7 +218,7 @@ namespace WPR.Platform.Windows
             // OS key-repeat fires KeyDown multiple times while the key is held; that's fine
             // because NotifyTiltKey just sets the down-state flag — repeated "true" calls
             // are idempotent.
-            var dir = KeyboardTiltBinding.ResolveAvaloniaKey(e.Key);
+            var dir = KeyboardTiltBindings.ResolveKeyName(e.Key.ToString());
             if (dir.HasValue)
             {
                 KeyboardAccelerometerHost.NotifyTiltKey(dir.Value, true);
@@ -226,7 +227,7 @@ namespace WPR.Platform.Windows
 
         private static void OnTiltKeyUp(object? sender, KeyEventArgs e)
         {
-            var dir = KeyboardTiltBinding.ResolveAvaloniaKey(e.Key);
+            var dir = KeyboardTiltBindings.ResolveKeyName(e.Key.ToString());
             if (dir.HasValue)
             {
                 KeyboardAccelerometerHost.NotifyTiltKey(dir.Value, false);

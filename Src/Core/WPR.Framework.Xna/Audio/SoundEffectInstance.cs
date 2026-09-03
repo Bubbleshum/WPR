@@ -8,6 +8,7 @@
 #endregion
 
 #region Using Statements
+using WPR.Engine.Audio;
 using System;
 using System.Runtime.InteropServices;
 #endregion
@@ -81,7 +82,7 @@ namespace Microsoft.Xna.Framework.Audio
 				SetPanMatrixCoefficients();
 				if (handle != IntPtr.Zero)
 				{
-					XnaBackend.Audio.SetOutputMatrix(handle, AudioOutputTarget.Master, srcChannelCount, dstChannelCount, matrixCoefficients);
+					AudioBackendRegistry.Sound.SetOutputMatrix(handle, AudioOutputTarget.Master, srcChannelCount, dstChannelCount, matrixCoefficients);
 				}
 			}
 		}
@@ -113,7 +114,7 @@ namespace Microsoft.Xna.Framework.Audio
 					INTERNAL_state == SoundState.Playing	)
 				{
 					int buffersQueued;
-					XnaBackend.Audio.GetVoiceState(handle, true, out buffersQueued, out _);
+					AudioBackendRegistry.Sound.GetVoiceState(handle, true, out buffersQueued, out _);
 					if (buffersQueued == 0)
 					{
 						Stop(true);
@@ -135,7 +136,7 @@ namespace Microsoft.Xna.Framework.Audio
 				INTERNAL_volume = value;
 				if (handle != IntPtr.Zero)
 				{
-					XnaBackend.Audio.SetVoiceVolume(handle, INTERNAL_volume);
+					AudioBackendRegistry.Sound.SetVoiceVolume(handle, INTERNAL_volume);
 				}
 			}
 		}
@@ -244,24 +245,24 @@ namespace Microsoft.Xna.Framework.Audio
 			 */
 			Audio3DParams params3D = new Audio3DParams
 			{
-				ListenerForward = listener.Forward,
-				ListenerUp = listener.Up,
-				ListenerPosition = listener.Position,
-				ListenerVelocity = listener.Velocity,
-				EmitterForward = emitter.Forward,
-				EmitterUp = emitter.Up,
-				EmitterPosition = emitter.Position,
-				EmitterVelocity = emitter.Velocity,
+				ListenerForward = listener.Forward.ToNumerics(),
+				ListenerUp = listener.Up.ToNumerics(),
+				ListenerPosition = listener.Position.ToNumerics(),
+				ListenerVelocity = listener.Velocity.ToNumerics(),
+				EmitterForward = emitter.Forward.ToNumerics(),
+				EmitterUp = emitter.Up.ToNumerics(),
+				EmitterPosition = emitter.Position.ToNumerics(),
+				EmitterVelocity = emitter.Velocity.ToNumerics(),
 				EmitterDopplerScale = emitter.DopplerScale,
 				CurveDistanceScaler = dev.CurveDistanceScaler,
 				SourceChannels = srcChannelCount,
 				DestinationChannels = dstChannelCount,
 			};
-			XnaBackend.Audio.Calculate3D(in params3D, matrixCoefficients, out dopplerFactor);
+			AudioBackendRegistry.Sound.Calculate3D(in params3D, matrixCoefficients, out dopplerFactor);
 			if (handle != IntPtr.Zero)
 			{
 				UpdatePitch();
-				XnaBackend.Audio.SetOutputMatrix(handle, AudioOutputTarget.Master, srcChannelCount, dstChannelCount, matrixCoefficients);
+				AudioBackendRegistry.Sound.SetOutputMatrix(handle, AudioOutputTarget.Master, srcChannelCount, dstChannelCount, matrixCoefficients);
 			}
 		}
 
@@ -288,7 +289,7 @@ namespace Microsoft.Xna.Framework.Audio
 			if (State == SoundState.Paused)
 			{
 				/* Just resume the existing handle */
-				XnaBackend.Audio.Start(handle);
+				AudioBackendRegistry.Sound.Start(handle);
 				INTERNAL_state = SoundState.Playing;
 				return;
 			}
@@ -301,7 +302,7 @@ namespace Microsoft.Xna.Framework.Audio
 			if (isDynamic)
 			{
 				AudioWaveFormatEx fmt = (this as DynamicSoundEffectInstance).format;
-				handle = XnaBackend.Audio.CreateSourceVoice(
+				handle = AudioBackendRegistry.Sound.CreateSourceVoice(
 					fmt.wFormatTag,
 					fmt.nChannels,
 					(int) fmt.nSamplesPerSec,
@@ -318,7 +319,7 @@ namespace Microsoft.Xna.Framework.Audio
 				/* Static effects keep their format marshalled as a native blob (it may be wider
 				 * than WAVEFORMATEX, e.g. XMA2), so hand the pointer over as-is.
 				 */
-				handle = XnaBackend.Audio.CreateSourceVoiceRaw(
+				handle = AudioBackendRegistry.Sound.CreateSourceVoiceRaw(
 					parentEffect.formatPtr,
 					true,
 					DefaultMaxFrequencyRatio
@@ -330,11 +331,11 @@ namespace Microsoft.Xna.Framework.Audio
 			}
 
 			/* Apply current properties */
-			XnaBackend.Audio.SetVoiceVolume(handle, INTERNAL_volume);
+			AudioBackendRegistry.Sound.SetVoiceVolume(handle, INTERNAL_volume);
 			UpdatePitch();
 			if (is3D || Pan != 0.0f)
 			{
-				XnaBackend.Audio.SetOutputMatrix(handle, AudioOutputTarget.Master, srcChannelCount, dstChannelCount, matrixCoefficients);
+				AudioBackendRegistry.Sound.SetOutputMatrix(handle, AudioOutputTarget.Master, srcChannelCount, dstChannelCount, matrixCoefficients);
 			}
 
 			/* For static effects, submit the buffer now */
@@ -356,11 +357,11 @@ namespace Microsoft.Xna.Framework.Audio
 					parentEffect.handle.LoopBegin = 0;
 					parentEffect.handle.LoopLength = 0;
 				}
-				XnaBackend.Audio.SubmitBuffer(handle, in parentEffect.handle);
+				AudioBackendRegistry.Sound.SubmitBuffer(handle, in parentEffect.handle);
 			}
 
 			/* Play, finally. */
-			XnaBackend.Audio.Start(handle);
+			AudioBackendRegistry.Sound.Start(handle);
 			INTERNAL_state = SoundState.Playing;
 			hasStarted = true;
 		}
@@ -369,7 +370,7 @@ namespace Microsoft.Xna.Framework.Audio
 		{
 			if (handle != IntPtr.Zero && State == SoundState.Playing)
 			{
-				XnaBackend.Audio.Stop(handle, true);
+				AudioBackendRegistry.Sound.Stop(handle, true);
 				INTERNAL_state = SoundState.Paused;
 			}
 		}
@@ -384,7 +385,7 @@ namespace Microsoft.Xna.Framework.Audio
 			}
 			else if (state == SoundState.Paused)
 			{
-				XnaBackend.Audio.Start(handle);
+				AudioBackendRegistry.Sound.Start(handle);
 				INTERNAL_state = SoundState.Playing;
 			}
 		}
@@ -403,9 +404,9 @@ namespace Microsoft.Xna.Framework.Audio
 
 			if (immediate)
 			{
-				XnaBackend.Audio.Stop(handle, true);
-				XnaBackend.Audio.FlushSourceBuffers(handle);
-				XnaBackend.Audio.DestroyVoice(handle);
+				AudioBackendRegistry.Sound.Stop(handle, true);
+				AudioBackendRegistry.Sound.FlushSourceBuffers(handle);
+				AudioBackendRegistry.Sound.DestroyVoice(handle);
 				handle = IntPtr.Zero;
 				usingReverb = false;
 				INTERNAL_state = SoundState.Stopped;
@@ -427,7 +428,7 @@ namespace Microsoft.Xna.Framework.Audio
 				{
 					throw new InvalidOperationException();
 				}
-				XnaBackend.Audio.ExitLoop(handle);
+				AudioBackendRegistry.Sound.ExitLoop(handle);
 			}
 		}
 
@@ -489,7 +490,7 @@ namespace Microsoft.Xna.Framework.Audio
 			{
 				outputMatrix[1] = rvGain;
 			}
-			XnaBackend.Audio.SetOutputMatrix(handle, AudioOutputTarget.Reverb, srcChannelCount, 1, matrixCoefficients);
+			AudioBackendRegistry.Sound.SetOutputMatrix(handle, AudioOutputTarget.Reverb, srcChannelCount, 1, matrixCoefficients);
 		}
 
 		internal void INTERNAL_applyLowPassFilter(float cutoff)
@@ -500,7 +501,7 @@ namespace Microsoft.Xna.Framework.Audio
 			}
 
 			AudioFilterType filterType = AudioFilterType.LowPass;
-			XnaBackend.Audio.SetFilter(handle, filterType, cutoff, 1.0f);
+			AudioBackendRegistry.Sound.SetFilter(handle, filterType, cutoff, 1.0f);
 		}
 
 		internal void INTERNAL_applyHighPassFilter(float cutoff)
@@ -511,7 +512,7 @@ namespace Microsoft.Xna.Framework.Audio
 			}
 
 			AudioFilterType filterType = AudioFilterType.HighPass;
-			XnaBackend.Audio.SetFilter(handle, filterType, cutoff, 1.0f);
+			AudioBackendRegistry.Sound.SetFilter(handle, filterType, cutoff, 1.0f);
 		}
 
 		internal void INTERNAL_applyBandPassFilter(float center)
@@ -522,7 +523,7 @@ namespace Microsoft.Xna.Framework.Audio
 			}
 
 			AudioFilterType filterType = AudioFilterType.BandPass;
-			XnaBackend.Audio.SetFilter(handle, filterType, center, 1.0f);
+			AudioBackendRegistry.Sound.SetFilter(handle, filterType, center, 1.0f);
 		}
 
 		#endregion
@@ -542,7 +543,7 @@ namespace Microsoft.Xna.Framework.Audio
 				doppler = dopplerFactor * dopplerScale;
 			}
 
-			XnaBackend.Audio.SetFrequencyRatio(handle, (float) Math.Pow(2.0, INTERNAL_pitch) * doppler);
+			AudioBackendRegistry.Sound.SetFrequencyRatio(handle, (float) Math.Pow(2.0, INTERNAL_pitch) * doppler);
 		}
 
 		private unsafe void SetPanMatrixCoefficients()

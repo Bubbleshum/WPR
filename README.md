@@ -6,7 +6,7 @@
 
 **Play your old Windows Phone games again, on a PC or an Android phone.**
 
-`0.1.0-alpha` · [Compatibility list](https://bubbleshum.github.io/WPR/) · [MIT licensed](LICENSE)
+`0.1.*` · [Compatibility list](https://bubbleshum.github.io/WPR/) · [MIT licensed](LICENSE)
 
 </div>
 
@@ -28,7 +28,7 @@ instead it takes the game's original program files and rewires the parts that as
 for Windows Phone features so they talk to modern replacements instead. The game
 then runs directly on your machine, at your screen's resolution and speed.
 
-> **This is alpha software.** It's a hobby project, it's still being actively
+> **This is early software.** It's a hobby project, it's still being actively
 > rebuilt underneath, and plenty of games don't work yet. If you want something
 > polished and finished, this isn't it — yet.
 
@@ -60,29 +60,27 @@ will be familiar if you ever owned one:
   <img src="Images/screenshot-android-achievements.png" width="30%" alt="Achievements on Android" />
 </p>
 
-## What's new in 0.1.0-alpha
+## What's new in 0.1.02
 
-- **Proper installers.** There's now a one-click Windows installer and a signed
-  Android APK, both produced automatically by the project's release build — no
-  more "compile it yourself" as the only option.
-- **A rebuilt Android app.** The Android launcher was rewritten from scratch as a
-  native Windows-Phone-style tile interface — Start screen, games, achievements,
-  settings and about — instead of the old shared desktop-style UI.
-- **Achievements for 277 games.** Each one ships with its full achievement list,
-  icons and gamerscore, so progress shows up properly instead of as blank
-  placeholders. Unlocks are saved and survive restarts.
-- **Keyboard tilt controls.** A new Controls screen lets you map the four tilt
-  directions to keys, set how hard the "tilt" is, and watch a live readout while
-  you press them. It understands landscape games, so "up" always means up on your
-  screen.
-- **Notifications when you unlock something,** on both desktop and Android.
-- **A large internal reorganisation.** The codebase was split into clear layers
-  and the graphics/audio code moved behind swappable back-ends. Nothing you can
-  see, but it's what makes the remaining compatibility work possible.
-- **Per-game crash logs.** Every launch now writes a diagnostic file next to the
-  game, so a game that dies silently still leaves something to report.
+- **Play touch games with the keyboard.** Bind a key to a tap or a swipe, drawn on
+  a to-scale phone outline rather than typed as coordinates. Per game, from the
+  Controls button on a game's page. The Back key is rebindable too.
+- **Games save again.** Progress, settings and high scores could silently fail to
+  persist while the game looked perfectly healthy. Worth retrying anything you'd
+  written off as "loses progress".
+- **Three games that hung or went blank now work** — Game Room: Pitfall! freezing
+  on its second splash, Guitar Hero 5's black screen on Android, and Angry Birds'
+  credits page becoming impossible to leave.
+- **Installing a second game in one session no longer hangs on Android.**
+- **Achievement unlock toasts appear on Android,** and secret achievements no
+  longer spoil themselves on Windows.
 
-Older changes are on the
+> **Repatch your games after updating** — there's a button on each game's page.
+> Games patched by an older version won't launch until you do.
+
+Full notes for this release are in
+[`Docs/ReleaseNotes/0.1.02.md`](Docs/ReleaseNotes/0.1.02.md); earlier ones sit
+beside it, and older changes are on the
 [Update History wiki page](https://github.com/Bubbleshum/WPR/wiki/Update-History).
 
 ## Features
@@ -159,7 +157,7 @@ written in C++ aren't supported and won't be.
 
 ## Things to know
 
-- **It's alpha, and it's mid-rebuild.** The `main` branch isn't guaranteed to
+- **It's early, and it's mid-rebuild.** The `main` branch isn't guaranteed to
   build or run cleanly at any given moment — a large internal reorganisation is
   still in progress.
 - **When a game fails, it's usually a missing piece rather than a broken app.**

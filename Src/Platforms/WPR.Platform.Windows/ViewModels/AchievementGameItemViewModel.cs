@@ -31,13 +31,18 @@ namespace WPR.Platform.Windows.ViewModels
         public string Name => _App?.Name ?? _ProductId;
         public string Author => _App?.Author ?? "";
 
-        public int Total => _Achievements.Count;
-        public int Earned => _Achievements.Count(a => a.IsEarned);
-        public int TotalScore => _Achievements.Sum(a => a.GamerScore);
-        public int EarnedScore => _Achievements.Where(a => a.IsEarned).Sum(a => a.GamerScore);
+        /// <summary>Aggregates for this game, computed once by the shared roll-up. Both shells
+        /// read the same numbers; four hand-written copies of this arithmetic used to exist.</summary>
+        private WPR.Shell.AchievementTotals Totals => _Totals ??= WPR.Shell.AchievementRollup.Totalise(_Achievements);
+        private WPR.Shell.AchievementTotals? _Totals;
 
-        public string Progress => $"{Earned} / {Total}";
-        public double ProgressPercent => Total == 0 ? 0 : (Earned * 100.0 / Total);
+        public int Total => Totals.Total;
+        public int Earned => Totals.Earned;
+        public int TotalScore => Totals.TotalScore;
+        public int EarnedScore => Totals.EarnedScore;
+
+        public string Progress => Totals.Progress;
+        public double ProgressPercent => Totals.Percent;
 
         public Bitmap? Icon
         {
