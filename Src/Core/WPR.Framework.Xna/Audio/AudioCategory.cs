@@ -8,6 +8,7 @@
 #endregion
 
 #region Using Statements
+using WPR.Engine.Audio;
 using System;
 #endregion
 
@@ -60,7 +61,7 @@ namespace Microsoft.Xna.Framework.Audio
 				{
 					return;
 				}
-				XnaBackend.Xact.PauseCategory(parent.handle, index, true);
+				AudioBackendRegistry.Xact.PauseCategory(parent.handle, index, true);
 			}
 		}
 
@@ -72,7 +73,7 @@ namespace Microsoft.Xna.Framework.Audio
 				{
 					return;
 				}
-				XnaBackend.Xact.PauseCategory(parent.handle, index, false);
+				AudioBackendRegistry.Xact.PauseCategory(parent.handle, index, false);
 			}
 		}
 
@@ -84,7 +85,7 @@ namespace Microsoft.Xna.Framework.Audio
 				{
 					return;
 				}
-				XnaBackend.Xact.SetCategoryVolume(parent.handle, index, volume);
+				AudioBackendRegistry.Xact.SetCategoryVolume(parent.handle, index, volume);
 			}
 		}
 
@@ -96,7 +97,7 @@ namespace Microsoft.Xna.Framework.Audio
 				{
 					return;
 				}
-				XnaBackend.Xact.StopCategory(
+				AudioBackendRegistry.Xact.StopCategory(
 				parent.handle,
 				index,
 				(options == AudioStopOptions.Immediate) ? XactStopOptions.Immediate : XactStopOptions.Release

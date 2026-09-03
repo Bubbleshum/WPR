@@ -5,7 +5,7 @@
     Android leg gating  (see README "Building without the Android workload")
     ============================================================================
 
-    18 projects in this repo multi-target `net8.0-android` alongside their
+    13 projects in this repo multi-target `net8.0-android` alongside their
     desktop TFM. MSBuild builds *every* TFM of a project reference, so on a
     machine without the .NET Android workload installed the android leg fails
     (NETSDK1147 "the following workloads must be installed: android") and takes
@@ -56,7 +56,7 @@
          not apply) and packs/ fills up with Microsoft.Android.Sdk.Windows/36.x
          and Microsoft.Android.Ref.36 while the 8.0 band still has no android
          workload at all - `dotnet workload list` under 8.0.4xx prints nothing.
-         A glob reports "installed", the android legs get built, and all 14
+         A glob reports "installed", the android legs get built, and all 13
          multi-targeting projects fail NETSDK1147 "workloads must be installed:
          android" from an SDK whose packs/ is visibly full of android.
 
@@ -108,8 +108,8 @@
     <!-- Never strip a project down to nothing: an android-only project that
          spells its TFM as <TargetFrameworks>net8.0-android</TargetFrameworks>
          would end up with an empty list, which fails far from here. Those
-         projects (WPR.Platform.Android, the Java bindings) are excluded from
-         WPR.Windows.slnf instead. -->
+         projects (WPR.Platform.Android, WPR.Audio.AndroidMediaPlayer and the
+         Java bindings) are excluded from WPR.Windows.slnf instead. -->
     <TargetFrameworks Condition=" '$(_WprTargetFrameworksNoAndroid)' != '' ">$(_WprTargetFrameworksNoAndroid)</TargetFrameworks>
   </PropertyGroup>
 

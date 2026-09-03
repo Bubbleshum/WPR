@@ -137,22 +137,15 @@ namespace WPR.Platform.Android.Native
                 achievements = AchievementContext.Current!.Achievements!
                     .AsNoTracking()
                     .Where(a => a.OwnProductId == productId)
-                    .ToList()
-                    .OrderByDescending(a => a.IsEarned)
-                    .ThenByDescending(a => a.GamerScore)
-                    .ThenBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
                     .ToList();
+                achievements = WPR.Shell.AchievementRollup.InDisplayOrder(achievements).ToList();
             }
             catch (Exception ex)
             {
                 Log.Error(LogCategory.GamerServices, $"Achievement load failed for {productId}:\n{ex}");
             }
 
-            int earned = achievements.Count(a => a.IsEarned);
-            int earnedScore = achievements.Where(a => a.IsEarned).Sum(a => a.GamerScore);
-            int totalScore = achievements.Sum(a => a.GamerScore);
-
-            _Subtitle.Text = $"{earned}/{achievements.Count}  ·  {earnedScore}/{totalScore} G";
+            _Subtitle.Text = WPR.Shell.AchievementRollup.Totalise(achievements).Summary;
             _Subtitle.Visibility = achievements.Count == 0 ? ViewStates.Gone : ViewStates.Visible;
 
             AchievementAdapter adapter = new AchievementAdapter(this);

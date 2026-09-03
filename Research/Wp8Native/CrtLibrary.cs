@@ -166,10 +166,7 @@ namespace WPR.Wp8Native
             handlers["?unlock@critical_section@Concurrency@@QAAXXZ"] = () => _frame.Return(0);
             handlers["?try_lock@critical_section@Concurrency@@QAA_NXZ"] = () => _frame.Return(1);
 
-            // event::wait returns 0 when signalled, 0xFFFFFFFF on timeout.
-            handlers["?wait@event@Concurrency@@QAAII@Z"] = () => _frame.Return(0);
-            handlers["?set@event@Concurrency@@QAAXXZ"] = () => _frame.Return(0);
-            handlers["?reset@event@Concurrency@@QAAXXZ"] = () => _frame.Return(0);
+            // Concurrency::event lives in SyncLibrary, because it needs state and a yield.
 
             // Concurrency::wait(milliseconds) - a sleep, and time does not pass here.
             handlers["?wait@Concurrency@@YAXI@Z"] = () => _frame.Return(0);

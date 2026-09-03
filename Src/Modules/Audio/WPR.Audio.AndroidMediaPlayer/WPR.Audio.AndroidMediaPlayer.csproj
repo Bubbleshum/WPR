@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Audio.AndroidMediaPlayer — XNA Song playback over android.media.MediaPlayer.
+
+    A PARTIAL audio implementation, and the reason the module seam takes a "next" argument: it
+    claims the song half of IMediaBackend and forwards the video half to the module below it in
+    AudioBackendRegistry's stack (the FAudio module's Theorafile decoder). See
+    AndroidMediaPlayerModule.
+
+    Why it exists at all: FAudio's XNA_SongSubmitBuffer decodes one full second of Vorbis per
+    buffer with a queue depth of one, refilled from OnBufferEnd — so at every buffer boundary the
+    voice has nothing queued AND the audio thread is decoding inside the mixer callback. Desktop
+    absorbs it; on a phone it is an audible click exactly once per second. The real fix is a
+    double-buffered XNA_SongSubmitBuffer, but libFAudio.so ships prebuilt and this toolchain has
+    no NDK.
+
+    Split out of Src/Platforms/WPR.Platform.Android/Audio/ on 2026-09-01. It was never head code:
+    it implements a framework seam and names no activity, no launcher UI and no head type. Living
+    in the head is what made it reference WPR.Backend.FNA (the graphics/game-loop host) for its
+    video half; as a peer of WPR.Audio.FAudio it needs neither that reference nor one to FAudio.
+
+    Android-only, so the TFM is singular <TargetFramework> — Directory.Build.targets' android
+    stripping deliberately never empties a project's list, and android-only projects are excluded
+    from WPR.Windows.slnf instead.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>21.0</SupportedOSPlatformVersion>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <AssemblyName>WPR.Audio.AndroidMediaPlayer</AssemblyName>
+    <RootNamespace>WPR.Audio.AndroidMediaPlayer</RootNamespace>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The seams only (WPR.Xna.Rhi.IMediaBackend / AudioModule). Deliberately NO reference to
+         WPR.Audio.FAudio, WPR.Backend.FNA or the Android head — this project plugs in through the
+         registry and receives everything else it needs as a constructor argument. -->
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Xna\WPR.Framework.Xna.csproj" />
+    <!-- WPR.Common.Log — the [AppAudioConverter] lines that tell a game-thread StopSong apart from
+         the XNA queue advancing, which is the only way to diagnose this backend from a device. -->
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Common\WPR.Common.csproj" />
+    <!-- AudioModule base + the registry this module plugs into. -->
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Audio\WPR.Engine.Audio.csproj" />
+  </ItemGroup>
+
+</Project>

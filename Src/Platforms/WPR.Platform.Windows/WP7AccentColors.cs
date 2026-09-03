@@ -1,17 +1,26 @@
 using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
 using Avalonia.Media;
+using WPR.Shell;
 
 namespace WPR.Platform.Windows
 {
     /// <summary>
-    /// The fixed set of accent colors WP7's "theme" Settings screen offered. The
-    /// hex values match the published WP7/WP8 system palette, with "Cyan"
-    /// (#1BA1E2) being the device default. Used by the desktop SettingsPage's
-    /// highlight-color picker.
+    /// The desktop picker's view of the WP7 accent palette: each shared
+    /// <see cref="WP7Accent"/> plus the pre-built brush Avalonia needs.
+    ///
+    /// <para>The twenty name/hex pairs themselves live in
+    /// <see cref="WP7AccentPalette"/> and are shared with the Android shell. They used to be
+    /// duplicated in both heads, with a comment on the Android copy asking whoever changed one to
+    /// remember the other. The brush is the reason the data could not simply be shared as-is —
+    /// building it eagerly per entry put <c>Avalonia.Media.IBrush</c> in the type, and the native
+    /// Android shell has no Avalonia application to touch it with. Projecting the shared pair into
+    /// a brush here keeps the data in one place and the brush where it belongs.</para>
     /// </summary>
     public sealed class WP7AccentColor
     {
-        /// <summary>Localized-ish display name shown in the picker.</summary>
+        /// <summary>Display name shown in the picker, title-cased for the desktop UI.</summary>
         public string Name { get; }
         /// <summary>Hex string in "#AARRGGBB" form, persisted into Configuration.</summary>
         public string Hex { get; }
@@ -27,36 +36,35 @@ namespace WPR.Platform.Windows
             Brush = new SolidColorBrush(Color.Parse(hex));
         }
 
+        internal WP7AccentColor(WP7Accent accent)
+            : this(CultureInfo.InvariantCulture.TextInfo.ToTitleCase(accent.Name), accent.Hex)
+        {
+        }
+
         public override string ToString() => Name;
     }
 
     public static class WP7AccentColors
     {
-        public static IReadOnlyList<WP7AccentColor> Presets { get; } = new[]
-        {
-            new WP7AccentColor("Lime",     "#FFA4C400"),
-            new WP7AccentColor("Green",    "#FF60A917"),
-            new WP7AccentColor("Emerald",  "#FF008A00"),
-            new WP7AccentColor("Teal",     "#FF00ABA9"),
-            new WP7AccentColor("Cyan",     "#FF1BA1E2"), // WP7 default
-            new WP7AccentColor("Cobalt",   "#FF0050EF"),
-            new WP7AccentColor("Indigo",   "#FF6A00FF"),
-            new WP7AccentColor("Violet",   "#FFAA00FF"),
-            new WP7AccentColor("Pink",     "#FFF472D0"),
-            new WP7AccentColor("Magenta",  "#FFD80073"),
-            new WP7AccentColor("Crimson",  "#FFA20025"),
-            new WP7AccentColor("Red",      "#FFE51400"),
-            new WP7AccentColor("Orange",   "#FFFA6800"),
-            new WP7AccentColor("Amber",    "#FFF0A30A"),
-            new WP7AccentColor("Yellow",   "#FFE3C800"),
-            new WP7AccentColor("Brown",    "#FF825A2C"),
-            new WP7AccentColor("Olive",    "#FF6D8764"),
-            new WP7AccentColor("Steel",    "#FF647687"),
-            new WP7AccentColor("Mauve",    "#FF76608A"),
-            new WP7AccentColor("Sienna",   "#FFA0522D"),
-        };
+        /// <summary>
+        /// The picker's entries, in WP7's own order. Projected from
+        /// <see cref="WP7AccentPalette.Presets"/> — do not re-list the hexes here.
+        /// </summary>
+        public static IReadOnlyList<WP7AccentColor> Presets { get; } =
+            WP7AccentPalette.Presets.Select(a => new WP7AccentColor(a)).ToArray();
 
         /// <summary>Default accent (Cyan) — used when Configuration.AccentColor is unset.</summary>
-        public static WP7AccentColor Default => Presets[4];
+        public static WP7AccentColor Default => Resolve(null);
+
+        /// <summary>
+        /// Resolves a persisted accent string to a picker entry, falling back to the default for
+        /// an unset, unknown or corrupt value. Shares its matching rule with the Android shell via
+        /// <see cref="WP7AccentPalette.Resolve"/>, which the two used to implement differently.
+        /// </summary>
+        public static WP7AccentColor Resolve(string? storedHex)
+        {
+            WP7Accent accent = WP7AccentPalette.Resolve(storedHex);
+            return Presets.First(p => p.Hex == accent.Hex);
+        }
     }
 }

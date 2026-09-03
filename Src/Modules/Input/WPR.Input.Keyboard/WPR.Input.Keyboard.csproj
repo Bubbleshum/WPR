@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Input.Keyboard - a desktop keyboard standing in for the phone's input devices.
+
+    Named WPR.Input.KeyboardTilt until 2026-09-03, when it stopped being only about tilt. One
+    keyboard now emulates THREE devices, and it is one module because they share one key source:
+      * the accelerometer  - WASD-ish tilt, bindings in Configuration.TiltKey*
+      * the hardware Back button - Configuration.BackKey, default "Escape"
+      * the touchscreen    - taps and swipes, per-game bindings in input-bindings.json
+
+    It fills TWO seams, which is why it is one module rather than three:
+      * WPR.Engine.Sensors.IAccelerometerProvider - so the WP7 Accelerometer shim reads the
+        synthesised tilt exactly as it would read a phone's sensor.
+      * WPR.Xna.Rhi.IKeyboardEmulationHost        - everything the FNA backend asks of a keyboard:
+        pressed keys, presentation orientation, "is this the Back key", and the per-tick synthetic
+        touch sample.
+    They describe one emulator from two directions; splitting them would put one 60Hz timer and one
+    binding table behind two modules that then had to find each other.
+
+    Lived in WPR.Platform.Windows/Input/ until 2026-09-02. Nothing about it is Windows-specific -
+    it is BCL, a System.Timers timer and the XNA DisplayOrientation enum - so it was head code only
+    by accident of where the desktop launcher was written. Moving it out is what makes room for the
+    input modules that come next (a gamepad-to-touch mapper, real controllers), each of which plugs
+    into the same seams without any head learning about it.
+
+    References beyond its engine subsystem, and why:
+      * WPR.Framework.Xna - IKeyboardEmulationHost is declared there (WPR.Xna.Rhi) and CANNOT move: it
+        names Keys and DisplayOrientation, game-facing XNA identities the patcher rescopes. Same
+        forced exemption as WPR.Audio.FAudio needing FNA.
+      * WPR.Common - the key bindings and sensitivity are persisted in Configuration, and are
+        re-read per event so a Controls-page edit applies to the running game.
+
+    NO Avalonia. The head used to resolve an Avalonia.Input.Key here; that method was
+    character-identical to the XNA one (both just ToString() the enum and compare against the
+    persisted name), so it collapsed into ResolveKeyName(string) and the UI tie disappeared.
+  -->
+
+  <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+  </PropertyGroup>
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <AssemblyName>WPR.Input.Keyboard</AssemblyName>
+    <RootNamespace>WPR.Input.Keyboard</RootNamespace>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Sensors\WPR.Engine.Sensors.csproj" />
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Xna\WPR.Framework.Xna.csproj" />
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Common\WPR.Common.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -22,11 +22,10 @@ namespace WPR.Xna.Rhi
 	public static class XnaBackend
 	{
 		private static IGraphicsBackend _graphics;
-		private static IAudioBackend _audio;
-		private static IXactBackend _xact;
-		private static IMediaBackend _media;
 		private static IInputBackend _input;
 		private static IStorageBackend _storage;
+		private static IPlatformBackend _platform;
+		private static IKeyboardEmulationHost _keyboardEmulation;
 		private static WPR.Xna.Achievements.IAchievementStore _achievements;
 		private static Func<string> _titleLocation;
 		private static Action<string> _logInfo;
@@ -36,10 +35,6 @@ namespace WPR.Xna.Rhi
 		private static Action<TimeSpan> _suppressFocusActivation;
 
 		/// <summary>True once a backend has registered a graphics implementation.</summary>
-		public static bool HasGraphics => _graphics != null;
-
-		/// <summary>True once a backend has registered an audio implementation.</summary>
-		public static bool HasAudio => _audio != null;
 
 		/// <summary>The active graphics RHI. Throws if no backend has registered one yet.</summary>
 		public static IGraphicsBackend Graphics =>
@@ -48,49 +43,14 @@ namespace WPR.Xna.Rhi
 				"(e.g. WPR.Backend.FNA) must call XnaBackend.SetGraphics(...) before the XNA " +
 				"runtime creates a GraphicsDevice.");
 
-		/// <summary>The active audio backend. Throws if no backend has registered one yet.</summary>
-		public static IAudioBackend Audio =>
-			_audio ?? throw new InvalidOperationException(
-				"No IAudioBackend has been registered. The audio backend " +
-				"(e.g. WPR.Backend.FNA) must call XnaBackend.SetAudio(...) before the XNA " +
-				"runtime opens an audio device.");
-
 		/// <summary>Registers the graphics backend. Called once by the host at startup.</summary>
 		public static void SetGraphics(IGraphicsBackend backend) =>
 			_graphics = backend ?? throw new ArgumentNullException(nameof(backend));
+		public static bool HasGraphics => _graphics != null;
 
-		/// <summary>Registers the audio backend. Called once by the host at startup.</summary>
-		public static void SetAudio(IAudioBackend backend) =>
-			_audio = backend ?? throw new ArgumentNullException(nameof(backend));
-
-		/// <summary>True once a backend has registered an XACT implementation.</summary>
-		public static bool HasXact => _xact != null;
-
-		/// <summary>The active XACT backend. Throws if no backend has registered one yet.</summary>
-		public static IXactBackend Xact =>
-			_xact ?? throw new InvalidOperationException(
-				"No IXactBackend has been registered. The audio backend " +
-				"(e.g. WPR.Backend.FNA) must call XnaBackend.SetXact(...) before the XNA " +
-				"runtime creates an AudioEngine.");
-
-		/// <summary>Registers the XACT backend. Called once by the host at startup.</summary>
-		public static void SetXact(IXactBackend backend) =>
-			_xact = backend ?? throw new ArgumentNullException(nameof(backend));
-
-		/// <summary>True once a backend has registered a media implementation.</summary>
-		public static bool HasMedia => _media != null;
-
-		/// <summary>The active media backend (song playback + video decode). Throws if no backend
-		/// has registered one yet.</summary>
-		public static IMediaBackend Media =>
-			_media ?? throw new InvalidOperationException(
-				"No IMediaBackend has been registered. The media backend " +
-				"(e.g. WPR.Backend.FNA) must call XnaBackend.SetMedia(...) before the XNA " +
-				"runtime plays a Song or opens a Video.");
-
-		/// <summary>Registers the media backend. Called once by the host at startup.</summary>
-		public static void SetMedia(IMediaBackend backend) =>
-			_media = backend ?? throw new ArgumentNullException(nameof(backend));
+		/* The audio / XACT / media slots left this class on 2026-09-01. The whole audio subsystem —
+		 * contracts, registry and composition — now lives in WPR.Engine.Audio, and the framework's
+		 * audio types read AudioBackendRegistry.Sound / .Xact / .Media directly. */
 
 		/// <summary>True once a backend has registered an input implementation.</summary>
 		public static bool HasInput => _input != null;
@@ -141,6 +101,45 @@ namespace WPR.Xna.Rhi
 		/// <summary>Registers the achievement store. Called once by the host at startup.</summary>
 		public static void SetAchievements(WPR.Xna.Achievements.IAchievementStore backend) =>
 			_achievements = backend ?? throw new ArgumentNullException(nameof(backend));
+
+		/// <summary>True once a head has registered a keyboard-tilt emulator.</summary>
+		public static bool HasKeyboardEmulation => _keyboardEmulation != null;
+
+		/// <summary>
+		/// The desktop keyboard-tilt emulator's head-side policy, or null where there is none
+		/// (Android, which has a real accelerometer). Null rather than throwing, exactly like
+		/// <see cref="Achievements"/>: absent means the feature is unavailable, not broken.
+		///
+		/// <para>Deliberately NOT reset in <see cref="Clear"/>. It is registered once by the
+		/// launcher in <c>ServicesSetup.Start()</c>, not per game, so clearing it on teardown
+		/// would silently leave the SECOND game launched without tilt emulation — the same trap
+		/// documented on <see cref="Achievements"/> and on the audio module registry. The
+		/// per-launch state it drives lives in the components the backend attaches, and those die
+		/// with the game.</para>
+		/// </summary>
+		public static IKeyboardEmulationHost? KeyboardEmulation => _keyboardEmulation;
+
+		/// <summary>Registers the keyboard-tilt emulator. Called once by the head at startup.</summary>
+		public static void SetKeyboardEmulation(IKeyboardEmulationHost host) =>
+			_keyboardEmulation = host ?? throw new ArgumentNullException(nameof(host));
+
+		/// <summary>True once a backend has registered a platform implementation.</summary>
+		public static bool HasPlatform => _platform != null;
+
+		/// <summary>
+		/// The windowing / event-pump backend. Throws if unset, like the graphics and audio slots:
+		/// a game with no window is not a degraded experience, it is a broken launch, so failing
+		/// with this message beats a NullReferenceException from inside the loop.
+		/// </summary>
+		public static IPlatformBackend Platform =>
+			_platform ?? throw new InvalidOperationException(
+				"No IPlatformBackend has been registered. The platform backend " +
+				"(e.g. WPR.Backend.FNA) must call XnaBackend.SetPlatform(...) before the XNA " +
+				"runtime creates its window.");
+
+		/// <summary>Registers the platform backend. Called once by the host at startup.</summary>
+		public static void SetPlatform(IPlatformBackend backend) =>
+			_platform = backend ?? throw new ArgumentNullException(nameof(backend));
 
 		/// <summary>
 		/// The title's content root — where a game's loose assets live. Backs the relative-URI branch

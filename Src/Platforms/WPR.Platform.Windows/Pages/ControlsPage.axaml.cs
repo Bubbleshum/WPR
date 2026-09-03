@@ -1,3 +1,4 @@
+using WPR.Input.Keyboard;
 using System;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
@@ -29,11 +30,12 @@ namespace WPR.Platform.Windows.Pages
             var overlayChk  = this.Get<CheckBox>("tiltOverlayCheck");
             var simChk      = this.Get<CheckBox>("tiltSimEnabledCheck");
             var resetBtn    = this.Get<Button>("resetTiltKeysBtn");
+            var backBox     = this.Get<ComboBox>("backKeyBox");
             var livePreview = this.Get<ContentPresenter>("livePreviewHost");
 
-            foreach (var box in new[] { leftBox, rightBox, forwardBox, backwardBox })
+            foreach (var box in new[] { leftBox, rightBox, forwardBox, backwardBox, backBox })
             {
-                box.ItemsSource = KeyboardTiltBinding.CommonChoices;
+                box.ItemsSource = KeyboardKeyChoices.Common;
             }
 
             var cfg = Configuration.Current!;
@@ -45,11 +47,17 @@ namespace WPR.Platform.Windows.Pages
             sliderVal.Text           = cfg.TiltSensitivity.ToString("F2");
             overlayChk.IsChecked     = cfg.TiltOverlayEnabled;
             simChk.IsChecked         = cfg.TiltSimulationEnabled;
+            backBox.SelectedItem     = cfg.BackKey;
 
             leftBox.SelectionChanged     += (_, _) => Persist(() => cfg.TiltKeyLeft     = leftBox.SelectedItem     as string ?? cfg.TiltKeyLeft);
             rightBox.SelectionChanged    += (_, _) => Persist(() => cfg.TiltKeyRight    = rightBox.SelectedItem    as string ?? cfg.TiltKeyRight);
             forwardBox.SelectionChanged  += (_, _) => Persist(() => cfg.TiltKeyForward  = forwardBox.SelectedItem  as string ?? cfg.TiltKeyForward);
             backwardBox.SelectionChanged += (_, _) => Persist(() => cfg.TiltKeyBackward = backwardBox.SelectedItem as string ?? cfg.TiltKeyBackward);
+
+            // Same keyboard, a different emulated device. No ApplyConfigurationToHost here: that
+            // pushes the accelerometer's runtime knobs, whereas the Back binding is resolved per
+            // key event, so an edit already reaches a running game on the next tick.
+            backBox.SelectionChanged += (_, _) => Persist(() => cfg.BackKey = backBox.SelectedItem as string ?? cfg.BackKey);
 
             slider.PropertyChanged += (_, e) =>
             {
@@ -57,7 +65,7 @@ namespace WPR.Platform.Windows.Pages
                 cfg.TiltSensitivity = slider.Value;
                 sliderVal.Text = slider.Value.ToString("F2");
                 cfg.Save();
-                KeyboardTiltBinding.ApplyConfigurationToHost();
+                KeyboardTiltBindings.ApplyConfigurationToHost();
             };
 
             overlayChk.IsCheckedChanged += (_, _) =>
@@ -70,7 +78,7 @@ namespace WPR.Platform.Windows.Pages
             {
                 cfg.TiltSimulationEnabled = simChk.IsChecked == true;
                 cfg.Save();
-                KeyboardTiltBinding.ApplyConfigurationToHost();
+                KeyboardTiltBindings.ApplyConfigurationToHost();
             };
 
             resetBtn.Click += (_, _) =>
@@ -86,7 +94,7 @@ namespace WPR.Platform.Windows.Pages
                 forwardBox.SelectedItem  = cfg.TiltKeyForward;
                 backwardBox.SelectedItem = cfg.TiltKeyBackward;
                 slider.Value             = cfg.TiltSensitivity;
-                KeyboardTiltBinding.ApplyConfigurationToHost();
+                KeyboardTiltBindings.ApplyConfigurationToHost();
             };
 
             // Live preview: drop a TiltOverlay into the small panel on the right. It
@@ -104,7 +112,7 @@ namespace WPR.Platform.Windows.Pages
             AttachedToVisualTree += (_, _) =>
             {
                 Focus();
-                KeyboardTiltBinding.ApplyConfigurationToHost();
+                KeyboardTiltBindings.ApplyConfigurationToHost();
                 var top = TopLevel.GetTopLevel(this);
                 if (top != null)
                 {
@@ -128,13 +136,13 @@ namespace WPR.Platform.Windows.Pages
         {
             // OS key-repeat fires KeyDown repeatedly while the key is held — fine, since
             // NotifyTiltKey is an idempotent "set this flag to true" call.
-            var dir = KeyboardTiltBinding.ResolveAvaloniaKey(e.Key);
+            var dir = KeyboardTiltBindings.ResolveKeyName(e.Key.ToString());
             if (dir.HasValue) KeyboardAccelerometerHost.NotifyTiltKey(dir.Value, true);
         }
 
         private void OnTiltKeyUp(object? sender, KeyEventArgs e)
         {
-            var dir = KeyboardTiltBinding.ResolveAvaloniaKey(e.Key);
+            var dir = KeyboardTiltBindings.ResolveKeyName(e.Key.ToString());
             if (dir.HasValue) KeyboardAccelerometerHost.NotifyTiltKey(dir.Value, false);
         }
 
@@ -142,7 +150,7 @@ namespace WPR.Platform.Windows.Pages
         {
             mutate();
             Configuration.Current?.Save();
-            KeyboardTiltBinding.ApplyConfigurationToHost();
+            KeyboardTiltBindings.ApplyConfigurationToHost();
         }
     }
 }

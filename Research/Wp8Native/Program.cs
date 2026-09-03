@@ -131,8 +131,29 @@ if (Environment.GetEnvironmentVariable("WPR_TRACE") is { Length: > 0 } trace)
     }
 }
 
+// WPR_SCREENSHOT=path[:frame[+every]] rasterises presented frames and writes them as PNGs.
+// With +every the name gains a six-digit frame number and the run produces a contact sheet
+// rather than one picture, which is the difference between one guess per run and twenty.
+if (Environment.GetEnvironmentVariable("WPR_SCREENSHOT") is { Length: > 0 } shot)
+{
+    int colon = shot.LastIndexOf(':');
+    string tail = colon > 1 ? shot[(colon + 1)..] : string.Empty;
+    string[] parts = tail.Split('+');
+
+    bool hasFrame = parts.Length >= 1 && int.TryParse(parts[0], out int wantFrame) && wantFrame >= 0;
+    emulator.Direct3D.ScreenshotPath = hasFrame ? shot[..colon] : shot;
+    emulator.Direct3D.ScreenshotFrame = hasFrame ? int.Parse(parts[0]) : 1;
+
+    if (hasFrame && parts.Length == 2 && int.TryParse(parts[1], out int every) && every > 0)
+    {
+        emulator.Direct3D.ScreenshotEvery = every;
+    }
+}
+
 Stopwatch clock = Stopwatch.StartNew();
+Stopwatch runClock = Stopwatch.StartNew();
 string? fault = emulator.RunEntryPoint(budget);
+runClock.Stop();
 clock.Stop();
 
 Console.WriteLine($"  stopped       {fault ?? emulator.StopReason ?? "instruction budget exhausted"}");
@@ -149,8 +170,39 @@ Console.WriteLine(emulator.BlockStatsCollected
     : "  blocks        not counted (block hook off above a 10M budget)");
 Console.WriteLine($"  lazy pages    {emulator.LazyPagesMapped}");
 Console.WriteLine($"  main loop     {emulator.ProcessEventsCalls} call(s) to CoreDispatcher::ProcessEvents");
+Console.WriteLine($"  guest stores  {emulator.GuestStores:N0} into the heap and stack");
 Console.WriteLine($"  graphics      {emulator.Direct3D.Summary()}");
+if (emulator.Direct3D.ScreenshotSummary is not null)
+{
+    Console.WriteLine($"  screenshot    {emulator.Direct3D.ScreenshotSummary}");
+    foreach (string note in emulator.Direct3D.Frame.Notes)
+    {
+        Console.WriteLine($"                {note}");
+    }
+}
 Console.WriteLine($"  audio         {emulator.XAudio2.Summary()}");
+foreach (string line in emulator.WinRt.AsyncCompleted)
+{
+    Console.WriteLine($"  async         {line}");
+}
+
+foreach (string line in emulator.Sync.ConcurrencyWaits.Take(10))
+{
+    Console.WriteLine($"  concrt        {line}");
+}
+
+foreach (string line in emulator.ConstructedExceptions)
+{
+    Console.WriteLine($"  exception     {line}");
+}
+
+Console.WriteLine($"  sync          {emulator.Sync.Summary()}");
+foreach (string line in emulator.Sync.Log.Take(8))
+{
+    Console.WriteLine($"  sync          {line}");
+}
+
+Console.WriteLine($"  input         {emulator.WinRt.SubscriptionSummary()}");
 foreach (string line in emulator.InputDelivered)
 {
     Console.WriteLine($"  input         {line}");
@@ -338,12 +390,71 @@ Console.WriteLine($"  heap used     {emulator.HeapUsed / 1024 / 1024:N0} MB, " +
 Console.WriteLine($"  elapsed       {clock.Elapsed.TotalSeconds:F2}s");
 
 Console.WriteLine();
-Console.WriteLine($"  {emulator.CallOrder.Count} import calls, {emulator.CallCounts.Count} distinct");
+Console.WriteLine($"  {emulator.CallOrderTotal:N0} import calls, {emulator.CallCounts.Count} distinct");
 Console.WriteLine();
 Console.WriteLine("  most called:");
-foreach (KeyValuePair<string, int> entry in emulator.CallCounts.OrderByDescending(e => e.Value).Take(8))
+foreach (KeyValuePair<string, int> entry in emulator.CallCounts.OrderByDescending(e => e.Value).Take(28))
 {
     Console.WriteLine($"    {entry.Value,8:N0}  {entry.Key}");
+}
+
+// The last thing the image was doing, which is the only part of an 800,000-entry call
+// order that says anything about a run that stopped making progress.
+if (ScriptDumper.Requested is { } dump)
+{
+    if (dump.Frame <= 0)
+    {
+        emulator.Scripts.Scan(emulator, dump.Directory);
+    }
+
+    Console.WriteLine();
+    Console.WriteLine(Rule("SCRIPTS RECOVERED"));
+    foreach (string line in emulator.Scripts.Log)
+    {
+        Console.WriteLine($"  {line}");
+    }
+}
+
+if (emulator.WinRt.Slots.Any)
+{
+    Console.WriteLine();
+    Console.WriteLine(Rule("VTABLE SLOTS CALLED ON STAND-INS"));
+    Console.WriteLine("  slot 0-5 is IInspectable; member N is the Nth member in metadata order");
+    foreach (string line in emulator.WinRt.Slots.Report(
+                 Environment.GetEnvironmentVariable("WPR_SLOTS")))
+    {
+        Console.WriteLine($"  {line}");
+    }
+}
+
+Console.WriteLine();
+Console.WriteLine(Rule("WHERE THE TIME WENT"));
+foreach (string line in emulator.Samples.Report(emulator.Unwinder))
+{
+    Console.WriteLine($"  {line}");
+}
+
+foreach (string line in emulator.Samples.ArgumentSamples)
+{
+    Console.WriteLine($"    {line}");
+}
+
+if (PcSampler.ArgumentSite == 0)
+{
+    Console.WriteLine("  (WPR_ARGS=0xADDR shows r0-r3 for the first calls from one site)");
+}
+
+if (!PcSampler.SamplingBlocks)
+{
+    Console.WriteLine("  (WPR_SAMPLE=n also samples one basic block in n, which sees code that");
+    Console.WriteLine("   calls nothing - at the cost of a block hook on every block)");
+}
+
+Console.WriteLine();
+Console.WriteLine("  last calls, oldest first:");
+foreach (string call in emulator.CallOrder.TakeLast(24))
+{
+    Console.WriteLine($"    {call}");
 }
 
 Console.WriteLine();
@@ -354,12 +465,12 @@ foreach (string call in emulator.CallOrder.Take(40))
     Console.WriteLine($"    {++index,3}. {call}");
 }
 
-if (emulator.CallOrder.Count > 40)
+if (emulator.CallOrderTotal > 40)
 {
-    Console.WriteLine($"    ... and {emulator.CallOrder.Count - 40} more");
+    Console.WriteLine($"    ... and {emulator.CallOrderTotal - 40:N0} more");
     Console.WriteLine();
     Console.WriteLine("  last 12 before the run ended:");
-    int position = emulator.CallOrder.Count - 12;
+    long position = emulator.CallOrderTotal - 12;
     foreach (string call in emulator.CallOrder.TakeLast(12))
     {
         Console.WriteLine($"    {++position,3}. {call}");
@@ -532,6 +643,25 @@ bool callbackOk = VtableProof.RunCallbackProof(emulator, Console.Out);
 emulator.Dispose();
 
 Console.WriteLine();
+Console.WriteLine(Rule("TIME INSIDE HOST STUBS"));
+foreach (string line in emulator.HostTime(runClock.Elapsed.TotalSeconds))
+{
+    Console.WriteLine($"  {line}");
+}
+
+Console.WriteLine();
+
+if (emulator.Direct3D.Phases.Count > 0)
+{
+    Console.WriteLine(Rule("HOW THE LOAD SPENT ITS TIME"));
+    foreach (string phase in emulator.Direct3D.Phases)
+    {
+        Console.WriteLine($"  {phase}");
+    }
+
+    Console.WriteLine();
+}
+
 Console.WriteLine(Rule("THROUGHPUT"));
 RunThroughputBenchmark();
 
@@ -540,22 +670,218 @@ return bridgeOk && callbackOk ? 0 : 3;
 
 static void RunThroughputBenchmark()
 {
+    Measure("no hooks       ", false);
+    Measure("one code hook  ", true);
+    MeasureBoundary();
+    MeasureBinding();
+    MeasureWrites("stores, rwx page", false);
+    MeasureWrites("stores, rw page", true);
+    MeasureLoads();
+    MeasureMixed("mixed, no hook", false);
+    MeasureMixed("mixed, code hook", true);
+
+    static void Measure(string label, bool withCodeHook)
+    {
+        const long code = 0x1000;
+        const long count = 40_000_000;
+
+        using Unicorn uc = new(Common.UC_ARCH_ARM, Common.UC_MODE_THUMB);
+        uc.MemMap(code, 0x1000, Common.UC_PROT_ALL);
+
+        // loop: subs r0, #1 ; bne loop - a dependent ALU pair, the pessimistic case for a JIT.
+        uc.MemWrite(code, [0x01, 0x38, 0xFD, 0xD1]);
+        uc.RegWrite(Arm.UC_ARM_REG_R0, 0xFFFFFFFFL);
+
+        // A hook over a range this loop never enters. If that still costs, the cost is not
+        // the callback - it is that having any code hook at all stops Unicorn chaining its
+        // translation blocks, which is a property of the mechanism and not of the range.
+        if (withCodeHook)
+        {
+            uc.AddCodeHook((_, _, _, _) => { }, null, 0xA0000000, 0xA0001000);
+        }
+
+        Stopwatch clock = Stopwatch.StartNew();
+        uc.EmuStart(code | 1, 0, 0, count);
+        clock.Stop();
+
+        double mips = count / clock.Elapsed.TotalSeconds / 1e6;
+        Console.WriteLine($"  {label} {count:N0} Thumb-2 instructions in " +
+                          $"{clock.Elapsed.TotalSeconds:F2}s = {mips:F0} MIPS");
+    }
+}
+
+// How much a single crossing into a host stub costs, which is the number that decides
+// whether the answer to "make it faster" is a faster CPU or fewer calls into the host.
+// The image makes millions of these, so a microsecond here is minutes on a run.
+static void MeasureBoundary()
+{
     const long code = 0x1000;
-    const long count = 40_000_000;
+    const long trap = 0xA0000000;
+    const long count = 200_000;
 
     using Unicorn uc = new(Common.UC_ARCH_ARM, Common.UC_MODE_THUMB);
     uc.MemMap(code, 0x1000, Common.UC_PROT_ALL);
+    uc.MemMap(trap, 0x1000, Common.UC_PROT_READ | Common.UC_PROT_EXEC);
 
-    // loop: subs r0, #1 ; bne loop  - a dependent ALU pair, the pessimistic case for a JIT.
-    uc.MemWrite(code, [0x01, 0x38, 0xFD, 0xD1]);
-    uc.RegWrite(Arm.UC_ARM_REG_R0, 0xFFFFFFFFL);
+    // loop: blx r1 ; subs r0, #1 ; bne loop
+    uc.MemWrite(code, [0x88, 0x47, 0x01, 0x38, 0xFC, 0xD1]);
+
+    // The trap slot itself: bx lr, the same shape the import traps use.
+    uc.MemWrite(trap, [0x70, 0x47]);
+
+    uc.RegWrite(Arm.UC_ARM_REG_R0, count);
+    uc.RegWrite(Arm.UC_ARM_REG_R1, trap | 1);
+
+    long crossings = 0;
+    uc.AddCodeHook(
+        (Unicorn u, long address, int size, object? _) =>
+        {
+            // What every import trap does before its handler runs: default the tail-call
+            // register to the return address.
+            crossings++;
+            u.RegWrite(Arm.UC_ARM_REG_R12, u.RegRead(Arm.UC_ARM_REG_LR));
+        },
+        null,
+        trap,
+        trap + 0x1000);
 
     Stopwatch clock = Stopwatch.StartNew();
-    uc.EmuStart(code | 1, 0, 0, count);
+    uc.EmuStart(code | 1, 0, 0, count * 3);
     clock.Stop();
 
-    double mips = count / clock.Elapsed.TotalSeconds / 1e6;
-    Console.WriteLine($"  {count:N0} Thumb-2 instructions in {clock.Elapsed.TotalSeconds:F2}s = {mips:F0} MIPS");
+    double each = clock.Elapsed.TotalSeconds / Math.Max(1, crossings) * 1e6;
+    Console.WriteLine($"  host crossing   {crossings:N0} trap(s) in {clock.Elapsed.TotalSeconds:F2}s = " +
+                      $"{each:F2} us each");
+}
+
+// The binding's own overhead, measured separately, because a stub that reads six registers
+// and two strings pays this per access and there is no way to tell from the outside.
+static void MeasureBinding()
+{
+    const long data = 0x1000;
+    const int count = 200_000;
+
+    using Unicorn uc = new(Common.UC_ARCH_ARM, Common.UC_MODE_THUMB);
+    uc.MemMap(data, 0x1000, Common.UC_PROT_ALL);
+
+    Stopwatch clock = Stopwatch.StartNew();
+    for (int i = 0; i < count; i++)
+    {
+        uc.RegRead(Arm.UC_ARM_REG_R0);
+    }
+
+    clock.Stop();
+    double read = clock.Elapsed.TotalSeconds / count * 1e9;
+
+    byte[] buffer = new byte[4];
+    clock.Restart();
+    for (int i = 0; i < count; i++)
+    {
+        uc.MemRead(data, buffer);
+    }
+
+    clock.Stop();
+    double mem = clock.Elapsed.TotalSeconds / count * 1e9;
+
+    Console.WriteLine($"  binding         RegRead {read:F0} ns, MemRead(4) {mem:F0} ns");
+}
+
+// What a memory-write hook costs the code being watched. A write hook fires per store,
+// not per watched store - an empty watch list is still a callback for every one - so this
+// is the price of having the diagnostic available rather than of using it.
+static void MeasureWrites(string label, bool withoutExec)
+{
+    const long code = 0x1000;
+    const long data = 0x2000;
+    const long count = 10_000_000;
+
+    using Unicorn uc = new(Common.UC_ARCH_ARM, Common.UC_MODE_THUMB);
+    uc.MemMap(code, 0x1000, Common.UC_PROT_ALL);
+    uc.MemMap(
+        data,
+        0x1000,
+        withoutExec ? Common.UC_PROT_READ | Common.UC_PROT_WRITE : Common.UC_PROT_ALL);
+
+    // loop: str r2, [r3] ; subs r0, #1 ; bne loop
+    uc.MemWrite(code, [0x1A, 0x60, 0x01, 0x38, 0xFC, 0xD1]);
+    uc.RegWrite(Arm.UC_ARM_REG_R0, count);
+    uc.RegWrite(Arm.UC_ARM_REG_R3, data);
+
+
+    Stopwatch clock = Stopwatch.StartNew();
+    uc.EmuStart(code | 1, 0, 0, count * 3);
+    clock.Stop();
+
+    double mips = count * 3 / clock.Elapsed.TotalSeconds / 1e6;
+    Console.WriteLine($"  {label,-18} {count:N0} store(s) in {clock.Elapsed.TotalSeconds:F2}s = {mips:F0} MIPS");
+}
+
+// Loads, for comparison with stores. If both are slow the cost is the memory path itself
+// rather than anything to do with write tracking.
+static void MeasureLoads()
+{
+    const long code = 0x1000;
+    const long data = 0x2000;
+    const long count = 10_000_000;
+
+    using Unicorn uc = new(Common.UC_ARCH_ARM, Common.UC_MODE_THUMB);
+    uc.MemMap(code, 0x1000, Common.UC_PROT_ALL);
+    uc.MemMap(data, 0x1000, Common.UC_PROT_ALL);
+
+    // loop: ldr r2, [r3] ; subs r0, #1 ; bne loop
+    uc.MemWrite(code, [0x1A, 0x68, 0x01, 0x38, 0xFC, 0xD1]);
+    uc.RegWrite(Arm.UC_ARM_REG_R0, count);
+    uc.RegWrite(Arm.UC_ARM_REG_R3, data);
+
+    Stopwatch clock = Stopwatch.StartNew();
+    uc.EmuStart(code | 1, 0, 0, count * 3);
+    clock.Stop();
+
+    double mips = count * 3 / clock.Elapsed.TotalSeconds / 1e6;
+    Console.WriteLine($"  loads, no hook     {count:N0} load(s) in {clock.Elapsed.TotalSeconds:F2}s = {mips:F0} MIPS");
+}
+
+// A loop shaped like real code - a load, an add, a store, a call and a conditional branch -
+// rather than the two-instruction loop the headline figure uses. Real code crosses a basic
+// block every few instructions, and a code hook stops Unicorn chaining blocks, so this is
+// the measurement that says what having any code hook at all costs the image.
+static void MeasureMixed(string label, bool withCodeHook)
+{
+    const long code = 0x1000;
+    const long data = 0x2000;
+    const long count = 5_000_000;
+
+    using Unicorn uc = new(Common.UC_ARCH_ARM, Common.UC_MODE_THUMB);
+    uc.MemMap(code, 0x1000, Common.UC_PROT_ALL);
+    uc.MemMap(data, 0x1000, Common.UC_PROT_ALL);
+
+    // loop: ldr r2,[r3] ; adds r2,#1 ; str r2,[r3] ; blx r4 ; subs r0,#1 ; bne loop
+    // leaf: adds r1,#1 ; bx lr
+    uc.MemWrite(code,
+    [
+        0x1A, 0x68, 0x01, 0x32, 0x1A, 0x60, 0xA0, 0x47, 0x01, 0x38, 0xF9, 0xD1, 0xFE, 0xE7, 0x00, 0x00,
+        0x01, 0x31, 0x70, 0x47,
+    ]);
+
+    uc.RegWrite(Arm.UC_ARM_REG_R0, count);
+    uc.RegWrite(Arm.UC_ARM_REG_R3, data);
+    uc.RegWrite(Arm.UC_ARM_REG_R4, (code + 16) | 1);
+
+    if (withCodeHook)
+    {
+        uc.AddCodeHook((_, _, _, _) => { }, null, 0xA0000000, 0xA0001000);
+    }
+
+    // Eight instructions round the loop, counting the leaf and its return.
+    long instructions = count * 8;
+
+    Stopwatch clock = Stopwatch.StartNew();
+    uc.EmuStart(code | 1, 0, 0, instructions);
+    clock.Stop();
+
+    double mips = instructions / clock.Elapsed.TotalSeconds / 1e6;
+    Console.WriteLine($"  {label,-18} {instructions:N0} instruction(s) in " +
+                      $"{clock.Elapsed.TotalSeconds:F2}s = {mips:F0} MIPS");
 }
 
 // ASCII only: the Windows console default code page mangles box-drawing characters.

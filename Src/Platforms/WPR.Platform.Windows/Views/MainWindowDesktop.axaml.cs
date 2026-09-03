@@ -1,3 +1,5 @@
+using WPR.Shell;
+using WPR.Engine.Notifications;
 using Avalonia.Controls;
 using System;
 using WPR.Common;
@@ -39,10 +41,10 @@ namespace WPR.Platform.Windows.Views
 
                 try
                 {
-                    if (NativeUI.NotificationManager != null)
-                        _ = NativeUI.NotificationManager.ShowNotification(new DesktopNotifications.Notification()
+                    if (NotificationBackend.Manager != null)
+                        _ = NotificationBackend.Manager.ShowNotification(new Notification()
                         {
-                            Title = WPR.Platform.Windows.Properties.Resources.LaunchingInProcess,
+                            Title = WPR.Shell.Resources.LaunchingInProcess,
                             // Prefer the curated catalogue name (e.g. "Risk") over the
                             // manifest title (e.g. "Risky", or an unresolved @AppResLib
                             // resource), matching how the game window title is set in
@@ -104,12 +106,12 @@ namespace WPR.Platform.Windows.Views
                 if (!runOk)
                 {
                     string body =
-                        WPR.Platform.Windows.Properties.Resources.ExceptionRunApp + Environment.NewLine + Environment.NewLine +
+                        WPR.Shell.Resources.ExceptionRunApp + Environment.NewLine + Environment.NewLine +
                         "Message:" + Environment.NewLine + ErrorMessage + Environment.NewLine + Environment.NewLine +
                         "Stack trace:" + Environment.NewLine + StackTrace;
 
                     await MessageBoxUtils.ShowSelectableErrorAsync(
-                        title: WPR.Platform.Windows.Properties.Resources.AppRunError,
+                        title: WPR.Shell.Resources.AppRunError,
                         body: body);
                 }
             };

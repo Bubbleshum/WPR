@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Notifications.AndroidChannel - INotificationManager over Android notification channels.
+
+    A MODULE: it implements a contract owned by WPR.Engine.Notifications and is plugged in by a
+    head declaring caps.Notifications(...). It was inside WPR.Platform.Android until 2026-09-01.
+
+    Named for the TECHNOLOGY (notification channels), not the platform - see the naming note in
+    CLAUDE.md.
+
+    Android-only, so the TFM is singular <TargetFramework>: Directory.Build.targets never strips a
+    singular one, and android-only projects are excluded from WPR.Windows.slnf instead.
+
+    NOTE the channel ID strings inside are device-persisted state, not source. Renaming them
+    orphans the channels Android already created and silently drops whatever importance and sound
+    the user set on them.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>21.0</SupportedOSPlatformVersion>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <AssemblyName>WPR.Notifications.AndroidChannel</AssemblyName>
+    <RootNamespace>WPR.Notifications.AndroidChannel</RootNamespace>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Notifications\WPR.Engine.Notifications.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Xamarin.AndroidX.Core" Version="1.12.0.2" />
+  </ItemGroup>
+
+</Project>

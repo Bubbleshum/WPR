@@ -65,7 +65,24 @@ namespace WPR
         // ANY version-18-or-older install fails at launch. All 16 test installs named it.
         // See Plans/ARCHITECTURE-MIGRATION.md §3.2 — this deliberately departs from the
         // "one assembly = one identity" rule recorded there.
-        public static int Version => 19;
+        // Bumped to 20: every IsolatedStorageFile.OpenFile / CreateFile call site is rewritten to
+        // WPR.WindowsCompability.SharedIsolatedStorage, which opens with FileShare.ReadWrite. See
+        // RedirectIsolatedStorageOpens. Unlike 19 this is not identity-binding — an older install
+        // still launches, it just keeps the exclusive share and therefore keeps failing to save if
+        // the game leaks a handle. Reinstall (or repatch) to pick it up.
+        // Bumped to 21: spine relocation step 2 — Game, GameComponent, DrawableGameComponent,
+        // GameServiceContainer and GameWindow moved from the FNA backend into WPR.Framework.Xna,
+        // and WprFrameworkXnaTypes now rescopes games' refs there. This is IDENTITY-BINDING and
+        // therefore hard: a version-20 install carries IL naming [FNA]Microsoft.Xna.Framework.Game,
+        // FNA no longer defines it, and the game will TypeLoadException at launch. Unlike v20 this
+        // is NOT optional — every installed game must be repatched or reinstalled.
+        // (--repatch-installed is enough; it restores each .dll.original first, so it is idempotent.)
+        //
+        // The transitional TypeForwardedTo that step 1 left in FNA for GameWindow was deleted in the
+        // same change; this rescope replaces it. Do not re-add one — a forwarder plus a rescope means
+        // two ways to resolve the same type, and the failure mode (a game binding the forwarder while
+        // the patcher table says otherwise) is invisible until a cast fails at runtime.
+        public static int Version => 21;
 
         private AssemblyNameReference FnaBackendRef;
         private AssemblyNameReference FNARef;
@@ -164,6 +181,24 @@ namespace WPR
             "Microsoft.Xna.Framework.FrameworkDispatcher",
             "Microsoft.Xna.Framework.GameComponentCollection",
             "Microsoft.Xna.Framework.GameComponentCollectionEventArgs",
+            // Spine relocation step 2 (2026-09-01, version 21). The XNA game-loop spine moved out
+            // of the FNA backend into WPR.Framework.Xna, so games bind these five by WPR identity
+            // rather than through FNA.
+            //
+            // GraphicsDeviceManager must NOT be added here, and the reason changed on 2026-09-02.
+            // It used to be "the base class lives in FNA"; the base now lives in WPR.Framework.Xna
+            // like the rest of the spine. What keeps it out is this set being tested BEFORE
+            // `Patches`: adding it would silently win over the `Patches` entry pointing at
+            // WPR.Backend.FNA.Compat.GraphicsDeviceManager, and games would bind the plain base
+            // instead of the WP7 override — losing the 800x480 clamp and the orientation request,
+            // with a clean build and no error anywhere.
+            "Microsoft.Xna.Framework.DrawableGameComponent",
+            "Microsoft.Xna.Framework.Game",
+            "Microsoft.Xna.Framework.GameComponent",
+            "Microsoft.Xna.Framework.GameServiceContainer",
+            "Microsoft.Xna.Framework.GameWindow",
+            "Microsoft.Xna.Framework.GraphicsDeviceInformation",
+            "Microsoft.Xna.Framework.PreparingDeviceSettingsEventArgs",
             "Microsoft.Xna.Framework.GameTime",
             "Microsoft.Xna.Framework.Graphics.AlphaTestEffect",
             "Microsoft.Xna.Framework.Graphics.BasicEffect",
@@ -1600,6 +1635,113 @@ namespace WPR
         }
 
         /// <summary>
+        /// Rewrites every <c>store.OpenFile(…)</c> / <c>store.CreateFile(…)</c> call in the game to
+        /// the matching static on <see cref="WPR.WindowsCompability.SharedIsolatedStorage"/>, which
+        /// opens with <see cref="FileShare.ReadWrite"/> instead of the BCL's
+        /// <see cref="FileShare"/>.None.
+        ///
+        /// <para><b>Why an IL rewrite and not a table entry.</b> <see cref="MemberPatches"/> only
+        /// swaps a member reference's <c>DeclaringType</c>, which needs the replacement type to be
+        /// substitutable for the instance already on the stack — and
+        /// <c>System.IO.IsolatedStorage.IsolatedStorageFile</c> is <c>sealed</c>, so nothing can
+        /// stand in for it. Turning <c>callvirt instance T Store::OpenFile(a, b)</c> into
+        /// <c>call T Shim::OpenFile(Store, a, b)</c> leaves the evaluation stack byte-for-byte
+        /// identical (the instance simply becomes argument zero), so no other IL has to move.</para>
+        ///
+        /// <para><b>Why it is needed on top of <c>SharedIsolatedStorageFileStream</c>.</b> That
+        /// stream shim is installed through <see cref="MemberPatches"/> for the two
+        /// <c>IsolatedStorageFileStream</c> constructors, and covers games that <c>new</c> a stream
+        /// themselves. <c>OpenFile</c> constructs its stream <i>inside the BCL</i>, which the
+        /// patcher can never reach — so games that open through the store got none of the fix.
+        /// Angry Birds is the reference case: a leaked read handle blocks its own later write, the
+        /// game swallows the failure and writes to a null stream, and it silently never saves. See
+        /// <see cref="WPR.WindowsCompability.SharedIsolatedStorage"/> for the full chain.</para>
+        ///
+        /// <para>Runs over every game assembly, not a named title: leaking an isolated-storage
+        /// handle was free on a WP7 device and costly only under WPR's one-process model, so the
+        /// same latent bug is expected across the library.</para>
+        /// </summary>
+        private static void RedirectIsolatedStorageOpens(ModuleDefinition module)
+        {
+            const string StoreTypeName = "System.IO.IsolatedStorage.IsolatedStorageFile";
+
+            // Keyed by "<name>/<instance arg count>" — the overloads differ only in arity, and
+            // importing the same MethodInfo repeatedly would add a member ref per call site.
+            Dictionary<string, MethodReference?> imported = new Dictionary<string, MethodReference?>();
+            int rewritten = 0;
+
+            foreach (TypeDefinition type in module.GetTypes())
+            {
+                foreach (MethodDefinition method in type.Methods)
+                {
+                    if (!method.HasBody)
+                    {
+                        continue;
+                    }
+
+                    foreach (Instruction ins in method.Body.Instructions)
+                    {
+                        if (ins.OpCode != OpCodes.Callvirt && ins.OpCode != OpCodes.Call)
+                        {
+                            continue;
+                        }
+
+                        if (ins.Operand is not MethodReference callee
+                            || callee.DeclaringType == null
+                            || callee.DeclaringType.FullName != StoreTypeName
+                            || (callee.Name != "OpenFile" && callee.Name != "CreateFile"))
+                        {
+                            continue;
+                        }
+
+                        string key = callee.Name + "/" + callee.Parameters.Count;
+                        if (!imported.TryGetValue(key, out MethodReference? target))
+                        {
+                            // The shim's signature is the instance one with the store prepended.
+                            // Fully qualified: System.Reflection can't be imported at file scope
+                            // here — MethodAttributes/PropertyAttributes would go ambiguous
+                            // against Mono.Cecil's.
+                            System.Reflection.MethodInfo? shim =
+                                typeof(WPR.WindowsCompability.SharedIsolatedStorage)
+                                    .GetMethods(System.Reflection.BindingFlags.Public
+                                        | System.Reflection.BindingFlags.Static)
+                                    .FirstOrDefault(m => m.Name == callee.Name
+                                        && m.GetParameters().Length == callee.Parameters.Count + 1);
+
+                            target = shim == null ? null : module.ImportReference(shim);
+                            imported[key] = target;
+
+                            if (shim == null)
+                            {
+                                // An overload we don't mirror. Leave it alone rather than guess —
+                                // it keeps the BCL's exclusive share and the old behaviour.
+                                Debug.WriteLine($"[iso-fixup] no shim for {StoreTypeName}::{callee.Name}"
+                                    + $" with {callee.Parameters.Count} arg(s) — left as-is.");
+                            }
+                        }
+
+                        if (target == null)
+                        {
+                            continue;
+                        }
+
+                        // callvirt -> call: the shim is static, and the instance is now argument
+                        // zero. Nothing else about the stack changes.
+                        ins.OpCode = OpCodes.Call;
+                        ins.Operand = target;
+                        rewritten += 1;
+                    }
+                }
+            }
+
+            if (rewritten > 0)
+            {
+                Debug.WriteLine($"[iso-fixup] redirected {rewritten} IsolatedStorageFile open call(s)"
+                    + $" in {module.Name} to the sharing shim.");
+            }
+        }
+
+        /// <summary>
         /// Per-game IL fixups that can't be expressed as reference redirects (the
         /// <see cref="Patches"/> / <see cref="MemberPatches"/> tables only retarget type/member
         /// references — they don't rewrite a game's own method bodies). Runs after all reference
@@ -1903,6 +2045,11 @@ namespace WPR
                 }
             }//for...
 
+
+            // Send every IsolatedStorageFile.OpenFile / CreateFile call through the sharing shim.
+            // Must run after the reference tables, so the shim assembly is already referenced and
+            // ImportReference reuses that ref instead of adding a second one.
+            RedirectIsolatedStorageOpens(module);
 
             // Game-specific IL fixups that don't fit the reference-redirect tables above.
             ApplyGameSpecificFixups(module);

@@ -52,22 +52,23 @@ namespace WPR.Platform.Android.Native
             ProductId = productId;
             Name = name;
             IconPath = iconPath;
-            Total = achievements.Count;
-            Earned = achievements.Count(a => a.IsEarned);
-            TotalScore = achievements.Sum(a => a.GamerScore);
-            EarnedScore = achievements.Where(a => a.IsEarned).Sum(a => a.GamerScore);
+            _Totals = WPR.Shell.AchievementRollup.Totalise(achievements);
         }
+
+        /// <summary>Aggregates from the shared roll-up, so this shell and the desktop one cannot
+        /// disagree about a game's completion.</summary>
+        private readonly WPR.Shell.AchievementTotals _Totals;
 
         public string ProductId { get; }
         public string Name { get; }
         public string? IconPath { get; }
-        public int Total { get; }
-        public int Earned { get; }
-        public int TotalScore { get; }
-        public int EarnedScore { get; }
+        public int Total => _Totals.Total;
+        public int Earned => _Totals.Earned;
+        public int TotalScore => _Totals.TotalScore;
+        public int EarnedScore => _Totals.EarnedScore;
 
-        public int Percent => Total == 0 ? 0 : (int)Math.Round(Earned * 100.0 / Total);
-        public string Summary => $"{Earned}/{Total}  ·  {EarnedScore}/{TotalScore} G";
+        public int Percent => _Totals.PercentRounded;
+        public string Summary => _Totals.Summary;
     }
 
     internal sealed class AchievementGameAdapter : BaseAdapter<AchievementGameEntry>
@@ -143,14 +144,12 @@ namespace WPR.Platform.Android.Native
             TextView score = view.FindViewById<TextView>(Resource.Id.achievementScore)!;
             ImageView icon = view.FindViewById<ImageView>(Resource.Id.achievementIcon)!;
 
-            // Secret achievements hid their name and description until earned. Honour that —
+            // Secret achievements hid their name, description and icon until earned. Honour that —
             // the row still shows the gamerscore so the total adds up.
-            bool hidden = !achievement.IsEarned && !achievement.DisplayBeforeEarned;
+            bool hidden = WPR.Shell.AchievementRollup.IsSecretAndUnearned(achievement);
 
-            name.Text = hidden ? "hidden achievement" : achievement.Name;
-            description.Text = hidden
-                ? "revealed when you earn it"
-                : (string.IsNullOrWhiteSpace(achievement.Description) ? achievement.HowToEarn : achievement.Description);
+            name.Text = WPR.Shell.AchievementRollup.DisplayName(achievement);
+            description.Text = WPR.Shell.AchievementRollup.DescribeUnearnedSafely(achievement);
             score.Text = $"{achievement.GamerScore} G";
 
             // Locked entries are dimmed rather than hidden, the way the Xbox hub did it.

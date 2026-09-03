@@ -27,7 +27,7 @@
     <!-- No Xamarin.Essentials. It was here until 2026-08-30 with no C# in this project using it,
          which put an Android sensor package in the dependency closure of nearly every assembly
          in the repo, desktop legs included. The one real consumer is
-         WPR.Platform.Android/Input/AndroidSensorProvider. -->
+         WPR.Platform.Android/Input/AndroidAccelerometerProvider. -->
   </ItemGroup>
 
   <!-- Default gamer-picture choices (the 9 stock WP7 avatars). Lives at the

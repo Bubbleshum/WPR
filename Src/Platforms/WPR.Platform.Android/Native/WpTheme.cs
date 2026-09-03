@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 using Android.Content.Res;
 using Android.Graphics;
@@ -15,15 +16,14 @@ using WprConfiguration = WPR.Common.Configuration;
 namespace WPR.Platform.Android.Native
 {
     /// <summary>
-    /// One WP7 system accent. The palette below is the same twenty colours the phone's
-    /// theme picker offered, and the same list the desktop head shows in
-    /// the desktop head's <c>WP7AccentColors</c>.
+    /// One WP7 system accent, as this shell consumes it: the shared name/hex pair plus the
+    /// Android <see cref="Color"/> parsed from it.
     ///
-    /// <para>It is duplicated here rather than referenced because that type carries an
-    /// <c>Avalonia.Media.IBrush</c> per entry: the native shell has no Avalonia
-    /// application, and touching those brushes would drag Avalonia's type system into a
-    /// process that never initialises it. The values are fixed WP7 constants — if one
-    /// ever changes, change it in both places.</para>
+    /// <para>The twenty colours themselves now come from <see cref="WPR.Shell.WP7AccentPalette"/>,
+    /// shared with the desktop shell. They were duplicated here until 2026-09-02 because the
+    /// desktop type built an <c>Avalonia.Media.IBrush</c> per entry and this process never
+    /// initialises Avalonia — so the fix was to keep the brush out of the shared data rather than
+    /// to keep two copies of the data.</para>
     /// </summary>
     internal sealed class WpAccent
     {
@@ -51,31 +51,10 @@ namespace WPR.Platform.Android.Native
     internal static class WpTheme
     {
         /// <summary>WP7's device default, "Cyan". Matches <c>Resources/values/colors.xml</c>.</summary>
-        public const string DefaultAccentHex = "#FF1BA1E2";
+        public const string DefaultAccentHex = WPR.Shell.WP7AccentPalette.DefaultHex;
 
-        public static readonly IReadOnlyList<WpAccent> Accents = new[]
-        {
-            new WpAccent("lime",    "#FFA4C400"),
-            new WpAccent("green",   "#FF60A917"),
-            new WpAccent("emerald", "#FF008A00"),
-            new WpAccent("teal",    "#FF00ABA9"),
-            new WpAccent("cyan",    DefaultAccentHex),
-            new WpAccent("cobalt",  "#FF0050EF"),
-            new WpAccent("indigo",  "#FF6A00FF"),
-            new WpAccent("violet",  "#FFAA00FF"),
-            new WpAccent("pink",    "#FFF472D0"),
-            new WpAccent("magenta", "#FFD80073"),
-            new WpAccent("crimson", "#FFA20025"),
-            new WpAccent("red",     "#FFE51400"),
-            new WpAccent("orange",  "#FFFA6800"),
-            new WpAccent("amber",   "#FFF0A30A"),
-            new WpAccent("yellow",  "#FFE3C800"),
-            new WpAccent("brown",   "#FF825A2C"),
-            new WpAccent("olive",   "#FF6D8764"),
-            new WpAccent("steel",   "#FF647687"),
-            new WpAccent("mauve",   "#FF76608A"),
-            new WpAccent("sienna",  "#FFA0522D"),
-        };
+        public static readonly IReadOnlyList<WpAccent> Accents =
+            WPR.Shell.WP7AccentPalette.Presets.Select(a => new WpAccent(a.Name, a.Hex)).ToArray();
 
         /// <summary>
         /// The live accent. Reads <see cref="WprConfiguration.AccentColor"/> every call rather

@@ -1,3 +1,4 @@
+using WPR.Shell;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -204,7 +205,7 @@ namespace WPR.Platform.Android.Native
 
                 if (error != ApplicationInstallError.None && error != ApplicationInstallError.Canceled)
                 {
-                    WpDialogs.Error(this, WPR.Platform.Android.Properties.Resources.InstallationFailed,
+                    WpDialogs.Error(this, WPR.Shell.Resources.InstallationFailed,
                         LocaleUtils.GetDisplayName(error));
                 }
             }
@@ -212,7 +213,7 @@ namespace WPR.Platform.Android.Native
             {
                 progress.Dismiss();
                 Log.Error(LogCategory.AppInstall, $"Re-patch failed for {entry.Name}:\n{ex}");
-                WpDialogs.Error(this, WPR.Platform.Android.Properties.Resources.InstallationFailed, ex.Message);
+                WpDialogs.Error(this, WPR.Shell.Resources.InstallationFailed, ex.Message);
             }
             finally
             {

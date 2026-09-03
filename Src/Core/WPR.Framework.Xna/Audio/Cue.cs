@@ -8,6 +8,7 @@
 #endregion
 
 #region Using Statements
+using WPR.Engine.Audio;
 using System;
 using System.Runtime.InteropServices;
 #endregion
@@ -24,7 +25,7 @@ namespace Microsoft.Xna.Framework.Audio
 			get
 			{
 				uint state;
-				state = (uint) XnaBackend.Xact.GetCueState(handle);
+				state = (uint) AudioBackendRegistry.Xact.GetCueState(handle);
 				return (state & (uint) XactState.Created) != 0;
 			}
 		}
@@ -40,7 +41,7 @@ namespace Microsoft.Xna.Framework.Audio
 			get
 			{
 				uint state;
-				state = (uint) XnaBackend.Xact.GetCueState(handle);
+				state = (uint) AudioBackendRegistry.Xact.GetCueState(handle);
 				return (state & (uint) XactState.Paused) != 0;
 			}
 		}
@@ -50,7 +51,7 @@ namespace Microsoft.Xna.Framework.Audio
 			get
 			{
 				uint state;
-				state = (uint) XnaBackend.Xact.GetCueState(handle);
+				state = (uint) AudioBackendRegistry.Xact.GetCueState(handle);
 				return (state & (uint) XactState.Playing) != 0;
 			}
 		}
@@ -60,7 +61,7 @@ namespace Microsoft.Xna.Framework.Audio
 			get
 			{
 				uint state;
-				state = (uint) XnaBackend.Xact.GetCueState(handle);
+				state = (uint) AudioBackendRegistry.Xact.GetCueState(handle);
 				return (state & (uint) XactState.Prepared) != 0;
 			}
 		}
@@ -70,7 +71,7 @@ namespace Microsoft.Xna.Framework.Audio
 			get
 			{
 				uint state;
-				state = (uint) XnaBackend.Xact.GetCueState(handle);
+				state = (uint) AudioBackendRegistry.Xact.GetCueState(handle);
 				return (state & (uint) XactState.Preparing) != 0;
 			}
 		}
@@ -80,7 +81,7 @@ namespace Microsoft.Xna.Framework.Audio
 			get
 			{
 				uint state;
-				state = (uint) XnaBackend.Xact.GetCueState(handle);
+				state = (uint) AudioBackendRegistry.Xact.GetCueState(handle);
 				return (state & (uint) XactState.Stopped) != 0;
 			}
 		}
@@ -90,7 +91,7 @@ namespace Microsoft.Xna.Framework.Audio
 			get
 			{
 				uint state;
-				state = (uint) XnaBackend.Xact.GetCueState(handle);
+				state = (uint) AudioBackendRegistry.Xact.GetCueState(handle);
 				return (state & (uint) XactState.Stopping) != 0;
 			}
 		}
@@ -174,7 +175,7 @@ namespace Microsoft.Xna.Framework.Audio
 				throw new ArgumentNullException("emitter");
 			}
 
-			XnaBackend.Xact.Apply3DToCue(
+			AudioBackendRegistry.Xact.Apply3DToCue(
 				bank.engine.handle,
 				handle,
 				SoundBank.Build3DParams(listener, emitter, bank.engine.channels)
@@ -188,7 +189,7 @@ namespace Microsoft.Xna.Framework.Audio
 				throw new ArgumentNullException("name");
 			}
 
-			int variable = XnaBackend.Xact.GetCueVariableIndex(handle, name);
+			int variable = AudioBackendRegistry.Xact.GetCueVariableIndex(handle, name);
 
 			if (variable < 0)
 			{
@@ -197,22 +198,22 @@ namespace Microsoft.Xna.Framework.Audio
 				);
 			}
 
-			return XnaBackend.Xact.GetCueVariable(handle, variable);
+			return AudioBackendRegistry.Xact.GetCueVariable(handle, variable);
 		}
 
 		public void Pause()
 		{
-			XnaBackend.Xact.PauseCue(handle, true);
+			AudioBackendRegistry.Xact.PauseCue(handle, true);
 		}
 
 		public void Play()
 		{
-			XnaBackend.Xact.PlayPreparedCue(handle);
+			AudioBackendRegistry.Xact.PlayPreparedCue(handle);
 		}
 
 		public void Resume()
 		{
-			XnaBackend.Xact.PauseCue(handle, false);
+			AudioBackendRegistry.Xact.PauseCue(handle, false);
 		}
 
 		public void SetVariable(string name, float value)
@@ -222,7 +223,7 @@ namespace Microsoft.Xna.Framework.Audio
 				throw new ArgumentNullException("name");
 			}
 
-			int variable = XnaBackend.Xact.GetCueVariableIndex(handle, name);
+			int variable = AudioBackendRegistry.Xact.GetCueVariableIndex(handle, name);
 
 			if (variable < 0)
 			{
@@ -231,12 +232,12 @@ namespace Microsoft.Xna.Framework.Audio
 				);
 			}
 
-			XnaBackend.Xact.SetCueVariable(handle, variable, value);
+			AudioBackendRegistry.Xact.SetCueVariable(handle, variable, value);
 		}
 
 		public void Stop(AudioStopOptions options)
 		{
-			XnaBackend.Xact.StopCue(
+			AudioBackendRegistry.Xact.StopCue(
 				handle,
 				(options == AudioStopOptions.Immediate) ? XactStopOptions.Immediate : XactStopOptions.Release
 			);
@@ -271,7 +272,7 @@ namespace Microsoft.Xna.Framework.Audio
 					// If this is Disposed, stop leaking memory!
 					if (!bank.engine.IsDisposed)
 					{
-						XnaBackend.Xact.DestroyCue(handle);
+						AudioBackendRegistry.Xact.DestroyCue(handle);
 					}
 					OnCueDestroyed();
 				}

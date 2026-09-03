@@ -46,7 +46,7 @@ namespace WPR.Platform.Android
         /// The running host, so <see cref="OnDestroy"/> can ask the game to exit. Static because
         /// <see cref="SDLMain"/> is invoked from native code with no instance context.
         /// </summary>
-        private static WPR.Backend.FNA.FnaGameHost? RunningHost;
+        private static WPR.Engine.GameLoop.IGameHost? RunningHost;
 
         /// <summary>Set once the game loop has unwound and <see cref="SDLMain"/> is done.</summary>
         private static readonly ManualResetEventSlim GameLoopFinished = new ManualResetEventSlim(false);
@@ -141,7 +141,7 @@ namespace WPR.Platform.Android
 
             try
             {
-                Audio.AndroidMediaBackend.Current?.RestoreFromForeground();
+                WPR.Audio.AndroidMediaPlayer.AndroidMediaPlayerBackend.Current?.RestoreFromForeground();
             }
             catch (Exception ex)
             {
@@ -156,7 +156,7 @@ namespace WPR.Platform.Android
         {
             try
             {
-                Audio.AndroidMediaBackend.Current?.SuspendForBackground();
+                WPR.Audio.AndroidMediaPlayer.AndroidMediaPlayerBackend.Current?.SuspendForBackground();
             }
             catch (Exception ex)
             {
@@ -191,7 +191,7 @@ namespace WPR.Platform.Android
         /// </summary>
         public override void OnBackPressed()
         {
-            WPR.Backend.FNA.FnaGameHost? host = RunningHost;
+            WPR.Engine.GameLoop.IGameHost? host = RunningHost;
 
             if (host == null)
             {
@@ -199,7 +199,7 @@ namespace WPR.Platform.Android
                 return;
             }
 
-            host.PressPhoneBackButton();
+            host.PressBackButton();
         }
 #pragma warning restore CS0672
 
@@ -260,16 +260,11 @@ namespace WPR.Platform.Android
 
             try
             {
-                // Pick the FNA3D driver before the host builds the game: FNA3D reads the force hint
-                // exactly once, inside FNA3D_PrepareWindowAttributes during device creation.
-                // fna3d.env forces OpenGL for the whole process (the Vulkan driver T-poses
-                // SkinnedEffect on real hardware); this relaxes it on the emulator, which cannot
-                // render the OpenGL path.
-                //
-                // Inside the try deliberately: SDLMain is invoked from native code, so an escaping
-                // exception here is an unhandled crash of the :game process with nothing shown to
-                // the user, rather than the launch error the catch below reports.
-                Graphics.GraphicsDriverPolicy.Apply(Configuration.Current?.DataStorePath);
+                // The FNA3D driver is no longer chosen here: AndroidPlatform declares it as a
+                // capability and FnaGameHost applies it before the game creates its device (the
+                // force hint is read exactly once, inside FNA3D_PrepareWindowAttributes). The
+                // declaration happens in ServicesSetup.Start(), which the :game process runs on
+                // its way here.
 
                 var host = new WPR.Backend.FNA.FnaGameHost(TargetLaunchApplication!, orientation =>
                 {

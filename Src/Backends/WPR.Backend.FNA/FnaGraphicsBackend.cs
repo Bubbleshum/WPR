@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using WPR.Engine.Audio;
 using System.IO;
 using System.Runtime.InteropServices;
 using Microsoft.Xna.Framework;
@@ -54,10 +55,18 @@ namespace WPR.Backend.FNA
 		public IntPtr CreateDevice(ref RhiPresentationParameters presentationParameters, byte debugMode)
 		{
 			F3D.FNA3D_PresentationParameters pp = ToFna(in presentationParameters);
+			// Latch the calling thread as the device thread in the same call that makes FNA3D
+			// latch its own renderer->threadID, so the two cannot disagree about which thread
+			// may touch the GL context. See OffThreadGpuCalls.
+			OffThreadGpuCalls.SetDeviceThread();
 			return F3D.FNA3D_CreateDevice(ref pp, debugMode);
 		}
 
-		public void DestroyDevice(IntPtr device) => F3D.FNA3D_DestroyDevice(device);
+		public void DestroyDevice(IntPtr device)
+		{
+			F3D.FNA3D_DestroyDevice(device);
+			OffThreadGpuCalls.ClearDeviceThread();
+		}
 
 		// ---- Presentation ----
 
@@ -184,82 +193,150 @@ namespace WPR.Backend.FNA
 		public int GetBackbufferMultiSampleCount(IntPtr device) => F3D.FNA3D_GetBackbufferMultiSampleCount(device);
 
 		// ---- Textures ----
+		//
+		// The members bracketed with OffThreadGpuCalls.Enter() below are exactly the FNA3D entry
+		// points whose OpenGL implementation calls ForceToMainThread (FNA3D_Driver_OpenGL.c):
+		// issued from any thread other than the one that created the device, they queue the work
+		// and block until the next SwapBuffers drains the queue. The bracket makes that wait
+		// visible to the game loop, which must then present the frame even if the game suppressed
+		// its draw - otherwise the swap never comes and the calling thread waits for ever. See
+		// OffThreadGpuCalls for the full account. It is free on the device thread and on the other
+		// backends, whose equivalents (D3D11, Vulkan) take off-thread calls directly.
+		//
+		// The AddDispose* members are deliberately NOT bracketed: off-thread they append to a
+		// dispose list and return, they never wait.
 
-		public IntPtr CreateTexture2D(IntPtr device, SurfaceFormat format, int width, int height, int levelCount, byte isRenderTarget) =>
-			F3D.FNA3D_CreateTexture2D(device, format, width, height, levelCount, isRenderTarget);
+		public IntPtr CreateTexture2D(IntPtr device, SurfaceFormat format, int width, int height, int levelCount, byte isRenderTarget)
+		{
+			using (OffThreadGpuCalls.Enter())
+				return F3D.FNA3D_CreateTexture2D(device, format, width, height, levelCount, isRenderTarget);
+		}
 
-		public IntPtr CreateTexture3D(IntPtr device, SurfaceFormat format, int width, int height, int depth, int levelCount) =>
-			F3D.FNA3D_CreateTexture3D(device, format, width, height, depth, levelCount);
+		public IntPtr CreateTexture3D(IntPtr device, SurfaceFormat format, int width, int height, int depth, int levelCount)
+		{
+			using (OffThreadGpuCalls.Enter())
+				return F3D.FNA3D_CreateTexture3D(device, format, width, height, depth, levelCount);
+		}
 
-		public IntPtr CreateTextureCube(IntPtr device, SurfaceFormat format, int size, int levelCount, byte isRenderTarget) =>
-			F3D.FNA3D_CreateTextureCube(device, format, size, levelCount, isRenderTarget);
+		public IntPtr CreateTextureCube(IntPtr device, SurfaceFormat format, int size, int levelCount, byte isRenderTarget)
+		{
+			using (OffThreadGpuCalls.Enter())
+				return F3D.FNA3D_CreateTextureCube(device, format, size, levelCount, isRenderTarget);
+		}
 
 		public void AddDisposeTexture(IntPtr device, IntPtr texture) => F3D.FNA3D_AddDisposeTexture(device, texture);
 
-		public void SetTextureData2D(IntPtr device, IntPtr texture, int x, int y, int w, int h, int level, IntPtr data, int dataLength) =>
-			F3D.FNA3D_SetTextureData2D(device, texture, x, y, w, h, level, data, dataLength);
+		public void SetTextureData2D(IntPtr device, IntPtr texture, int x, int y, int w, int h, int level, IntPtr data, int dataLength)
+		{
+			using (OffThreadGpuCalls.Enter())
+				F3D.FNA3D_SetTextureData2D(device, texture, x, y, w, h, level, data, dataLength);
+		}
 
-		public void SetTextureData3D(IntPtr device, IntPtr texture, int x, int y, int z, int w, int h, int d, int level, IntPtr data, int dataLength) =>
-			F3D.FNA3D_SetTextureData3D(device, texture, x, y, z, w, h, d, level, data, dataLength);
+		public void SetTextureData3D(IntPtr device, IntPtr texture, int x, int y, int z, int w, int h, int d, int level, IntPtr data, int dataLength)
+		{
+			using (OffThreadGpuCalls.Enter())
+				F3D.FNA3D_SetTextureData3D(device, texture, x, y, z, w, h, d, level, data, dataLength);
+		}
 
-		public void SetTextureDataCube(IntPtr device, IntPtr texture, int x, int y, int w, int h, CubeMapFace cubeMapFace, int level, IntPtr data, int dataLength) =>
-			F3D.FNA3D_SetTextureDataCube(device, texture, x, y, w, h, cubeMapFace, level, data, dataLength);
+		public void SetTextureDataCube(IntPtr device, IntPtr texture, int x, int y, int w, int h, CubeMapFace cubeMapFace, int level, IntPtr data, int dataLength)
+		{
+			using (OffThreadGpuCalls.Enter())
+				F3D.FNA3D_SetTextureDataCube(device, texture, x, y, w, h, cubeMapFace, level, data, dataLength);
+		}
 
+		// Video only, and the OpenGL driver runs it inline on any thread - no bracket needed.
 		public void SetTextureDataYUV(IntPtr device, IntPtr y, IntPtr u, IntPtr v, int yWidth, int yHeight, int uvWidth, int uvHeight, IntPtr data, int dataLength) =>
 			F3D.FNA3D_SetTextureDataYUV(device, y, u, v, yWidth, yHeight, uvWidth, uvHeight, data, dataLength);
 
-		public void GetTextureData2D(IntPtr device, IntPtr texture, int x, int y, int w, int h, int level, IntPtr data, int dataLength) =>
-			F3D.FNA3D_GetTextureData2D(device, texture, x, y, w, h, level, data, dataLength);
+		public void GetTextureData2D(IntPtr device, IntPtr texture, int x, int y, int w, int h, int level, IntPtr data, int dataLength)
+		{
+			using (OffThreadGpuCalls.Enter())
+				F3D.FNA3D_GetTextureData2D(device, texture, x, y, w, h, level, data, dataLength);
+		}
 
+		// No OpenGL ForceToMainThread path for the 3D readback.
 		public void GetTextureData3D(IntPtr device, IntPtr texture, int x, int y, int z, int w, int h, int d, int level, IntPtr data, int dataLength) =>
 			F3D.FNA3D_GetTextureData3D(device, texture, x, y, z, w, h, d, level, data, dataLength);
 
-		public void GetTextureDataCube(IntPtr device, IntPtr texture, int x, int y, int w, int h, CubeMapFace cubeMapFace, int level, IntPtr data, int dataLength) =>
-			F3D.FNA3D_GetTextureDataCube(device, texture, x, y, w, h, cubeMapFace, level, data, dataLength);
+		public void GetTextureDataCube(IntPtr device, IntPtr texture, int x, int y, int w, int h, CubeMapFace cubeMapFace, int level, IntPtr data, int dataLength)
+		{
+			using (OffThreadGpuCalls.Enter())
+				F3D.FNA3D_GetTextureDataCube(device, texture, x, y, w, h, cubeMapFace, level, data, dataLength);
+		}
 
 		// ---- Renderbuffers ----
 
-		public IntPtr GenColorRenderbuffer(IntPtr device, int width, int height, SurfaceFormat format, int multiSampleCount, IntPtr texture) =>
-			F3D.FNA3D_GenColorRenderbuffer(device, width, height, format, multiSampleCount, texture);
+		public IntPtr GenColorRenderbuffer(IntPtr device, int width, int height, SurfaceFormat format, int multiSampleCount, IntPtr texture)
+		{
+			using (OffThreadGpuCalls.Enter())
+				return F3D.FNA3D_GenColorRenderbuffer(device, width, height, format, multiSampleCount, texture);
+		}
 
-		public IntPtr GenDepthStencilRenderbuffer(IntPtr device, int width, int height, DepthFormat format, int multiSampleCount) =>
-			F3D.FNA3D_GenDepthStencilRenderbuffer(device, width, height, format, multiSampleCount);
+		public IntPtr GenDepthStencilRenderbuffer(IntPtr device, int width, int height, DepthFormat format, int multiSampleCount)
+		{
+			using (OffThreadGpuCalls.Enter())
+				return F3D.FNA3D_GenDepthStencilRenderbuffer(device, width, height, format, multiSampleCount);
+		}
 
 		public void AddDisposeRenderbuffer(IntPtr device, IntPtr renderbuffer) => F3D.FNA3D_AddDisposeRenderbuffer(device, renderbuffer);
 
 		// ---- Vertex buffers ----
 
-		public IntPtr GenVertexBuffer(IntPtr device, byte dynamic, BufferUsage usage, int sizeInBytes) =>
-			F3D.FNA3D_GenVertexBuffer(device, dynamic, usage, sizeInBytes);
+		public IntPtr GenVertexBuffer(IntPtr device, byte dynamic, BufferUsage usage, int sizeInBytes)
+		{
+			using (OffThreadGpuCalls.Enter())
+				return F3D.FNA3D_GenVertexBuffer(device, dynamic, usage, sizeInBytes);
+		}
 
 		public void AddDisposeVertexBuffer(IntPtr device, IntPtr buffer) => F3D.FNA3D_AddDisposeVertexBuffer(device, buffer);
 
-		public void SetVertexBufferData(IntPtr device, IntPtr buffer, int offsetInBytes, IntPtr data, int elementCount, int elementSizeInBytes, int vertexStride, SetDataOptions options) =>
-			F3D.FNA3D_SetVertexBufferData(device, buffer, offsetInBytes, data, elementCount, elementSizeInBytes, vertexStride, options);
+		public void SetVertexBufferData(IntPtr device, IntPtr buffer, int offsetInBytes, IntPtr data, int elementCount, int elementSizeInBytes, int vertexStride, SetDataOptions options)
+		{
+			using (OffThreadGpuCalls.Enter())
+				F3D.FNA3D_SetVertexBufferData(device, buffer, offsetInBytes, data, elementCount, elementSizeInBytes, vertexStride, options);
+		}
 
-		public void GetVertexBufferData(IntPtr device, IntPtr buffer, int offsetInBytes, IntPtr data, int elementCount, int elementSizeInBytes, int vertexStride) =>
-			F3D.FNA3D_GetVertexBufferData(device, buffer, offsetInBytes, data, elementCount, elementSizeInBytes, vertexStride);
+		public void GetVertexBufferData(IntPtr device, IntPtr buffer, int offsetInBytes, IntPtr data, int elementCount, int elementSizeInBytes, int vertexStride)
+		{
+			using (OffThreadGpuCalls.Enter())
+				F3D.FNA3D_GetVertexBufferData(device, buffer, offsetInBytes, data, elementCount, elementSizeInBytes, vertexStride);
+		}
 
 		// ---- Index buffers ----
 
-		public IntPtr GenIndexBuffer(IntPtr device, byte dynamic, BufferUsage usage, int sizeInBytes) =>
-			F3D.FNA3D_GenIndexBuffer(device, dynamic, usage, sizeInBytes);
+		public IntPtr GenIndexBuffer(IntPtr device, byte dynamic, BufferUsage usage, int sizeInBytes)
+		{
+			using (OffThreadGpuCalls.Enter())
+				return F3D.FNA3D_GenIndexBuffer(device, dynamic, usage, sizeInBytes);
+		}
 
 		public void AddDisposeIndexBuffer(IntPtr device, IntPtr buffer) => F3D.FNA3D_AddDisposeIndexBuffer(device, buffer);
 
-		public void SetIndexBufferData(IntPtr device, IntPtr buffer, int offsetInBytes, IntPtr data, int dataLength, SetDataOptions options) =>
-			F3D.FNA3D_SetIndexBufferData(device, buffer, offsetInBytes, data, dataLength, options);
+		public void SetIndexBufferData(IntPtr device, IntPtr buffer, int offsetInBytes, IntPtr data, int dataLength, SetDataOptions options)
+		{
+			using (OffThreadGpuCalls.Enter())
+				F3D.FNA3D_SetIndexBufferData(device, buffer, offsetInBytes, data, dataLength, options);
+		}
 
-		public void GetIndexBufferData(IntPtr device, IntPtr buffer, int offsetInBytes, IntPtr data, int dataLength) =>
-			F3D.FNA3D_GetIndexBufferData(device, buffer, offsetInBytes, data, dataLength);
+		public void GetIndexBufferData(IntPtr device, IntPtr buffer, int offsetInBytes, IntPtr data, int dataLength)
+		{
+			using (OffThreadGpuCalls.Enter())
+				F3D.FNA3D_GetIndexBufferData(device, buffer, offsetInBytes, data, dataLength);
+		}
 
 		// ---- Effects ----
 
-		public void CreateEffect(IntPtr device, byte[] effectCode, int length, out IntPtr effect, out IntPtr effectData) =>
-			F3D.FNA3D_CreateEffect(device, effectCode, length, out effect, out effectData);
+		public void CreateEffect(IntPtr device, byte[] effectCode, int length, out IntPtr effect, out IntPtr effectData)
+		{
+			using (OffThreadGpuCalls.Enter())
+				F3D.FNA3D_CreateEffect(device, effectCode, length, out effect, out effectData);
+		}
 
-		public void CloneEffect(IntPtr device, IntPtr cloneSource, out IntPtr effect, out IntPtr effectData) =>
-			F3D.FNA3D_CloneEffect(device, cloneSource, out effect, out effectData);
+		public void CloneEffect(IntPtr device, IntPtr cloneSource, out IntPtr effect, out IntPtr effectData)
+		{
+			using (OffThreadGpuCalls.Enter())
+				F3D.FNA3D_CloneEffect(device, cloneSource, out effect, out effectData);
+		}
 
 		public void AddDisposeEffect(IntPtr device, IntPtr effect) => F3D.FNA3D_AddDisposeEffect(device, effect);
 		public void SetEffectTechnique(IntPtr device, IntPtr effect, IntPtr technique) => F3D.FNA3D_SetEffectTechnique(device, effect, technique);

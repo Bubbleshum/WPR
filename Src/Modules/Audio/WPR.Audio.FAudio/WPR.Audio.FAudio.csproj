@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Audio.FAudio — the FAudio/FACT/Theorafile audio backend.
+
+    One of the two implementations under Src/Audio/. It fills all three audio seams declared in
+    WPR.Framework.Xna/Backend/ (IAudioBackend, IXactBackend, IMediaBackend) and advertises them as
+    one pluggable unit through FAudioModule : AudioModule.
+
+    Split out of WPR.Backend.FNA on 2026-09-01. That project is the GRAPHICS + GAME-LOOP host; the
+    audio adapters were only there because FNA.dll happens to carry the FAudio bindings too. The
+    split is what makes a second audio implementation a peer project rather than a special case in
+    a platform head — see WPR.Audio.AndroidMediaPlayer, which used to live in the Android head and
+    reach into WPR.Backend.FNA for its video half.
+
+    WHY THIS REFERENCES FNA. The FAudio/FACT P/Invokes are compiled INTO FNA.dll, and FNA registers
+    its DllImport resolver (FNADllMap) only for P/Invokes whose declaring assembly is FNA. Calling
+    through FNA's binding classes is therefore mandatory; re-declaring the natives here would break
+    library resolution on every platform that needs a mapping. That makes this project a legitimate
+    backend referrer, and it is listed as one in BackendIsolationTests.AllowedReferrers.
+
+    TFMs: net8.0 + net8.0-android (stripped when the android workload is absent — see
+    Src/Directory.Build.targets). The android leg is not cosmetic: FAudioSoundBackend asks for
+    FAUDIO_1024_QUANTUM under __ANDROID__, which is the mix-quantum headroom a phone's non-realtime
+    audio callback needs. No -windows leg is required — nothing here touches Windows APIs, and
+    net8.0 is consumable from the desktop head's net8.0-windows TFM.
+  -->
+
+  <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+  </PropertyGroup>
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net8.0-android</TargetFrameworks>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <AssemblyName>WPR.Audio.FAudio</AssemblyName>
+    <RootNamespace>WPR.Audio.FAudio</RootNamespace>
+    <Nullable>enable</Nullable>
+    <!-- The reverb effect chain (FAudioSoundBackend.AttachReverb) and FACT's notification /
+         renderer-enumeration structs are built with pointer code, as they were inside FNA. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net8.0-android'">21.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The seams (WPR.Xna.Rhi.*) and the XNA types the audio surface speaks in (Vector3,
+         Microphone, MonoGame.Utilities.FileHelpers). The last two are internal to that assembly
+         and reachable through its InternalsVisibleTo("WPR.Audio.FAudio"). -->
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Xna\WPR.Framework.Xna.csproj" />
+    <!-- For the global-namespace FAudio/FACT bindings and FNAPlatform's microphone capture. See
+         the WHY THIS REFERENCES FNA note above; also needs FNA's InternalsVisibleTo. -->
+    <ProjectReference Include="$(SolutionDir)Backends\FNA.Platform\FNA.Core.csproj" />
+    <!-- AudioModule base + the registry this module plugs into. -->
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Audio\WPR.Engine.Audio.csproj" />
+  </ItemGroup>
+
+</Project>

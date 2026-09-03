@@ -20,10 +20,12 @@ namespace WPR.Platform.Windows.ViewModels
 
         public Achievement Model => _Achievement;
 
-        public string Name => _Achievement.Name ?? "";
+        /// <summary>Honours WP7 secret achievements: a secret one keeps its name hidden until
+        /// earned. Until 2026-09-02 only the Android shell did this, so this page revealed the
+        /// names and descriptions of unearned secret achievements.</summary>
+        public string Name => WPR.Shell.AchievementRollup.DisplayName(_Achievement);
         public string Key => _Achievement.Key ?? "";
-        public string Description =>
-            string.IsNullOrEmpty(_Achievement.Description) ? _Achievement.HowToEarn ?? "" : _Achievement.Description;
+        public string Description => WPR.Shell.AchievementRollup.DescribeUnearnedSafely(_Achievement);
         public int GamerScore => _Achievement.GamerScore;
         public bool IsEarned => _Achievement.IsEarned;
         public bool IsLocked => !_Achievement.IsEarned;

@@ -473,9 +473,18 @@ namespace Microsoft.Xna.Framework
 				}
 
 				/* Belt and braces: if that throw ever goes away upstream, a failure shows up as the
-				 * untouched result of 0 instead (success always sets at least SDL_WINDOW_OPENGL 0x2
-				 * or SDL_WINDOW_VULKAN 0x10000000). */
-				if (attributes == 0)
+				 * untouched result of 0 instead — a NAMED driver that succeeds always sets at least
+				 * SDL_WINDOW_OPENGL 0x2 or SDL_WINDOW_VULKAN 0x10000000.
+				 *
+				 * Automatic is exempt, and that exemption is load-bearing rather than defensive.
+				 * D3D11 needs no SDL window flags at all: D3D11_PrepareWindowAttributes returns 1
+				 * having left *flags untouched ("No window flags required" —
+				 * FNA3D_Driver_D3D11.c), so a perfectly successful D3D11 selection comes back as
+				 * 0. Reading that as a decline is what silently moved the Windows head off D3D11
+				 * and onto OpenGL when this ladder was introduced — the one platform the ladder's
+				 * own comments assume never reaches it. A genuine "nothing works" still arrives as
+				 * the throw handled above, because FNA3D logs FNA3D_LogError before returning. */
+				if (attributes == 0 && !string.IsNullOrEmpty(candidate))
 				{
 					FNALoggerEXT.LogWarn?.Invoke(
 						"FNA3D driver '" + DescribeCandidate(candidate) +
@@ -513,8 +522,9 @@ namespace Microsoft.Xna.Framework
 		/* Order matters. OpenGL before Vulkan on purpose: FNA3D's own table has Vulkan behind a
 		 * "TODO: Bump this to the top when Vulkan is done!" and its unfinished shader translation
 		 * T-poses SkinnedEffect on Android. Prefer the driver that renders correctly, and reach
-		 * for Vulkan only when OpenGL cannot run at all. D3D11 is not listed because Windows
-		 * selects it automatically and never reaches this ladder in practice. */
+		 * for Vulkan only when OpenGL cannot run at all. D3D11 is not listed because it is first
+		 * in FNA3D's own table on Windows, so "(automatic)" already means D3D11 there — see the
+		 * zero-attributes exemption above, without which the automatic entry loses to OpenGL. */
 		private static readonly string[] DriverPreferenceOrder = { "OpenGL", "Vulkan" };
 
 		private static string DescribeCandidate(string candidate) =>
@@ -1132,19 +1142,55 @@ namespace Microsoft.Xna.Framework
 				if (evt.type == SDL.SDL_EventType.SDL_KEYDOWN)
 				{
 					// WP7's hardware Back arrives as SDLK_AC_BACK, which no desktop keyboard
-					// emits; also accept Escape so desktop users can go Back. Only the initial
-					// keydown (repeat == 0) counts — auto-repeat must not fire extra Backs.
-					// One press → Back asserted for this one frame only (see the per-frame
-					// clear above). e.g. The Sims Medieval's menus exit via
+					// emits. Only the initial keydown (repeat == 0) counts — auto-repeat must
+					// not fire extra Backs. One press → Back asserted for this one frame only
+					// (see the per-frame clear above). e.g. The Sims Medieval's menus exit via
 					// GamePad.Buttons.Back (Kernel.isKeyPressed(BACK)).
-					if ((evt.key.keysym.sym == SDL.SDL_Keycode.SDLK_AC_BACK ||
-						evt.key.keysym.sym == SDL.SDL_Keycode.SDLK_ESCAPE) &&
-						evt.key.repeat == 0)
+					//
+					// SDLK_ESCAPE was hardcoded here as the desktop stand-in until 2026-09-03.
+					// The key is now rebindable (Configuration.BackKey, default "Escape"), so the
+					// second test below asks the registered keyboard-emulation host instead of
+					// naming a keycode. Deliberately not both: leaving Escape hardcoded would
+					// make a rebind look like it had failed, because Escape would keep working.
+					//
+					// SDLK_AC_BACK stays hardcoded on purpose — it is the hardware button, not a
+					// preference — and it is the only path on Android, which registers no
+					// emulation host, so the null check below is the normal case there.
+					//
+					// This stayed an EVENT test rather than moving to the XNA input component's
+					// per-frame Keyboard.GetState() poll, and that was measured: a tap that goes
+					// down and up inside one 16 ms frame never appears in any polled snapshot, so
+					// the polled shape dropped every synthetic press and would drop occasional
+					// fast real ones. See the remarks on IKeyboardEmulationHost.IsBackKey.
+					Keys key = ToXNAKey(ref evt.key.keysym);
+
+					if (evt.key.repeat == 0 &&
+						(evt.key.keysym.sym == SDL.SDL_Keycode.SDLK_AC_BACK ||
+						 WPR.Xna.Rhi.XnaBackend.KeyboardEmulation?.IsBackKey(key) == true))
 					{
 						PhoneBackButtonPressed = true;
+
+						// One line per press: repeat == 0 above makes this edge-triggered, so a
+						// held key cannot spam it. This is the only visible evidence of the whole
+						// chain (key -> binding -> PhoneBackButtonPressed -> Buttons.Back), which
+						// is otherwise silent, and it is the first thing to read when someone
+						// reports that Back does nothing — it distinguishes "the key never
+						// matched the binding" from "the game ignored Buttons.Back".
+						System.Diagnostics.Trace.WriteLine(
+							"[wpr-input] Back asserted from key " + key);
 					}
 
-					Keys key = ToXNAKey(ref evt.key.keysym);
+					/* Synthetic touch gestures are started from the key DOWN event for the same
+					 * reason as Back: a tap that begins and ends inside one frame never shows up
+					 * in the per-frame Keyboard.GetState() snapshot the input component polls.
+					 * The host only starts a gesture if the key is bound, so this is a cheap
+					 * dictionary miss on every other keystroke.
+					 */
+					if (evt.key.repeat == 0)
+					{
+						WPR.Xna.Rhi.XnaBackend.KeyboardEmulation?.NotifyKeyDown(key);
+					}
+
 					if (!Keyboard.keys.Contains(key))
 					{
 						Keyboard.keys.Add(key);
@@ -2291,6 +2337,25 @@ namespace Microsoft.Xna.Framework
 				gc_buttonState |= Buttons.TouchPadEXT;
 			}
 
+			/* WPR change: fold the WP7 hardware Back button in here too.
+			 *
+			 * The no-device branch above already synthesises Buttons.Back for pad 0, but it
+			 * returns early — so once ANY controller is connected this method built its state
+			 * purely from SDL and never consulted PhoneBackButtonPressed again. Esc,
+			 * SDLK_AC_BACK and WprPhoneBackButton.Press() were all silently dropped. On Android
+			 * that meant the hardware Back key stopped reaching the game the moment a Bluetooth
+			 * pad connected.
+			 *
+			 * OR-ing rather than assigning matters: a real pad's Select/View already maps to
+			 * Buttons.Back above, and the two sources must not cancel each other out. The
+			 * one-tick edge contract is unchanged — PhoneBackButtonPressed is assigned once per
+			 * PollEvents and cleared on the next one.
+			 */
+			if (index == 0 && PhoneBackButtonPressed)
+			{
+				gc_buttonState |= Buttons.Back;
+			}
+
 			// Build the GamePadState, increment PacketNumber if state changed.
 			GamePadState gc_builtState = new GamePadState(
 				new GamePadThumbSticks(stickLeft, stickRight, deadZoneMode),
@@ -2754,7 +2819,13 @@ namespace Microsoft.Xna.Framework
 
 			bool mouseAsTouch = TouchPanel.MouseAsTouch;
 			int mouseSlot = TouchPanel.MAX_TOUCHES - 1;
-			int maxFingerSlots = mouseAsTouch ? mouseSlot : TouchPanel.MAX_TOUCHES;
+
+			/* Slots reserved for a synthetic-touch injector sit immediately below the mouse
+			 * slot and are excluded from BOTH the real-finger writes and the clear loop below
+			 * — otherwise whatever the injector wrote would be wiped in the same tick, since
+			 * this method accounts for every slot it can see. Normally zero.
+			 */
+			int maxFingerSlots = TouchPanel.FirstReservedFingerSlot;
 
 			// --- Real touchscreen fingers ---
 			long touchId = TouchPanel.LastActiveTouchId;

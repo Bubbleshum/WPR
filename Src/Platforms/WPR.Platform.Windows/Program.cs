@@ -1,4 +1,5 @@
 ﻿using Avalonia;
+using WPR.Engine.Notifications;
 using Avalonia.ReactiveUI;
 using Projektanker.Icons.Avalonia;
 using Projektanker.Icons.Avalonia.FontAwesome;
@@ -10,7 +11,7 @@ using WPR.WindowsCompability;
 using System.Linq;
 
 using WPR.Common;
-using DesktopNotifications.Windows;
+using WPR.Notifications.WindowsToast;
 
 namespace WPR.Platform.Windows
 {
@@ -93,7 +94,7 @@ namespace WPR.Platform.Windows
         private const string WindowsAppDisplayName = "Windows Phone Runner";
 
         /// <summary>
-        /// Construct the platform notification manager and hand it to <see cref="NativeUI"/>.
+        /// Construct the platform notification manager and hand it to <see cref="NotificationBackend"/>.
         /// Lives in the desktop head (rather than WPR.Common) so the Windows toast
         /// implementation ships with the platform it targets.
         /// </summary>
@@ -103,7 +104,7 @@ namespace WPR.Platform.Windows
             // desktop leg compiles against the null implementation; leave the manager unset.
             if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                NativeUI.NotificationManager = null;
+                NotificationBackend.SetManager(null);
                 return;
             }
 
@@ -116,7 +117,7 @@ namespace WPR.Platform.Windows
             var ctx = WindowsApplicationContext.FromCurrentProcess(
                 customName: WindowsAppDisplayName,
                 iconPath: iconPath);
-            NativeUI.NotificationManager = new WindowsNotificationManager(ctx);
+            NotificationBackend.SetManager(new WindowsNotificationManager(ctx));
 
             // Remove the stale "WPR.UI.Desktop.lnk" from older builds that used the
             // .exe filename as the app name. Without this, the Start Menu / search

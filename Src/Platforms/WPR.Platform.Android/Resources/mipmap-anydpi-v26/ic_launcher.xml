@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+     Adaptive launcher icon, API 26+. The launcher composites background + foreground on a
+     108dp canvas and then masks it down to the centre 72dp, in whatever shape the device
+     theme dictates (circle, squircle, rounded square, teardrop), so a full-bleed 108dp
+     foreground would show the art 1.5x too large.
+
+     ic_launcher_foreground.png therefore draws the brand tile at 72dp inside its 108dp
+     canvas: after masking, the tile reads at exactly its true size. Its rounded corners are
+     genuinely transparent (the source art painted them pure black), and the background
+     colour is sampled from the tile, so the corners the mask does keep are seamless.
+
+     The mipmap-*dpi/ic_launcher.png bitmaps remain for API 21-25, which has no adaptive
+     icons and uses them directly.
+
+     <monochrome> is the API 33 themed-icon layer, used only when the device has themed icons
+     switched on. The system supplies its own background and re-tints the drawable from the
+     wallpaper palette, keeping nothing but its ALPHA - so that layer is the white-on-
+     transparent gamepad silhouette, the same glyph the notification small icon uses. It sits
+     on the same 108dp canvas at half its width, which is the size the gamepad reads at inside
+     the colour icon, so switching themed icons on does not change the mark's visual weight.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+  <background android:drawable="@color/ic_launcher_background" />
+  <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+  <monochrome android:drawable="@mipmap/ic_launcher_monochrome" />
+</adaptive-icon>

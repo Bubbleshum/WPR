@@ -8,6 +8,7 @@
 #endregion
 
 #region Using Statements
+using WPR.Engine.Audio;
 using System;
 using System.Collections.ObjectModel;
 #endregion
@@ -24,9 +25,17 @@ namespace Microsoft.Xna.Framework.Audio
 			{
 				if (micList == null)
 				{
-					micList = new ReadOnlyCollection<Microphone>(
-						XnaBackend.Audio.GetMicrophones()
-					);
+					/* The seam hands back plain descriptors, not Microphone objects: it lives in
+					 * WPR.Engine.Audio and must not name a game-facing XNA type, or the framework
+					 * could not reference it back. Constructing them here is where that belongs
+					 * anyway — this is the type that owns the buffer-ready event and the state. */
+					WPR.Engine.Audio.MicrophoneInfo[] found = AudioBackendRegistry.Sound.GetMicrophones();
+					Microphone[] mics = new Microphone[found.Length];
+					for (int i = 0; i < found.Length; i += 1)
+					{
+						mics[i] = new Microphone(found[i].Handle, found[i].Name);
+					}
+					micList = new ReadOnlyCollection<Microphone>(mics);
 				}
 				return micList;
 			}
@@ -102,6 +111,11 @@ namespace Microsoft.Xna.Framework.Audio
 		private TimeSpan bufferDuration;
 		private uint handle;
 
+		/// <summary>The platform capture handle. Internal so the audio backend can unwrap an
+		/// instance FNA constructed into a seam-level <c>MicrophoneInfo</c> — the seam speaks
+		/// descriptors, not this type. Reachable via InternalsVisibleTo("WPR.Audio.FAudio").</summary>
+		internal uint Handle => handle;
+
 		#endregion
 
 		#region Internal Static Variables
@@ -161,7 +175,7 @@ namespace Microsoft.Xna.Framework.Audio
 				throw new ArgumentException("count");
 			}
 
-			return XnaBackend.Audio.GetMicrophoneSamples(
+			return AudioBackendRegistry.Sound.GetMicrophoneSamples(
 				handle,
 				buffer,
 				offset,
@@ -189,13 +203,13 @@ namespace Microsoft.Xna.Framework.Audio
 
 		public void Start()
 		{
-			XnaBackend.Audio.StartMicrophone(handle);
+			AudioBackendRegistry.Sound.StartMicrophone(handle);
 			State = MicrophoneState.Started;
 		}
 
 		public void Stop()
 		{
-			XnaBackend.Audio.StopMicrophone(handle);
+			AudioBackendRegistry.Sound.StopMicrophone(handle);
 			State = MicrophoneState.Stopped;
 		}
 
@@ -206,7 +220,7 @@ namespace Microsoft.Xna.Framework.Audio
 		internal void CheckBuffer()
 		{
 			if (	BufferReady != null &&
-				GetSampleDuration(XnaBackend.Audio.GetMicrophoneQueuedBytes(handle)) > bufferDuration	)
+				GetSampleDuration(AudioBackendRegistry.Sound.GetMicrophoneQueuedBytes(handle)) > bufferDuration	)
 			{
 				BufferReady(this, EventArgs.Empty);
 			}

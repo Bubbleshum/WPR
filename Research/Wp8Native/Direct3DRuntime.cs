@@ -30,10 +30,38 @@ namespace WPR.Wp8Native
         /// <summary>D3D_FEATURE_LEVEL_9_3, the WP8 baseline.</summary>
         private const uint FeatureLevel93 = 0x9300;
 
-        /// <summary>The back buffer size, which follows the window.</summary>
-        public const uint BackBufferWidth = 800;
+        /// <summary>
+        /// The size of the device: the back buffer, and the window bounds that go with it.
+        /// </summary>
+        /// <remarks>
+        /// Windows Phone 8 is a portrait device. Its CoreWindow and its swap chain are both
+        /// 480x800 on WVGA, and a landscape game swaps the axes itself - so the size reported
+        /// here is not the size the game draws in, and the two must not be conflated.
+        /// <see cref="FrameCapture.Width"/> is the other one.
+        /// <para>
+        /// This image goes further than swapping axes: it picks a whole asset set from this
+        /// size, loading a 480-wide title wordmark for a 480-wide device and a 767-wide one
+        /// for an 800-wide device. Claiming to be 800x480 therefore got the landscape art
+        /// laid out for a portrait viewport - every sprite 1.67x too wide, the wordmark off
+        /// both edges of the screen - which looked like a projection bug and was not one.
+        /// </para>
+        /// <para><c>WPR_WINDOW=WxH</c> overrides it.</para>
+        /// </remarks>
+        public static uint BackBufferWidth { get; private set; } = 480;
 
-        public const uint BackBufferHeight = 480;
+        public static uint BackBufferHeight { get; private set; } = 800;
+
+        static Direct3DRuntime()
+        {
+            string[] parts = Environment.GetEnvironmentVariable("WPR_WINDOW")?.Split('x', 'X') ?? [];
+            if (parts.Length == 2 &&
+                uint.TryParse(parts[0], out uint width) && uint.TryParse(parts[1], out uint height) &&
+                width > 0 && height > 0 && width <= 4096 && height <= 4096)
+            {
+                BackBufferWidth = width;
+                BackBufferHeight = height;
+            }
+        }
 
         /// <summary>DXGI_FORMAT_B8G8R8A8_UNORM, what a WP8 swap chain uses.</summary>
         private const uint BackBufferFormat = 87;
@@ -115,6 +143,40 @@ namespace WPR.Wp8Native
 
         /// <summary>The most recent colour the image cleared its render target to.</summary>
         public float[]? LastClearColour { get; private set; }
+
+        /// <summary>
+        /// Each time the image changes the colour it clears to, with the frame and the real
+        /// seconds it happened at.
+        /// </summary>
+        /// <remarks>
+        /// A game announces its phases by what it clears to - white for the publisher splash,
+        /// sky blue for the menu - so this is a timeline of the load for free, in the one
+        /// currency that matters when someone says it is slow: seconds. Frames alone cannot
+        /// say it, because a frame is not a fixed amount of work.
+        /// </remarks>
+        public List<string> Phases { get; } = new();
+
+        private readonly System.Diagnostics.Stopwatch _phaseClock = System.Diagnostics.Stopwatch.StartNew();
+
+        private void NotePhase(float[] wanted)
+        {
+            if (LastClearColour is not null &&
+                Math.Abs(LastClearColour[0] - wanted[0]) < 0.002f &&
+                Math.Abs(LastClearColour[1] - wanted[1]) < 0.002f &&
+                Math.Abs(LastClearColour[2] - wanted[2]) < 0.002f)
+            {
+                return;
+            }
+
+            if (Phases.Count >= 24)
+            {
+                return;
+            }
+
+            Phases.Add(
+                $"{_phaseClock.Elapsed.TotalSeconds,7:F1}s  frame {PresentCount,6:N0}  " +
+                $"clears to ({wanted[0]:0.00},{wanted[1]:0.00},{wanted[2]:0.00})");
+        }
 
         /// <summary>The viewport the image last set, if it set one.</summary>
         public (float Width, float Height)? Viewport { get; private set; }
@@ -422,7 +484,47 @@ namespace WPR.Wp8Native
 
         private long _immediateContext;
         private long _backBufferPointer;
-        private long _mapScratch;
+
+        // ---------------------------------------------------------------------
+        // Resources with something in them
+        //
+        // Answering a Create call with a shaped object is enough to keep the image running,
+        // and it was all this layer did: Map handed everyone the same scratch buffer,
+        // UpdateSubresource counted and discarded, and the pixels the game spent its whole
+        // startup decoding went nowhere. Nothing could be drawn from that.
+        //
+        // Every resource now owns emulated memory the size of its descriptor, and every
+        // path that fills one - initial data, Map, UpdateSubresource - fills that. It costs
+        // heap and buys the only thing a person can actually look at.
+        // ---------------------------------------------------------------------
+
+        private readonly Dictionary<long, FrameCapture.Resource> _resources = new();
+        private readonly Dictionary<long, FrameCapture.Resource> _viewedResource = new();
+        private readonly Dictionary<long, List<FrameCapture.VertexElement>> _layouts = new();
+
+        /// <summary>One entry per input slot, because a vertex can come from several buffers.</summary>
+        private readonly FrameCapture.VertexStream[] _streams =
+            Enumerable.Range(0, 8).Select(_ => new FrameCapture.VertexStream(null, 0, 0)).ToArray();
+
+        private FrameCapture.Resource? _boundIndexBuffer;
+        private FrameCapture.Resource? _boundTexture;
+        private FrameCapture.Resource? _boundConstants;
+        private List<FrameCapture.VertexElement> _boundLayout = new();
+        private int _indexOffset;
+        private uint _indexFormat = 57; // DXGI_FORMAT_R16_UINT
+        private uint _topology = 4;     // TRIANGLELIST
+
+        /// <summary>The frame being assembled, and the rasteriser that turns it into pixels.</summary>
+        public FrameCapture Frame { get; } = new();
+
+        /// <summary>Where to write a PNG of the first frame that draws anything, if anywhere.</summary>
+        public string? ScreenshotPath { get; set; }
+
+        /// <summary>What the captured frame contained.</summary>
+        public string? ScreenshotSummary { get; private set; }
+
+        private FrameCapture.Resource? ResourceAt(long pointer)
+            => pointer == 0 ? null : _resources.GetValueOrDefault(pointer);
 
         /// <summary>
         /// HRESULT D3D11CreateDevice(pAdapter, DriverType, Software, Flags, pFeatureLevels,
@@ -484,11 +586,66 @@ namespace WPR.Wp8Native
             [4] = ("CreateTexture1D", MakeResource("Texture1D", outIndex: 3)),
             [5] = ("CreateTexture2D", MakeResource("Texture2D", outIndex: 3)),
             [6] = ("CreateTexture3D", MakeResource("Texture3D", outIndex: 3)),
-            [7] = ("CreateShaderResourceView", MakeView("ShaderResourceView", outIndex: 3)),
+            [7] = ("CreateShaderResourceView", () =>
+            {
+                FrameCapture.Resource? viewed = ResourceAt(Arg(1));
+                Count("ShaderResourceView");
+
+                long outPointer = Arg(3);
+                if (outPointer == 0)
+                {
+                    Return(HResultOk);
+                    return;
+                }
+
+                ComObject created = NewObject($"ShaderResourceView{ResourcesCreated["ShaderResourceView"]}");
+                long pointer = CreateInterface(created, "ID3D11ShaderResourceView", ViewSlots, ViewMethods());
+                if (viewed is not null)
+                {
+                    _viewedResource[pointer] = viewed;
+                }
+
+                _emulator.WriteUInt32(outPointer, (uint)pointer);
+                Return(HResultOk);
+            }),
             [8] = ("CreateUnorderedAccessView", MakeView("UnorderedAccessView", outIndex: 3)),
             [9] = ("CreateRenderTargetView", MakeView("RenderTargetView", outIndex: 3)),
             [10] = ("CreateDepthStencilView", MakeView("DepthStencilView", outIndex: 3)),
-            [11] = ("CreateInputLayout", MakeChild("InputLayout", outIndex: 5)),
+            [11] = ("CreateInputLayout", () =>
+            {
+                // D3D11_INPUT_ELEMENT_DESC: SemanticName (a char*), SemanticIndex, Format,
+                // InputSlot, AlignedByteOffset, InputSlotClass, InstanceDataStepRate.
+                long descs = Arg(1);
+                int count = (int)Math.Clamp(Arg(2), 0, 32);
+                var elements = new List<FrameCapture.VertexElement>();
+
+                for (int i = 0; i < count && descs != 0; i++)
+                {
+                    long entry = descs + (i * 28);
+                    string semantic = _frame.ReadNarrowString(_emulator.ReadUInt32(entry + 0, 0), 32);
+                    elements.Add(new FrameCapture.VertexElement(
+                        semantic,
+                        _emulator.ReadUInt32(entry + 4, 0),
+                        _emulator.ReadUInt32(entry + 8, 0),
+                        (int)_emulator.ReadUInt32(entry + 16, 0),
+                        (int)_emulator.ReadUInt32(entry + 12, 0)));
+                }
+
+                Count("InputLayout");
+                long outPointer = Arg(5);
+                if (outPointer == 0)
+                {
+                    Return(HResultOk);
+                    return;
+                }
+
+                ComObject created = NewObject($"InputLayout{ResourcesCreated["InputLayout"]}");
+                long pointer = CreateInterface(created, "ID3D11InputLayout", DeviceChildSlots);
+                _layouts[pointer] = elements;
+                Note($"CreateInputLayout: {string.Join(", ", elements.Select(e => $"{e.Semantic}{e.Index}@{e.Offset} fmt {e.Format}"))}");
+                _emulator.WriteUInt32(outPointer, (uint)pointer);
+                Return(HResultOk);
+            }),
             // Every Create*Shader takes pShaderBytecode, BytecodeLength, pClassLinkage and
             // the out-parameter, so the out-parameter is index 4 with this counted - not 3.
             // Index 3 is pClassLinkage, which is almost always null, so this wrote nothing
@@ -555,8 +712,166 @@ namespace WPR.Wp8Native
         }
 
         /// <summary>A Create* method producing something the image can map or query.</summary>
-        private Action MakeResource(string kind, int outIndex)
-            => Creator(kind, outIndex, $"ID3D11{kind}", ResourceSlots, ResourceMethods());
+        private Action MakeResource(string kind, int outIndex) => () =>
+        {
+            long outPointer = Arg(outIndex);
+            Count(kind);
+
+            if (outPointer == 0)
+            {
+                Return(HResultOk);
+                return;
+            }
+
+            ComObject created = NewObject($"{kind}{ResourcesCreated[kind]}");
+            long pointer = CreateInterface(created, $"ID3D11{kind}", ResourceSlots, ResourceMethods());
+
+            FrameCapture.Resource resource = new() { Name = created.Name };
+            _resources[pointer] = resource;
+
+            if (kind == "Texture2D")
+            {
+                DescribeTexture(resource, Arg(1), Arg(2));
+            }
+            else if (kind == "Buffer")
+            {
+                DescribeBuffer(resource, Arg(1), Arg(2));
+            }
+
+            _emulator.WriteUInt32(outPointer, (uint)pointer);
+            Return(HResultOk);
+        };
+
+        /// <summary>
+        /// D3D11_TEXTURE2D_DESC: Width, Height, MipLevels, ArraySize, Format, SampleDesc,
+        /// Usage, BindFlags, CPUAccessFlags, MiscFlags - then D3D11_SUBRESOURCE_DATA is
+        /// pSysMem, SysMemPitch, SysMemSlicePitch.
+        /// </summary>
+        private void DescribeTexture(FrameCapture.Resource resource, long desc, long initial)
+        {
+            if (desc == 0)
+            {
+                return;
+            }
+
+            resource.PixelWidth = (int)Math.Clamp(_emulator.ReadUInt32(desc + 0, 0), 0, 8192);
+            resource.PixelHeight = (int)Math.Clamp(_emulator.ReadUInt32(desc + 4, 0), 0, 8192);
+            resource.Format = _emulator.ReadUInt32(desc + 16, 0);
+
+            // A block-compressed texture is stored as 4x4 blocks, so both its pitch and its
+            // row count are in blocks. BC1 is eight bytes a block, BC2 and BC3 sixteen.
+            resource.BlockBytes = resource.Format switch
+            {
+                70 or 71 or 72 => 8,                       // BC1
+                73 or 74 or 75 or 76 or 77 or 78 => 16,    // BC2, BC3
+                _ => 0,
+            };
+
+            if (resource.BlockBytes > 0)
+            {
+                resource.RowPitch = Math.Max(1, (resource.PixelWidth + 3) / 4) * resource.BlockBytes;
+                resource.Rows = Math.Max(1, (resource.PixelHeight + 3) / 4);
+            }
+            else
+            {
+                // The 16-bit formats a phone game uses for its UI: B5G6R5, B5G5R5A1 and
+                // B4G4R4A4. Sizing their rows at four bytes a pixel puts every row at twice
+                // its real stride and drops half of each one.
+                resource.PixelBytes = resource.Format switch
+                {
+                    85 or 86 or 115 => 2,
+                    _ => 4,
+                };
+
+                resource.RowPitch = resource.PixelWidth * resource.PixelBytes;
+                resource.Rows = resource.PixelHeight;
+            }
+
+            resource.StorageSize = (long)resource.RowPitch * resource.Rows;
+
+            if (resource.StorageSize is <= 0 or > 64 * 1024 * 1024)
+            {
+                resource.StorageSize = 0;
+                return;
+            }
+
+            resource.Storage = _emulator.AllocateHeap(resource.StorageSize);
+
+            if (initial == 0 || resource.Storage == 0)
+            {
+                return;
+            }
+
+            long source = _emulator.ReadUInt32(initial + 0, 0);
+            int pitch = (int)_emulator.ReadUInt32(initial + 4, 0);
+            CopyRows(resource, source, pitch);
+        }
+
+        /// <summary>D3D11_BUFFER_DESC opens with ByteWidth.</summary>
+        private void DescribeBuffer(FrameCapture.Resource resource, long desc, long initial)
+        {
+            if (desc == 0)
+            {
+                return;
+            }
+
+            resource.StorageSize = _emulator.ReadUInt32(desc + 0, 0);
+            if (resource.StorageSize is <= 0 or > 64 * 1024 * 1024)
+            {
+                resource.StorageSize = 0;
+                return;
+            }
+
+            resource.Storage = _emulator.AllocateHeap(resource.StorageSize);
+
+            long source = initial == 0 ? 0 : _emulator.ReadUInt32(initial + 0, 0);
+            if (source == 0 || resource.Storage == 0)
+            {
+                return;
+            }
+
+            try
+            {
+                _emulator.WriteMemory(
+                    resource.Storage, _emulator.ReadMemory(source, (int)resource.StorageSize));
+                resource.HasContent = true;
+            }
+            catch (Exception)
+            {
+                // A descriptor that lies about its own size is the image's problem, not a
+                // reason to stop.
+            }
+        }
+
+        /// <summary>
+        /// Copies image rows in, honouring a source pitch that need not match ours.
+        /// </summary>
+        private void CopyRows(FrameCapture.Resource resource, long source, int sourcePitch)
+        {
+            if (source == 0 || resource.Storage == 0 || resource.Rows <= 0)
+            {
+                return;
+            }
+
+            int pitch = sourcePitch > 0 ? sourcePitch : resource.RowPitch;
+            int copy = Math.Min(pitch, resource.RowPitch);
+
+            try
+            {
+                for (int y = 0; y < Math.Max(resource.Rows, 1); y++)
+                {
+                    _emulator.WriteMemory(
+                        resource.Storage + ((long)y * resource.RowPitch),
+                        _emulator.ReadMemory(source + ((long)y * pitch), copy));
+                }
+
+                resource.HasContent = true;
+            }
+            catch (Exception)
+            {
+                // Ran off the end of whatever the image handed us; keep what landed.
+            }
+        }
 
         /// <summary>A Create* method producing a view, which has GetResource and GetDesc.</summary>
         private Action MakeView(string kind, int outIndex)
@@ -659,8 +974,75 @@ namespace WPR.Wp8Native
 
         private Dictionary<int, (string, Action)> ContextMethods() => new()
         {
-            [12] = ("DrawIndexed", CountDraw("DrawIndexed")),
-            [13] = ("Draw", CountDraw("Draw")),
+            [7] = ("VSSetConstantBuffers", () =>
+            {
+                // (StartSlot, NumBuffers, ppConstantBuffers)
+                if (Arg(2) > 0 && Arg(3) != 0)
+                {
+                    _boundConstants = ResourceAt(_emulator.ReadUInt32(Arg(3), 0));
+                }
+
+                Return(HResultOk);
+            }),
+            [8] = ("PSSetShaderResources", () =>
+            {
+                // (StartSlot, NumViews, ppShaderResourceViews)
+                if (Arg(2) > 0 && Arg(3) != 0)
+                {
+                    long view = _emulator.ReadUInt32(Arg(3), 0);
+                    _boundTexture = view == 0 ? null : _viewedResource.GetValueOrDefault(view);
+                }
+
+                Return(HResultOk);
+            }),
+            [12] = ("DrawIndexed", () =>
+            {
+                // (IndexCount, StartIndexLocation, BaseVertexLocation)
+                RecordDraw((int)Arg(1), (int)Arg(2), _frame.SignedArg(3), indexed: true);
+                Return(HResultOk);
+            }),
+            [13] = ("Draw", () =>
+            {
+                // (VertexCount, StartVertexLocation)
+                RecordDraw((int)Arg(1), (int)Arg(2), 0, indexed: false);
+                Return(HResultOk);
+            }),
+            [17] = ("IASetInputLayout", () =>
+            {
+                _boundLayout = _layouts.GetValueOrDefault(Arg(1)) ?? new List<FrameCapture.VertexElement>();
+                Return(HResultOk);
+            }),
+            [18] = ("IASetVertexBuffers", () =>
+            {
+                // (StartSlot, NumBuffers, ppVertexBuffers, pStrides, pOffsets) - arrays, one
+                // entry per slot, and this image uses two of them.
+                int start = (int)Arg(1);
+                int count = (int)Arg(2);
+
+                for (int i = 0; i < count && start + i < _streams.Length; i++)
+                {
+                    int slot = start + i;
+                    _streams[slot] = new FrameCapture.VertexStream(
+                        Arg(3) == 0 ? null : ResourceAt(_emulator.ReadUInt32(Arg(3) + (i * 4), 0)),
+                        Arg(4) == 0 ? 0 : (int)_emulator.ReadUInt32(Arg(4) + (i * 4), 0),
+                        Arg(5) == 0 ? 0 : (int)_emulator.ReadUInt32(Arg(5) + (i * 4), 0));
+                }
+
+                Return(HResultOk);
+            }),
+            [19] = ("IASetIndexBuffer", () =>
+            {
+                // (pIndexBuffer, Format, Offset)
+                _boundIndexBuffer = ResourceAt(Arg(1));
+                _indexFormat = (uint)Arg(2);
+                _indexOffset = (int)Arg(3);
+                Return(HResultOk);
+            }),
+            [24] = ("IASetPrimitiveTopology", () =>
+            {
+                _topology = (uint)Arg(1);
+                Return(HResultOk);
+            }),
             [14] = ("Map", MapResource),
             [15] = ("Unmap", () => Return(HResultOk)),
             [20] = ("DrawIndexedInstanced", CountDraw("DrawIndexedInstanced")),
@@ -677,6 +1059,12 @@ namespace WPR.Wp8Native
                 long viewports = Arg(2);
                 if (Arg(1) > 0 && viewports != 0)
                 {
+                    if (Viewport is null)
+                    {
+                        Note($"RSSetViewports {BitConverter.ToSingle(_emulator.ReadMemory(viewports + 8, 4))}" +
+                             $"x{BitConverter.ToSingle(_emulator.ReadMemory(viewports + 12, 4))}");
+                    }
+
                     Viewport = (
                         BitConverter.ToSingle(_emulator.ReadMemory(viewports + 8, 4)),
                         BitConverter.ToSingle(_emulator.ReadMemory(viewports + 12, 4)));
@@ -686,6 +1074,30 @@ namespace WPR.Wp8Native
             }),
             [48] = ("UpdateSubresource", () =>
             {
+                // (pDstResource, DstSubresource, pDstBox, pSrcData, SrcRowPitch, SrcDepthPitch)
+                FrameCapture.Resource? destination = ResourceAt(Arg(1));
+                if (destination is not null && Arg(4) != 0)
+                {
+                    if (destination.Rows > 0)
+                    {
+                        CopyRows(destination, Arg(4), (int)Arg(5));
+                    }
+                    else if (destination.Storage != 0 && destination.StorageSize > 0)
+                    {
+                        try
+                        {
+                            _emulator.WriteMemory(
+                                destination.Storage,
+                                _emulator.ReadMemory(Arg(4), (int)destination.StorageSize));
+                            destination.HasContent = true;
+                        }
+                        catch (Exception)
+                        {
+                            // Short source; keep whatever landed.
+                        }
+                    }
+                }
+
                 // void UpdateSubresource(pDstResource, DstSubresource, pDstBox, pSrcData,
                 // SrcRowPitch, SrcDepthPitch) - this is the texture upload path, and how the
                 // image gets its decoded PVR pixels onto the GPU. Counting them is the
@@ -699,16 +1111,20 @@ namespace WPR.Wp8Native
                 long colour = Arg(2);
                 if (colour != 0)
                 {
-                    LastClearColour =
+                    float[] wanted =
                     [
                         BitConverter.ToSingle(_emulator.ReadMemory(colour + 0, 4)),
                         BitConverter.ToSingle(_emulator.ReadMemory(colour + 4, 4)),
                         BitConverter.ToSingle(_emulator.ReadMemory(colour + 8, 4)),
                         BitConverter.ToSingle(_emulator.ReadMemory(colour + 12, 4)),
                     ];
+
+                    NotePhase(wanted);
+                    LastClearColour = wanted;
                 }
 
                 ClearCount++;
+                Frame.BeginFrame(LastClearColour ?? [0f, 0f, 0f, 1f]);
                 Return(HResultOk);
             }),
             [53] = ("ClearDepthStencilView", () => Return(HResultOk)),
@@ -720,6 +1136,66 @@ namespace WPR.Wp8Native
             Count(kind);
             Return(HResultOk);
         };
+
+        /// <summary>
+        /// Remembers a draw and everything bound at the moment it was issued.
+        /// </summary>
+        private void RecordDraw(int count, int start, int baseVertex, bool indexed)
+        {
+            DrawCalls++;
+            Count(indexed ? "DrawIndexed" : "Draw");
+
+            Frame.Record(FrameCapture.Snapshot(_emulator, new FrameCapture.DrawCall(
+                count,
+                start,
+                baseVertex,
+                _streams.ToArray(),
+                indexed ? _boundIndexBuffer : null,
+                _indexFormat,
+                _indexOffset,
+                _boundTexture,
+                _boundLayout,
+                ReadTransform(),
+                _topology)));
+        }
+
+        /// <summary>
+        /// The first sixteen floats of the bound vertex constant buffer, as a matrix.
+        /// </summary>
+        /// <remarks>
+        /// Standing in for the vertex shader, which this layer does not run. A 2D engine
+        /// puts its projection - usually just an orthographic matrix - at the front of the
+        /// first constant buffer, and applying it turns whatever coordinate space the
+        /// vertices are in into clip space. When the guess is wrong the geometry lands
+        /// somewhere absurd and is clipped away, which is visible rather than silent.
+        /// </remarks>
+        private float[]? ReadTransform()
+        {
+            if (_boundConstants is null || _boundConstants.Storage == 0 || _boundConstants.StorageSize < 64)
+            {
+                return null;
+            }
+
+            try
+            {
+                byte[] raw = _emulator.ReadMemory(_boundConstants.Storage, 64);
+                float[] matrix = new float[16];
+                for (int i = 0; i < 16; i++)
+                {
+                    matrix[i] = BitConverter.ToSingle(raw, i * 4);
+                    if (!float.IsFinite(matrix[i]))
+                    {
+                        return null;
+                    }
+                }
+
+                return matrix;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
 
         /// <summary>
         /// HRESULT Map(pResource, Subresource, MapType, MapFlags, D3D11_MAPPED_SUBRESOURCE*).
@@ -748,11 +1224,26 @@ namespace WPR.Wp8Native
                 return;
             }
 
-            _mapScratch = _mapScratch != 0 ? _mapScratch : _emulator.AllocateHeap(MapScratchSize);
+            // The resource's own storage, not a shared scratch. One buffer for everybody was
+            // fine while nothing read any of it back; it is useless the moment the vertices
+            // a draw refers to have to still be there when the draw happens.
+            FrameCapture.Resource? resource = ResourceAt(Arg(1));
+            long buffer = resource?.Storage ?? 0;
+            int pitch = resource?.RowPitch > 0 ? resource.RowPitch : (int)(BackBufferWidth * 4);
 
-            _emulator.WriteUInt32(mapped + 0, (uint)_mapScratch);
-            _emulator.WriteUInt32(mapped + 4, BackBufferWidth * 4);
-            _emulator.WriteUInt32(mapped + 8, BackBufferWidth * BackBufferHeight * 4);
+            if (buffer == 0)
+            {
+                _mapScratch = _mapScratch != 0 ? _mapScratch : _emulator.AllocateHeap(MapScratchSize);
+                buffer = _mapScratch;
+            }
+            else if (resource is not null)
+            {
+                resource.HasContent = true;
+            }
+
+            _emulator.WriteUInt32(mapped + 0, (uint)buffer);
+            _emulator.WriteUInt32(mapped + 4, (uint)pitch);
+            _emulator.WriteUInt32(mapped + 8, (uint)(resource?.StorageSize ?? MapScratchSize));
 
             MapCount++;
             Return(HResultOk);
@@ -763,6 +1254,9 @@ namespace WPR.Wp8Native
         /// batch this game will build in one go.
         /// </summary>
         private const long MapScratchSize = 4 * 1024 * 1024;
+
+        /// <summary>Fallback for a Map against a resource this layer never saw created.</summary>
+        private long _mapScratch;
 
         // -------------------------------------------------------------------
         // DXGI
@@ -911,9 +1405,15 @@ namespace WPR.Wp8Native
 
             Write(outPointer, (uint)pointer);
             SwapChainCreated = true;
+            long desc = Arg(outIndex - 2);
+            string asked = desc == 0
+                ? "no desc"
+                : $"desc {_emulator.ReadUInt32(desc, 0)}x{_emulator.ReadUInt32(desc + 4, 0)} " +
+                  $"fmt {_emulator.ReadUInt32(desc + 8, 0)}";
+
             Note(forWindow
-                ? $"CreateSwapChainForCoreWindow(window=0x{Arg(1):X8}) -> 0x{pointer:X8}"
-                : $"CreateSwapChain -> 0x{pointer:X8}");
+                ? $"CreateSwapChainForCoreWindow(window=0x{Arg(1):X8}, {asked}) -> 0x{pointer:X8}"
+                : $"CreateSwapChain({asked}) -> 0x{pointer:X8}");
             Return(HResultOk);
         }
 
@@ -1021,7 +1521,85 @@ namespace WPR.Wp8Native
                 Note($"FIRST FRAME PRESENTED: {FrameDescription()}");
             }
 
+            CaptureIfWanted();
+
+            // A live host wants every frame, not a photograph of one. Rasterising here is a
+            // few milliseconds for a 2D title, and it runs on the emulator's thread - the
+            // subscriber gets a private copy and must marshal it to wherever it draws.
+            if (FramePresented is { } subscriber)
+            {
+                try
+                {
+                    subscriber(Frame.Rasterise(_emulator, out _), FrameCapture.Width, FrameCapture.Height);
+                }
+                catch (Exception ex)
+                {
+                    Note($"frame delivery failed: {ex.Message}");
+                }
+            }
+
             Return(HResultOk);
+        }
+
+        /// <summary>Raised with the rasterised RGBA pixels of each presented frame.</summary>
+        public event Action<byte[], int, int>? FramePresented;
+
+        /// <summary>Which frame to photograph, or zero for none.</summary>
+        public int ScreenshotFrame { get; set; }
+
+        /// <summary>
+        /// Photograph every this many frames from <see cref="ScreenshotFrame"/> on, or zero
+        /// for a single shot.
+        /// </summary>
+        /// <remarks>
+        /// Driving a game blind through its own menus means guessing where to tap and finding
+        /// out several minutes later whether the guess was right. A run takes minutes and a
+        /// frame takes milliseconds, so taking one picture per run is the wrong trade by three
+        /// orders of magnitude: a strided capture turns each attempt into a contact sheet.
+        /// </remarks>
+        public int ScreenshotEvery { get; set; }
+
+        /// <summary>How many frames have been written.</summary>
+        public int ScreenshotsWritten { get; private set; }
+
+        private void CaptureIfWanted()
+        {
+            if (ScreenshotPath is null || PresentCount < ScreenshotFrame)
+            {
+                return;
+            }
+
+            if (ScreenshotEvery <= 0)
+            {
+                if (ScreenshotSummary is not null)
+                {
+                    return;
+                }
+            }
+            else if ((PresentCount - ScreenshotFrame) % ScreenshotEvery != 0)
+            {
+                return;
+            }
+
+            string path = ScreenshotEvery <= 0
+                ? ScreenshotPath
+                : Path.Combine(
+                    Path.GetDirectoryName(ScreenshotPath) is { Length: > 0 } directory ? directory : ".",
+                    $"{Path.GetFileNameWithoutExtension(ScreenshotPath)}-{PresentCount:D6}" +
+                    Path.GetExtension(ScreenshotPath));
+
+            try
+            {
+                byte[] pixels = Frame.Rasterise(_emulator, out string summary);
+                FrameCapture.WritePng(path, pixels, FrameCapture.Width, FrameCapture.Height);
+                ScreenshotsWritten++;
+                ScreenshotSummary = $"frame {PresentCount}: {summary}";
+                Note($"captured frame {PresentCount} to {path} - {summary}");
+            }
+            catch (Exception ex)
+            {
+                ScreenshotSummary = $"capture failed: {ex.Message}";
+            }
         }
 
         private string FrameDescription()

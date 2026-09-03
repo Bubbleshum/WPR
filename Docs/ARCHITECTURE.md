@@ -79,18 +79,24 @@ is what let those moves happen without touching a single `NewNamespace` string.
 | --- | --- |
 | `Core/WPR.Loader` | Install/patch pipeline (`ApplicationInstaller`, `ApplicationPatcher`, `LibraryScanner`) |
 | `Core/WPR.Runtime` | Launch/hosting glue (`SilverlightAppHost`, `GameMakerLauncher`) |
-| `Core/WPR.Abstractions` | Backend-independent host contracts (`IGameHost`, `IWindow`, `IAudioDevice`, …) |
 | `Core/WPR.Database` | Everything persisted: the `applications.db` catalogue schema (`WPR.Models`), the `achievements.db` schema (`AchievementContext`, `EfAchievementStore`), their EF migrations, and the shipped seed data under `Data/` |
-| `Core/WPR.Common` | Paths, configuration, image/env helpers, notifications |
-| `Core/WPR.Diagnostics` | Logging (`WprLog`, `FileLog`) |
+| `Core/WPR.Common` | Paths, configuration, host environment (`WprHostEnvironment`), logging (`Log`), gamer-picture defaults |
 | `Core/WPR.Framework.Xna` | **WPR-owned XNA type system** — Graphics, Audio, Media, Content, Input, Storage, plus the `WPR.Xna.Rhi` backend seams (`Backend/I*Backend.cs`) and the `IAchievementStore` seam. Also owns `GamerServices/` (gamer profile, achievements, leaderboards) |
 | `Core/WPR.Framework.Silverlight` | Silverlight 4 / WP XAML re-implementation on Avalonia. Also owns the former `WPR.WindowsCompability` types (Application, MessageBox, the Imaging bitmaps, IsolatedStorage, ProtectedData) and the BCL-method redirect targets the patcher rewrites call sites to (`Path2`, `GC2`, `Type2`, `XElement2`) |
 | `Core/WPR.Framework.Phone` | `Microsoft.Phone.*` facade (Shell, Tasks, Marketplace, Scheduler, …) |
 | `Core/WPR.Framework.Devices.Sensors` | Accelerometer / Compass |
 | `Core/WPR.Framework.Devices.Location` | `System.Device.Location` |
+| `Engine/WPR.Engine` | Composition root for a platform: `PlatformDescriptor`, `IPlatformCapabilities`, `PlatformComposition.Apply` — heads declare capabilities, this turns them into registry writes |
+| `Engine/WPR.Engine.Audio` | The three runtime audio seams (`IAudioBackend`, `IXactBackend`, `IMediaBackend`), the `IAudioModule` plug and `AudioBackendRegistry` that composes them, plus the install-time `IAudioTranscoder` + `AudioTranscoderBackend` |
+| `Engine/WPR.Engine.Sensors` | `IAccelerometerProvider` + `SensorBackend` (motion input, in neutral `System.Numerics` terms) |
+| `Engine/WPR.Engine.Notifications` | `INotificationManager` + `NotificationBackend` and the notification DTOs (replaces `WPR.Common.NativeUI`) |
+| `Engine/WPR.Engine.Graphics` | `GraphicsDriver` / `GraphicsDriverPreference` — the FNA3D driver choice a head declares |
+| `Engine/WPR.Engine.GameLoop` | `IGameHost`, so a backend can implement the host contract without referencing the composition root |
 | `Backends/WPR.Backend.FNA` | FNA backend — implements the `WPR.Xna.Rhi` seams and hosts the game loop (`ApplicationLaunch`, `FnaGameHost`) |
 | `Backends/WPR.Backend.Direct3D11` | Vortice/D3D11 backend for Silverlight `DrawingSurface` content, behind `ISurfaceRendererBackend` |
 | `Backends/FNA.Platform` | FNA fork (builds assembly `FNA`): native-backed runtime, window, SDL/FNA3D/FAudio/Theorafile bindings |
+| `Audio/WPR.Audio.FAudio` | Fills all three audio seams over FAudio/FACT, plus FAudio's `XNA_Song` and Theorafile video |
+| `Audio/WPR.Audio.AndroidMediaPlayer` | Android-only: the song half of `IMediaBackend` over platform `MediaPlayer`; forwards video to the module below it |
 | `Platforms/WPR.Platform.Windows` | Windows head (`net8.0-windows10.0.17763.0`): `Program`, `App`, `MainWindowDesktop`, the whole Avalonia UI (pages, view-models, views, brand theme `Themes/Brand.axaml`), the launchers (`SilverlightLauncher`, `XnaLauncher`, `UnityPortLauncher`), tilt input, toast notifications |
 | `Platforms/WPR.Platform.Android` | Android head (`net8.0-android34.0`): native `Activity` shell (`Native/*`), `GameActivity`, notifications |
 | `Tests/WPR.Tests` | Dependency-fitness test guarding the backend-isolation baseline |

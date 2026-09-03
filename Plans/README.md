@@ -19,21 +19,23 @@ because several of those sections are cited by name from source comments.
 
 | Doc | What it covers |
 | --- | --- |
-| [ARCHITECTURE-MIGRATION.md](ARCHITECTURE-MIGRATION.md) | The ADR: target dependency graph, assembly-identity rules, and the stages that are left (Stage 4 remnant, Stage 5 remnant, the spine, 6–8) |
+| [ARCHITECTURE-MIGRATION.md](ARCHITECTURE-MIGRATION.md) | The ADR: target dependency graph, assembly-identity rules, and the stages that are left (Stage 4 remnant, Stage 5 remnant, the spine, 6–8), plus the 2026-09-01 audio split |
 | [STAGE-GATE.md](STAGE-GATE.md) | The three checks every stage must pass before the next begins (build both TFMs, smoke titles reach gameplay, fitness test green) + the live `KnownBackendLeaks` baseline |
 | [STAGE5-SIZING.md](STAGE5-SIZING.md) | The two clusters of the FNA/Vortice severance still open, and the frozen risk register (Risk #1 is cited from `IGameHost.cs`) |
-| [STAGE5C-SCOPE.md](STAGE5C-SCOPE.md) | Design of record for the seven `WPR.Xna.Rhi` seams (cited from 13 source files), plus the design constraints on the spine stage |
+| [STAGE5C-SCOPE.md](STAGE5C-SCOPE.md) | Design of record for the `WPR.Xna.Rhi` seams (cited from 13 source files), plus the design constraints on the spine stage. The audio three are now filled from `Src/Modules/Audio/` via `AudioBackendRegistry` — noted inline |
 
 **Start here:** `ARCHITECTURE-MIGRATION.md` §5, "What is left".
 
 ## Feasibility studies
 
-Scoping work on game families that can't simply be hosted in-process.
+Scoping work on game families that can't simply be hosted in-process — and, for WP8
+native titles, one that turned out to be hostable after all.
 
 | Doc | Verdict |
 | --- | --- |
 | [Unity_WP8_Feasibility.md](Unity_WP8_Feasibility.md) | Unity WP titles can't be hosted (native ARM engine) but *are* recoverable — a one-time per-game rebuild that WPR launches instead. The launcher rail for this is implemented; the per-game port is not. |
 | [Spark2_Managed_Reimplementation_Feasibility.md](Spark2_Managed_Reimplementation_Feasibility.md) | Ubisoft's Spark2 engine (AC Pirates): **not practically feasible**. Gated on decrypting AES content from non-runnable ARM binaries, behind which sits a full proprietary D3D11 engine. |
+| [WP8-NATIVE-PROBE.md](WP8-NATIVE-PROBE.md) | WP8 native (C++/DirectX) titles: **feasible, and demonstrated** — an ARM probe boots Angry Birds Rio to its menus and drives them with touch. Two known blockers, both measured: one bug in the game's own Lua, and a CPU that must move to dynarmic for both licence and speed. |
 
 ## Open TODO lists
 

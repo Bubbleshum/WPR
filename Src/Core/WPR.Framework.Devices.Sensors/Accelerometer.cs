@@ -1,7 +1,6 @@
 using System;
 using System.Threading;
-using WPR.Abstractions.Sensors;
-using WPR.Sensors;
+using WPR.Engine.Sensors;
 using XnaVector3 = Microsoft.Xna.Framework.Vector3;
 
 namespace Microsoft.Devices.Sensors
@@ -10,7 +9,7 @@ namespace Microsoft.Devices.Sensors
     /// Shim for <c>Microsoft.Devices.Sensors.Accelerometer</c>.
     ///
     /// <para><b>Platform-free by construction.</b> Every reading comes from the
-    /// <see cref="ISensorProvider"/> the launcher registered into <see cref="SensorBackend"/> —
+    /// <see cref="IAccelerometerProvider"/> the launcher registered into <see cref="SensorBackend"/> —
     /// real hardware on Android, the keyboard emulator on Windows. This class owns only the WP7
     /// contract: the event shape, the polled <see cref="CurrentValue"/>, and the start/stop
     /// bookkeeping games expect. Before 2026-08-30 both platform paths lived here behind
@@ -27,7 +26,7 @@ namespace Microsoft.Devices.Sensors
         /// so games that guard on <c>Accelerometer.IsSupported</c> wire up their sensor path.
         /// With no provider registered at all there is nothing to read, so it reports false.
         /// </summary>
-        public static bool IsSupported => SensorBackend.Provider?.IsAccelerometerSupported ?? false;
+        public static bool IsSupported => SensorBackend.Accelerometer?.IsSupported ?? false;
 
         public Accelerometer()
         {
@@ -90,12 +89,12 @@ namespace Microsoft.Devices.Sensors
         /// <summary>
         /// The provider this instance actually started against, held so <see cref="Stop"/>
         /// releases the same one. The provider counts its readers to decide when to power the
-        /// sensor down, so every <see cref="StartAccelerometer"/> must be matched exactly once
-        /// against the same object — resolving <see cref="SensorBackend.Provider"/> again at
+        /// sensor down, so every <see cref="Start"/> must be matched exactly once
+        /// against the same object — resolving <see cref="SensorBackend.Accelerometer"/> again at
         /// stop time would break that if none was registered when the game called
         /// <see cref="Start"/>, or if the registration were ever replaced mid-session.
         /// </summary>
-        private ISensorProvider? _startedOn;
+        private IAccelerometerProvider? _startedOn;
 
         public void Start()
         {
@@ -104,7 +103,7 @@ namespace Microsoft.Devices.Sensors
                 return;
             }
 
-            ISensorProvider? provider = SensorBackend.Provider;
+            IAccelerometerProvider? provider = SensorBackend.Accelerometer;
             if (provider == null)
             {
                 // No platform registered: there is nothing to start, so stay stopped and let
@@ -115,8 +114,8 @@ namespace Microsoft.Devices.Sensors
 
             _Started = true;
             _startedOn = provider;
-            provider.AccelerometerChanged += OnProviderReading;
-            provider.StartAccelerometer();
+            provider.ReadingChanged += OnProviderReading;
+            provider.Start();
         }
 
         public void Stop()
@@ -127,13 +126,13 @@ namespace Microsoft.Devices.Sensors
             }
 
             _Started = false;
-            ISensorProvider? provider = _startedOn;
+            IAccelerometerProvider? provider = _startedOn;
             _startedOn = null;
 
             if (provider != null)
             {
-                provider.AccelerometerChanged -= OnProviderReading;
-                provider.StopAccelerometer();
+                provider.ReadingChanged -= OnProviderReading;
+                provider.Stop();
             }
         }
 

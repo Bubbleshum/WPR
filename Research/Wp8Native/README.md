@@ -14,35 +14,86 @@ the real entry point on an emulated CPU, and reports every call that leaves the 
 
 ## Running it
 
+From Windows, one command:
+
+```powershell
+.\run.ps1 -Game C:\wp8\abrio\AngryBirdsRio.exe
+```
+
+`run.ps1` builds, runs, and puts the report on your console. It runs the probe **natively**
+when a `unicorn.dll` is sitting next to it, and otherwise builds for linux-x64 and runs it
+under WSL - which is transparent apart from a line saying which it picked.
+
+Useful switches, all of which map to the environment variables the probe reads:
+
+| switch | what it does |
+| --- | --- |
+| `-Budget 3000000000` | instruction budget; this one gets Angry Birds Rio a few hundred frames in |
+| `-Screenshot .\frame.png -Frame 200` | rasterise one presented frame to a PNG, copied back to Windows |
+| `-Trace 0x00534E3A,0x00462494` | log the register file every time those instructions run |
+| `-Watch 0x60003A0C:16` | log every write into that address range, host-side writes included |
+| `-Files 400` | show more of the file-access log than the default twenty lines |
+
+Point `-Game` at the executable inside an unpacked XAP - a XAP is a plain zip - or set
+`WPR_GAME` and leave the switch off.
+
+Without the script it is just a console app:
+
 ```
 dotnet run -c Release -- <path-to-arm-exe> [instruction-budget]
-```
-
-Point it at the executable inside an unpacked XAP (a XAP is a plain zip):
-
-```
-dotnet run -c Release -- ./AngryBirdsRio.exe
 ```
 
 ### The native library problem
 
 `UnicornEngine.Unicorn` 2.1.3 ships native runtimes for **linux-x64, linux-arm64,
 linux-ppc64le and osx-x64 only**. There is no `win-x64` `unicorn.dll` in the package, so
-on Windows the static analysis runs and then the CPU fails to start with
-`DllNotFoundException`. Two ways round it:
+without one the static analysis runs and then the CPU fails to start with
+`DllNotFoundException`, which `Program` catches and explains rather than letting it look like
+a crash.
 
-**Run it under WSL** — no downloads, works today:
+Nothing else about the probe is platform-specific. The binding is the only P/Invoke and it
+imports the name `unicorn`, which .NET resolves to `libunicorn.so` on Linux and `unicorn.dll`
+on Windows. **That one file is the entire difference between WSL-only and native.**
 
-```powershell
-dotnet publish -c Release -r linux-x64 --self-contained true -o ./publish-linux
-wsl -d Ubuntu -- bash -lc "cp -r ./publish-linux ~/probe && chmod +x ~/probe/WPR.Wp8Probe && ~/probe/WPR.Wp8Probe <exe>"
-```
+Drop a `unicorn.dll` into this directory and it is picked up without further ceremony: the
+csproj copies it to the output and `run.ps1` switches modes. Nothing in the C# changes.
 
-The self-contained publish pulls `libunicorn.so` out of the package for you.
+#### Which Windows build
 
-**Supply `unicorn.dll`** — required eventually, since WPR ships on Windows. Either build
-Unicorn from source with CMake + MSVC, or take the DLL from the official Unicorn Windows
-release, and drop it next to the built executable.
+Not the obvious one. The Unicorn 2.1.3 release page offers four Windows assets, and the two
+worth knowing about behave very differently:
+
+| asset | verdict |
+| --- | --- |
+| `windows-msvc64-shared.7z` (41 MB) | **Unusable.** It is a *debug* build - the DLL imports `VCRUNTIME140D.dll` and `ucrtbased.dll`, which are not redistributable and ship only with Visual Studio. Both copies in the archive (`bin/` and `Debug/`) are the same debug binary; there is no release build in it. |
+| `windows-mingw64-shared.7z` (17 MB) | **This one.** `bin/libunicorn.dll` imports only `KERNEL32`, `kernelbase` and `msvcrt` - all present on any Windows install. Rename it to `unicorn.dll`, because .NET's `lib` prefix probing is Unix-only. |
+
+#### One Unicorn bug to know about
+
+`uc_emu_start` with a real `until` address **crashes the process** on that MinGW build - no
+managed exception, no stderr, the process simply dies partway through printing its report.
+The same call is fine on the linux-x64 build from the NuGet package, which is why it went
+unnoticed until the probe first ran natively.
+
+`ArmEmulator.Run` therefore does not pass `until` to Unicorn at all. It installs a code hook
+at the stop address which calls `EmuStop`, which does the same job, costs nothing until the
+address is reached, and behaves identically on every build. The API keeps the `until` shape,
+so no caller has to know.
+
+#### Is it the same?
+
+Yes, and checked rather than assumed. Native and WSL runs of Angry Birds Rio produce the same
+report - 240 dispatcher turns, 238 frames, the same stopping point at `0x0044F0EF` - and the
+rasterised frame is **byte-for-byte identical**, same MD5 from both. Native takes about
+thirteen seconds for three billion instructions, which is roughly what WSL takes.
+
+#### Why bother, when WSL works
+
+A debugger. Under WSL the probe is a separate Linux process and Rider cannot put a breakpoint
+in `HostStubs` or step into a trap handler. Natively it is an ordinary .NET console app, and
+every stub becomes something to break on, inspect and edit. For work that is mostly "what did
+the image actually pass here", that is the whole difference.
+
 
 ## What it currently does
 
@@ -581,7 +632,7 @@ Five `add_` slots on `ICoreWindow`, all even, all landing on events a game subsc
 and `put_AutoRotationPreferences` called with `5`, an orientation bitmask, rather than a
 pointer. Coincidence would have to work quite hard.
 
-Those members are now implemented rather than shaped: `get_Bounds` returns 800x480,
+Those members are now implemented rather than shaped: `get_Bounds` returns 480x800,
 `get_Dispatcher` hands back a real `ICoreDispatcher`, `get_Visible` and `get_IsInputEnabled`
 return true, `GetKeyState` returns `CoreVirtualKeyStates::None`, and `get_ResolutionScale`
 returns `Scale100Percent`. That last one matters more than it looks: the discovery default
@@ -623,7 +674,7 @@ GetParent({50c83a1c-...}) -> factory
 CreateSwapChainForCoreWindow(window=...) -> swap chain
 IDXGISwapChain::GetBuffer(0, {6f15aaf2-...}) -> back buffer
 ID3D11Device1::CreateRenderTargetView
-ID3D11DeviceContext1::RSSetViewports -> 800x480
+ID3D11DeviceContext1::RSSetViewports -> 480x800
 ```
 
 Two things make this layer easier than the WinRT side rather than harder. These are plain
@@ -775,7 +826,7 @@ the failure was silent and the report said "budget exhausted". Each now has a de
 ```
 main loop     3 call(s) to CoreDispatcher::ProcessEvents
 graphics      device=yes swapchain=yes presents=1 draws=1 clears=2 uploads=21
-              viewport=800x480 clear=(1.00,1.00,1.00,1.00)
+              viewport=480x800 clear=(1.00,1.00,1.00,1.00)
 audio         engine=yes 1 MasteringVoice, 1 SourceVoice
 file access   307 opened, 5 failed
 FIRST FRAME PRESENTED: cleared to (1.00,1.00,1.00,1.00), 1 draw(s), 1 render target(s) bound
@@ -1041,21 +1092,69 @@ samples input once a frame can miss a press and release delivered back to back.
 input  PointerPressed at (400, 240) -> handler 0x60003110 invoke 0x00445DA5
 ```
 
-The delegate was found at slot 3, invoked, and the game ran its handler - and then called
-through a null at `0x0044F0EF`, on what the argument shape says is
-`IWeakReference::Resolve(REFIID, IInspectable**)` against a weak reference that is null.
+## The tap works, and the game moves
 
-`IWeakReferenceSource` and `IWeakReference` are now implemented, because every C++/CX ref
-class supports them and neither can be answered the way the other IIDs are: this probe's
-WinRT `QueryInterface` hands back the same pointer for anything asked of it, which works only
-while every interface has an `IInspectable` layout. These two do not - `GetWeakReference` and
-`Resolve` both sit at **slot 3**, where an `IInspectable` has `GetIids` - so answering with
-the original pointer aims both calls at the wrong method. They get real objects with an
-IUnknown-shaped vtable, and resolving always succeeds, because nothing here ever dies and a
-weak reference that resolves to null sends the image down its object-has-gone path.
+```
+main loop     18,688 dispatcher turns
+graphics      18,686 frames presented, 73,400 draws
+input         124 taps delivered, every handler returning S_OK
+file access   779 opened
+```
 
-It did not clear this particular null: the reference the handler resolves is null before it
-gets there, so something earlier failed to hand one over. That is where input stands.
+`rovio-splash.png` is frame 200. `fox-splash.png` is frame 700, after one tap. `title-screen.png`
+is frame 1500, after a few more: Blu and Jewel on the branch with the wordmark behind them -
+the Angry Birds Rio title screen.
+
+Two reference-counting bugs stood between "a tap crashes" and this, and the second only
+appeared because the first was fixed.
+
+### Accepting a callback is a promise to keep it alive
+
+`ThreadPool.RunAsync` recorded the handler's function pointer and returned. It never took a
+reference on the delegate - and the caller is entitled to release it the moment RunAsync
+returns, which this image does immediately.
+
+That ran on luck for a long time. The luck ended the moment weak references started working:
+the release path actually destroyed the captured functor, and the drain then invoked a
+delegate whose vptr had already been walked back to `__abi_CaptureBase` - so slot 1 was the
+next thing along in `.rdata`, and the CPU jumped into it. The symptom was an invalid
+instruction during startup with no visible connection to refcounting at all.
+
+The same omission was in every `add_SomeEvent` on the discovery objects, and it produced a
+better clue: all five CoreWindow subscriptions came back with the **same handler address**,
+because each delegate was freed before the next was allocated. A "handler" whose first three
+words pointed at itself is not a delegate, and that is what it looked like.
+
+Both now take a reference. `KeepAlive` does it the only way a host stub can - AddRef is
+emulated code, so it tail-calls, and the return trap puts S_OK back in r0 and continues to
+wherever the stub was going to return.
+
+**The allocator is what exposed this.** While it never freed, a missing AddRef cost nothing;
+the memory stayed valid because nothing could reuse it. Teaching it to recycle turned a latent
+correctness bug into a visible one, which is the point of making an allocator behave like a
+real one even in a probe.
+
+### The marshaler, resolved
+
+`CoCreateFreeThreadedMarshaler` now returns **S_OK with a null marshaler**. Three earlier
+attempts handed back an object - a bare stand-in, one with strict IID matching, and a properly
+aggregated inner unknown that delegates to the controlling unknown - and all three died the
+same way, because the image calls a method on whatever it is given.
+
+Success-with-null is a lie about a pointer rather than about a vtable, and that is the whole
+difference: nothing can be called on null, so if the image ever does use the marshaler it is a
+null call at the exact instruction that used it. It never does.
+
+What it buys is the weak reference. The caller stores one, calls this, and **on failure
+releases the weak reference and nulls it** - so refusing did not disable marshalling, it
+disabled weak references for the whole image, and every event handler ended up holding null.
+
+### One tap is not enough
+
+A game does not open on the screen anyone wants to see. This one shows the publisher, then the
+licensor, then a title screen, and each waits for a touch. `WPR_TAP=150` taps every 150
+dispatcher turns rather than once; 124 taps is what it took to get the picture above.
+
 
 ## Where it stops now
 
@@ -1072,6 +1171,179 @@ Tapped, it stops in its own pointer handler at `0x0044F0EF`, resolving a null we
 
 Neither is a wall in the way the earlier ones were. The first is a budget; the second is one
 more object this probe has not built yet.
+
+
+## Launching it on the desktop
+
+`Desktop/WPR.Wp8Desktop` is the same emulator in a window. It compiles the probe's sources
+directly - nothing in them ever depended on being a console app - adds a WinForms `Form`, and
+meets the emulator at exactly two points: every presented frame comes across as a private RGBA
+copy through `Direct3DRuntime.FramePresented`, and the mouse goes back through
+`WinRtRuntime.InjectPointer`, which queues it for the image's next turn round its own main
+loop. Two threads, and nothing touches the CPU from the window's.
+
+```powershell
+.\run.ps1 -Desktop -Game C:\wp8-test\abrio\AngryBirdsRio.exe
+```
+
+Verified 2026-09-02: Angry Birds Rio boots to the Fox splash in a 1200x720 window, a click on
+the client area is delivered as press-and-release, and it advances to the title screen and runs
+there at **40 fps**. The window's title bar carries the frame count and rate; a `0 fps` during
+the first half-minute is the load phase, not a stall - frames there cost tens of millions of
+instructions each.
+
+Two things it is for that the console probe is not. A person can **tap wherever they like**:
+every scripted run so far tapped the centre of the screen, and a title waiting for a touch on a
+button somewhere else would have looked exactly like one waiting for nothing. And it is the
+shape a real backend has - a surface and an input source, with the emulator behind them - so
+what is learned here about threading and lifetime carries over.
+
+Two things it is not. The frame is still the software rasteriser, so anything with shaders is
+still wrong; and the scripted taps are **off** in this host (`WPR_TAP=0` is set before the
+runtime is touched), because a real pointer replaces the script.
+
+### The first thing it appeared to settle, and did not
+
+With the title screen up, fifteen clicks were posted across the whole client area and every
+frame hash after them was identical - and the conclusion drawn was that nothing on that screen
+responds to a touch. That conclusion was wrong, for a reason recorded under *Taps* below: every
+one of those taps was delivered with its position corrupted, so this experiment tested nothing.
+It is left here because it is a clean example of the trap - a negative result from a tool is
+only as good as the tool, and this one had not yet been proved on a positive.
+
+## A picture
+
+`WPR_SCREENSHOT=path[:frame]` rasterises one presented frame and writes it as a PNG.
+`rovio-splash.png`, `fox-splash.png` and `title-screen.png` are frames of Angry Birds Rio,
+drawn from the game's own vertex buffers and its own decoded texture atlases: the two
+publisher splashes, and then the title screen - the full wordmark, the Rio landscape, Blu and
+Red on the rock, and the word LOADING.
+
+Getting there needed the Direct3D layer to stop throwing away everything it was handed.
+
+### Resources with something in them
+
+Answering a Create call with a shaped object was enough to keep the image running, and it was
+all this layer did. `Map` gave everybody the same scratch buffer, so the vertices one draw
+wrote were overwritten before the next draw read them; `UpdateSubresource` counted its calls
+and discarded the pixels; and the art the game spent its entire startup decoding went
+nowhere. Nothing could be drawn from that.
+
+Every resource now owns emulated memory the size of its descriptor, and every path that fills
+one - `pInitialData`, `Map`, `UpdateSubresource` - fills that. `CreateInputLayout` keeps its
+element descriptions, `CreateShaderResourceView` remembers which resource it views, and the
+bind calls record what is bound. A draw records all of it.
+
+### The rasteriser
+
+`FrameCapture` walks the recorded draws at Present and fills triangles into an 800x480 image
+(see *The window is portrait and the game is not* below for why that is not the device size):
+barycentric coverage, nearest sampling, source-alpha blending, and a hand-rolled PNG writer
+using stored deflate blocks, because pulling in an image library for a diagnostic would be
+the tail wagging the dog.
+
+It runs no shaders. The position is read from the vertex as the input layout describes it and
+transformed by the first constant buffer read as a 4x4 matrix, which is what a 2D engine's
+vertex shader does and nothing more. That is why this is worth anything for this title and
+would be worth nothing for a 3D one.
+
+### Two mistakes, and what each looked like
+
+Both are worth recording, because neither looked like what it was.
+
+**The transform is row-major.** HLSL packs a `float4x4` constant column-major by default and
+the shader does `mul(position, matrix)` with a row vector, which comes to a dot product with
+each *row* of the buffer. Doing it the other way transposes the transform - and for a 2D
+orthographic projection the matrix is diagonal, so transposing it changes **nothing at all**.
+The first two screenshots were byte-identical and it took noticing that to realise the bug
+was elsewhere.
+
+**A vertex can come from more than one buffer.** The layout reported `POSITION@0` and
+`TEXCOORD@0` - both at element offset zero, in a twelve-byte vertex, which is impossible
+until you look at `InputSlot`: position comes from slot 0 with a 12-byte stride, texture
+coordinate from slot 1 with an 8-byte stride. Keeping only the first buffer meant every
+texture coordinate was read out of the position, so every quad sampled the atlas at its own
+screen position.
+
+That produced a picture rather than nothing, which is what made it interesting: the Rovio
+logo appeared, recognisable, mirrored, in the wrong quadrant and the wrong size. A wrong
+answer that looks almost right is the expensive kind, and a rasteriser is unusually good at
+producing them - the output is a picture either way, and a picture is very easy to accept.
+
+### Geometry belongs to the draw, not to the frame
+
+The recorded draws were walked at Present, and the vertex buffers were read *then*. That is
+one buffer too late. This engine draws a frame by mapping a single dynamic vertex buffer,
+writing a quad, drawing it, and rewriting the same buffer for the next quad - so by Present
+every draw in the frame resolves to the last quad's geometry.
+
+The symptom was not an empty screen, which is the trouble with it: three different textures
+were drawn in exactly the same place at exactly the same size, stacked on top of each other,
+with the rest of the screen left as the clear colour. It reads as "the game only drew one
+thing", not as "the geometry is stale".
+
+`FrameCapture.Snapshot` now copies the indices, and the slice of each vertex stream those
+indices actually touch, at the moment the draw is issued. Nothing the game does afterwards
+can change what a recorded draw meant. `ReadElement` reads from that copy rather than from
+emulated memory, which also removed the emulator argument from four functions.
+
+### Two ways to read a texture wrong
+
+**Channel order is not a constant.** Sampling assumed B8G8R8A8, because that is what the swap
+chain is. This title's art is R8G8B8A8 - format 28, not 87 - so red and blue were swapped
+everywhere. Bad enough to see once pointed out and easy to miss until then: the sky stayed
+plausible, the landscape stayed plausible, and the tell was a red bird coming out blue.
+Sampling now reads the channel order out of the resource's own format.
+
+**A block-compressed texture has no pixel rows.** The sprite atlas is BC3 (format 77), where
+each 4x4 pixel block is sixteen bytes, `RowPitch` is a row of *blocks*, and the row count is
+in block rows. Reading that as four bytes per pixel takes a quarter of the data at four times
+the stride and produces torn noise - which does not look like a format mistake, it looks like
+a corrupt upload, and it sent me looking at `UpdateSubresource` first.
+
+`DecodeBlocks` expands BC1, BC2 and BC3 to RGBA once, on load, and stamps the decoded copy as
+format 28 so the sampler above needs to know nothing about it. The colour half is the same in
+all three - two RGB565 endpoints and sixteen two-bit selectors - and only the alpha differs:
+BC1 takes it from the endpoint ordering, BC2 carries four bits per pixel, BC3 carries two
+endpoints and sixteen three-bit selectors of its own.
+
+### The window is portrait and the game is not
+
+The last one was not in the rasteriser at all. Every sprite was drawn 1.67x too wide: the
+title wordmark ran off both edges of the screen and only the middle of it was visible.
+
+The obvious suspect is the projection, so the projection is where the time went. It is not
+there - the constant buffer holds two identity matrices and a rotation for something that
+spins, and no projection at all, at any slot, on any draw. The vertices arrive in clip space
+already.
+
+The measurement that settled it: for a sprite drawn at 1:1, the on-screen size in pixels has
+to equal the size of the texture region its texture coordinates select. Four draws agreed on
+the same answer, to within a pixel - and the size they agreed on was **the transpose** of the
+size the image had been told the device was.
+
+That is Windows Phone 8 working as designed. The CoreWindow is always in the device's native
+**portrait** orientation, 480x800 on WVGA, and a landscape game swaps the axes itself. Being
+told 800x480, this image dutifully swapped to a 480x800 layout - and laid the landscape art
+out inside it.
+
+Because it does pick the art from that size. Told 480x800 it loads a 480-wide title wordmark;
+told 800x480 it loads a 767-wide one. So the wrong device size did not merely scale things
+wrongly, it loaded a *different asset set* and then laid that out for the wrong viewport,
+which is why the error was 1.67x rather than something that looked like a mistake in a matrix.
+
+There are now two sizes, deliberately kept apart:
+
+| | what it is | default | override |
+| --- | --- | --- | --- |
+| `Direct3DRuntime.BackBufferWidth/Height` | the device: swap chain, and the window bounds that go with it | 480x800 | `WPR_WINDOW=WxH` |
+| `FrameCapture.Width/Height` | the surface draws are rasterised into | 800x480 | `WPR_SCREEN=WxH` |
+
+They are transposes of each other and that is correct, not a leftover. The game composes in
+landscape and presents into a portrait buffer, applying the rotation in its vertex shader -
+so a layer that runs no shaders sees the landscape composition, which is the one worth
+looking at anyway. With this the geometry lands texel-exact: a 480x219 wordmark drawn at
+478x162 pixels, a 17x35 sprite at 17x35.
 
 
 ## printf
@@ -1426,6 +1698,1012 @@ is now a frequency.
 Only `Program.cs` and `VtableProof.cs` touch the console; the rest lift out of here
 unchanged if this graduates into a backend project.
 
+`Desktop/` is the WinForms host - see *Launching it on the desktop*. It is excluded from the
+probe's own compile glob (`<Compile Remove="Desktop\**" />`) so the console probe stays
+buildable under WSL, and it compiles the probe's sources by `<Compile Include="..\*.cs" />`
+rather than referencing the exe.
+
+
+## Input is a script, not a tap
+
+Press-and-release at the centre of the screen gets past a splash. It cannot fire a bird,
+because a slingshot is a drag - and a drag is not a tap with extra steps, it is a different
+event stream with a position that changes and a clock that has to be believable.
+
+`WPR_INPUT` is a semicolon-separated gesture script, cycled one gesture per `WPR_TAP` turns:
+
+| gesture | what it delivers |
+| --- | --- |
+| `tap` / `tap:x,y` | press, eight moves at the same point, release |
+| `drag:x1,y1>x2,y2` | press, twelve interpolated moves, release |
+| `drag:x1,y1>x2,y2@n` | the same with `n` moves |
+| `wait:n` | spends `n` turns round the main loop touching nothing |
+
+Coordinates are in the **landscape space the image composes in**, not the portrait bounds the
+device reports - see *The window is portrait and the game is not*.
+
+**Waiting is a gesture, which is what makes a script a timeline.** Gestures start on a period
+boundary, so without `wait` the only way to put two hundred frames between two taps is a period
+of two hundred frames - which then also delays the first tap by two hundred. With it, a period
+of 60 and `wait:1150;tap:624,360;wait:120;tap:400,288` means: let it run to the menu, dismiss
+the dialog it opens, let that animate away, then press PLAY. That is the shape every screen
+past the first one needs.
+
+**One event per turn round the main loop, and that is not a throttle.** Delivering an event
+is a tail call into emulated code that takes over the return path, so a stub physically
+cannot deliver a second one and still return. A twelve-step drag therefore takes twelve
+frames, which at the rate this runs is about a third of a second - close enough to a real
+drag that nothing has to pretend.
+
+Three things had to be true before a drag meant anything:
+
+- **PointerMoved had to actually be subscribed.** It was - all five CoreWindow subscriptions
+  are - but nothing reported that, so it was an assumption. It is now printed with the run:
+  `5 CoreWindow subscription(s); PointerPressed, PointerMoved, PointerReleased`.
+- **get_Position had to move.** It was a pair of constants. A drag whose position never
+  changes is a long press.
+- **get_Timestamp had to exist.** `IPointerPoint` slot 9 was reaching the discovery default
+  on every single pointer event, which answers an out-parameter with a placeholder object
+  pointer - so the image was reading a pointer as a microsecond count. A flick, a swipe and a
+  slingshot are all a position difference over a time difference, so this is the value that
+  decides how hard the bird is thrown. It is now the frame counter at a notional 60Hz, rather
+  than the tick this probe hands out elsewhere: that one advances a millisecond *per query*,
+  so it runs at whatever rate the image happens to ask the time.
+
+`get_IsInContact` also answers truthfully now rather than always true, for a game that polls
+the pointer instead of listening to it.
+
+### A contact sheet, not a photograph
+
+`WPR_SCREENSHOT=path:frame+every` writes a numbered PNG every `every` frames instead of one.
+Driving a game blind through its own menus means guessing where to tap and finding out
+several minutes later whether the guess was right; a run takes minutes and a frame takes
+milliseconds, so one picture per run was the wrong trade by three orders of magnitude.
+
+### The stall that was not a stall
+
+With taps running, the title screen sat on LOADING for ten thousand frames - byte-identical
+PNGs from frame 800 to frame 10,400, which reads as a hard freeze.
+
+Two things were wrong, and only one of them was a bug.
+
+**`CreateEventExW` was unimplemented, and unimplemented means zero.** Zero is NULL, NULL is
+failure, and this image checks: it threw its own `lang::Exception` reading
+`"lang::Signal: CreateEventExW: {0}"`, caught it three funclets deep, and carried on. That
+throw is now gone. `SyncLibrary` implements the events, the critical sections and the SRW
+locks - locks as no-ops that *succeed*, because there is one thread here and
+`InitializeCriticalSectionEx` answers a BOOL the image tests.
+
+An unsignalled wait yields to queued work before answering, because a wait is the clearest
+yield point an image ever offers, and then reports `WAIT_TIMEOUT` rather than success:
+claiming an event was signalled tells the image that work it is waiting on has finished, and
+it then reads whatever that work was supposed to produce.
+
+**The freeze itself was not a freeze.** The tail of the call order at three billion
+instructions is `fread`, `operator new`, `memmove`, `memset`, `fread` - the image is loading,
+and the title screen simply does not animate while it does. At roughly 2% of a real device's
+speed, a few seconds of loading is minutes of ours, and a six-billion-instruction budget was
+never going to reach the end of it. The identical PNGs were evidence of a screen that does
+not change, which is not the same as an image that is not running.
+
+Worth remembering as a general point about this probe: **a static frame is not a stalled
+image**, and the call-order tail settles it in one line. That is why it is now printed.
+
+### Where it is still stuck, and what that is not
+
+Fixing `CreateEventExW` removed the throw and did not move the title screen. At eight billion
+instructions - 18,808 frames - it is still on LOADING, and the frames are identical from 3,000
+on. The gesture work above is therefore built and correct but cannot yet be aimed at anything:
+the slingshot is behind this screen.
+
+What the run says it is doing, at the point it is doing it:
+
+```
+last calls, oldest first:
+    strlen / memcmp / strlen / memcmp / _Mtx_lock / _Mtx_unlock / realloc / free ...
+most called:
+    7,816,967  memcmp        3,159,768  strcmp        1,464,142  strlen
+```
+
+A string-comparison loop with a mutex and a growing buffer. Five explanations have been ruled
+out by measurement rather than by reading code, which is the useful part of this list:
+
+- **Not waiting on an event.** One event is ever created, and it is never waited on: `1
+  event(s), 0 signalled, 0 wait(s) satisfied, 0 timed out`. `Concurrency::event` is not it
+  either - `wait` is never called on one, though it is now implemented properly (state per
+  object, and an unset wait drains the queue before answering rather than claiming the event
+  was already signalled).
+- **Not starved of queued work.** The deferred queue holds two items in the entire run and
+  both ran, early. Each queued callback now reports how much it did, which is the useful
+  form: `IWorkItemHandler::Invoke returned 0x0 after 10 import call(s)`. Ten calls is not a
+  loader running - the ten are `GetActivationFactory`, two scoped locks, `event::set`,
+  `_NewCollection`, `_Schedule` and a delete. It is task plumbing signalling completion, and
+  the chore it scheduled did eleven calls of the same. Whatever loads this game's assets, it
+  is not these.
+- **Not a task collection reporting a lie.** `_RunAndWait` does claim completion without
+  running anything, which is the same class of bug - but the image never calls it.
+- **Not still reading from disk.** 774 files opened, and the count does not move after the
+  first billion instructions. It was reading at three billion; it is not now.
+- **Not an unanswered async completion.** The inference added for that - one argument, and it
+  looks like a delegate - never once fires on this image. The Xbox object it was written for
+  is handed a pointer whose vtable has nothing executable at the Invoke slot, so it is not a
+  completion handler.
+- **Not the renderer.** Frames present, draws record, the picture is correct. It is drawing
+  the same correct thing forever.
+
+So it is a compute loop in the image's own code with nothing outstanding behind it. Finding it
+needs a tool this probe does not have: periodic PC sampling to name the hot address, then the
+disassembly around it. The runaway detector cannot see it, because that fires on blocks
+executed *without a call across the boundary* and this loop calls `memcmp` every few
+instructions.
+
+
+## Where the time went
+
+`PcSampler` answers "where is this image actually executing", which nothing here could do
+before. The runaway detector fires on blocks executed *without* a call across the boundary,
+so a loop that calls `memcmp` every few instructions is invisible to it - and that was exactly
+the loop that needed naming.
+
+Two sources, because they answer different questions at very different prices.
+
+**Call sites are free and always on.** Every trap already knows its caller: it is in `lr`. So
+`memcmp was called 7,816,967 times` - which is not a place in the program - becomes:
+
+```
+3,508,683 call(s) across the boundary from 1,069 distinct site(s)
+   27.1%       951,643  0x00408E9E in 0x00408E55+0x49 -> memcmp
+   12.0%       419,760  0x00532ABC in 0x00532A85+0x37 -> strcmp
+by function (571 distinct):
+   27.1%       951,643  0x00408E55 across 1 call site(s)
+```
+
+The `by function` roll-up matters more than it looks: a loop is several call sites, and per
+address it spreads across a dozen rows and hides under something merely frequent.
+
+**Blocks are opt-in through `WPR_SAMPLE=n`**, sampling one basic block in n. This needs a
+block hook and costs about 35% (123s against 91s on a two-billion-instruction run), but it is
+the only thing that sees code calling nothing at all:
+
+```
+221,008 block sample(s) at 1-in-1,000 from 4,409 distinct block(s)
+by function (738 distinct):
+   31.3%        69,263  0x004BF4BD across 153 block(s)
+   14.4%        31,920  0x004C13AD across 30 block(s)
+```
+
+Neither is a sampling profiler in the usual sense - there is no timer here, and no second
+thread that could safely read the CPU - so these count events rather than elapsed time. For
+finding a loop that is running when it should not be, a count is the better measure anyway:
+exact, and identical on every run.
+
+`WPR_ARGS=0xADDR` then shows r0-r3 for calls from one site, rendering any register that points
+at printable text as that text. It keeps the **last** sixteen, not the first: the first are
+always startup, and startup is the part that worked.
+
+### What it found, which was that there is nothing to find
+
+The theory it was built to test - that the LOADING screen was a pathological loop - is wrong,
+and it took two commands to establish.
+
+The hottest site, 27% of every call across the boundary, is a `std::map` lookup:
+
+```
+memcmp(r0="FEATHER_VIOLET_2", r1="MAIN_LOGO", r2=0x9, r3=0x1F)
+memcmp(r0="LS_BUTTON_BG_BEACHBALL", r1="MAIN_LOGO", ...)
+memcmp(r0="MAIN_BG_BUSHES", r1="MAIN_LOGO", ...)
+memcmp(r0="MAIN_LOGO", r1="MAIN_LOGO", ...)
+```
+
+The key is constant and the candidates converge on it alphabetically over fourteen
+comparisons, ending in a match - a red-black tree descent that **succeeds**. Not a degenerate
+hash, not a scan that never finds anything: an ordinary sprite lookup by name. (`r3` is not an
+argument at all - `memcmp` takes three. It is a live value in the caller, and it reads 0x0F or
+0x1F strictly by string length, which is MSVC's `std::string` small-buffer capacity. Worth
+noticing before building a theory on it.)
+
+The second, 12%, is shader parameter binding: `WORLDTM`, `VIEWTM`, `PROJTM`, `TOTALTM`,
+`BASEMAP`, `SAMPLER`, `AlphaBlending`, `DepthOn`. Also ordinary, also per-frame.
+
+And a third of all *execution* sits in one function with 153 distinct basic blocks, which is
+the shape of a bytecode interpreter's dispatch switch - this title is Lua-driven, and the
+neighbouring hot functions cluster with it.
+
+So the image is not stuck in a loop it should not be in. It is rendering a static screen and
+running its scripts, competently, at 2% of the speed it was written for. That is a different
+problem from the one being looked for, and it is the more useful answer: **there is no bug
+here to find**, and the next move is somewhere else entirely.
+
+### What else the counters rule out
+
+Two more things fall out of comparing runs at different budgets, and both are worth having
+written down before anyone spends an afternoon on them:
+
+| | 900M instructions | 8e9 instructions |
+| --- | --- | --- |
+| frames presented | 738 | 18,806 |
+| draws | 738 (1/frame) | 71,780 (3.8/frame) |
+| files opened | 440 | 774 |
+
+**It was still loading at 900M and had finished by 4e9.** The file count climbs to 774 and
+then stops, and the draws per frame go from one to the four of the title screen. So the image
+does make progress, and then stops making it - with everything read.
+
+**It is not waiting on a clock.** `QueryPerformanceCounter` is called 10,673 times by four
+billion instructions, and this probe's clock advances a millisecond per query at a declared
+frequency of 1 MHz, so around sixty seconds of game time passes on that screen by eight
+billion. A loading screen with a minimum display time would have long since given up waiting.
+
+The scripts themselves are no help, and it is worth knowing why before trying: everything
+under `assets/data/scripts/` is **encrypted**, not plaintext Lua and not Lua bytecode. The
+first bytes of `gamelogic.lua` are `8e 27 da da`, where compiled Lua would be `1b 4c 75 61`.
+Reading the loading logic statically would mean recovering the decryption first, or dumping
+the plaintext out of emulated memory after the image has decrypted it - which is a tool that
+does not exist here yet.
+
+### The clock, and the spin-wait hiding behind it
+
+The image computes 255,721 `sinf` and the same number of `cosf` - seventy-seven a frame - and
+draws a byte-identical picture every time. Something is being animated that never moves, and
+that points at time.
+
+The clock here advanced **once per query**, so time passed at whatever rate the image happened
+to read it. That is not just imprecise, it makes the *shape* of a frame impossible: an image
+reading the clock three times a frame - top, after update, after draw - gets the same one-unit
+gap between all three, so "how long did my update take" and "how long since the last frame"
+come back equal. No real clock does that.
+
+Tying it to the dispatcher count at a notional 60Hz fixed the shape and broke something else,
+which is the interesting part. **This image has a spin-wait frame limiter**: it reads the clock
+in a tight loop until enough time has passed. Against a clock that only moves when the frame
+counter does, that loop can never finish inside the frame it is in. The measurements:
+
+| clock | clock reads per frame | instructions per frame | frames at 4e9 |
+| --- | --- | --- | --- |
+| per query (original) | 3.2 | 1.2M | 3,306 |
+| per frame only | **504** | **14.5M** | 276 |
+| both (now) | 3.4 | 1.4M | 2,915 |
+
+The original was accidentally immune: a millisecond per read let the limiter out after about
+sixteen of them. So time now advances for both reasons - with frames, which gives the right
+delta between them, and by 200us per repeated query *within* a frame, capped below one frame
+so it can never overtake the frame clock and run time backwards at the boundary.
+
+This is a real fix and it did **not** move the loading screen: 17,609 frames at eight billion
+instructions, and every captured frame still byte-identical to `title-screen.png`. Worth
+recording anyway - a game whose frame delta is wrong is a game whose physics, animation and
+timers are all wrong, and that would have been charged to something else later.
+
+### A cheaper long run
+
+`_callOrder` kept every import ever called: 7.8 million strings on an eight billion
+instruction run, hundreds of megabytes, so that forty of them could be printed at each end.
+It now keeps the first 64 and the last 64 and counts the rest. The start says how the image
+came up and the end says what it was doing when it stopped; the middle had never once been
+read.
+
+
+## Reading the game's own scripts
+
+`WPR_DUMPLUA=dir[:frame]` walks the used heap and writes out anything that looks like a Lua
+chunk. It exists because this title ships its scripts **encrypted** - `gamelogic.lua` begins
+`8e 27 da da`, where source would be ASCII and compiled Lua would be `1b 4c 75 61` - so the
+logic that decides when the loading screen ends cannot be read off disk at all.
+
+It can be read out of memory, because the image has to decrypt it to run it, and that needs to
+know nothing about the cipher. Recovering the cipher would be a much larger job for a strictly
+worse result.
+
+```
+scanning 117 MB of heap from 0x60000000
+bytecode-60428600.luac  Lua 5.1 chunk
+bytecode-6043ABB0.luac  Lua 5.1 chunk
+... 6 script(s) written
+```
+
+Two details that matter. **The signature alone is not a chunk** - four bytes of `1b 4c 75 61`
+turn up in ordinary data often enough that the first version of this wrote three false
+positives out of nine; the version byte must be 0x51-0x53 and the format byte after it zero.
+And **timing is everything**: a buffer that was decrypted, compiled and freed only survives
+until the allocator hands its memory to something else, which is why the frame argument exists.
+
+### What the scripts said
+
+`strings` over the recovered chunks is enough - Lua stores its constants as length-prefixed
+strings - and the answer was immediate:
+
+```
+hideLoadingInitXBOX          hideLoadingAchievements       hideLoadingLeaderboards
+loadingScreenCallbacks       restUntilCallback             XBOXQueue
+disableXBOX                  enableXBOX done               cancelProfileLoading
+Loading time - boot to splash                Loading time - splash to menu
+scripts/menu/LoadingScene.lua                scripts/menu/LoadingPage.lua
+```
+
+**The loading screen waits on Xbox Live.** It rests until callbacks arrive
+(`restUntilCallback`, `loadingScreenCallbacks`) and hides itself in three parts - Xbox init,
+achievements, leaderboards. This runtime improvises `Microsoft.Xbox.User`,
+`Microsoft.Xbox.XboxLIVEService` and `Microsoft.Xbox.Leaderboards.LeaderboardService` as
+stand-ins that answer S_OK to everything, so it promises those callbacks are coming and never
+sends one. Nothing else in the run says this; the counters, the sampler and the trace all show
+an image running normally.
+
+### Making Xbox fail does not help, and why that was worth finding out
+
+The scripts carry a `disableXBOX` path, so the obvious move is to stop pretending. `WPR_XBOX=fail`
+does that - every `Microsoft.Xbox.*` method answers E_FAIL - and the image takes it seriously:
+it builds the string *"Sorry, we can't sign you in. Please sign in at Xbox.com, then start this
+app again."* and then stops on **the same title screen**, byte-identical PNGs for ten thousand
+frames.
+
+The first attempt at it was worse and is the more instructive failure. Answering E_FAIL and
+**blanking the out-parameter** - which is the correct WinRT answer, and this file's own rule
+elsewhere - killed the run after one frame with a null call. The image does
+`hr = call(&out); __abi_ThrowIfFailed(hr);`, and that raise is a vccorlib import nothing here
+can deliver: the stub returns, the caller carries on believing it succeeded, and dereferences
+the null one instruction later.
+
+Delivering that throw properly would not rescue it either. The image carries **no RTTI for
+`Platform::Exception`** - `.?AVException@lang@@` and `.?AVCloudServiceException@rcs@@` are
+there, `Platform` is not - so it cannot catch one by type even if one arrived. So failure now
+reports E_FAIL *and* leaves a live object, which is the one place this probe knowingly breaks
+its own "write the out-parameter or report failure, never neither" rule, and it is opt-in
+because it changes what the image believes about itself for no gain.
+
+What would actually finish this is the real shape of the Xbox API, and that is what the next
+section is for.
+
+
+## What a stand-in was asked to do
+
+A stand-in that answers S_OK to everything keeps an image running and says almost nothing
+about what it should have done. `VtableProfile` turns those calls into the thing needed to
+actually implement the class - a slot number, a call count and an argument shape - and
+`WPR_SLOTS=<filter>` prints it:
+
+```
+Microsoft.Xbox.XboxLIVEService  (2 slot(s) called)
+    slot  6 (member  0)  x2    (out*, null, ...)
+    slot 11 (member  5)  x1    (out*, null, ...)
+<- Microsoft.Xbox.XboxLIVEService::slot11  (1 slot(s) called)
+    slot  8 (member  2)  x1    (delegate, out*, ...) <- takes a delegate
+<- Microsoft.Xbox.XboxLIVEService::slot6  (2 slot(s) called)
+    slot  6 (member  0)  x2    (delegate, 0xFFFFFFFE, ...) <- takes a delegate
+    slot  8 (member  2)  x2    (out*, null, ...)
+```
+
+**The slot number is the point.** A WinRT vtable is `IInspectable` at 0-5 and the interface's
+own members from 6 in metadata declaration order, so `slot 11` is the sixth member and can be
+read straight off the class's metadata. That is how a number becomes a name.
+
+Two things this made obvious that nothing else had:
+
+**The factories are not where the surface is.** `Microsoft.Xbox.User`,
+`XboxLIVEService` and `LeaderboardService` each get exactly one call - slot 6, which on an
+activation factory is `ActivateInstance`. Everything a class can *do* is called on the object
+it hands back, and those are placeholders, which were on a different code path and were not
+being recorded at all.
+
+**Two of those calls take a delegate.** `(delegate, out*)` is a handler plus a registration
+token; `(delegate, 0xFFFFFFFE)` is a handler plus what is very likely a sentinel. Both were
+accepted and neither was ever invoked - which is exactly what `restUntilCallback` and
+`loadingScreenCallbacks` in the recovered scripts are waiting on.
+
+### Calling them back
+
+The placeholder path now completes a delegate handed to it, writing the token first if there
+is one. The callbacks fire:
+
+```
+async  Microsoft.Xbox.XboxLIVEService::slot11/slot8(handler 0x6010A2F0) -> completed at once
+async  Microsoft.Xbox.XboxLIVEService::slot6/slot6(handler 0x60CD4740) -> completed at once
+async  Microsoft.Xbox.XboxLIVEService::slot6/slot6(handler 0x60CD4B20) -> completed at once
+```
+
+and the image responds: `ActivateInstance` goes from one call to two, the service instance is
+asked for `slot 8 (member 2)` twice where before it was never asked at all, and the whole
+run's boundary traffic nearly triples. The handshake is advancing.
+
+It still does not reach the menu, and turning the slot numbers into names is what the next
+section does - with no guessing required, because the metadata is in the XAP.
+
+The same inference had been added to the *discovery default* earlier in the session and never
+fired once. It was on the wrong path, and only the slot dump showed which path was the right
+one - which is a fair summary of why the tool was worth building.
+
+
+## The metadata is in the package
+
+`Microsoft.Xbox.winmd` ships **inside the XAP**, next to `Microsoft.Xbox.dll` and `xbl.dll`.
+A WinRT component has to carry its metadata for anything to bind to it, so the authoritative
+answer to "what is slot 8" was in the game the whole time. No SDK, no guessing.
+
+Reading it takes about eighty lines against `System.Reflection.Metadata`, which is in-box in
+.NET 8: open the file with `PEReader`, walk `TypeDefinitions`, and print each type's methods in
+order. **Declaration order is vtable order**, so numbering from 6 lines the output up with the
+slot dump directly.
+
+Two things to know before trusting a number. **A "member N" here is a vtable ordinal - slot
+minus six - not a metadata table row.** TypeDef `0x02000002`, MethodDef `0x06000002` and
+MemberRef `0x0A000002` are global row indices into the whole file and have nothing to do with
+an interface's third member; two different interfaces both have a member 2 and they are
+unrelated. And the answer genuinely differs per interface, which is why the chain has to be
+followed object by object rather than resolved once.
+
+### The chain, resolved
+
+| what the slot dump saw | what the metadata says it is |
+| --- | --- |
+| `XboxLIVEService` slot 6 `(out*)` | `SignInAsync()` -> `IAsyncOperation<UserIdentity>` |
+| `XboxLIVEService` slot 11 `(out*)` | `get_ServiceClient()` |
+| `<- slot6` slot 6 `(delegate)` | `IAsyncOperation::put_Completed(handler)` |
+| `<- slot6` slot 8 `(out*)` | `IAsyncOperation::GetResults(UserIdentity**)` |
+| `<- slot11` slot 8 `(delegate, out*)` | `IServiceClient::add_SignedOut(handler)` -> token |
+
+Every argument shape the profiler inferred is confirmed by the signature, which is a good sign
+for the profiler: `(out*, null)` really was a no-argument call returning through a pointer, and
+both "takes a delegate" flags were right about the delegate and wrong about nothing.
+
+### And it caught a bug I had just introduced
+
+Completing *any* delegate handed to a placeholder is wrong, and the metadata says exactly how
+wrong. `IServiceClient::add_SignedOut` is an **event registration**, so firing it on
+registration tells the game the player just signed out - at the moment it is trying to sign
+them in.
+
+The distinguishing signal is the one the discovery default already used and the placeholder
+path had not: a trailing stack out-parameter is a registration token, and a call that wants one
+is `add_X`, not `put_Completed`. With that in, one completion fires where three did, and it is
+the right one.
+
+### Implemented, from the metadata
+
+`XboxRuntime.cs` implements the five interfaces the image binds, plus the four it reaches
+through them - `IUserStatus`, `IUserProfile`, `IAsyncOperation`/`IAsyncAction` and `IAsyncInfo`
+- with every slot annotated with the signature it stands for so the code and the winmd can be
+checked against each other. It reports a signed-in player with an empty everything-else: no
+friends, no achievements, no leaderboards, no messages. That is a lie, but it is the *shape* of
+the truth, and it is a shape the image is written to cope with where "the call never came back"
+is not.
+
+The handshake now runs end to end, which the trace shows plainly:
+
+```
+IXboxLIVEService::SignInAsync
+IAsyncOperation<SignInAsync>::put_Completed
+IAsyncOperation<SignInAsync>::GetResults
+IUserIdentity::QueryInterface / AddRef x6
+IXboxLIVEService::get_ServiceClient
+IServiceClient::add_SignedOut
+IUser::get_Identity
+ILeaderboardService::GetLeaderboardsAsync
+```
+
+`Microsoft.Xbox` has disappeared from the "reached, but not implemented" list entirely.
+
+Two details worth keeping. **An out-parameter is not always r1**: `GetAchievementsAsync` takes
+four arguments so its out is the fifth, `GetLeaderboardAsync` takes six, and `PostResultAsync`
+carries an `Int64` that AAPCS pushes to the stack rather than splitting across r3, which moves
+the out-parameter again. Each of those is annotated where it is implemented. And **QueryInterface
+now answers one IID for real**: `IAsyncInfo` and `IAsyncOperation` are different interfaces on
+the same object whose members collide - `get_Status` is IAsyncInfo member 1, which is
+`get_Completed` on IAsyncOperation - so answering every IID with the same object would report
+an operation's status as whatever `get_Completed` returned, which is zero, which is
+`AsyncStatus::Started`. A caller reading that waits for ever on something that finished before
+it asked. This image never asks, as it turns out, but the collision is real and the general
+QueryInterface lie is now overridable per slot.
+
+### It did not reach the menu at this point
+
+Every Xbox call was answered with the right shape and type and the title screen was unchanged at
+ten thousand frames. The leaderboard operation was referenced four times and released without
+ever completing, and `GetAchievementsAsync` was never called. What was actually wrong is in
+*Past the loading screen* below; the short version is that Xbox was necessary and not
+sufficient, and the two remaining faults were both this runtime's.
+
+
+## Reading the bytecode
+
+`strings` over a Lua chunk gives the constants and nothing else - no control flow, no calls,
+no idea which function any of it belongs to. Lua 5.1's undump format is small enough to parse
+outright, so the scratch tool alongside this probe disassembles the recovered chunks. The
+result is the game's own logic, legible:
+
+```
+=== LoadingScene:11-14  params=1
+    0  GETTABLE  r1 = r0["pages"]
+    1  GETTABLE  r1 = r1["loadingPage"]
+    2  SETTABLE  r1["visible"] = True
+    ...
+=== LoadingScene:16-19  params=1
+    2  SETTABLE  r1["visible"] = False
+```
+
+**`lua_Number` is a float in this build, not a double.** The header declares it - byte 10 is 4,
+not 8 - and assuming otherwise desynchronises the constant table and fails the parse hundreds
+of bytes later, somewhere that looks nothing like the cause. Four of six chunks failed that way
+before the size was read from the header rather than assumed.
+
+Two fixes to `ScriptDumper` came out of using it. It can now scan **repeatedly**
+(`WPR_DUMPLUA=dir:frame+every`), because one snapshot catches almost nothing - a script is
+decrypted, compiled and freed, and the buffer lives only until the allocator reuses it. And the
+content hash is now part of the **filename** as well as the dedupe: names built from the address
+alone silently overwrote each other, which is how 58 chunks written became seven files on disk.
+
+### What the scripts do and do not contain
+
+124 chunks captured across a dense scan - and only **five distinct scripts**: `LoadingScene`,
+`MainMenuPage`, `SceneGraph`, an animation helper, and `RovioAccount`. Everything else is
+compiled and freed before any scan can see it. Scanning cannot fix that; catching the rest means
+hooking the loader itself, so the chunk is copied at the moment it is handed to Lua rather than
+hunted for afterwards.
+
+`LoadingScene` turns out to be a thin wrapper - `onEntry` shows the page, `onExit` hides it - so
+the decision to leave it is in the scene state machine, which is one of the scripts not
+captured.
+
+### A second subsystem, and one more thing ruled out
+
+`RovioAccount` is not Xbox. It binds a `native_RovioAccount` global and carries
+`isAccountLoggedIn`, `login`, `loginRegisteredAccount`, `showLoadScreen`, and the image's own
+`rcs::CloudServiceRovioLoginRequiredException`. A second thing the loading screen could
+plausibly be waiting for.
+
+It is not waiting for it. **`WS2_32.dll` is imported - ten functions - and never called once.**
+No socket is opened, no name is resolved, nothing is sent. Whatever the Rovio cloud layer is
+doing, it is not reaching the network, so the offline path is not being blocked on a connection
+that never completes.
+
+Which is worth writing down mostly for what it costs later: those ten imports return zero like
+every other unimplemented one, and zero is a *valid* socket descriptor where -1 is the failure
+value. The first title that does reach for the network will find `socket()` succeeded.
+
+
+## Past the loading screen
+
+`main-menu.png` is frame 1,200: the Angry Birds Rio main menu - LEADERBOARDS, ACHIEVEMENTS,
+settings - under the game's own error dialog for the Xbox call it has just seen fail, with a
+tick to dismiss it. The clear colour in the report changes from white to sky blue at the same
+moment, and the draw count per frame from four to ten. Four things had to change, and the tool
+that found each one is the point of recording them.
+
+### Every script, caught on its way out
+
+The heap scan found five scripts because the rest were compiled and freed before any scan could
+run. So the hook is not the loader - it is **`free`**. A decrypted chunk is handed to
+`lua_load` and released through this probe's own free stub, because the CRT is ours, and at
+that moment it is complete, contiguous, still there, and its exact size is known to the
+allocator. `ScriptDumper.Capture` peeks six bytes at every free while a dump is wanted: 231
+chunks, all of them parsing, **109 distinct scripts**.
+
+Reading them settled the question the previous fortnight could not. `XBOX.lua` defines
+`hideLoadingInitGameCenter`, and **no script calls it** - the exe carries the string, so it is
+the C++ side that does, with `lua_getglobal`, when *its* Xbox init completes. The Lua function
+itself only clears a flag. So the loading screen was waiting for native code to finish a job,
+and the trace of what that native code did with our sign-in result is the next section.
+
+### A continuation nobody ran
+
+`StartCallCapture` records every call made between a completion handler being invoked and
+returning - the image's verdict on what it was handed, which an S_OK return can never say. The
+sign-in handler's verdict was nine calls: `GetResults`, reference the identity,
+`CoGetObjectContext`, **`Concurrency::event::set`**, done. That is a PPL `.then()` being
+scheduled, and the deferred-work log then ended on
+
+```
+queued _UnrealizedChore::_Invoke at 0x0049B8A1 (1 pending)
+```
+
+with no `->` line after it. The continuation was queued and never ran: on a device it would run
+on a pool thread while the UI loop turns, and here a queued chore runs only at a yield point -
+`Concurrency::wait`, an event wait, a lifecycle boundary - and the main loop is
+`ProcessEvents -> Present -> ProcessEvents` and touches none of them. The earlier verdict that
+"the queue holds two items and both ran" was true when it was written; the sign-in callback fix
+added a third, and nothing drained it.
+
+`ICoreDispatcher::ProcessEvents` now drains the queue before pumping, which is what "process
+events" means on a real dispatcher anyway. It drains only when something is queued, so the
+continuation always returns through a trap rather than inline in the stub.
+
+### The factory is not the instance
+
+Running the continuation killed the run at once, with a null call whose registers held the
+"Sorry, we can't sign you in" message and the error code -2. The vtable dump then showed
+`IUserIdentity::slot11 (r1=0, r2=0x64)` - slot 11 with `(0, 100)` is
+`IUser::GetAchievementsAsync(0, 100, ...)`, being called on what the image believed was its
+`User`. It was a `UserIdentity`, because `Microsoft.Xbox.User`'s **factory** slot 6 had been
+mapped to `IUser::get_Identity` when on a factory slot 6 is `IUserFactory::CreateUser(xuid,
+gamertag)`. The image took what it got back for a User, called slot 11 of an eight-slot
+object, the out-parameter nobody wrote became a null task, and the `.then()` on a null task is
+the -2. `XboxRuntime` now has factory objects for `User`, `UserIdentity`, `ServiceClient` and
+`LeaderboardService`, each telling `ActivateInstance` from `CreateXxx` by whether r1 is an
+out-parameter. `XboxLIVEService` stays as the interface itself, because the trace says so.
+
+### Three faults in the runtime that the game then exposed
+
+- **`WinRtRuntime.Arg` stopped at r3.** `GetAchievementsAsync` has four inputs, so its
+  operation returns through the fifth argument, on the stack. The stub threw. Host-stub
+  failures now print their stack frames - "Parameter 'index' out of range" comes from every
+  list indexer and from `CallFrame.Arg` alike, and the message alone cannot tell them apart.
+- **A constructor stub treated "non-zero" as "already has a vtable".** `ConstructShapedObject`
+  leaves an existing vptr alone so a derived constructor's work survives its base - but an
+  object carved from a recycled block is non-zero at offset 0 whatever it used to hold. A
+  `Platform::Exception` was built in a block whose first word was its own address, a dead list
+  sentinel; the throw read that as a vptr, read it again as the method, and the CPU branched
+  into the object. The guard now asks whether the word points at code. `Platform::Exception`
+  constructors also get a real vtable and keep their HRESULT at `this+4`, and the report lists
+  every exception the image constructed with the HRESULT in it - a shorter list of what is
+  failing than anything else this probe prints.
+- **A vtable exactly as long as its interface.** With QueryInterface answering every IID with
+  the same object, the image calls `IIterable` members on an `IVectorView` and vice versa, and
+  a slot one past the end is the next heap block. Every discovery vtable is now padded to 32
+  trap slots, so the same mistake prints as `IVectorView::slot9` instead of ending the run.
+
+### What the game does with an empty world
+
+Signed in, no friends, no achievements, no leaderboards, the image constructs
+`Platform::Exception(0x82BC0008)` in its leaderboards continuation and shows the generic
+"Sorry, we're not sure what happened" dialog over the menu. That is correct behaviour on both
+sides: the leaderboard metadata *is* empty, and the game says so and carries on. Populating the
+collection from `leaderboards.lua` - now readable - would remove the dialog; it has not been
+done, because a dismissable dialog on a working menu is a much better place to be than a
+loading screen, and the next thing to know is whether a level runs.
+
+
+## Taps
+
+Mouse clicks on the live host did nothing, and neither, it turned out, had any scripted tap
+ever done anything: the splash screens advance on a timer, and every apparent success had been
+that. Three faults stacked, and the order they were found in is the useful part.
+
+**The pointer position was never read - or so it looked.** Capturing every call the
+`PointerPressed` handler makes (the same `StartCallCapture` that had shown what the sign-in
+continuation did) gave, for 1,480 pointer events across a grid of taps: `get_PointerId` twice
+and `get_Timestamp` once per press, and `get_Position` **never**. A game that does not read the
+position cannot hit a button, so at that point the mystery was how it ever worked on a device.
+
+**It was reading the position. Our vtable was wrong.** `Windows.UI.Input.IPointerPoint`, in
+the order `Windows.UI.winmd` declares it, is PointerDevice, Position, **RawPosition**,
+**PointerId**, FrameId, **Timestamp**, IsInContact, Properties. This runtime had PointerId at
+slot 8 and Timestamp at slot 9. So the two calls logged as `get_PointerId` were
+`get_RawPosition` - the game reading its touch position twice per press, and being handed a
+32-bit `1` where it expected an eight-byte `Point` - and the call logged as `get_Timestamp` was
+`get_PointerId`, handed a 64-bit timestamp. Every tap ever delivered landed at
+(1.4e-45, whatever came next on the stack). The metadata that settles this is on every Windows
+machine at `C:\Windows\System32\WinMetadata\Windows.UI.winmd`, readable with the same
+eighty lines that read the Xbox winmd, and the lesson generalises: **a WinRT slot number
+guessed from documentation order is a guess; the winmd is the fact.** `ICoreWindow` and
+`IPointerEventArgs` were checked the same way while the file was open.
+
+**The orientation was a placeholder too.** The image calls `put_AutoRotationPreferences(5)` -
+Landscape|LandscapeFlipped - and rotates every pointer position itself according to
+`DisplayProperties::CurrentOrientation`. That was unimplemented, so the discovery default wrote
+an object pointer into it and the game read its orientation as a number in the billions. It now
+answers `Landscape` (1), and `NativeOrientation` answers `Portrait` (2), because WVGA is a
+portrait device.
+
+With those two fixed, the rotation applied on the way out of `get_Position`/`get_RawPosition`
+could finally be tested. Positions are held in the landscape space the composition is drawn in,
+and the image expects them in its portrait window space. `WPR_ROTATE=ccw` (the default - the
+phone turned so its buttons are on the right, WP8's "Landscape") maps landscape (x, y) to
+window (480 - y, x); `cw` is the other quarter turn; `none` passes them through. One tap on the
+Xbox dialog's tick, under each: **ccw dismissed it**, the other two did nothing. `main-menu.png`
+is the frame after - the PLAY button, with the flock crossing the sky behind it, because the
+menu animates once it is allowed to.
+
+Two smaller things came out of the same work. `WPR_TAPHOLD` sets how many `PointerMoved`
+events a scripted tap carries between press and release (default 8, the shape of a real
+finger; 0 for a bare press-release), added to rule out a menu engine that treats any move as a
+drag - it was not that. And the desktop host's title bar now shows the count of taps delivered
+and where the last one was handed to the image, because "the mouse does nothing" and "the mouse
+was delivered to the wrong place" are indistinguishable on screen and that line tells them apart.
+
+### What input still is not
+
+One pointer. No pinch, no second finger, and the emulator delivers one event per turn round
+the image's main loop, so a drag is as many frames long as it has steps. The mouse-as-touch
+path is verified to the main menu and no further; whether a level's slingshot takes a drag from
+it is the next thing to find out, and the machinery to find out is all here now.
+
+
+## Three screens further in
+
+With a script that can wait as well as touch, the game drives from cold start to a level
+listing without a human:
+
+```
+WPR_TAP=60 WPR_INPUT="wait:1150;tap:624,360;wait:120;tap:400,288;wait:120;tap:290,200;wait:120"
+```
+
+`menu-clean.png`, `episode-select.png` and `level-select.png` are frames 1,300, 1,500 and 1,700
+of that run - the main menu once its error dialog is dismissed, the episode list (SHOP,
+PLAYGROUND, SMUGGLERS' DEN, JUNGLE ESCAPE, BEACH VOLLEY, and the Rio / Rio 2 tabs), and the
+level page behind one of them. Every transition is a tap this probe delivered, at a coordinate
+chosen from the previous screenshot.
+
+### The drag works, and here is the proof
+
+A drag had never been shown to do anything - the earlier gestures all ended on screens that a
+tap alone could dismiss. The level page is a scroller, so it is the first screen that can
+answer the question. Dragging across it changes **two frames out of a run of a hundred**, and a
+pixel diff puts the whole difference inside a 39x55 box at x 754..792, y 213..267: the page
+chevron, reacting while a finger is down and reverting on release.
+
+A horizontal drag does more than react - it turns the page. Five distinct frames of animation,
+then a new resting frame with the chevron moved to the *left* edge, and a drag the other way
+returns to a frame **byte-identical** to the one before. That is a scroller with two pages,
+driven entirely from injected pointer events.
+
+### What the level page gets wrong
+
+Each page holds **one column of three tiles**, and there are two of them - six. The pack on
+disk has fifteen: `assets/data/levels/` holds 39 packs, the regular ones (`airport1`,
+`airport2`, `jungle1`, ...) fifteen levels each and the `bonus*` ones four. So the page is
+missing nine tiles out of fifteen, and the column it does draw sits about 150px too high - the
+first tile is cut off by the top edge.
+
+The screenshot report says the same thing from the other side: frame 1,700 is **25 draws, 94
+triangles**, with the three tiles at x 72..163 and y -46, 53, 153. They are not drawn wrongly.
+They are the only three that exist.
+
+### The wall: the game stops itself
+
+Tapping the one unlocked tile ends the run:
+
+```
+stopped   the image threw .?AVLuaException@lua@@; unwound 3 frames, no matching catch found
+message: "bad argument #1 to 'pairs' (table expected, got nil)"
+message: " (call stack not available)"
+```
+
+The dumped scripts name the site exactly. `PageGrid` has four methods, and one of them is
+
+```lua
+function PageGrid:getPage(gridX, gridY)
+    for _, page in pairs(self.pages) do ...
+```
+
+while `self.pages` is created in `PageGrid:init` and nowhere else. So a page grid whose `init`
+never ran was asked for a page - which is also the most likely reason the level listing is
+three tiles instead of fifteen. One missing initialisation, two symptoms.
+
+**This is the image's own code failing, not the emulator refusing to run it.** The distinction
+matters for what to do next: there is no unimplemented import here, no stubbed vtable slot, no
+fault domain - the CPU ran every instruction the game asked for, and the game's Lua decided it
+had nothing to iterate. Finding out *why* that init is skipped means following the menu engine's
+scene construction, which is Lua, which is now readable.
+
+Worth noting what the run still does after that: it presents 1,810 frames, opens 774 files with
+two expected misses (`devconfig.json` and `highscores.lua`, neither of which exists on a first
+run), and keeps its trap page intact to the end.
+
+
+## A format, not a missing sprite
+
+The episode list drew a 38-pixel column of horizontal stripes between the last panel and the
+edge of the screen. It looked like a sprite that had failed to load, or a UV that had run off
+the end of an atlas.
+
+It was neither. The per-draw dump names the texture *and its format*:
+
+```
+draw: 6 indices, tex Texture2D46 523x506 fmt 115
+```
+
+**DXGI format 115 is `B4G4R4A4_UNORM` - two bytes a pixel**, which is how a phone game stores
+its UI to halve the memory it costs. `Direct3DRuntime` sized every uncompressed texture at four:
+
+```csharp
+resource.RowPitch = resource.PixelWidth * 4;   // wrong for 85, 86 and 115
+```
+
+So each uploaded row went into a slot twice its real width, half of every row was dropped, the
+rest landed on the wrong scanline, and `Sample` then read four bytes per texel out of two-byte
+pixels. Stripes.
+
+What was actually missing is bigger than the artefact: the whole right-hand foreground of that
+screen - a tree trunk, its leaves and a purple flower - had never been drawn at all.
+
+`Resource.PixelBytes` now carries the size, and `Sample` decodes all three 16-bit layouts.
+One detail worth keeping: the channels are **expanded, not shifted**. Four bits of `0xF` must
+come out 255 rather than 240, or every white in the interface is quietly grey - which reads as
+a stylistic choice, not a bug, and would have survived any number of screenshots.
+
+**This will have fixed more than one screen.** A WP title draws most of its UI from 4444
+atlases, so anything that looked flat, striped or absent is worth another look.
+
+
+## Why it is slow, measured
+
+"It takes a minute to reach the menu" had three plausible causes and the profile killed two
+of them.
+
+The run prints a timeline now, taken from the colour the image clears to - a game announces
+its phases that way, and seconds are the currency the question is asked in:
+
+```
+-- HOW THE LOAD SPENT ITS TIME
+     10.7s  frame      0  clears to (1.00,1.00,1.00)
+    139.1s  frame    302  clears to (0.30,0.76,0.90)
+```
+
+Ten seconds before the first frame - 195 C++ static initialisers and the Lua bootstrap - then
+**302 frames of loading in 128 seconds, 424ms each**. Frames after the menu are far cheaper.
+So the load is not waiting on anything: it is compute.
+
+### The two things it is not
+
+**Not the host stubs.** Every stub is timed now, and the whole set accounts for **2%** of a
+run. The most expensive single entry is `memcpy` at half a microsecond a call.
+
+**Not the boundary.** A crossing into a stub costs **0.16us**, and the binding underneath it
+is 25ns per register read. At 3.7 million crossings that is half a second in a three minute
+run. `memcmp` and `strcmp` between them are 43% of all crossings - the obvious thing to
+optimise - and rewriting them would save almost nothing.
+
+### What it is
+
+Guest **stores**. The benchmark that matters is not the headline one:
+
+| loop | Unicorn, no hook | Unicorn, code hook |
+| --- | --- | --- |
+| `subs r0,#1 ; bne` - the headline figure | 788 MIPS | 169 MIPS |
+| `ldr` alone | 792 MIPS | - |
+| `str` alone | **29 MIPS** | 28 MIPS |
+| a realistic mix - load, add, store, call, branch | **57 MIPS** | 46 MIPS |
+
+A store costs about **96ns**, twenty-five times a load and seventy times an ALU operation,
+and it is the same with the page mapped non-executable, so it is not write-protection
+tracking - it is Unicorn's write path, which cannot use the TLB fast path the read path uses.
+The image is 11% stores (**210,097,414** of them in two billion instructions, counted through
+the write hook that was already there), and in the mixed loop that one store in eight
+instructions is 68% of the time.
+
+**The code hooks are worth 1.24x, not 4.7x.** Any `UC_HOOK_CODE` stops Unicorn chaining
+translation blocks, and on the two-instruction loop that costs 4.7x - which is why the
+headline benchmark shows it. On code shaped like a real program the same hook costs 46 vs 57
+MIPS, because real code leaves a basic block every few instructions anyway. Removing the
+import trap's code hook is a deep refactor of the trap mechanism for a quarter of a
+speed-up. **Measure the mix before paying for the fix.**
+
+### What would fix it
+
+The same two loops under dynarmic, which is already built and licence-clean:
+
+| loop | Unicorn | dynarmic | |
+| --- | --- | --- | --- |
+| tight ALU | 788 MIPS | 3,384 MIPS | 4.3x |
+| realistic mix | 57 MIPS | **1,794 MIPS** | **31x** |
+
+dynarmic's figure is from its *slow* memory path - `UserCallbacks`, a virtual call per access
+- because that is what the prototype wires up. A page table would be faster again. Thirty-one
+times would turn the 128 second load into about four seconds, which is roughly what the game
+takes on the phone it was written for.
+
+That is the case for the port, and it is now a measurement rather than an argument.
+
+### A knob that did not help, kept because the answer is useful
+
+`WPR_CLOCK` sets how far the virtual clock advances per frame (microseconds, or `auto` to
+follow the host's own clock). The default, 16,667us, tells the image it runs at exactly 60fps
+however long a frame really took - which is what makes a run reproducible, the same tap
+landing on the same frame every time.
+
+The theory was that the load is mostly the game waiting on timers, so a faster clock would
+skip it. It is not, and it does not: at `WPR_CLOCK=100000` the game reached **47 frames in
+three billion instructions** - 64 million instructions per frame against 2.85 million - because
+a large delta puts its own catch-up loop to work. Fewer, much more expensive frames. The knob
+stays for experiments; the load is compute, and only the CPU can fix it.
+
+
+## Licensing — this engine cannot ship
+
+**Unicorn is GPLv2. WPR is MIT.** Verified 2026-09-01 against
+`unicorn-engine/unicorn`'s own `COPYING` ("GNU GENERAL PUBLIC LICENSE Version 2, June 1991")
+and its README ("Distributed under free software license GPLv2"); the repository also carries
+`COPYING.LGPL2` and `COPYING_GLIB` for vendored pieces, but the project as distributed is
+GPLv2. The `UnicornEngine.Unicorn` NuGet package declares no licence at all and ships no
+licence file, which is why this was worth checking rather than assuming.
+
+MIT and GPLv2 are compatible in the direction that matters - MIT code may be combined into a
+GPL work - but the *combined distribution* then has to be GPLv2. Shipping `unicorn.dll` or
+`libunicorn.so` inside a WPR installer or APK, next to a WPR component that P/Invokes it, is
+the case the GPL exists to cover. WPR could not continue to describe that build as MIT.
+
+**Nothing is exposed today.** This probe is in no solution and no CI workflow, `unicorn.dll`
+is gitignored, and a `PackageReference` in unbuilt research source is not distribution of a
+binary. The exposure begins at the exact moment a shipping project takes the dependency.
+
+Three ways out, and the choice is a project decision rather than a technical one:
+
+1. **Relicense the shipped product as GPLv2.** Lawful and simple, but it is not this
+   document's call - the `LICENSE` copyright holder is MediaExplorer.
+2. **Never distribute Unicorn.** Support WP8 native only when the user supplies their own
+   `unicorn.dll`, which is already exactly what `run.ps1` does. Commonly done, and it avoids
+   the distribution trigger; it is not risk-free, because the FSF's position is that a
+   program designed to link a GPL library forms a combined work regardless.
+3. **Use a different CPU.** `dynarmic` is **0BSD** - confirmed on the three live forks, the
+   original `merryhime/dynarmic` having gone - and it is a *recompiler* rather than an
+   interpreter, so it addresses the throughput problem in the same move. Its `A32` frontend
+   is ARMv6K/ARMv7A, which is precisely WP8's Thumb-2, and the actively maintained forks are
+   Vita3K's (PS Vita is a Cortex-A9, the same architecture as our target) and azahar's.
+
+Option 3 is the one that makes a shipped WP8 runtime possible, and it fits better than it
+looks. Dynarmic leaves memory to the embedder - a 4 KB-granular `page_table`, or a
+`fastmem_pointer` over a host reservation - and this probe already owns its whole address
+space. The trap mechanism gets *simpler*: instead of IAT slots pointing at a page of
+`bx r12`, each slot becomes an `svc #n` and `CallSVC` hands us the index directly.
+
+What it costs is this harness. Dynarmic has no hook API, so the write watches, the block
+statistics, the runaway detector and the heap-execution guard - the tooling that found most
+of the bugs recorded above - have no equivalent and would have to be rebuilt or lost. The
+sane split is therefore to keep **Unicorn as the research harness, never distributed**, and
+target **dynarmic for the product**.
+
+Neither can be built on this machine's Windows side: there is no cmake, no MSVC, no clang,
+no gcc and no NDK. WSL has cmake 4.2.3 and g++ 15.2, so a linux-x64 evaluation is possible
+today on the fallback path `run.ps1` already uses - and that is enough to answer the only
+question that matters first, which is how much faster it actually is.
+
+
+## Throughput, measured
+
+The self-test's 787 MIPS is a two-instruction loop that translates once and spins. Against a
+real image the figure is **~22 MIPS**, and three measurements say where it is not going:
+
+| run | wall | rate |
+| --- | --- | --- |
+| 300M instructions | 12 s | 25 MIPS |
+| 2e9 instructions | 87 s | 23 MIPS |
+| 4e9 instructions | 183 s | 22 MIPS |
+
+- **Not the trap path.** Timing the trap handler directly: 566,700 traps cost **449 ms of a
+  12 s run**, and 3.85M traps cost 2.4 s of 183 s - under 4%, then under 2%. At 0.79
+  microseconds each, host dispatch is doing its job. Worth knowing before optimising it,
+  because 812,603 import calls in a 900M-instruction run *looks* like the answer.
+- **Not the write watch.** Removing the whole-heap `AddMemWriteHook` and re-measuring gave
+  38 s both times, to the second.
+- **Not cold-code translation.** The marginal rate between the 2e9 and 4e9 runs is 20.8 MIPS,
+  which is the same as the average. If translation dominated, the rate would climb as code
+  went hot. It is flat, so this is simply what Unicorn costs on this workload.
+
+**It is partly the trap mechanism, in a way that cannot be optimised.** The self-test now
+runs its loop twice, once with a code hook installed over a range the loop never enters:
+
+| | |
+| --- | --- |
+| no hooks | 774 MIPS |
+| one code hook | **168 MIPS** |
+
+The hook never fires. The cost is not the callback - it is that having *any* `UC_HOOK_CODE`
+stops Unicorn chaining its translation blocks, so every block exits to the dispatcher. That
+is a 4.6x tax on the whole image, and this probe cannot avoid it: the trap page **is** a code
+hook, and it is the entire host-call mechanism.
+
+It is not an artefact of the MinGW build this repo uses on Windows. The same self-test under
+WSL, on the package's own `libunicorn.so`, reports 962 MIPS and 312 MIPS - a 3.1x tax on a
+different build of a different binary on a different platform.
+
+So the ceiling is 168 MIPS rather than 774, and the ~7.6x from there down to 22 is the honest
+difference between a real workload and a two-instruction ALU loop.
+
+For scale, a WP8 device is a ~1 GHz ARM, so this is on the order of 2% of the real thing.
+`dynarmic` runs the *identical* Thumb-2 loop at **2,491 MIPS**, and - the part that matters -
+it needs no code hook for any of this: an IAT slot becomes `svc #n` and `CallSVC` is a
+first-class thing the recompiler already handles. Compared like for like, against the 168
+MIPS this design actually gets rather than the 774 it would get without traps, that is a
+**~15x ceiling**, not 3.2x. The real workload will not move by the whole of that - the 7.6x
+residual is complexity both engines pay - but the 4.6x is structural, measured, and avoidable
+only by changing engine.
+
+**But the number that decides this has not been measured, and cannot be yet.** The marginal
+rate above is ~708,000 instructions per presented frame, i.e. ~29 fps - on a splash screen
+with four draws, where the game is idling. Nobody knows what a frame of actual gameplay costs
+because gameplay is unreachable: firing a bird needs a drag, and input is press-and-release at
+the screen centre. So the honest order is **input first, then measure a real frame, then pick
+a CPU** - not the other way round.
+
+
 ## Known gaps
 
 - **No TEB.** Unicorn 2.1.3 treats `UC_ARM_REG_C13_C0_2` (TPIDRURW) as a no-op, so the
@@ -1446,18 +2724,21 @@ unchanged if this graduates into a backend project.
 - **File I/O is implemented but barely exercised.** The image opens exactly one file before
   it throws, so `fread`, `fwrite`, `fseek` and the Win32 layer are written but untested
   against real use. That waits on the handler transfer.
-- **No exception unwinding.** `_CxxThrowException` stops the run rather than pretending.
-  The `.pdata` unwind tables are all present; nothing reads them yet.
 - **No real concurrency.** Deferred callbacks are not threads: anything expecting to run
-  while its caller continues deadlocks rather than waits.
+  while its caller continues deadlocks rather than waits. Events, critical sections and SRW
+  locks exist now (`SyncLibrary`) but they are single-threaded impersonations - a lock always
+  succeeds because it can never be contended, and an unsignalled wait yields once and then
+  reports a timeout.
 - **No `sscanf` or `strftime`.** The printf side of varargs works; scanning a string back
   into caller-supplied pointers does not. `CrtLibrary.NotImplemented` lists them.
 - **D3D11 records, it does not render.** Device, context, DXGI chain, swap chain and the
-  resource types exist, and every call is logged; nothing rasterises and no pixel is
-  produced. Bridging emulated resources to a host GPU is untouched.
-- **Nothing is rasterised.** A thousand frames are presented, but the D3D layer records
-  calls rather than drawing: there is no pixel anywhere, only a description of the frame the
-  game asked for.
+  resource types exist and every call is logged, and `FrameCapture` rasterises a frame in
+  software - but nothing reaches a GPU. Shader bytecode is discarded at `CreateVertexShader`
+  rather than kept, which is the first thing a real bridge would need.
+- **The rasteriser runs no shaders.** Positions come straight from the vertex buffer through
+  one constant-buffer matrix; there is no vertex shader, no pixel shader, no depth buffer, no
+  blend state, no filtering and no mip selection. It draws what this title's 2D sprite path
+  asks for and would draw a 3D scene wrongly.
 - **Yielding is cooperative and only `Concurrency::wait` yields.** Any other blocking
   primitive the image reaches - an event wait, a join, a lock held across a handoff - still
   deadlocks rather than waits.
@@ -1469,12 +2750,21 @@ unchanged if this graduates into a backend project.
 - **The unwinder is not exact.** Two frames of a twelve-frame walk came back with a state
   the IP map does not contain and with handler data at a negative RVA. The walk survives
   both, but a handler search across those frames cannot be trusted.
-- **Only one input event is ever raised.** A single tap at 240 frames, delivered from
-  ProcessEvents. The other three subscriptions - Closed, PointerMoved, VisibilityChanged -
-  are accepted and never fired, and there is no keyboard, no back button and no way to aim
-  a tap anywhere but the middle of the screen.
-- **The window size is a constant.** 800x480, chosen because every WP8 device shipped at
-  WVGA or a scale of it. Nothing negotiates it with a real surface.
+- **Input is scripted, and only one pointer.** `WPR_INPUT` does taps and drags at named
+  coordinates (see *Input is a script, not a tap*), which is enough for a slingshot. There is
+  no multi-touch, no pinch, nothing driven by what is on the screen, and the Closed and
+  VisibilityChanged subscriptions are still accepted and never fired.
+- **Asynchronous operations complete instantly, by inference.** A discovery-default method
+  taking one argument that looks like a WinRT delegate is treated as `put_Completed` and
+  answered at once. That is the right shape for the WinRT async pattern and nothing else in
+  WinRT looks like it - an event registration wants a token through a second argument - but
+  it is a guess made from a call signature, not from knowing the interface. What fired is
+  printed with the run, which is how you check.
+- **The window size is a constant.** 480x800 - WVGA portrait, which is what a WP8 CoreWindow
+  is - with the frame rasterised into the 800x480 landscape the game composes in. Nothing
+  negotiates either with a real surface, and `WPR_WINDOW` / `WPR_SCREEN` are the only way to
+  ask for anything else. A title that reads the bounds and lays out portrait would need the
+  pair swapped by hand.
 - **QueryInterface lies.** It returns the same object for any IID asked for, which holds
   only because these statics implement one interface each.
 - **Unimplemented imports return 0.** Fine for a void or an ignored handle, a lie

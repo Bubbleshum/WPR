@@ -16,7 +16,7 @@ namespace Microsoft.Xna.Framework.Audio
 		 * native struct directly, negating Z on the way in/out to convert between XNA's
 		 * right-handed space and the native left-handed one. The struct now lives behind the audio
 		 * seam, so the values are kept here as plain XNA-space vectors and the BACKEND applies the
-		 * handedness flip when it builds its native structs (see FnaAudioBackend.ToF3D). Same
+		 * handedness flip when it builds its native structs (see FAudioSoundBackend.ToF3D). Same
 		 * public API, no native dependency.
 		 */
 

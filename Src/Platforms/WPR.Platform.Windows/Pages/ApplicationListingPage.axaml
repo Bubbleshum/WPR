@@ -2,7 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:p="clr-namespace:WPR.Platform.Windows.Properties"
+             xmlns:p="clr-namespace:WPR.Shell;assembly=WPR.Shell"
              xmlns:nst="clr-namespace:WPR.Platform.Windows.Views"
              xmlns:ic="clr-namespace:Projektanker.Icons.Avalonia;assembly=Projektanker.Icons.Avalonia"
              xmlns:vm="clr-namespace:WPR.Platform.Windows.ViewModels"
@@ -189,6 +189,11 @@
                       Command="{Binding ChoosenApp.InfoAppCommand}"
                       Content="Info"
                       ToolTip.Tip="Product id, install folder, patcher version and achievement catalogue state for this game. Read-only; Copy all puts the report on the clipboard."
+                      IsVisible="{Binding ChoosenApp.IsInstalled}"/>
+              <Button Classes="ghost"
+                      Command="{Binding ChoosenApp.ControlsAppCommand}"
+                      Content="Controls"
+                      ToolTip.Tip="Bind keys to touch taps and swipes for this game. Draw the gesture on a to-scale phone outline; saved with this game only."
                       IsVisible="{Binding ChoosenApp.IsInstalled}"/>
               <Button Classes="ghost"
                       Command="{Binding ChoosenApp.UninstallAppCommand}"

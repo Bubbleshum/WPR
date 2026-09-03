@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Notifications.WindowsToast - INotificationManager over the Windows toast API
+    (Microsoft.Toolkit.Uwp.Notifications), plus the Start-menu shortcut registration that toasts
+    require to be attributable to an app.
+
+    A MODULE: it implements a contract owned by WPR.Engine.Notifications and is plugged in by a
+    head declaring caps.Notifications(...). It was inside WPR.Platform.Windows until 2026-09-01.
+
+    Named for the TECHNOLOGY, not the platform - see the naming note in CLAUDE.md. "WindowsToast"
+    is what this is built on; "Windows" alone would name the platform and become a lie the day
+    something else on Windows fills the same seam.
+
+    The -windows TFM is real here and not incidental: ShellLink is COM interop against the Windows
+    shell, and the toolkit package is Windows-only.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows10.0.17763.0</TargetFramework>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <AssemblyName>WPR.Notifications.WindowsToast</AssemblyName>
+    <RootNamespace>WPR.Notifications.WindowsToast</RootNamespace>
+    <Nullable>disable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Notifications\WPR.Engine.Notifications.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
+  </ItemGroup>
+
+</Project>

@@ -53,24 +53,40 @@ When a stage removes an FNA/Vortice leak, the test will fail asking you to shrin
 is the machine-checkable half of the "Runtime/Frameworks/Engine have no FNA
 references" success criteria.
 
-### Live baseline (2026-08-30) — 2 entries, test green
+### Live baseline (2026-09-01) — **EMPTY**. Stage 5's fitness criterion is met.
 
-| Assembly | Backend | Actual cause (read out of the built IL) | Cleared by |
-|---|---|---|---|
-| `WPR.Platform.Windows` | FNA | `Game`, `GameComponent`, `DrawableGameComponent`, `GameWindow` — the tilt XNA components | spine stage (5f) |
-| `WPR.Platform.Android` | FNA | `Game` | spine stage (5f) |
+`KnownBackendLeaks` holds nothing. The only assemblies referencing FNA or Vortice are the
+adapters in `AllowedReferrers`: `WPR.Backend.FNA`, `WPR.Backend.Direct3D11` and
+`WPR.Audio.FAudio`.
 
-**Every remaining leak is FNA, and every one is the spine set** — `Game`, `GameComponent`,
-`DrawableGameComponent`, `GameWindow` and nothing else. The whole remaining baseline is blocked
-on the spine stage and its window-compositing product call.
+The last two entries — both platform heads — cleared together:
+
+| Assembly | Was leaking | Cleared by |
+|---|---|---|
+| `WPR.Platform.Windows` | `Game`, `GameComponent`, `DrawableGameComponent`, `GameWindow` | the two tilt `GameComponent`s moved to `WPR.Backend.FNA/Input/` behind `ITiltEmulationHost`; the window icon now travels down as pixels (`GameWindowIcon`) instead of through an `Action<Game>` hook |
+| `WPR.Platform.Android` | `Game` — **type reference only, no member touched** | the same `Action<Game>` parameter disappearing from `FnaGameHost`'s ctor. The head never passed one; its call site named the full signature |
+
+> **This did NOT require the spine stage**, contrary to what this document and
+> ARCHITECTURE-MIGRATION §5 previously asserted. A `GameComponent` does have to derive from
+> *something*, and it still derives from FNA's — but a type deriving from a backend type is only a
+> *leak* when it lives outside an allowed referrer. Moving the deriving types into the backend was
+> always sufficient. The window-compositing product call still gates Stage 5f itself (games binding
+> only WPR-owned identities), just not this baseline.
+
+**Two traps this stage walked into, both already documented below — read them before trusting a
+red result.** The stale-copy union kept both heads "leaking" from their *Release* outputs long
+after Debug was clean; and the scan picked up `wprharness`, the scratch console harness CLAUDE.md
+tells you to build into the desktop head's output directory. The second was a real hole in the
+test, fixed the same day: it now governs only assemblies a `.csproj` in the tree actually produces
+(reading `<AssemblyName>`, since several projects deliberately ship under a WP7 identity).
 
 ### Target burn-down for the remaining stages
 
 | Stage | Expected `KnownBackendLeaks` after the stage |
 |---|---|
-| 5f (spine) | **empty** — FNA/Vortice severed from everything but the two backend adapters |
+| 5f (spine) | already **empty** — reached 2026-09-01, ahead of this stage. 5f no longer has a baseline to burn down; its remaining job is the identity criterion (games binding only WPR-owned identities), which the fitness test does not measure |
 | 6 | empty (engine extracted clean; extend the test to cover the new engine projects) |
-| 7 | empty; only `WPR.Backend.FNA` / `WPR.Backend.Direct3D11` reference a backend |
+| 7 | empty; the only backend referrers are the adapters in `AllowedReferrers` — `WPR.Backend.FNA`, `WPR.Backend.Direct3D11` and `WPR.Audio.FAudio` (permanent: `FNADllMap` resolves natives only for P/Invokes declared in FNA) |
 
 > **Reading the failure message.** This test fails in two directions. "New backend leak(s)
 > detected" is a regression — fix the code. "These assemblies no longer reference a backend" is a
@@ -79,7 +95,7 @@ on the spine stage and its window-compositing product call.
 > assemblies elsewhere. That is exactly how `Microsoft.Devices.Sensors` cleared.
 
 > **Stale bin/ copies can mask a win.** The test scans *every* built copy of an assembly under
-> `Core/`, `Backends/` and `Platforms/` and unions their references — a project's own `bin/` plus
+> `Core/`, `Backends/`, `Platforms/` and `Audio/` and unions their references — a project's own `bin/` plus
 > the copies MSBuild fans out into each referencing project's output. After moving code between
 > assemblies, rebuild the dependents (or delete the stale copies) before trusting a red result;
 > a single stale DLL keeps a resolved leak alive.

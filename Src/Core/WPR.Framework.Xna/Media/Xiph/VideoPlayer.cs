@@ -8,6 +8,7 @@
 #endregion
 
 #region Using Statements
+using WPR.Engine.Audio;
 using System;
 using WPR.Xna.Rhi;
 using System.Diagnostics;
@@ -518,7 +519,7 @@ namespace Microsoft.Xna.Framework.Media
 			// Be sure we can even get something from the decoder...
 			if (	State == MediaState.Stopped ||
 				Video.theora == IntPtr.Zero ||
-				!XnaBackend.Media.HasVideoStream(Video.theora)	)
+				!AudioBackendRegistry.Media.HasVideoStream(Video.theora)	)
 			{
 				 // Screw it, give them the old one.
 				return videoTexture[0].RenderTarget as Texture2D;
@@ -528,7 +529,7 @@ namespace Microsoft.Xna.Framework.Media
 			if (thisFrame > currentFrame)
 			{
 				// Only update the textures if we need to!
-				if (XnaBackend.Media.ReadVideoFrames(
+				if (AudioBackendRegistry.Media.ReadVideoFrames(
 					Video.theora,
 					yuvData,
 					thisFrame - currentFrame
@@ -539,7 +540,7 @@ namespace Microsoft.Xna.Framework.Media
 			}
 
 			// Check for the end...
-			bool ended = XnaBackend.Media.IsEndOfVideo(Video.theora);
+			bool ended = AudioBackendRegistry.Media.IsEndOfVideo(Video.theora);
 			if (audioStream != null)
 			{
 				ended &= audioStream.PendingBufferCount == 0;
@@ -565,7 +566,7 @@ namespace Microsoft.Xna.Framework.Media
 				}
 
 				// Reset the stream no matter what happens next
-				XnaBackend.Media.ResetVideo(Video.theora);
+				AudioBackendRegistry.Media.ResetVideo(Video.theora);
 
 				// If looping, go back to the start. Otherwise, we'll be exiting.
 				if (IsLooped)
@@ -628,7 +629,7 @@ namespace Microsoft.Xna.Framework.Media
 			InitializeDecoderStream();
 
 			// Set up the texture data
-			if (XnaBackend.Media.HasVideoStream(Video.theora))
+			if (AudioBackendRegistry.Media.HasVideoStream(Video.theora))
 			{
 				// The VideoPlayer will use the GraphicsDevice that is set now.
 				if (currentDevice != Video.GraphicsDevice)
@@ -693,7 +694,7 @@ namespace Microsoft.Xna.Framework.Media
 				audioStream.Dispose();
 				audioStream = null;
 			}
-			XnaBackend.Media.ResetVideo(Video.theora);
+			AudioBackendRegistry.Media.ResetVideo(Video.theora);
 		}
 
 		public void Pause()
@@ -744,7 +745,7 @@ namespace Microsoft.Xna.Framework.Media
 
 		private void OnBufferRequest(object sender, EventArgs args)
 		{
-			int samples = XnaBackend.Media.ReadVideoAudio(
+			int samples = AudioBackendRegistry.Media.ReadVideoAudio(
 				Video.theora,
 				audioDataPtr,
 				AUDIO_BUFFER_SIZE
@@ -757,7 +758,7 @@ namespace Microsoft.Xna.Framework.Media
 					samples
 				);
 			}
-			else if (XnaBackend.Media.IsEndOfVideo(Video.theora))
+			else if (AudioBackendRegistry.Media.IsEndOfVideo(Video.theora))
 			{
 				// Okay, we ran out. No need for this!
 				audioStream.BufferNeeded -= OnBufferRequest;
@@ -801,13 +802,13 @@ namespace Microsoft.Xna.Framework.Media
 		private void InitializeDecoderStream()
 		{
 			// Grab the first video frame ASAP.
-			while (!XnaBackend.Media.ReadVideoFrames(Video.theora, yuvData, 1));
+			while (!AudioBackendRegistry.Media.ReadVideoFrames(Video.theora, yuvData, 1));
 
 			// Grab the first bit of audio. We're trying to start the decoding ASAP.
-			if (XnaBackend.Media.HasAudioStream(Video.theora))
+			if (AudioBackendRegistry.Media.HasAudioStream(Video.theora))
 			{
 				int channels, samplerate;
-				XnaBackend.Media.GetVideoAudioInfo(Video.theora, out channels, out samplerate);
+				AudioBackendRegistry.Media.GetVideoAudioInfo(Video.theora, out channels, out samplerate);
 				audioStream = new DynamicSoundEffectInstance(
 					samplerate,
 					(AudioChannels) channels

@@ -57,7 +57,35 @@ namespace WPR.Wp8Native
         private readonly WinRtRuntime _winRt;
         private readonly HStringHeap _strings;
         private readonly Dictionary<long, TrapSlot> _traps = new();
+        /// <summary>How many of the earliest and latest calls to keep.</summary>
+        private const int CallOrderKept = 64;
+
         private readonly List<string> _callOrder = new();
+        private readonly Queue<string> _recentCalls = new();
+
+        /// <summary>
+        /// Imports made while a queued callback is running, so a work item that returns
+        /// having done nothing can say what "nothing" consisted of.
+        /// </summary>
+        private List<string>? _insideDeferred;
+
+        /// <summary>
+        /// Every call across the boundary - import or vtable method - made while a capture is
+        /// open. Nested: a capture opened inside another is its own list, and closing it
+        /// restores the outer one.
+        /// </summary>
+        /// <remarks>
+        /// What this answers is "what did the image do with what I gave it". A completion
+        /// handler is invoked, reads the result it was handed, and decides something - and
+        /// without this the decision is invisible: the handler returns S_OK whether it liked
+        /// the answer or not. The list of what it touched on the way is the decision, in order.
+        /// </remarks>
+        private readonly Stack<List<string>> _captures = new();
+
+        public void StartCallCapture() => _captures.Push(new List<string>());
+
+        public IReadOnlyList<string> StopCallCapture()
+            => _captures.Count > 0 ? _captures.Pop() : [];
         private readonly List<string> _vtableCalls = new();
         private readonly Dictionary<string, int> _callCounts = new(StringComparer.Ordinal);
         private long _trapNext = TrapBase;
@@ -107,6 +135,7 @@ namespace WPR.Wp8Native
             _watchedWriteHook = OnWatchedWrite;
             _heapExecutionHook = OnHeapExecution;
             _traceHook = OnTracePoint;
+            _stopHook = OnStopPoint;
             _unmappedHook = OnUnmappedAccess;
             _blockHook = OnBlockEntered;
             _trapWriteHook = OnTrapPageWritten;
@@ -129,7 +158,9 @@ namespace WPR.Wp8Native
             // because the hook only runs on instructions actually executed in range.
             _uc.AddCodeHook(_heapExecutionHook, null, HeapBase, HeapBase + HeapSize);
 
-            if (collectBlockStats)
+            // WPR_SAMPLE needs the block hook whatever the budget, because a block histogram
+            // is the only thing that can see code calling nothing at all.
+            if (collectBlockStats || PcSampler.SamplingBlocks)
             {
                 _uc.AddBlockHook(_blockHook, null, 1, long.MaxValue);
                 BlockStatsCollected = true;
@@ -137,7 +168,22 @@ namespace WPR.Wp8Native
         }
 
         /// <summary>Imports called, in execution order, with duplicates preserved.</summary>
-        public IReadOnlyList<string> CallOrder => _callOrder;
+        /// <summary>
+        /// The first and last few imports called, in order, and how many there were.
+        /// </summary>
+        /// <remarks>
+        /// Bounded on purpose. This used to keep every call, which is fine for the eight
+        /// million instruction runs it was written for and ruinous for the eight *billion*
+        /// instruction runs that came later: 7.8 million strings, hundreds of megabytes, all
+        /// so that forty of them could be printed at each end. What is actually read is the
+        /// start - which says how the image came up - and the end, which says what it was
+        /// doing when it stopped. The middle has never been looked at once.
+        /// </remarks>
+        public IReadOnlyList<string> CallOrder =>
+            [.. _callOrder, .. _recentCalls];
+
+        /// <summary>How many imports were called, including the ones not kept.</summary>
+        public long CallOrderTotal { get; private set; }
 
         /// <summary>How many times each import was called.</summary>
         public IReadOnlyDictionary<string, int> CallCounts => _callCounts;
@@ -176,11 +222,17 @@ namespace WPR.Wp8Native
         /// <summary>The Direct3D and DXGI layer, and everything the image asked of it.</summary>
         public Direct3DRuntime Direct3D => _stubs.Direct3D;
 
+        /// <summary>The Win32 synchronisation primitives, for reporting.</summary>
+        public SyncLibrary Sync => _stubs.Sync;
+
         /// <summary>The audio engine, and everything the image asked of it.</summary>
         public XAudio2Runtime XAudio2 => _stubs.XAudio2;
 
         /// <summary>Points where the image asked for a throw that was never delivered.</summary>
         public IReadOnlyList<string> UndeliveredThrows => _stubs.UndeliveredThrows;
+
+        /// <summary>Platform exceptions the image constructed, and the HRESULT in each.</summary>
+        public IReadOnlyList<string> ConstructedExceptions => _stubs.ConstructedExceptions;
 
         /// <summary>How many C++ static initialisers ran during startup.</summary>
         public int StaticInitialisersRun => _stubs.StaticInitialisersRun;
@@ -199,6 +251,9 @@ namespace WPR.Wp8Native
 
         /// <summary>Stack unwinding driven by the image's .pdata table.</summary>
         public ArmUnwinder Unwinder { get; }
+
+        /// <summary>Where the image is spending its time. See <see cref="PcSampler"/>.</summary>
+        public PcSampler Samples { get; } = new();
 
         /// <summary>File I/O, backed by real files.</summary>
         public FileLibrary Files => _stubs.Files;
@@ -336,12 +391,59 @@ namespace WPR.Wp8Native
         {
             try
             {
-                _uc.EmuStart(startAddress, untilAddress, 0, instructionBudget);
+                // Unicorn's own `until` parameter is not used, and that is deliberate.
+                //
+                // Passing a real address to uc_emu_start crashes the process outright on the
+                // MinGW Windows build of Unicorn 2.1.3 - no managed exception, no stderr,
+                // just a dead process partway through printing the report. The same call is
+                // fine on the linux-x64 build from the NuGet package, which is why it went
+                // unnoticed until the probe first ran natively.
+                //
+                // A code hook at the stop address does the same job, costs nothing until the
+                // address is actually reached, and behaves identically on every build. The
+                // API keeps the `until` shape so no caller has to know any of this.
+                if (untilAddress != NeverReached)
+                {
+                    ArmStopAt(untilAddress);
+                }
+
+                _uc.EmuStart(startAddress, NeverReached, 0, instructionBudget);
                 return null;
             }
             catch (UnicornEngineException ex)
             {
                 return ex.Message;
+            }
+        }
+
+        private readonly HashSet<long> _stopHooks = new();
+        private readonly CodeHook _stopHook;
+        private long _stopAt = NeverReached;
+
+        /// <summary>
+        /// Arranges for the run to stop when the CPU reaches an address.
+        /// </summary>
+        /// <remarks>
+        /// Hooks are installed once per address and kept - this binding exposes no way to
+        /// remove one - so the handler checks the current target rather than assuming every
+        /// hook that fires is the one being waited for.
+        /// </remarks>
+        private void ArmStopAt(long address)
+        {
+            long target = address & ~1L;
+            _stopAt = target;
+
+            if (_stopHooks.Add(target))
+            {
+                _uc.AddCodeHook(_stopHook, null, target, target);
+            }
+        }
+
+        private void OnStopPoint(Unicorn uc, long address, int size, object? userData)
+        {
+            if (address == _stopAt)
+            {
+                _uc.EmuStop();
             }
         }
 
@@ -728,8 +830,38 @@ namespace WPR.Wp8Native
             }
         }
 
+        /// <summary>
+        /// Guest stores into the heap and the stack. Counted because a store costs this CPU
+        /// backend far more than any other instruction, so their number is the single most
+        /// useful figure for deciding whether a run is slow for a reason worth fixing.
+        /// </summary>
+        public long GuestStores { get; private set; }
+
+        private readonly Dictionary<string, long> _hostTime = new();
+
+        /// <summary>
+        /// Wall time spent inside each host stub, most expensive first, as a share of the
+        /// run.
+        /// </summary>
+        public IEnumerable<string> HostTime(double runSeconds)
+        {
+            double total = _hostTime.Values.Sum() / (double)System.Diagnostics.Stopwatch.Frequency;
+            yield return $"{total:F1}s of {runSeconds:F1}s inside host stubs " +
+                         $"({(runSeconds > 0 ? total / runSeconds * 100 : 0):F0}%)";
+
+            foreach ((string name, long ticks) in _hostTime.OrderByDescending(entry => entry.Value).Take(12))
+            {
+                double seconds = ticks / (double)System.Diagnostics.Stopwatch.Frequency;
+                long calls = _callCounts.GetValueOrDefault(name);
+                yield return
+                    $"{seconds,7:F2}s  {calls,10:N0} call(s)  {(calls > 0 ? seconds / calls * 1e6 : 0),8:F2} us each  {name}";
+            }
+        }
+
         private void OnWatchedWrite(Unicorn uc, long address, int size, long value, object? user)
         {
+            GuestStores++;
+
             foreach ((long start, long end, string label) in _watches)
             {
                 if (address < start || address >= end)
@@ -823,6 +955,14 @@ namespace WPR.Wp8Native
             }
 
             long size = _allocations[index].Size;
+
+            // A block on its way out is the one reliable place to see a decrypted script whole.
+            // The check is six bytes and only runs while a dump is wanted, so free stays cheap.
+            if (ScriptDumper.Requested is { } wanted)
+            {
+                Scripts.Capture(this, pointer, size, wanted.Directory);
+            }
+
             if (!_freeBlocks.TryGetValue(size, out Stack<long>? bucket))
             {
                 bucket = new Stack<long>();
@@ -929,6 +1069,12 @@ namespace WPR.Wp8Native
 
         /// <summary>Bytes handed out by <see cref="AllocateHeap"/> so far.</summary>
         public long HeapUsed => _heapNext - HeapBase;
+
+        /// <summary>Where the heap starts, for anything that wants to walk it.</summary>
+        public const long HeapBaseAddress = HeapBase;
+
+        /// <summary>Recovers decrypted scripts from the heap. See <see cref="ScriptDumper"/>.</summary>
+        public ScriptDumper Scripts { get; } = new();
 
         private void MapImage()
         {
@@ -1171,6 +1317,8 @@ namespace WPR.Wp8Native
             (string name, long function, long[] arguments) = _deferred.Dequeue();
             _deferredLog.Add($"-> {name} at 0x{function:X8} (from a yield)");
             Yields++;
+            long importsBefore = CallOrderTotal;
+            _insideDeferred = new List<string>();
 
             long resume = ReturnAddress;
             long[] snapshot = CaptureRegisters();
@@ -1178,7 +1326,10 @@ namespace WPR.Wp8Native
             long resumeTrap = CallEmulated(name, function, arguments, onReturn: () =>
             {
                 _domain = null;
-                _deferredLog.Add($"   {name} returned 0x{_uc.RegRead(Arm.UC_ARM_REG_R0):X8}");
+                _deferredLog.Add(
+                    $"   {name} returned 0x{_uc.RegRead(Arm.UC_ARM_REG_R0):X8} " +
+                    $"after {CallOrderTotal - importsBefore:N0} import call(s)" +
+                    DescribeDeferredWork());
                 ContinueAt(resume);
             });
 
@@ -1205,6 +1356,8 @@ namespace WPR.Wp8Native
 
             (string name, long function, long[] arguments) = _deferred.Dequeue();
             _deferredLog.Add($"-> {name} at 0x{function:X8}");
+            long importsBefore = CallOrderTotal;
+            _insideDeferred = new List<string>();
 
             // Snapshot before the arguments go in, so an abandoned callback resumes with
             // the caller registers rather than its own half-used ones.
@@ -1213,7 +1366,15 @@ namespace WPR.Wp8Native
             long resumeTrap = CallEmulated(name, function, arguments, onReturn: () =>
             {
                 _domain = null;
-                _deferredLog.Add($"   {name} returned 0x{_uc.RegRead(Arm.UC_ARM_REG_R0):X8}");
+
+                // How much the callback actually did, not just that it returned. A work item
+                // that comes back S_OK having made fifty calls did nothing; the same line
+                // showing a hundred thousand is a loader that ran. Nothing else here can tell
+                // those apart, and they look identical in the log.
+                _deferredLog.Add(
+                    $"   {name} returned 0x{_uc.RegRead(Arm.UC_ARM_REG_R0):X8} " +
+                    $"after {CallOrderTotal - importsBefore:N0} import call(s)" +
+                    DescribeDeferredWork());
                 DrainDeferredCalls(onDrained);
             });
 
@@ -1333,12 +1494,47 @@ namespace WPR.Wp8Native
             switch (slot.Kind)
             {
                 case TrapKind.Import:
-                    _callOrder.Add(slot.Name);
+                    CallOrderTotal++;
+                    _insideDeferred?.Add(slot.Name);
+                    if (_captures.Count > 0)
+                    {
+                        _captures.Peek().Add(slot.Name);
+                    }
+
+                    if (_callOrder.Count < CallOrderKept)
+                    {
+                        _callOrder.Add(slot.Name);
+                    }
+                    else
+                    {
+                        _recentCalls.Enqueue(slot.Name);
+                        if (_recentCalls.Count > CallOrderKept)
+                        {
+                            _recentCalls.Dequeue();
+                        }
+                    }
+
                     _callCounts[slot.Name] = _callCounts.GetValueOrDefault(slot.Name) + 1;
+
+                    // lr is the caller, and this is the one moment it is guaranteed to be.
+                    // Free attribution: it turns a count of imports into a map of the image.
+                    Samples.RecordCallSite(_uc.RegRead(Arm.UC_ARM_REG_LR), slot.Name);
+
+                    if (PcSampler.ArgumentSite != 0 &&
+                        (_uc.RegRead(Arm.UC_ARM_REG_LR) & ~1L) == PcSampler.ArgumentSite)
+                    {
+                        Samples.RecordArguments(DescribeArguments(slot.Name));
+                    }
+
                     break;
 
                 case TrapKind.VtableMethod:
                     _vtableCalls.Add(slot.Name);
+                    if (_captures.Count > 0)
+                    {
+                        _captures.Peek().Add(slot.Name);
+                    }
+
                     break;
 
                 // Return traps are plumbing for a host-to-emulated call, not calls the
@@ -1354,6 +1550,11 @@ namespace WPR.Wp8Native
             // established and names the stub that failed.
             try
             {
+                // Timed per stub. The call counts alone cannot say where a run's seconds go:
+                // a stub called a million times that returns a constant is free, and one
+                // called a thousand times that decodes a texture is not.
+                long started = System.Diagnostics.Stopwatch.GetTimestamp();
+
                 if (slot.Handler is not null)
                 {
                     slot.Handler();
@@ -1362,10 +1563,14 @@ namespace WPR.Wp8Native
                 {
                     _stubs.Dispatch(slot.Name);
                 }
+
+                _hostTime[slot.Name] =
+                    _hostTime.GetValueOrDefault(slot.Name)
+                    + (System.Diagnostics.Stopwatch.GetTimestamp() - started);
             }
             catch (Exception ex) when (ex is not UnicornEngineException)
             {
-                HostFailure ??= $"{slot.Name} threw {ex.GetType().Name}: {ex.Message}";
+                HostFailure ??= $"{slot.Name} threw {ex.GetType().Name}: {ex.Message}{TopFrames(ex)}";
                 Stop($"the host stub for {slot.Name} failed: {ex.Message}");
             }
             catch (UnicornEngineException ex)
@@ -1377,6 +1582,27 @@ namespace WPR.Wp8Native
 
         /// <summary>The host-side failure that ended the run, if one did.</summary>
         public string? HostFailure { get; private set; }
+
+        /// <summary>
+        /// The first managed frames of an exception, so a host failure says where it happened
+        /// and not only what it said. "Parameter 'index' out of range" is thrown by every
+        /// list indexer and by CallFrame.Arg alike; the message alone cannot tell them apart.
+        /// </summary>
+        private static string TopFrames(Exception ex)
+        {
+            var trace = new System.Diagnostics.StackTrace(ex, fNeedFileInfo: false);
+            var lines = new List<string>();
+            foreach (System.Diagnostics.StackFrame frame in trace.GetFrames().Take(8))
+            {
+                System.Reflection.MethodBase? method = frame.GetMethod();
+                if (method is not null)
+                {
+                    lines.Add($"                  at {method.DeclaringType?.Name}.{method.Name}");
+                }
+            }
+
+            return lines.Count == 0 ? string.Empty : Environment.NewLine + string.Join(Environment.NewLine, lines);
+        }
 
         /// <summary>
         /// The classic null page. Nothing legitimate lives here, so any access is a null
@@ -1794,6 +2020,11 @@ namespace WPR.Wp8Native
             CodeBytesExecuted += size;
             _recentBlocks[_recentBlockCount++ % _recentBlocks.Length] = address;
 
+            if (PcSampler.SamplingBlocks)
+            {
+                Samples.RecordBlock(address);
+            }
+
             if (++_blocksSinceTrap != RunawayBlockLimit)
             {
                 return;
@@ -1806,6 +2037,72 @@ namespace WPR.Wp8Native
                       Newline + "                call stack:" + Newline + WalkHere() +
                       Newline + "                code addresses on the stack:" + Newline + ScanStack(64);
             Stop($"runaway loop at 0x{address:X8} - {RunawayBlockLimit:N0} blocks without a single call out");
+        }
+
+        /// <summary>
+        /// r0 to r3 at a call, with any that point at readable text shown as that text.
+        /// </summary>
+        private string DescribeArguments(string import)
+        {
+            int[] registers = [Arm.UC_ARM_REG_R0, Arm.UC_ARM_REG_R1, Arm.UC_ARM_REG_R2, Arm.UC_ARM_REG_R3];
+            var parts = new List<string>(4);
+
+            for (int i = 0; i < registers.Length; i++)
+            {
+                long value = _uc.RegRead(registers[i]);
+                string? text = TryReadText(value);
+                parts.Add(text is null ? $"r{i}=0x{value:X8}" : $"r{i}=\"{text}\"");
+            }
+
+            return $"{import}({string.Join(", ", parts)})";
+        }
+
+        /// <summary>
+        /// Reads printable text at an address, or null if there is none there.
+        /// </summary>
+        /// <remarks>
+        /// Deliberately strict: a run of printable bytes ending in NUL. A permissive version
+        /// renders every small integer as mojibake and makes the sample harder to read than
+        /// the raw registers would have been.
+        /// </remarks>
+        private string? TryReadText(long address, int limit = 48)
+        {
+            if (address < HeapBase && !IsExecutableCode(address) && address < 0x00400000)
+            {
+                return null;
+            }
+
+            try
+            {
+                byte[] bytes = ReadMemory(address, limit);
+                int length = 0;
+                while (length < bytes.Length && bytes[length] != 0)
+                {
+                    if (bytes[length] < 0x20 || bytes[length] > 0x7E)
+                    {
+                        return null;
+                    }
+
+                    length++;
+                }
+
+                return length >= 2 ? System.Text.Encoding.Latin1.GetString(bytes, 0, length) : null;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>Names the imports a queued callback made, when there were few enough.</summary>
+        private string DescribeDeferredWork()
+        {
+            List<string>? made = _insideDeferred;
+            _insideDeferred = null;
+
+            return made is null || made.Count == 0 || made.Count > 90
+                ? string.Empty
+                : ": " + string.Join(", ", made.Select(n => n[(n.IndexOf('!') + 1)..]));
         }
 
         private static long Align(long value, long alignment) => (value + alignment - 1) & ~(alignment - 1);

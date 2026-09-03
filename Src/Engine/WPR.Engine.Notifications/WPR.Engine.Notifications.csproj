@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Engine.Notifications - the notification subsystem: the API a head implements
+    (INotificationManager, Notification and friends, namespace DesktopNotifications) plus the
+    NotificationBackend registry the composition root fills.
+
+    Moved out of WPR.Common on 2026-09-01. It had accumulated there because WPR.Common is where
+    things go when they have no home; a notification API is not a general utility. Its consumers
+    are GamerServices (the achievement-unlock toast) and the launcher shells.
+
+    The namespace stays DesktopNotifications: it is a vendored third-party API shape, and both
+    heads' implementations sit under DesktopNotifications.Windows / .Android. Renaming it would
+    churn those for no gain - the same project-name-is-not-namespace convention the rest of the
+    tree uses.
+
+    Dependency-free. The vocabulary is Notification, DateTimeOffset and Task, which is why this
+    could leave WPR.Common at all - unlike the achievement store, whose seam speaks the game-facing
+    Achievement type and therefore cannot leave WPR.Framework.Xna.
+  -->
+
+  <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+  </PropertyGroup>
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net8.0-android</TargetFrameworks>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <AssemblyName>WPR.Engine.Notifications</AssemblyName>
+    <RootNamespace>WPR.Engine.Notifications</RootNamespace>
+    <Nullable>enable</Nullable>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net8.0-android'">21.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+</Project>

@@ -1,3 +1,4 @@
+using WPR.Shell;
 using Avalonia.Controls;
 using Avalonia.Media.Imaging;
 using WPR.Common;
@@ -56,8 +57,8 @@ namespace WPR.Platform.Windows.Pages
                     Configuration.Current.Save();
 
                     var msgBox = MessageBoxManager.GetMessageBoxStandardWindow(
-                        title: Properties.Resources.SuccessfullyChanged,
-                        text: Properties.Resources.SuccessfullyChangedDataPathMsg,
+                        title: WPR.Shell.Resources.SuccessfullyChanged,
+                        text: WPR.Shell.Resources.SuccessfullyChangedDataPathMsg,
                         icon: MessageBox.Avalonia.Enums.Icon.Success,
                         windowStartupLocation: WindowStartupLocation.CenterScreen);
 
@@ -73,8 +74,8 @@ namespace WPR.Platform.Windows.Pages
                 Configuration.Current.Save();
 
                 var msgBox = MessageBoxManager.GetMessageBoxStandardWindow(
-                    title: Properties.Resources.SuccessfullyChanged,
-                    text: Properties.Resources.SuccessfullyChangedDataPathMsg,
+                    title: WPR.Shell.Resources.SuccessfullyChanged,
+                    text: WPR.Shell.Resources.SuccessfullyChangedDataPathMsg,
                     icon: MessageBox.Avalonia.Enums.Icon.Success,
                     windowStartupLocation: WindowStartupLocation.CenterScreen);
 
@@ -251,7 +252,7 @@ namespace WPR.Platform.Windows.Pages
             }
 
             preview.Source = null;
-            pathText.Text = Properties.Resources.GamerPictureNone;
+            pathText.Text = WPR.Shell.Resources.GamerPictureNone;
         }
 
         Window GetWindow() => VisualRoot as Window ?? throw new NullReferenceException("Invalid Owner");

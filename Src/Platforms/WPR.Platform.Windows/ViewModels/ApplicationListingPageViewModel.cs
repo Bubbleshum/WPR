@@ -1,3 +1,4 @@
+using WPR.Shell;
 using ReactiveUI;
 using System.Threading.Tasks;
 using WPR;
@@ -48,6 +49,7 @@ namespace WPR.Platform.Windows.ViewModels
         public event EventHandler<ApplicationItemViewModel>? InstallRequested;
         public event EventHandler<ApplicationItemViewModel>? EditRequested;
         public event EventHandler<ApplicationItemViewModel>? InfoRequested;
+        public event EventHandler<ApplicationItemViewModel>? ControlsRequested;
 
 
         public string SearchText
@@ -155,10 +157,7 @@ namespace WPR.Platform.Windows.ViewModels
                     .Where(a => a.OwnProductId == productId)
                     .ToListAsync();
 
-                var ordered = rows
-                    .OrderByDescending(a => a.IsEarned)
-                    .ThenByDescending(a => a.GamerScore)
-                    .ThenBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
+                var ordered = WPR.Shell.AchievementRollup.InDisplayOrder(rows)
                     .Select(a => new AchievementItemViewModel(a))
                     .ToList();
 
@@ -286,6 +285,7 @@ namespace WPR.Platform.Windows.ViewModels
                     appItem.RepatchRequested += OnAppRepatchRequested;
                     appItem.EditRequested += OnAppEditRequested;
                     appItem.InfoRequested += OnAppInfoRequested;
+                    appItem.ControlsRequested += OnAppControlsRequested;
                 }
             }
             catch (Exception ex)
@@ -319,6 +319,11 @@ namespace WPR.Platform.Windows.ViewModels
         {
             // The page owns dialogs (modal Window lifetime, MainWindow as owner).
             InfoRequested?.Invoke(this, appItem);
+        }
+
+        private void OnAppControlsRequested(object? sender, ApplicationItemViewModel appItem)
+        {
+            ControlsRequested?.Invoke(this, appItem);
         }
 
         private void OnAppEditRequested(object? sender, ApplicationItemViewModel appItem)

@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFrameworks>net8.0</TargetFrameworks>
     <Platforms>x64</Platforms>
@@ -19,23 +19,12 @@
     <Message Importance="High" Text="Loaded property overrides from '$(FNASettingsPropsFilePath)'" Condition="Exists('$(FNASettingsPropsFilePath)')" />
   </Target>
   <ItemGroup>
-    <Compile Include="src\WprActivationGuard.cs" />
-    <Compile Include="src\WprGameThread.cs" />
-    <Compile Include="src\WprPhoneBackButton.cs" />
-    <Compile Include="src\DrawableGameComponent.cs" />
     <Compile Include="src\FNALoggerEXT.cs" />
     <Compile Include="src\FNAPlatform\FNAPlatform.cs" />
     <Compile Include="src\FNAPlatform\FNAWindow.cs" />
     <Compile Include="src\FNAPlatform\SDL2_FNAPlatform.cs" />
-    <Compile Include="src\Game.cs" />
-    <Compile Include="src\GameComponent.cs" />
-    <Compile Include="src\GameServiceContainer.cs" />
-    <Compile Include="src\GameWindow.cs" />
     <Compile Include="src\Graphics\FNA3D.cs" />
-    <Compile Include="src\GraphicsDeviceInformation.cs" />
-    <Compile Include="src\GraphicsDeviceManager.cs" />
     <Compile Include="src\NamespaceDocs.cs" />
-    <Compile Include="src\PreparingDeviceSettingsEventArgs.cs" />
     <Compile Include="src\Properties\AssemblyInfo.cs" />
     <Compile Include="src\TitleLocation.cs" />
     <Compile Include="src\Utilities\AssemblyHelper.cs" />

@@ -20,4 +20,9 @@
        Configuration.AccentColor at runtime (WpTheme.Accent) so the Settings page
        can repaint the whole shell; this constant only covers first run. -->
   <color name="wp_accent">#FF1BA1E2</color>
+
+  <!-- Background layer of the adaptive launcher icon (mipmap-anydpi-v26/ic_launcher.xml).
+       Sampled from the brand tile itself so that whatever mask the launcher applies, the
+       area outside the tile's rounded corners is the same colour as the tile. -->
+  <color name="ic_launcher_background">#FF090E1D</color>
 </resources>

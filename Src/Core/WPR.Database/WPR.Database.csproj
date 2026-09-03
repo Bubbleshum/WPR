@@ -24,7 +24,7 @@
     games' Microsoft.Xna.Framework.GamerServices.Achievement typerefs into WPR.Framework.Xna —
     so it cannot move here, while AchievementContext can. Splitting them naively would make
     WPR.Database -> WPR.Framework.Xna -> WPR.Database, a cycle. The fix is the IAchievementStore
-    seam that already exists (unimplemented) in WPR.Abstractions; see ADR 1.4 / Stage 5e.
+    seam; see ADR 1.4 / Stage 5e. (The unimplemented WPR.Abstractions stub it once referred to is gone.)
   -->
 
   <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">

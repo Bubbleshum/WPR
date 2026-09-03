@@ -92,6 +92,28 @@ namespace WPR.Wp8Native
 
         public int FunctionCount => _beginRvas.Length;
 
+        /// <summary>
+        /// The start address of the function containing <paramref name="address"/>, or zero
+        /// if the .pdata table does not cover it.
+        /// </summary>
+        /// <remarks>
+        /// The table has no end addresses, so a hit past the last function - or in a range
+        /// .pdata simply does not describe, which includes every leaf function too small to
+        /// need unwind data - is indistinguishable from a hit inside one. Anything outside the
+        /// code section is rejected outright; beyond that this is the same answer the real
+        /// unwinder would give, with the same limitation.
+        /// </remarks>
+        public long FunctionStart(long address)
+        {
+            if (address < _codeStart || address >= _codeEnd)
+            {
+                return 0;
+            }
+
+            int index = FindIndex(address);
+            return index < 0 ? 0 : _imageBase + _beginRvas[index];
+        }
+
         public int PackedCount => _unwindData.Count(u => (u & 3) != 0);
 
         public int XdataCount => _unwindData.Count(u => (u & 3) == 0);

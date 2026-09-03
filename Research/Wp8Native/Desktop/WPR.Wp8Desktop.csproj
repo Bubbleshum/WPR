@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The live desktop host for the WP8 native probe: the same emulator, in a window, with a
+    mouse. Windows-only by nature (WinForms), which is why it is a second project rather than
+    a mode of the console probe - the probe still has to build and run under WSL, where the
+    only Unicorn native the package ships can run.
+
+    It compiles the probe's sources directly rather than referencing the exe. Nothing in them
+    depends on being a console app; the one file left out is the probe's own Program.cs.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>WPR.Wp8Native.Desktop</RootNamespace>
+    <AssemblyName>WPR.Wp8Desktop</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <!--
+    The WinForms SDK adds System.Drawing and System.Windows.Forms as global usings. The shared
+    probe sources were not written with those in scope and neither namespace is short of names
+    that collide (Application, Timer, Region, Message), so they are removed here and imported
+    explicitly in the two files that want them.
+  -->
+  <ItemGroup>
+    <Using Remove="System.Drawing" />
+    <Using Remove="System.Windows.Forms" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\*.cs" Exclude="..\Program.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="UnicornEngine.Unicorn" Version="2.1.3" />
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\..\unicorn.dll')">
+    <None Include="..\unicorn.dll" Link="unicorn.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

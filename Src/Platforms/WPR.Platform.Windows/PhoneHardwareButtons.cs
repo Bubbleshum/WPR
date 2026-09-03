@@ -15,6 +15,17 @@ namespace WPR.Platform.Windows
     /// window-close fallback, Start → close the window (returning to the WPR
     /// launcher), Search → no-op (WP7 search is the OS-level Bing search,
     /// which doesn't apply here).
+    ///
+    /// <para><b>This is deliberately not unified with the XNA Back path</b>
+    /// (<c>IGameHost.PressBackButton</c> → <c>WprPhoneBackButton</c> →
+    /// <c>GamePad.Buttons.Back</c>). The two differ in semantics, not just
+    /// plumbing: that one is a level-sampled gamepad button held for exactly
+    /// one frame, this one is a routed event a page's <c>BackKeyPress</c>
+    /// handler can cancel before <c>GoBack()</c> runs. They also have disjoint
+    /// hosts — Silverlight apps are not driven by <c>IGameHost</c> at all, and
+    /// there is no Silverlight path on Android — so a common interface would
+    /// have two implementations and no caller that ever held it
+    /// polymorphically.</para>
     /// </summary>
     internal sealed class PhoneHardwareButtons : Control
     {

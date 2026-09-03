@@ -1,3 +1,4 @@
+using WPR.Shell;
 using Avalonia.Media.Imaging;
 using System;
 using System.IO;
@@ -29,12 +30,14 @@ namespace WPR.Platform.Windows.ViewModels
         public ReactiveCommand<Unit, Unit> RepatchAppCommand { get; }
         public ReactiveCommand<Unit, Unit> EditAppCommand { get; }
         public ReactiveCommand<Unit, Unit> InfoAppCommand { get; }
+        public ReactiveCommand<Unit, Unit> ControlsAppCommand { get; }
 
         public event EventHandler<ApplicationItemViewModel>? UninstallRequested;
         public event EventHandler<ApplicationItemViewModel>? InstallRequested;
         public event EventHandler<ApplicationItemViewModel>? RepatchRequested;
         public event EventHandler<ApplicationItemViewModel>? EditRequested;
         public event EventHandler<ApplicationItemViewModel>? InfoRequested;
+        public event EventHandler<ApplicationItemViewModel>? ControlsRequested;
 
         public ApplicationItemViewModel(Application app)
         {
@@ -45,6 +48,7 @@ namespace WPR.Platform.Windows.ViewModels
             RepatchAppCommand = ReactiveCommand.Create(RepatchApp);
             EditAppCommand = ReactiveCommand.Create(EditApp);
             InfoAppCommand = ReactiveCommand.Create(ShowInfo);
+            ControlsAppCommand = ReactiveCommand.Create(ShowControls);
         }
 
         public ApplicationItemViewModel(string xapFilePath, ApplicationPreview preview)
@@ -57,6 +61,7 @@ namespace WPR.Platform.Windows.ViewModels
             RepatchAppCommand = ReactiveCommand.Create(() => { });
             EditAppCommand = ReactiveCommand.Create(() => { });
             InfoAppCommand = ReactiveCommand.Create(() => { });
+            ControlsAppCommand = ReactiveCommand.Create(() => { });
         }
 
         /// <summary>
@@ -75,6 +80,7 @@ namespace WPR.Platform.Windows.ViewModels
             RepatchAppCommand = ReactiveCommand.Create(() => { });
             EditAppCommand = ReactiveCommand.Create(() => { });
             InfoAppCommand = ReactiveCommand.Create(() => { });
+            ControlsAppCommand = ReactiveCommand.Create(() => { });
 
             // Re-raise PropertyChanged for our Progress when the installer ticks.
             _InstallingProgressSub = installing.WhenAnyValue(i => i.Progress)
@@ -247,6 +253,15 @@ namespace WPR.Platform.Windows.ViewModels
         {
             if (!IsInstalled) return;
             InfoRequested?.Invoke(this, this);
+        }
+
+        /// <summary>Ask the page to open the per-game key-to-touch binding editor. Installed games
+        /// only: the bindings file lives in the install folder, so an uninstalled game has nowhere
+        /// to keep one.</summary>
+        private void ShowControls()
+        {
+            if (!IsInstalled) return;
+            ControlsRequested?.Invoke(this, this);
         }
 
         private void EditApp()

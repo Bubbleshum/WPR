@@ -1,3 +1,4 @@
+using WPR.Engine.Audio;
 using System;
 using System.IO;
 using System.Linq;
@@ -35,14 +36,14 @@ namespace WPR.Platform.Windows
             // composition the install pipeline itself needs have to be done here.
             //
             // Currently that means the audio transcoder: ApplicationInstaller.Install transcodes
-            // .wma soundtracks to Ogg Vorbis through WPR.Core.AudioTranscoderBackend, and since
+            // .wma soundtracks to Ogg Vorbis through AudioTranscoderBackend, and since
             // 2026-08-31 a missing transcoder FAILS the install (ConvertFailed) rather than silently
             // leaving the game mute. Without this line every XNA title with a .wma soundtrack —
             // Mirror's Edge has 40-odd tracks — would fail to install headlessly.
             //
             // Idempotent by assignment, so it does not matter that ServicesSetup would set the same
             // thing if the UI ever did start afterwards.
-            WPR.Core.AudioTranscoderBackend.SetTranscoder(new Audio.FFMpegCoreAudioTranscoder());
+            AudioTranscoderBackend.SetTranscoder(new Audio.FFMpegCoreAudioTranscoder());
 
             // ---- 1) Repatch every installed game -------------------------------------
             var installed = ApplicationContext.Current.Applications!.ToList();

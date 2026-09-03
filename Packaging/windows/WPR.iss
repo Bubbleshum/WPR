@@ -52,7 +52,7 @@ ArchitecturesInstallIn64BitMode=x64
 
 OutputDir={#OutputDir}
 OutputBaseFilename=WPR-Setup-{#AppVersion}
-SetupIconFile=..\..\Src\Platforms\WPR.Platform.Windows\Assets\avalonia-logo.ico
+SetupIconFile=..\..\Src\Platforms\WPR.Platform.Windows\Assets\wpr.ico
 UninstallDisplayIcon={app}\WPR.Platform.Windows.exe
 WizardStyle=modern
 Compression=lzma2/max

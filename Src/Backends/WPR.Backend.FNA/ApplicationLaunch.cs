@@ -1,4 +1,5 @@
 ﻿using Microsoft.Xna.Framework.Input.Touch;
+using WPR.Engine.Audio;
 using Microsoft.Xna.Framework;
 using System.Reflection;
 using System.Runtime.Loader;
@@ -203,6 +204,18 @@ namespace WPR
 
                 bool isMain = _CurrentMainAssemblyName != null &&
                               string.Equals(name.Name, _CurrentMainAssemblyName, StringComparison.OrdinalIgnoreCase);
+                AssemblyLoadContext target = isMain ? userAlc : loadContext;
+
+                // Hand back what is already loaded before minting a second identity from the
+                // same bytes — see TryReuseLoadedAssembly. Without this, MonoVM's second,
+                // partial-name request for a custom content-reader assembly duplicates it and
+                // the game's own casts start failing.
+                if (TryReuseLoadedAssembly(target, name, out Assembly? already) && already != null)
+                {
+                    WprTrace($"[wpr-resolve-default] REUSE {name.FullName} -> already loaded in {(isMain ? "user-alc" : "default-alc")} -> {already.FullName}");
+                    return already;
+                }
+
                 try
                 {
                     // LoadFromStream rather than LoadFromAssemblyPath: the latter holds
@@ -322,6 +335,11 @@ namespace WPR
                 debugListener = new TextWriterTraceListener(sw, "wpr_game_debug");
                 Trace.Listeners.Add(debugListener);
                 WprTrace("[wpr-trace] ApplicationLaunch: trace listener attached (smoke test)");
+                // Which module ended up on each audio seam. Reported here rather than where it is
+                // decided (FnaGameHost, before this file exists) so it lands in the per-game log
+                // beside the failures it explains — "sound=none" is the answer to a game throwing
+                // NoAudioHardwareException, and "media=" names who is actually playing songs.
+                WprTrace("[wpr-audio] " + WPR.Engine.Audio.AudioBackendRegistry.LastComposition);
                 InstallCrashHooks();
                 Backend.FNA.TeardownDiagnostics.RecordLaunchBaseline();
                 TeardownLog($"===== launch: {app.Name} ({app.ProductId}) =====");
@@ -374,6 +392,16 @@ namespace WPR
             //     → …game objects… → <Game subclass>
             Func<AssemblyLoadContext, AssemblyName, Assembly?> userAlcResolver = (ctx, name) =>
             {
+                // Reuse before loading — see TryReuseLoadedAssembly. LoadFromStream never
+                // caches, so a repeated request (MonoVM re-asks with a partial name) would
+                // otherwise put a second copy of the same assembly in this context and break
+                // every cast between the two.
+                if (TryReuseLoadedAssembly(ctx, name, out Assembly? alreadyLoaded) && alreadyLoaded != null)
+                {
+                    WprTrace($"[wpr-resolve-user] REUSE {name.FullName} -> already loaded -> {alreadyLoaded.FullName}");
+                    return alreadyLoaded;
+                }
+
                 // Satellite (localized) resource assemblies live in a per-culture SUBFOLDER
                 // (e.g. <folder>\en\battleship.resources.dll), not the install root. The CLR
                 // requests them as "<name>.resources, Culture=<c>"; the flat probe below only
@@ -895,6 +923,80 @@ namespace WPR
         }
 
         /// <summary>
+        /// Return the assembly already loaded in <paramref name="ctx"/> that satisfies
+        /// <paramref name="requested"/>, if there is one.
+        ///
+        /// <para><b>Why every Resolving handler must call this first.</b>
+        /// <see cref="AssemblyLoadContext.LoadFromStream(System.IO.Stream)"/> has no cache: it
+        /// mints a brand-new <see cref="Assembly"/> identity on every call, even for bytes that
+        /// are already loaded in the same context. So a handler that loads unconditionally
+        /// produces a second copy of the assembly the moment the runtime asks for the same
+        /// assembly twice — and the two copies' types are NOT the same type. The failure that
+        /// follows is an <see cref="InvalidCastException"/> from a cast the source code says is
+        /// impossible to fail.</para>
+        ///
+        /// <para><b>The runtime asks twice on Android and once on Windows</b>, which is why this
+        /// only ever showed up on one platform. XNB content names its custom type readers with a
+        /// PARTIAL assembly name ("resgen, Version=1.0.0.0, Culture=neutral" — no
+        /// PublicKeyToken). CoreCLR satisfies that from the assembly already bound in the
+        /// context; MonoVM, which is what net8.0-android runs on, treats the absent
+        /// PublicKeyToken as a distinct identity and raises Resolving again. Guitar Hero 5 is
+        /// the reference case: its whole resource bundle is one
+        /// <c>Content.Load&lt;com.glu.resgen_content.resgen&gt;("resource")</c>, that load threw
+        /// "Specified cast is not valid", every screen it feeds came back empty, and the game
+        /// rendered nothing at all — a black screen from the first frame, on Android only.</para>
+        ///
+        /// <para>Version and culture are compared, not just the simple name: a satellite resource
+        /// assembly has the same simple name for every culture, and a genuinely different build
+        /// of a sibling should still be loaded rather than aliased. Two different games that ship
+        /// a same-named, same-versioned sibling DO alias in the Default ALC — but they already
+        /// did, because the runtime's own binder never raises Resolving for a name that context
+        /// has bound before.</para>
+        /// </summary>
+        private static bool TryReuseLoadedAssembly(AssemblyLoadContext ctx, AssemblyName requested, out Assembly? existing)
+        {
+            existing = null;
+            if (requested.Name == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                foreach (Assembly candidate in ctx.Assemblies)
+                {
+                    AssemblyName have = candidate.GetName();
+                    if (!string.Equals(have.Name, requested.Name, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+                    if (requested.Version != null && have.Version != null && have.Version != requested.Version)
+                    {
+                        continue;
+                    }
+                    if (!string.Equals(have.CultureName ?? string.Empty,
+                                       requested.CultureName ?? string.Empty,
+                                       StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    existing = candidate;
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                // Another thread loading into this context can invalidate the enumeration.
+                // Falling through to a fresh load is the pre-existing behaviour, so a miss here
+                // is never worse than not having looked.
+                WprTrace($"[wpr-resolve] reuse scan failed for {requested.Name}: {ex.GetType().Name}: {ex.Message}");
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// Tear down FNA's audio state so a song started via <c>MediaPlayer.Play</c> doesn't
         /// keep playing after <see cref="Game.Dispose"/> and so the audio subsystems aren't
         /// left bound to a destroyed FAudio engine when the next game launches. Three layers,
@@ -1156,7 +1258,7 @@ namespace WPR
             // Through the seam, not at a concrete host: which provider is registered is the
             // platform head's business (keyboard emulator on Windows, hardware sensor on
             // Android), and this backend runs under both. Null when no head registered one.
-            try { WPR.Sensors.SensorBackend.Provider?.ResetForNewLaunch(); }
+            try { WPR.Engine.Sensors.SensorBackend.Accelerometer?.ResetForNewLaunch(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"Sensor provider reset threw: {ex.Message}"); }
 
             try { WPR.SilverlightCompability.CompositionTarget.ResetForNewLaunch(); }

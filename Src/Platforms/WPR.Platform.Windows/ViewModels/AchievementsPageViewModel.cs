@@ -86,9 +86,7 @@ namespace WPR.Platform.Windows.ViewModels
                     apps = new Dictionary<string, Application>();
                 }
 
-                var grouped = all
-                    .GroupBy(a => a.OwnProductId ?? "")
-                    .Where(g => !string.IsNullOrEmpty(g.Key))
+                var grouped = WPR.Shell.AchievementRollup.ByProduct(all)
                     .Select(g =>
                     {
                         apps.TryGetValue(g.Key, out var app);
@@ -124,10 +122,7 @@ namespace WPR.Platform.Windows.ViewModels
                 return;
             }
 
-            var items = _SelectedGame.Achievements
-                .OrderByDescending(a => a.IsEarned)
-                .ThenByDescending(a => a.GamerScore)
-                .ThenBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
+            var items = WPR.Shell.AchievementRollup.InDisplayOrder(_SelectedGame.Achievements)
                 .Select(a => new AchievementItemViewModel(a));
 
             Achievements = new ObservableCollection<AchievementItemViewModel>(items);

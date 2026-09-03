@@ -8,6 +8,7 @@
 #endregion
 
 #region Using Statements
+using WPR.Engine.Audio;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -122,13 +123,13 @@ namespace Microsoft.Xna.Framework.Audio
 			}
 
 			// Allocate (but don't initialize just yet!)
-			handle = XnaBackend.Xact.CreateEngine();
+			handle = AudioBackendRegistry.Xact.CreateEngine();
 
 			// Grab RendererDetails
-			XactRendererInfo[] renderers = XnaBackend.Xact.GetRenderers(handle);
+			XactRendererInfo[] renderers = AudioBackendRegistry.Xact.GetRenderers(handle);
 			if (renderers.Length == 0)
 			{
-				XnaBackend.Xact.ReleaseEngine(handle);
+				AudioBackendRegistry.Xact.ReleaseEngine(handle);
 				throw new NoAudioHardwareException();
 			}
 			rendererDetails = new RendererDetail[renderers.Length];
@@ -141,13 +142,13 @@ namespace Microsoft.Xna.Framework.Audio
 			}
 
 			// Read entire file into memory, let FACT manage the pointer
-			IntPtr buffer = XnaBackend.Xact.ReadFileToPointer(settingsFile, out int bufferLength);
+			IntPtr buffer = AudioBackendRegistry.Xact.ReadFileToPointer(settingsFile, out int bufferLength);
 
 			/* Engine parameters, the notification callback (and its lifetime), 3D init, the final-mix
 			 * format query and the three destruction-notification registrations all happen inside the
 			 * backend now — they are pure FACT struct/callback plumbing.
 			 */
-			if (!XnaBackend.Xact.InitializeEngine(
+			if (!AudioBackendRegistry.Xact.InitializeEngine(
 					handle,
 					buffer,
 					bufferLength,
@@ -160,7 +161,7 @@ namespace Microsoft.Xna.Framework.Audio
 				);
 			}
 
-			channels = XnaBackend.Xact.GetFinalMixChannelCount(handle);
+			channels = AudioBackendRegistry.Xact.GetFinalMixChannelCount(handle);
 		}
 
 		#endregion
@@ -193,7 +194,7 @@ namespace Microsoft.Xna.Framework.Audio
 				throw new ArgumentNullException("name");
 			}
 
-			int category = XnaBackend.Xact.GetCategoryIndex(handle, name);
+			int category = AudioBackendRegistry.Xact.GetCategoryIndex(handle, name);
 
 			if (category < 0)
 			{
@@ -212,7 +213,7 @@ namespace Microsoft.Xna.Framework.Audio
 				throw new ArgumentNullException("name");
 			}
 
-			int variable = XnaBackend.Xact.GetGlobalVariableIndex(handle, name);
+			int variable = AudioBackendRegistry.Xact.GetGlobalVariableIndex(handle, name);
 
 			if (variable < 0)
 			{
@@ -221,7 +222,7 @@ namespace Microsoft.Xna.Framework.Audio
 				);
 			}
 
-			return XnaBackend.Xact.GetGlobalVariable(handle, variable);
+			return AudioBackendRegistry.Xact.GetGlobalVariable(handle, variable);
 		}
 
 		public void SetGlobalVariable(string name, float value)
@@ -231,7 +232,7 @@ namespace Microsoft.Xna.Framework.Audio
 				throw new ArgumentNullException("name");
 			}
 
-			int variable = XnaBackend.Xact.GetGlobalVariableIndex(handle, name);
+			int variable = AudioBackendRegistry.Xact.GetGlobalVariableIndex(handle, name);
 
 			if (variable < 0)
 			{
@@ -240,12 +241,12 @@ namespace Microsoft.Xna.Framework.Audio
 				);
 			}
 
-			XnaBackend.Xact.SetGlobalVariable(handle, variable, value);
+			AudioBackendRegistry.Xact.SetGlobalVariable(handle, variable, value);
 		}
 
 		public void Update()
 		{
-			XnaBackend.Xact.DoWork(handle);
+			AudioBackendRegistry.Xact.DoWork(handle);
 		}
 
 		#endregion
@@ -263,8 +264,8 @@ namespace Microsoft.Xna.Framework.Audio
 						Disposing.Invoke(this, null);
 					}
 
-					XnaBackend.Xact.ShutDownEngine(handle);
-					XnaBackend.Xact.ReleaseEngine(handle);
+					AudioBackendRegistry.Xact.ShutDownEngine(handle);
+					AudioBackendRegistry.Xact.ReleaseEngine(handle);
 					rendererDetails = null;
 
 					IsDisposed = true;

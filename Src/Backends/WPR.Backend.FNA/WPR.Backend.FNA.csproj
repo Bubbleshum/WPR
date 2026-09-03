@@ -7,7 +7,7 @@
     fitness function's AllowedReferrers. It hosts the FNA game-loop driver (ApplicationLaunch,
     moved here VERBATIM from WPR.Runtime to preserve the load-bearing teardown ordering that
     prevents the ALC-unload / audio-leak / duplicate-static-key regressions — ADR Risk #1) and
-    exposes it through the WPR.Abstractions IGameHost seam (FnaGameHost). Launchers compose this
+    exposes it through the WPR.Engine.GameLoop IGameHost seam (FnaGameHost). Launchers compose this
     backend; Runtime no longer owns the FNA loop.
 
     Stage-5b will finish the job (split ALC/lifecycle coordination back into Runtime behind
@@ -33,7 +33,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="$(SolutionDir)Core\WPR.Abstractions\WPR.Abstractions.csproj" />
+    <!-- IGameHost / GameHostState / TeardownPhase. Was WPR.Abstractions until that project was
+         dissolved on 2026-09-01; the contract now sits in its own engine subsystem project. -->
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.GameLoop\WPR.Engine.GameLoop.csproj" />
     <ProjectReference Include="$(SolutionDir)Core\WPR.Loader\WPR.Loader.csproj" />
     <ProjectReference Include="$(SolutionDir)Core\WPR.Common\WPR.Common.csproj" />
     <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Silverlight\WPR.Framework.Silverlight.csproj" />
@@ -52,9 +54,21 @@
          a game that starts the accelerometer and exits without stopping it leaves a handler on an
          event held by a launcher-lifetime object, pinning its ALC (and, on the desktop emulator,
          leaving a 60Hz timer running). See ResetWprSingletons. This backend never names a platform
-         implementation — it goes through ISensorProvider, which is what lets the same code path
+         implementation — it goes through IAccelerometerProvider, which is what lets the same code path
          serve the Windows keyboard emulator and the Android hardware sensor. -->
     <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Devices.Sensors\WPR.Framework.Devices.Sensors.csproj" />
+    <!-- The audio implementation of last resort. FnaGameHost installs FAudioModule as the audio
+         registry's BASE so a game always has sound, including on a code path that never runs a
+         platform head's ServicesSetup. The FAudio/FACT/Theorafile adapters themselves moved out of
+         this project on 2026-09-01 (Src/Audio/WPR.Audio.FAudio) — this is a composition reference,
+         not an implementation one, and it is the only thing tying the host to a specific audio
+         implementation. A head that wants a different one layers a module over it instead. -->
+    <ProjectReference Include="$(SolutionDir)Modules\Audio\WPR.Audio.FAudio\WPR.Audio.FAudio.csproj" />
+    <!-- AudioBackendRegistry: FnaGameHost composes the audio seams from the registered modules. -->
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Audio\WPR.Engine.Audio.csproj" />
+    <!-- The platform-declared graphics driver preference, applied in FnaGameHost before
+         device creation (Stage 6). -->
+    <ProjectReference Include="$(SolutionDir)Engine/WPR.Engine.Graphics/WPR.Engine.Graphics.csproj" />
   </ItemGroup>
 
 </Project>

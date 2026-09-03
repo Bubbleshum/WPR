@@ -8,6 +8,7 @@
 #endregion
 
 #region Using Statements
+using WPR.Engine.Audio;
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -165,7 +166,7 @@ namespace Microsoft.Xna.Framework.Audio
 						(uint) channels /
 						(uint) (format.wBitsPerSample / 8)
 					);
-					XnaBackend.Audio.SubmitBuffer(handle, in buf);
+					AudioBackendRegistry.Sound.SubmitBuffer(handle, in buf);
 				}
 				else
 				{
@@ -211,7 +212,7 @@ namespace Microsoft.Xna.Framework.Audio
 						(uint) channels /
 						(uint) (format.wBitsPerSample / 8)
 					);
-					XnaBackend.Audio.SubmitBuffer(handle, in buf);
+					AudioBackendRegistry.Sound.SubmitBuffer(handle, in buf);
 				}
 				else
 				{
@@ -248,7 +249,7 @@ namespace Microsoft.Xna.Framework.Audio
 						(uint) channels /
 						(uint) (format.wBitsPerSample / 8)
 					);
-					XnaBackend.Audio.SubmitBuffer(handle, in buffer);
+					AudioBackendRegistry.Sound.SubmitBuffer(handle, in buffer);
 				}
 				queuedSizes.Clear();
 			}
@@ -304,7 +305,7 @@ namespace Microsoft.Xna.Framework.Audio
 			if (handle != IntPtr.Zero)
 			{
 				int buffersQueued;
-					XnaBackend.Audio.GetVoiceState(handle, true, out buffersQueued, out _);
+					AudioBackendRegistry.Sound.GetVoiceState(handle, true, out buffersQueued, out _);
 				while (PendingBufferCount > buffersQueued)
 				lock (queuedBuffers)
 				{

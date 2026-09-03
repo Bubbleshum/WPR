@@ -1,3 +1,4 @@
+using WPR.Shell;
 using Avalonia.Controls;
 using Avalonia.ReactiveUI;
 using WPR.Platform.Windows.ViewModels;
@@ -45,8 +46,8 @@ namespace WPR.Platform.Windows.Pages
             {
                 Application app = context.Input;
                 var msgResult = await MessageBoxUtils.GetMessageDialogResult(
-                    title: Properties.Resources.ApplicationAlreadyInstalled,
-                    text: String.Format(Properties.Resources.ApplicationAlreadyInstalledDescription, app.Name),
+                    title: WPR.Shell.Resources.ApplicationAlreadyInstalled,
+                    text: String.Format(WPR.Shell.Resources.ApplicationAlreadyInstalledDescription, app.Name),
                     icon: MessageBox.Avalonia.Enums.Icon.Question,
                     buttons: MessageBox.Avalonia.Enums.ButtonEnum.YesNo);
 
@@ -56,6 +57,7 @@ namespace WPR.Platform.Windows.Pages
             vm.InstallRequested += OnDiscoveredAppInstallRequested;
             vm.EditRequested += OnAppEditRequested;
             vm.InfoRequested += OnAppInfoRequested;
+            vm.ControlsRequested += OnAppControlsRequested;
 
             this.Get<Button>("addNewAppButton").Click += AddNewAppButton_Click;
 
@@ -86,7 +88,36 @@ namespace WPR.Platform.Windows.Pages
             catch (Exception ex)
             {
                 await MessageBoxUtils.ShowSelectableErrorAsync(
-                    title: Properties.Resources.AppRunError,
+                    title: WPR.Shell.Resources.AppRunError,
+                    body: ex.ToString());
+            }
+        }
+
+        /// <summary>
+        /// Open the per-game key-to-touch binding editor. Per game because the bindings live in the
+        /// game's install folder and name coordinates on its screen; the global Controls page keeps
+        /// the tilt keys and the Back key, which are game-independent.
+        /// </summary>
+        private async void OnAppControlsRequested(object? sender, ApplicationItemViewModel appItem)
+        {
+            if (appItem?.Model == null) return;
+
+            string? productId = appItem.ProductId;
+            if (string.IsNullOrEmpty(productId)) return;
+
+            try
+            {
+                string folder = System.IO.Path.Combine(
+                    Configuration.Current!.DataPath(WPR.Models.Application.DataStoreFolder), productId);
+
+                var dialog = new GameControlsDialog();
+                dialog.Load(appItem.Name ?? productId, folder);
+                await dialog.ShowDialog(GetWindow());
+            }
+            catch (Exception ex)
+            {
+                await MessageBoxUtils.ShowSelectableErrorAsync(
+                    title: WPR.Shell.Resources.AppRunError,
                     body: ex.ToString());
             }
         }
@@ -106,7 +137,7 @@ namespace WPR.Platform.Windows.Pages
             catch (Exception ex)
             {
                 await MessageBoxUtils.ShowSelectableErrorAsync(
-                    title: Properties.Resources.AppRunError,
+                    title: WPR.Shell.Resources.AppRunError,
                     body: ex.ToString());
                 return;
             }
@@ -126,7 +157,7 @@ namespace WPR.Platform.Windows.Pages
             catch (Exception ex)
             {
                 await MessageBoxUtils.ShowSelectableErrorAsync(
-                    title: Properties.Resources.AppRunError,
+                    title: WPR.Shell.Resources.AppRunError,
                     body: ex.ToString());
             }
         }
@@ -151,7 +182,7 @@ namespace WPR.Platform.Windows.Pages
             if (preview == null)
             {
                 await MessageBoxUtils.GetMessageDialogResult(
-                    title: Properties.Resources.InstallationFailed,
+                    title: WPR.Shell.Resources.InstallationFailed,
                     text: LocaleUtils.GetDisplayName(ApplicationInstallError.InvalidManifestFiles),
                     icon: MessageBox.Avalonia.Enums.Icon.Error);
                 return;
@@ -166,7 +197,7 @@ namespace WPR.Platform.Windows.Pages
             if (string.IsNullOrEmpty(xapPath) || !File.Exists(xapPath))
             {
                 await MessageBoxUtils.GetMessageDialogResult(
-                    title: Properties.Resources.InstallationFailed,
+                    title: WPR.Shell.Resources.InstallationFailed,
                     text: LocaleUtils.GetDisplayName(ApplicationInstallError.MissingManifestFiles),
                     icon: MessageBox.Avalonia.Enums.Icon.Error);
                 return;
@@ -182,7 +213,7 @@ namespace WPR.Platform.Windows.Pages
             if (preview == null)
             {
                 await MessageBoxUtils.GetMessageDialogResult(
-                    title: Properties.Resources.InstallationFailed,
+                    title: WPR.Shell.Resources.InstallationFailed,
                     text: LocaleUtils.GetDisplayName(ApplicationInstallError.InvalidManifestFiles),
                     icon: MessageBox.Avalonia.Enums.Icon.Error);
                 return;
@@ -200,7 +231,7 @@ namespace WPR.Platform.Windows.Pages
             if (err != ApplicationInstallError.None && err != ApplicationInstallError.Canceled)
             {
                 await MessageBoxUtils.GetMessageDialogResult(
-                    title: Properties.Resources.InstallationFailed,
+                    title: WPR.Shell.Resources.InstallationFailed,
                     text: LocaleUtils.GetDisplayName(err),
                     icon: MessageBox.Avalonia.Enums.Icon.Error);
             }

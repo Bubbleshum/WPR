@@ -1,3 +1,4 @@
+using System.Globalization;
 using UnicornEngine.Const;
 
 namespace WPR.Wp8Native
@@ -26,9 +27,10 @@ namespace WPR.Wp8Native
     /// QueryInterface, AddRef, Release, GetIids, GetRuntimeClassName, GetTrustLevel. An
     /// interface's own methods start at slot 6.
     /// </remarks>
-    public sealed class WinRtRuntime
+    public sealed partial class WinRtRuntime
     {
         private const int HResultOk = 0;
+        private const int HResultFail = unchecked((int)0x80004005); // E_FAIL
         private const int HResultNotImplemented = unchecked((int)0x80004001); // E_NOTIMPL
         private const int HResultNoInterface = unchecked((int)0x80004002);    // E_NOINTERFACE
         private const int HResultClassNotRegistered = unchecked((int)0x80040154); // REGDB_E_CLASSNOTREG
@@ -60,6 +62,19 @@ namespace WPR.Wp8Native
                 slotCount: 20,
                 known: new Dictionary<int, (string, Action)>
                 {
+                    // DisplayOrientations get_CurrentOrientation(): None 0, Landscape 1,
+                    // Portrait 2, LandscapeFlipped 4, PortraitFlipped 8. The image asked for
+                    // landscape - put_AutoRotationPreferences(5) is Landscape|LandscapeFlipped -
+                    // and it rotates every pointer position itself according to what this
+                    // answers. Unimplemented, the discovery default wrote a placeholder object
+                    // pointer here, so the game read its orientation as a number in the
+                    // billions, and a switch on that has no case. Taps landed nowhere.
+                    [InspectableSlots + 0] = ("get_CurrentOrientation", () =>
+                        ReturnUInt32(Rotation switch { "none" => 2u, "cw" => 4u, _ => 1u })),
+
+                    // The device is portrait-native: WVGA is 480x800 with the buttons below.
+                    [InspectableSlots + 1] = ("get_NativeOrientation", () => ReturnUInt32(2)),
+
                     [InspectableSlots + 6] = ("get_ResolutionScale", () =>
                     {
                         // ResolutionScale.Scale100Percent. WVGA is unscaled.
@@ -124,7 +139,35 @@ namespace WPR.Wp8Native
             // whose every call is logged. The stand-in loses nothing: the report names the
             // class and every slot the image called on it, which is the list of what to
             // implement next.
-            long stand = CreateDiscoveryObject(className, slotCount: 40);
+            // The five Microsoft.Xbox interfaces this title binds are implemented for real,
+            // against the metadata the game ships in its own XAP. See XboxRuntime.cs.
+            if (CreateXboxClass(className) is { } xbox)
+            {
+                _factories[className] = xbox;
+                return xbox;
+            }
+
+            // Xbox Live is not something this probe can stand in for: it is a signed-in
+            // account, a service and a set of asynchronous callbacks, and the honest answer is
+            // that none of them are here. Saying so is not a degradation - the image is
+            // written for it, and its own scripts carry the path: `disableXBOX`,
+            // `hideLoadingInitXBOX`, `enableXBOX done`. Recovered from the heap, because the
+            // scripts ship encrypted - see ScriptDumper.
+            //
+            // Answering S_OK with a placeholder is what kept the title screen on LOADING: the
+            // loading state machine rests until the Xbox callbacks arrive (`restUntilCallback`,
+            // `loadingScreenCallbacks`), and a stand-in that always succeeds promises they are
+            // coming.
+            // Opt-in, with WPR_XBOX=fail. It was worth trying and it did not help: the image
+            // takes its sign-in failure path, builds the "Please sign in at Xbox.com" message
+            // - and stops on exactly the same title screen. Since it changes what the image
+            // believes about itself for no gain, succeeding stays the default.
+            bool refuse = className.StartsWith("Microsoft.Xbox", StringComparison.Ordinal) &&
+                          string.Equals(
+                              Environment.GetEnvironmentVariable("WPR_XBOX"), "fail",
+                              StringComparison.OrdinalIgnoreCase);
+
+            long stand = CreateDiscoveryObject(className, slotCount: 40, failing: refuse);
             _factories[className] = stand;
             _improvised.Add(className);
             return stand;
@@ -134,6 +177,9 @@ namespace WPR.Wp8Native
 
         /// <summary>Classes answered with a stand-in because nothing implements them.</summary>
         public IReadOnlyList<string> ImprovisedClasses => _improvised;
+
+        /// <summary>Which vtable slots the image called, and with what. See <see cref="VtableProfile"/>.</summary>
+        public VtableProfile Slots { get; } = new();
 
         public static int ClassNotRegistered => HResultClassNotRegistered;
 
@@ -239,8 +285,9 @@ namespace WPR.Wp8Native
         /// this once to size its render target, so it is the one number here that has a
         /// visible consequence.
         /// </remarks>
-        private const float WindowWidth = 800f;
-        private const float WindowHeight = 480f;
+        private static float WindowWidth => Direct3DRuntime.BackBufferWidth;
+
+        private static float WindowHeight => Direct3DRuntime.BackBufferHeight;
 
         /// <summary>How many times the image got round its own main loop.</summary>
         public int ProcessEventsCalls { get; private set; }
@@ -294,6 +341,23 @@ namespace WPR.Wp8Native
         /// <summary>Which CoreWindow events the image subscribed to, and with what handler.</summary>
         public IReadOnlyDictionary<int, long> WindowHandlers => _windowHandlers;
 
+        /// <summary>
+        /// The pointer events the image subscribed to, which is what says whether a gesture
+        /// can be delivered at all.
+        /// </summary>
+        public string SubscriptionSummary()
+        {
+            string[] wanted =
+            [
+                $"{NameOf(SlotAddPointerPressed)}{(_windowHandlers.ContainsKey(SlotAddPointerPressed) ? "" : " MISSING")}",
+                $"{NameOf(SlotAddPointerMoved)}{(_windowHandlers.ContainsKey(SlotAddPointerMoved) ? "" : " MISSING")}",
+                $"{NameOf(SlotAddPointerReleased)}{(_windowHandlers.ContainsKey(SlotAddPointerReleased) ? "" : " MISSING")}",
+            ];
+
+            return $"{_windowHandlers.Count} CoreWindow subscription(s); " + string.Join(", ", wanted) +
+                   $"; {_movesDelivered} move(s) delivered";
+        }
+
         /// <summary>Pointer events delivered to the image.</summary>
         public List<string> InputDelivered { get; } = new();
 
@@ -305,6 +369,19 @@ namespace WPR.Wp8Native
         private const int SlotAddPointerReleased = InspectableSlots + 42;
 
         /// <summary>
+        /// Not a CoreWindow slot: a step that spends a turn round the main loop and delivers
+        /// nothing, which is what <c>wait:N</c> in a gesture script expands to.
+        /// </summary>
+        /// <remarks>
+        /// A script that has to reach a particular screen needs to say "let it run" as well as
+        /// "touch here": gestures start on a period boundary, so without this the only way to
+        /// put a hundred frames between two taps is a period of a hundred frames, which then
+        /// also delays the first one by a hundred. Waiting is a gesture, so a script is a
+        /// timeline.
+        /// </remarks>
+        private const int SlotWait = -1;
+
+        /// <summary>
         /// How many times round the main loop before the tap, and how long it is held.
         /// </summary>
         /// <remarks>
@@ -313,11 +390,211 @@ namespace WPR.Wp8Native
         /// held for a few frames because a game that samples input once a frame can miss a
         /// press and release delivered back to back.
         /// </remarks>
-        private const int TapAfterFrames = 240;
+        /// <remarks>
+        /// WPR_TAP overrides it; zero never taps at all, which is what a long run wants -
+        /// the tap resolves a null weak reference and ends the run, so leaving it enabled
+        /// caps every run at 240 frames.
+        /// </remarks>
+        private static readonly int TapAfterFrames =
+            int.TryParse(Environment.GetEnvironmentVariable("WPR_TAP"), out int tap) ? tap : 240;
 
-        private const int TapHeldFrames = 8;
+        /// <summary>
+        /// How many PointerMoved events a scripted tap carries between press and release, from
+        /// <c>WPR_TAPHOLD</c>; default 8. Zero makes a tap a bare press and release.
+        /// </summary>
+        /// <remarks>
+        /// A real finger reports moves while it is down, so eight is the realistic shape. But
+        /// a menu engine that starts a drag on the first move event it sees - this one has
+        /// `gainFocusOnDrag` in its scripts - would then never see a tap at all, and the only
+        /// way to know which kind of engine this is, is to try both.
+        /// </remarks>
+        private static readonly int TapHeldFrames =
+            int.TryParse(Environment.GetEnvironmentVariable("WPR_TAPHOLD"), out int hold) && hold >= 0 ? hold : 8;
+
+        /// <summary>How many moves a drag is broken into when the script does not say.</summary>
+        private const int DragStepsDefault = 12;
 
         private long _pointerArgs;
+
+        /// <summary>One pointer event: which CoreWindow event, and where.</summary>
+        private readonly record struct PointerStep(int Slot, float X, float Y);
+
+        /// <summary>
+        /// Pointer events still to be delivered, at most one per turn round the main loop.
+        /// </summary>
+        /// <remarks>
+        /// One per turn is not a throttle, it is the only thing possible: delivering an event
+        /// is a tail call into emulated code that takes over the return path, so the stub
+        /// cannot deliver a second one and still return. A twelve-step drag therefore takes
+        /// twelve frames - which is about a third of a second at the rate this runs, and so
+        /// close to how long a real drag takes that nothing has to pretend.
+        /// </remarks>
+        private readonly Queue<PointerStep> _pending = new();
+
+        /// <summary>Pointer events handed in from another thread - a window's mouse.</summary>
+        private readonly System.Collections.Concurrent.ConcurrentQueue<PointerStep> _external = new();
+
+        /// <summary>The three pointer events a host can inject.</summary>
+        public enum PointerKind
+        {
+            Pressed,
+            Moved,
+            Released,
+        }
+
+        /// <summary>
+        /// Queues a pointer event from outside the emulator. Safe from any thread; it is
+        /// delivered on the emulator's, at the next turn round the image's main loop.
+        /// </summary>
+        /// <remarks>
+        /// Coordinates are in the landscape raster space - <see cref="FrameCapture.Width"/> by
+        /// <see cref="FrameCapture.Height"/> - which is what the image composes in, not the
+        /// portrait bounds the device reports.
+        /// </remarks>
+        public void InjectPointer(PointerKind kind, float x, float y)
+        {
+            int slot = kind switch
+            {
+                PointerKind.Pressed => SlotAddPointerPressed,
+                PointerKind.Released => SlotAddPointerReleased,
+                _ => SlotAddPointerMoved,
+            };
+
+            _external.Enqueue(new PointerStep(slot, x, y));
+        }
+
+        /// <summary>Which scripted gesture runs next, cycling.</summary>
+        private int _gestureIndex;
+
+        /// <summary>Where the pointer is now. Read by get_Position while an event is live.</summary>
+        private float _pointerX = WindowWidth / 2f;
+
+        private float _pointerY = WindowHeight / 2f;
+
+        /// <summary>Whether the pointer is down, which is what get_IsInContact answers.</summary>
+        private bool _pointerInContact;
+
+        /// <summary>
+        /// The gesture script, from <c>WPR_INPUT</c>, as a list of already-expanded steps.
+        /// </summary>
+        /// <remarks>
+        /// Semicolon-separated gestures, cycled one per period:
+        /// <list type="bullet">
+        /// <item><c>tap</c> or <c>tap:x,y</c> - press, hold, release at one point.</item>
+        /// <item><c>drag:x1,y1&gt;x2,y2</c> or <c>...@steps</c> - press, interpolated moves,
+        /// release.</item>
+        /// <item><c>wait:N</c> - spend N turns round the main loop touching nothing.</item>
+        /// </list>
+        /// The default is a single <c>tap</c>, which is what this did before there was a
+        /// script at all. Coordinates are in the landscape space the image composes in - see
+        /// <see cref="FrameCapture.Width"/> - so the slingshot in Angry Birds is around
+        /// <c>drag:150,300&gt;70,350</c> rather than anywhere near the portrait bounds the
+        /// device reports.
+        /// </remarks>
+        private static readonly IReadOnlyList<IReadOnlyList<PointerStep>> Gestures = ParseGestures();
+
+        private static IReadOnlyList<IReadOnlyList<PointerStep>> ParseGestures()
+        {
+            string script = Environment.GetEnvironmentVariable("WPR_INPUT") ?? "tap";
+            var gestures = new List<IReadOnlyList<PointerStep>>();
+
+            foreach (string part in script.Split(';', StringSplitOptions.RemoveEmptyEntries))
+            {
+                IReadOnlyList<PointerStep>? gesture = ParseGesture(part.Trim());
+                if (gesture is not null)
+                {
+                    gestures.Add(gesture);
+                }
+            }
+
+            return gestures.Count > 0 ? gestures : [BuildTap(FrameCapture.Width / 2f, FrameCapture.Height / 2f)];
+        }
+
+        private static IReadOnlyList<PointerStep>? ParseGesture(string text)
+        {
+            string body = text.Contains(':') ? text[(text.IndexOf(':') + 1)..] : string.Empty;
+
+            if (text.StartsWith("wait", StringComparison.OrdinalIgnoreCase))
+            {
+                int frames = int.TryParse(body, out int parsed) && parsed > 0 ? parsed : 60;
+                return Enumerable.Range(0, frames).Select(_ => new PointerStep(SlotWait, 0f, 0f)).ToList();
+            }
+
+            if (text.StartsWith("tap", StringComparison.OrdinalIgnoreCase))
+            {
+                return TryPoint(body, out float x, out float y)
+                    ? BuildTap(x, y)
+                    : BuildTap(FrameCapture.Width / 2f, FrameCapture.Height / 2f);
+            }
+
+            if (!text.StartsWith("drag", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            int steps = DragStepsDefault;
+            int at = body.IndexOf('@');
+            if (at >= 0)
+            {
+                if (int.TryParse(body[(at + 1)..], out int parsed) && parsed > 0)
+                {
+                    steps = parsed;
+                }
+
+                body = body[..at];
+            }
+
+            string[] ends = body.Split('>');
+            if (ends.Length != 2 ||
+                !TryPoint(ends[0], out float fromX, out float fromY) ||
+                !TryPoint(ends[1], out float toX, out float toY))
+            {
+                return null;
+            }
+
+            return BuildDrag(fromX, fromY, toX, toY, steps);
+        }
+
+        private static bool TryPoint(string text, out float x, out float y)
+        {
+            x = y = 0f;
+            string[] parts = text.Split(',');
+            return parts.Length == 2 &&
+                   float.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out x) &&
+                   float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out y);
+        }
+
+        /// <summary>
+        /// Press, hold, release - with the hold spent on PointerMoved events at the same
+        /// point, which is what a real finger reports and costs nothing if the image did not
+        /// subscribe to them.
+        /// </summary>
+        private static IReadOnlyList<PointerStep> BuildTap(float x, float y)
+        {
+            var steps = new List<PointerStep> { new(SlotAddPointerPressed, x, y) };
+            for (int i = 0; i < TapHeldFrames; i++)
+            {
+                steps.Add(new PointerStep(SlotAddPointerMoved, x, y));
+            }
+
+            steps.Add(new PointerStep(SlotAddPointerReleased, x, y));
+            return steps;
+        }
+
+        private static IReadOnlyList<PointerStep> BuildDrag(
+            float fromX, float fromY, float toX, float toY, int steps)
+        {
+            var built = new List<PointerStep> { new(SlotAddPointerPressed, fromX, fromY) };
+            for (int i = 1; i <= steps; i++)
+            {
+                float t = (float)i / (steps + 1);
+                built.Add(new PointerStep(
+                    SlotAddPointerMoved, fromX + ((toX - fromX) * t), fromY + ((toY - fromY) * t)));
+            }
+
+            built.Add(new PointerStep(SlotAddPointerReleased, toX, toY));
+            return built;
+        }
 
         /// <summary>
         /// Delivers whatever input is due this frame, or returns false if there is none.
@@ -329,19 +606,68 @@ namespace WPR.Wp8Native
         /// </remarks>
         private bool DeliverInput(long resumeAt)
         {
-            int slot = ProcessEventsCalls switch
+            // Anything a live host has injected goes first, and does not depend on the
+            // scripted taps being enabled at all - a window with a mouse replaces the script.
+            while (_external.TryDequeue(out PointerStep injected))
             {
-                TapAfterFrames => SlotAddPointerPressed,
-                TapAfterFrames + TapHeldFrames => SlotAddPointerReleased,
-                _ => 0,
-            };
+                _pending.Enqueue(injected);
+            }
 
-            if (slot == 0 || !_windowHandlers.TryGetValue(slot, out long handler) || handler == 0)
+            if (_pending.Count == 0 && (TapAfterFrames <= 0 || ProcessEventsCalls < TapAfterFrames))
             {
                 return false;
             }
 
-            string name = slot == SlotAddPointerPressed ? "PointerPressed" : "PointerReleased";
+            // Start a gesture every TapAfterFrames, not just once. A game does not open on the
+            // screen anyone wants to see: this one shows the publisher, then the licensor,
+            // then a title screen, and each of them waits for a touch. One tap gets past
+            // exactly one of them. Gestures cycle, so a script can tap through the menus and
+            // then drag.
+            if (_pending.Count == 0 && TapAfterFrames > 0 && ProcessEventsCalls % TapAfterFrames == 0)
+            {
+                foreach (PointerStep step in Gestures[_gestureIndex % Gestures.Count])
+                {
+                    _pending.Enqueue(step);
+                }
+
+                _gestureIndex++;
+            }
+
+            if (_pending.Count == 0)
+            {
+                return false;
+            }
+
+            PointerStep next = _pending.Dequeue();
+
+            if (next.Slot == SlotWait)
+            {
+                // Spend the turn and deliver nothing. The pointer does not move: a wait between
+                // two taps must not drag the finger across the screen on its way.
+                return false;
+            }
+
+            // Move the pointer before the event goes out, because get_Position is answered
+            // from these fields while the handler runs. A drag whose position does not change
+            // is a long press, which is a different gesture entirely.
+            _pointerX = next.X;
+            _pointerY = next.Y;
+            _pointerInContact = next.Slot != SlotAddPointerReleased;
+
+            int slot = next.Slot;
+            if (!_windowHandlers.TryGetValue(slot, out long handler) || handler == 0)
+            {
+                // A gesture step the image never subscribed to. Say so once rather than every
+                // frame of every drag, and keep spending the turn - the hold has to last.
+                if (_unsubscribed.Add(slot))
+                {
+                    InputDelivered.Add($"{NameOf(slot)}: not subscribed, steps dropped");
+                }
+
+                return false;
+            }
+
+            string name = NameOf(slot);
             long vtable = _emulator.ReadUInt32(handler);
 
             // A WinRT delegate is IUnknown-based, so Invoke is slot 3 - not slot 6. This is
@@ -349,11 +675,41 @@ namespace WPR.Wp8Native
             long invoke = _emulator.ReadUInt32(vtable + (SlotDelegateInvoke * 4));
             if (!_emulator.IsExecutableCode(invoke))
             {
-                InputDelivered.Add($"{name}: handler 0x{handler:X8} has no Invoke at slot {SlotDelegateInvoke}");
+                // Say what the vtable actually holds. "Not at slot 3" on its own cannot tell
+                // a delegate whose layout is different from a pointer that is not a delegate.
+                string slots = string.Join(" ", Enumerable.Range(0, 8).Select(i =>
+                {
+                    long entry = _emulator.ReadUInt32(vtable + (i * 4), 0);
+                    return $"{i}:{entry:X8}{(_emulator.IsExecutableCode(entry) ? "*" : "")}";
+                }));
+
+                InputDelivered.Add(
+                    $"{name}: handler 0x{handler:X8} vtable 0x{vtable:X8} has no Invoke at slot " +
+                    $"{SlotDelegateInvoke} - slots {slots} (* = code)");
                 return false;
             }
 
-            InputDelivered.Add($"{name} at ({TapX:0}, {TapY:0}) -> handler 0x{handler:X8} invoke 0x{invoke:X8}");
+            // A drag is a dozen of these; logging every one buries the run. The ends of a
+            // gesture are what matter, so moves are counted rather than listed.
+            if (slot == SlotAddPointerMoved)
+            {
+                _movesDelivered++;
+            }
+            else
+            {
+                InputDelivered.Add(
+                    $"{name} at ({_pointerX:0}, {_pointerY:0}) -> handler 0x{handler:X8} " +
+                    $"invoke 0x{invoke:X8}");
+            }
+
+            // Record what the handler does with the event. A pointer event the image accepts
+            // with S_OK and then ignores looks exactly like one it acted on; the calls it makes
+            // in between - or fails to make - are the only difference visible from here.
+            bool capture = slot != SlotAddPointerMoved;
+            if (capture)
+            {
+                _emulator.StartCallCapture();
+            }
 
             _emulator.CallEmulated(
                 $"CoreWindow::{name}",
@@ -361,7 +717,13 @@ namespace WPR.Wp8Native
                 [handler, _coreWindow, PointerArgs()],
                 onReturn: () =>
                 {
-                    InputDelivered.Add($"   {name} returned 0x{Arg(0):X8}");
+                    if (capture)
+                    {
+                        IReadOnlyList<string> made = _emulator.StopCallCapture();
+                        InputDelivered.Add(
+                            $"   {name} returned 0x{Arg(0):X8} after {made.Count} call(s): {Condense(made)}");
+                    }
+
                     _emulator.ContinueAt(resumeAt);
                 });
 
@@ -371,10 +733,195 @@ namespace WPR.Wp8Native
         /// <summary>Invoke on a WinRT delegate. See <see cref="SlotHandlerInvoke"/>.</summary>
         private const int SlotDelegateInvoke = 3;
 
-        /// <summary>The middle of the screen, which is where a title screen expects a tap.</summary>
-        private const float TapX = 400f;
+        /// <summary>Completion handlers this runtime has answered, for the report.</summary>
+        public List<string> AsyncCompleted { get; } = new();
 
-        private const float TapY = 240f;
+        /// <summary>
+        /// A call list with runs collapsed and the CRT noise stripped, so the shape of what a
+        /// handler did survives being printed on one screen.
+        /// </summary>
+        private static string Condense(IReadOnlyList<string> calls)
+        {
+            var parts = new List<string>();
+            string? previous = null;
+            int run = 0;
+
+            void Flush()
+            {
+                if (previous is null)
+                {
+                    return;
+                }
+
+                parts.Add(run > 1 ? $"{previous} x{run}" : previous);
+            }
+
+            foreach (string raw in calls)
+            {
+                // memcmp/strlen/new/delete say nothing about intent; the WinRT and Xbox calls do.
+                string name = raw[(raw.IndexOf('!') + 1)..];
+                if (name.StartsWith("??", StringComparison.Ordinal) ||
+                    name is "memcmp" or "memcpy" or "memmove" or "memset" or "strlen" or "strcmp" or
+                        "malloc" or "free" or "realloc" or "_Mtx_lock" or "_Mtx_unlock")
+                {
+                    continue;
+                }
+
+                if (name == previous)
+                {
+                    run++;
+                    continue;
+                }
+
+                Flush();
+                previous = name;
+                run = 1;
+            }
+
+            Flush();
+            return parts.Count == 0
+                ? "(only CRT string/memory calls)"
+                : string.Join(" > ", parts.Take(60)) + (parts.Count > 60 ? $" ... (+{parts.Count - 60})" : string.Empty);
+        }
+
+        /// <summary>
+        /// Whether a pointer is plausibly a WinRT delegate: a heap object whose vtable has
+        /// executable code at the Invoke slot.
+        /// </summary>
+        private bool LooksLikeDelegate(long pointer)
+        {
+            if (pointer == 0 || ArmEmulator.IsStackAddress(pointer))
+            {
+                return false;
+            }
+
+            long vtable = _emulator.ReadUInt32(pointer, 0);
+            return vtable != 0 && _emulator.IsExecutableCode(
+                _emulator.ReadUInt32(vtable + (SlotDelegateInvoke * 4), 0));
+        }
+
+        /// <summary>
+        /// Answers a completion handler immediately, as an operation that has already
+        /// finished. True if it has taken over the return path.
+        /// </summary>
+        /// <remarks>
+        /// Every asynchronous thing this runtime stands in for has in fact already happened
+        /// by the time it is asked - there is nothing behind these objects to wait for - so
+        /// completing at once is not merely convenient, it is accurate.
+        /// </remarks>
+        private bool CompleteAsync(long operation, long handler, string origin)
+        {
+            long invoke = _emulator.ReadUInt32(_emulator.ReadUInt32(handler, 0) + (SlotDelegateInvoke * 4), 0);
+            if (!_emulator.IsExecutableCode(invoke))
+            {
+                return false;
+            }
+
+            long callerReturn = _emulator.ReturnAddress;
+            if (AsyncCompleted.Count < 24)
+            {
+                AsyncCompleted.Add($"{origin}(handler 0x{handler:X8}) -> completed at once");
+            }
+
+            _emulator.CallEmulated(
+                $"{origin} completion",
+                invoke,
+                [handler, operation, AsyncStatusCompleted],
+                onReturn: () =>
+                {
+                    Return(HResultOk);
+                    _emulator.ContinueAt(callerReturn);
+                });
+
+            return true;
+        }
+
+        /// <summary>
+        /// Takes a reference on an object this runtime is holding on to, and returns true if
+        /// it has taken over the return path.
+        /// </summary>
+        /// <remarks>
+        /// AddRef is emulated code, and a host stub can only tail-call - so this finishes the
+        /// call itself: it arranges for AddRef to run and for its return trap to put S_OK
+        /// back in r0 and continue to wherever the stub was going to return. A caller that
+        /// gets true back must return immediately and do nothing else.
+        /// </remarks>
+        private bool KeepAlive(long instance)
+        {
+            if (instance == 0)
+            {
+                return false;
+            }
+
+            long vtable = _emulator.ReadUInt32(instance, 0);
+            long addRef = _emulator.ReadUInt32(vtable + (SlotAddRef * 4), 0);
+
+            if (!_emulator.IsExecutableCode(addRef))
+            {
+                return false;
+            }
+
+            long resumeAt = _emulator.ReturnAddress;
+            _emulator.CallEmulated("delegate AddRef", addRef, [instance], onReturn: () =>
+            {
+                // AddRef answers the new count, and the caller of the stub wants an HRESULT.
+                Return(HResultOk);
+                _emulator.ContinueAt(resumeAt);
+            });
+
+            return true;
+        }
+
+        /// <summary>
+        /// How the landscape composition sits on the portrait window, from <c>WPR_ROTATE</c>:
+        /// <c>ccw</c> (default - the device turned so its buttons are on the right, WP8's
+        /// "Landscape"), <c>cw</c> ("LandscapeFlipped"), or <c>none</c>.
+        /// </summary>
+        private static readonly string Rotation =
+            (Environment.GetEnvironmentVariable("WPR_ROTATE") ?? "ccw").Trim().ToLowerInvariant();
+
+        /// <summary>
+        /// Converts a point in the landscape composition to the portrait window coordinates
+        /// the image expects to be handed.
+        /// </summary>
+        /// <remarks>
+        /// Hold the phone upright, then turn it a quarter turn anticlockwise: the former top
+        /// edge is now the left edge, so landscape x runs along what was portrait y, and
+        /// landscape y runs from what was the right edge down to what was the left. Turned
+        /// the other way, both axes reverse. The composition size is
+        /// <see cref="FrameCapture.Width"/> by <see cref="FrameCapture.Height"/> and the
+        /// window is <see cref="Direct3DRuntime.BackBufferWidth"/> by
+        /// <see cref="Direct3DRuntime.BackBufferHeight"/>; they are transposes of each other.
+        /// </remarks>
+        private static (float X, float Y) ToWindow(float landscapeX, float landscapeY)
+        {
+            float windowWidth = Direct3DRuntime.BackBufferWidth;
+            float windowHeight = Direct3DRuntime.BackBufferHeight;
+
+            return Rotation switch
+            {
+                "none" => (landscapeX, landscapeY),
+                "cw" => (landscapeY, windowHeight - landscapeX),
+                _ => (windowWidth - landscapeY, landscapeX),
+            };
+        }
+
+        /// <summary>Gesture steps naming an event the image never subscribed to.</summary>
+        private readonly HashSet<int> _unsubscribed = new();
+
+        /// <summary>PointerMoved events delivered, which a drag makes far too many of to list.</summary>
+        private int _movesDelivered;
+
+        /// <summary>How many pointer moves reached the image.</summary>
+        public int MovesDelivered => _movesDelivered;
+
+        private static string NameOf(int slot) => slot switch
+        {
+            SlotAddPointerPressed => "PointerPressed",
+            SlotAddPointerReleased => "PointerReleased",
+            SlotAddPointerMoved => "PointerMoved",
+            _ => $"slot {slot}",
+        };
 
         /// <summary>
         /// A PointerEventArgs carrying a PointerPoint at the tap position.
@@ -392,49 +939,86 @@ namespace WPR.Wp8Native
                 return _pointerArgs;
             }
 
-            long point = CreateDiscoveryObject(
-                "IPointerPoint",
-                slotCount: 12,
+            // Windows.UI.Input.IPointerPoint, in the order Windows.UI.winmd declares it:
+            // PointerDevice, Position, RawPosition, PointerId, FrameId, Timestamp,
+            // IsInContact, Properties. The first version of this had PointerId at 8 and
+            // Timestamp at 9 - so the two reads this game makes of RawPosition per press were
+            // answered with a 32-bit 1 where it expected an 8-byte Point, and its one read of
+            // PointerId was answered with a 64-bit timestamp. Every tap it was ever handed
+            // therefore landed at (1.4e-45, whatever), and a splash that accepts any touch
+            // was the only thing that could look as if input worked.
+            long device = CreateDiscoveryObject(
+                "IPointerDevice",
+                slotCount: 8,
                 known: new Dictionary<int, (string, Action)>
                 {
-                    [InspectableSlots + 1] = ("get_Position", () =>
-                    {
-                        if (ArmEmulator.IsStackAddress(Arg(1)))
-                        {
-                            _emulator.WriteSingle(Arg(1) + 0, TapX);
-                            _emulator.WriteSingle(Arg(1) + 4, TapY);
-                        }
-
-                        Return(HResultOk);
-                    }),
-                    [InspectableSlots + 2] = ("get_PointerId", () =>
-                    {
-                        if (ArmEmulator.IsStackAddress(Arg(1)))
-                        {
-                            _emulator.WriteUInt32(Arg(1), 1);
-                        }
-
-                        Return(HResultOk);
-                    }),
-                    [InspectableSlots + 5] = ("get_IsInContact", Boolean(true)),
+                    // PointerDeviceType: Touch 0, Pen 1, Mouse 2. A phone has a touch screen.
+                    [InspectableSlots + 0] = ("get_PointerDeviceType", () => ReturnUInt32(0)),
+                    [InspectableSlots + 1] = ("get_IsIntegrated", Boolean(true)),
                 });
 
+            Action position = () =>
+            {
+                if (ArmEmulator.IsStackAddress(Arg(1)))
+                {
+                    // Held in the landscape space the image composes in; handed over in the
+                    // portrait window space it expects - see ToWindow.
+                    (float x, float y) = ToWindow(_pointerX, _pointerY);
+                    _emulator.WriteSingle(Arg(1) + 0, x);
+                    _emulator.WriteSingle(Arg(1) + 4, y);
+                }
+
+                Return(HResultOk);
+            };
+
+            long point = CreateDiscoveryObject(
+                "IPointerPoint",
+                slotCount: 16,
+                known: new Dictionary<int, (string, Action)>
+                {
+                    [InspectableSlots + 0] = ("get_PointerDevice", () => ReturnObject(device)),
+                    [InspectableSlots + 1] = ("get_Position", position),
+
+                    // RawPosition is the position before any transform the app applied to the
+                    // window; there is none here, so it is the same point. This is the one this
+                    // game reads.
+                    [InspectableSlots + 2] = ("get_RawPosition", position),
+                    [InspectableSlots + 3] = ("get_PointerId", () => ReturnUInt32(1)),
+                    [InspectableSlots + 4] = ("get_FrameId", () => ReturnUInt32((uint)ProcessEventsCalls)),
+                    [InspectableSlots + 5] = ("get_Timestamp", () =>
+                    {
+                        // Microseconds. A flick or a slingshot is a position difference over a
+                        // time difference, so the frame counter at a notional 60Hz: monotonic,
+                        // evenly spaced, and unrelated to how often the image reads the clock.
+                        if (ArmEmulator.IsStackAddress(Arg(1)))
+                        {
+                            _emulator.WriteUInt64(Arg(1), (ulong)ProcessEventsCalls * 16667UL);
+                        }
+
+                        Return(HResultOk);
+                    }),
+                    [InspectableSlots + 6] = ("get_IsInContact", () =>
+                    {
+                        if (ArmEmulator.IsStackAddress(Arg(1)))
+                        {
+                            _emulator.WriteBoolean(Arg(1), _pointerInContact);
+                        }
+
+                        Return(HResultOk);
+                    }),
+                });
+
+            // Windows.UI.Core.IPointerEventArgs: CurrentPoint, KeyModifiers,
+            // GetIntermediatePoints. Handled lives on ICoreWindowEventArgs, a separate
+            // interface this runtime cannot distinguish through its QueryInterface.
             _pointerArgs = CreateDiscoveryObject(
                 "IPointerEventArgs",
                 slotCount: 12,
                 known: new Dictionary<int, (string, Action)>
                 {
-                    [InspectableSlots + 0] = ("get_CurrentPoint", () =>
-                    {
-                        if (ArmEmulator.IsStackAddress(Arg(1)))
-                        {
-                            _emulator.WriteUInt32(Arg(1), (uint)point);
-                        }
-
-                        Return(HResultOk);
-                    }),
-                    [InspectableSlots + 2] = ("get_Handled", Boolean(false)),
-                    [InspectableSlots + 3] = ("put_Handled", () => Return(HResultOk)),
+                    [InspectableSlots + 0] = ("get_CurrentPoint", () => ReturnObject(point)),
+                    [InspectableSlots + 1] = ("get_KeyModifiers", () => ReturnUInt32(0)),
+                    [InspectableSlots + 2] = ("GetIntermediatePoints", () => ReturnObject(EmptyVectorView())),
                 });
 
             return _pointerArgs;
@@ -463,6 +1047,41 @@ namespace WPR.Wp8Native
                     }),
                     [InspectableSlots + 1] = ("ProcessEvents", () =>
                     {
+                        // Take the script snapshot here rather than at the end of the run: a
+                        // buffer that was decrypted, compiled and freed only survives until
+                        // the allocator hands its memory to something else.
+                        if (ScriptDumper.Requested is { Frame: > 0 } wanted &&
+                            ProcessEventsCalls >= wanted.Frame &&
+                            (ProcessEventsCalls == wanted.Frame ||
+                             (wanted.Every > 0 && (ProcessEventsCalls - wanted.Frame) % wanted.Every == 0)))
+                        {
+                            _emulator.Scripts.Scan(_emulator, wanted.Directory);
+                        }
+
+                        // Run whatever the image has queued for "another thread" before pumping
+                        // its events. On a device a PPL continuation runs on a pool thread while
+                        // the UI loop keeps turning; here there is one thread, and a queued
+                        // chore only runs at a yield point. The main loop is ProcessEvents ->
+                        // Present -> ProcessEvents and never touches any of the others, so the
+                        // sign-in continuation - queued by the completion handler right after
+                        // it set its event - sat in the queue for ten thousand frames with the
+                        // Lua that hides the loading screen inside it. This is what "process
+                        // events" means on a real dispatcher anyway.
+                        //
+                        // Only when something is queued, so that DrainDeferredCalls' continuation
+                        // always runs from a return trap rather than inline in this stub.
+                        if (_emulator.PendingDeferredCalls > 0)
+                        {
+                            long resumeAfterDrain = _emulator.ReturnAddress;
+                            Return(HResultOk);
+                            _emulator.DrainDeferredCalls(() =>
+                            {
+                                Return(HResultOk);
+                                _emulator.ContinueAt(resumeAfterDrain);
+                            });
+                            return;
+                        }
+
                         // A real dispatcher drains the input and system queues here, so this
                         // is where input belongs. The count is also what says how many times
                         // the game got round its own main loop.
@@ -852,6 +1471,9 @@ namespace WPR.Wp8Native
         /// </remarks>
         private const int SlotHandlerInvoke = 3;
 
+        /// <summary>IUnknown::AddRef, slot 1 on everything.</summary>
+        private const int SlotAddRef = 1;
+
         /// <summary>AsyncStatus::Completed.</summary>
         private const int AsyncStatusCompleted = 1;
 
@@ -980,7 +1602,21 @@ namespace WPR.Wp8Native
                 _emulator.WriteUInt32(outAction, (uint)action);
             }
 
-            Return(HResultOk);
+            // A real thread pool takes a reference on the handler, because the caller is
+            // entitled to release it the moment RunAsync returns - and this one does exactly
+            // that. Queueing the function pointer without taking that reference leaves the
+            // delegate alive only by luck.
+            //
+            // It ran on luck for a long time and then stopped: the moment weak references
+            // started working, the release path actually destroyed the captured functor, and
+            // the drain invoked a delegate whose vptr had already been walked back to
+            // __abi_CaptureBase - so slot 1 was the next thing along in .rdata, and the CPU
+            // jumped into it. The symptom was an invalid instruction during startup with no
+            // apparent connection to refcounting at all.
+            if (!KeepAlive(handler))
+            {
+                Return(HResultOk);
+            }
         }
 
         /// <summary>
@@ -1022,12 +1658,21 @@ namespace WPR.Wp8Native
 
             _workItems.Add($"   put_Completed -> completion handler at 0x{invoke:X8}");
 
+            // Record everything the handler does between being invoked and returning. That
+            // list is the image's verdict on the result it was handed - the one thing an
+            // S_OK return can never say.
+            _emulator.StartCallCapture();
+
             _emulator.CallEmulated(
                 "IAsyncActionCompletedHandler::Invoke",
                 invoke,
                 [completionHandler, action, AsyncStatusCompleted],
                 onReturn: () =>
                 {
+                    IReadOnlyList<string> made = _emulator.StopCallCapture();
+                    AsyncCompleted.Add(
+                        $"completion handler 0x{invoke:X8} made {made.Count:N0} call(s): {Condense(made)}");
+
                     Return(HResultOk);
                     _emulator.ContinueAt(callerReturn);
                 });
@@ -1061,11 +1706,28 @@ namespace WPR.Wp8Native
         /// Slots whose behaviour is known, by absolute vtable index. Everything else falls
         /// through to logging and a placeholder.
         /// </param>
+        /// <summary>
+        /// Every discovery vtable is at least this long, whatever the interface declares.
+        /// </summary>
+        /// <remarks>
+        /// A vtable that is exactly as long as its interface turns a call to the wrong slot
+        /// into the wrong kind of failure. The image's QueryInterface is answered with the same
+        /// object for every IID, so it will call IVectorView members on an IIterable and
+        /// IIterator members on an IVectorView, and a slot one past the end reads the first
+        /// word of whatever heap block comes next and branches to it. Twice that was a list
+        /// sentinel pointing at itself, and the report could say only "jumped into the heap".
+        /// Padding with traps makes the same mistake print as `IVectorView::slot9`, which is a
+        /// line in the to-do list rather than the end of the run.
+        /// </remarks>
+        private const int MinimumDiscoverySlots = 32;
+
         private long CreateDiscoveryObject(
             string interfaceName,
             int slotCount,
-            IReadOnlyDictionary<int, (string Name, Action Handler)>? known = null)
+            IReadOnlyDictionary<int, (string Name, Action Handler)>? known = null,
+            bool failing = false)
         {
+            slotCount = Math.Max(slotCount, MinimumDiscoverySlots);
             (string, Action)[] methods = new (string, Action)[slotCount];
             for (int i = 0; i < slotCount; i++)
             {
@@ -1081,6 +1743,41 @@ namespace WPR.Wp8Native
                 {
                     _unimplementedCalls.Add(
                         $"{interfaceName}::slot{slot}  this=0x{Arg(0):X8} r1=0x{Arg(1):X8} r2=0x{Arg(2):X8}");
+
+                    // Every call on a class nobody implements is a line in the specification
+                    // of what implementing it would take.
+                    Slots.Record(
+                        interfaceName,
+                        slot,
+                        () => VtableProfile.DescribeCall(_emulator, _strings, Arg(1), Arg(2), Arg(3)),
+                        VtableProfile.LooksLikeDelegate(_emulator, Arg(1)) ||
+                        VtableProfile.LooksLikeDelegate(_emulator, Arg(2)));
+
+                    // A class this runtime cannot honestly stand in for answers failure - but
+                    // still fills the out-parameter, which is the one place this probe
+                    // deliberately breaks its own rule that a stub either writes its
+                    // out-parameter or reports failure, never neither.
+                    //
+                    // Blanking it is the correct answer and it kills the run outright. This
+                    // image does `hr = call(&out); __abi_ThrowIfFailed(hr);` - and the raise
+                    // is an import from vccorlib that nothing here can deliver, so the raise
+                    // stub *returns*, the caller carries on believing it succeeded, and calls
+                    // through the null one instruction later. Delivering that throw properly
+                    // is not a small job and would not help even so: the image carries no RTTI
+                    // for `Platform::Exception`, so it cannot catch one by type.
+                    //
+                    // Failure plus a live object is survivable and lets the caller's own error
+                    // path run, which is the whole point of failing.
+                    if (failing)
+                    {
+                        if (ArmEmulator.IsStackAddress(Arg(1)))
+                        {
+                            _emulator.WriteUInt32(Arg(1), (uint)GetPlaceholder($"{interfaceName}::slot{slot}"));
+                        }
+
+                        Return(HResultFail);
+                        return;
+                    }
 
                     // Hand back a placeholder object rather than zero. Most of these
                     // out-parameters are interface pointers, and the image dereferences
@@ -1106,6 +1803,37 @@ namespace WPR.Wp8Native
                         if (interfaceName == "ICoreWindow")
                         {
                             _windowHandlers[slot] = Arg(1);
+                        }
+
+                        // And take a reference on it, because accepting a subscription is a
+                        // promise to keep the delegate alive - the caller releases it the
+                        // moment this returns.
+                        //
+                        // This was invisible while the allocator never freed: the delegate
+                        // stayed valid because nothing could reuse its memory. Once the
+                        // allocator learned to recycle, every one of the five CoreWindow
+                        // subscriptions came back with the *same* address, because each
+                        // delegate was freed before the next was made. The tell was a
+                        // "handler" whose first three words pointed at itself.
+                        if (KeepAlive(Arg(1)))
+                        {
+                            return;
+                        }
+                    }
+                    else if (LooksLikeDelegate(Arg(1)))
+                    {
+                        // Shaped like put_Completed(handler) - one argument, and that
+                        // argument is a WinRT delegate. Nothing else in WinRT looks like
+                        // this: an event registration would want a token back through a
+                        // second, stack-allocated argument, and that case is above.
+                        //
+                        // Registering a completion handler and never calling it is the
+                        // quietest way to hang an image there is. It carries on, drawing
+                        // frames, running its main loop, waiting for an answer that this
+                        // runtime accepted responsibility for and never gave.
+                        if (CompleteAsync(Arg(0), Arg(1), $"{interfaceName}::slot{slot}"))
+                        {
+                            return;
                         }
                     }
 
@@ -1136,9 +1864,50 @@ namespace WPR.Wp8Native
                 {
                     _unimplementedCalls.Add($"(from {origin})::slot{slot}  r1=0x{Arg(1):X8}");
 
+                    // Placeholders are where the interesting surface actually is. The factory
+                    // gets ActivateInstance and little else; everything a class can *do* is
+                    // called on the instance it hands back, which is one of these.
+                    Slots.Record(
+                        $"<- {origin}",
+                        slot,
+                        () => VtableProfile.DescribeCall(_emulator, _strings, Arg(1), Arg(2), Arg(3)),
+                        VtableProfile.LooksLikeDelegate(_emulator, Arg(1)) ||
+                        VtableProfile.LooksLikeDelegate(_emulator, Arg(2)));
+
                     if (ArmEmulator.IsStackAddress(Arg(1)))
                     {
                         _emulator.WriteUInt32(Arg(1), (uint)GetPlaceholder($"{origin}/slot{slot}"));
+                    }
+                    else if (VtableProfile.LooksLikeDelegate(_emulator, Arg(1)))
+                    {
+                        // A callback handed to an object this runtime improvised. Accepting it
+                        // and never calling it is how an image ends up waiting for ever, and
+                        // this is the exact shape that kept Angry Birds Rio on its LOADING
+                        // screen: the Xbox service is handed two delegates, the Lua rests
+                        // until they fire (`restUntilCallback`, `loadingScreenCallbacks`), and
+                        // a stand-in that answers S_OK promises they are coming.
+                        //
+                        // The same inference exists on the discovery default and never fired
+                        // once, because these calls arrive on a *placeholder* - the object the
+                        // factory handed back - which is a different path entirely.
+                        if (ArmEmulator.IsStackAddress(Arg(2)))
+                        {
+                            // (handler, token*) is an event registration, not a completion,
+                            // and the difference matters enormously. The metadata this image
+                            // ships says slot 8 on a ServiceClient is
+                            // `add_SignedOut(EventHandler<SignedOutEventArgs>)` - so firing it
+                            // on registration tells the game the player just signed out, at
+                            // the exact moment it is trying to sign them in.
+                            //
+                            // A zero token is a valid one; it just never matches a remove.
+                            _emulator.WriteUInt64(Arg(2), 0);
+                        }
+                        else if (CompleteAsync(Arg(0), Arg(1), $"{origin}/slot{slot}"))
+                        {
+                            // No token to hand back, so this is `put_Completed(handler)` on an
+                            // IAsyncOperation - the shape the loading screen is waiting on.
+                            return;
+                        }
                     }
 
                     Return(HResultOk);
@@ -1175,13 +1944,30 @@ namespace WPR.Wp8Native
         {
             long instance = _emulator.AllocateHeap(8);
             long vtable = _emulator.AllocateHeap(slotCount * 4);
+            long self = instance;
 
             for (int slot = 0; slot < slotCount; slot++)
             {
                 int captured = slot;
-                (string name, Action handler) = slot switch
+                // An explicit entry wins even for IUnknown's own slots, which is what lets an
+                // object that implements two interfaces answer QueryInterface for real.
+                (string name, Action handler) = known is not null && known.ContainsKey(slot)
+                    ? (known[slot].Name, known[slot].Handler)
+                    : slot switch
                 {
-                    0 => ("QueryInterface", () => Return(HResultOk)),
+                    // S_OK without writing the out-parameter is the mistake this probe has
+                    // made more times than any other. These objects implement one interface,
+                    // so handing back the object itself is the only answer available - but it
+                    // has to actually be handed back.
+                    0 => ("QueryInterface", () =>
+                    {
+                        if (Arg(2) != 0)
+                        {
+                            _emulator.WriteUInt32(Arg(2), (uint)self);
+                        }
+
+                        Return(HResultOk);
+                    }),
                     1 => ("AddRef", () => Return(2)),
                     2 => ("Release", () => Return(1)),
                     _ when known.TryGetValue(slot, out (string Name, Action Handler) hit) => (hit.Name, hit.Handler),
@@ -1358,13 +2144,26 @@ namespace WPR.Wp8Native
             Return(HResultOk);
         }
 
+        /// <summary>
+        /// The n-th argument of the call that reached this stub: r0-r3, then the stack.
+        /// </summary>
+        /// <remarks>
+        /// The stack half matters more here than anywhere: WinRT methods put the out-parameter
+        /// last, so every method with four or more inputs returns through the stack.
+        /// GetAchievementsAsync(UInt32, UInt32, Boolean, AchievementCollection) writes its
+        /// operation to the fifth argument, and an accessor that stopped at r3 threw on it -
+        /// which, for the image, was a task that never existed and a loading screen that never
+        /// ended. Same rule as CallFrame.Arg: one word per argument, so a 64-bit value has to
+        /// be read deliberately rather than counted through.
+        /// </remarks>
         private long Arg(int index) => index switch
         {
             0 => _emulator.ReadRegister(Arm.UC_ARM_REG_R0),
             1 => _emulator.ReadRegister(Arm.UC_ARM_REG_R1),
             2 => _emulator.ReadRegister(Arm.UC_ARM_REG_R2),
             3 => _emulator.ReadRegister(Arm.UC_ARM_REG_R3),
-            _ => throw new ArgumentOutOfRangeException(nameof(index)),
+            < 0 => throw new ArgumentOutOfRangeException(nameof(index)),
+            _ => _emulator.ReadUInt32(_emulator.ReadRegister(Arm.UC_ARM_REG_SP) + ((index - 4) * 4)),
         };
 
         private void Return(long value) => _emulator.WriteRegister(Arm.UC_ARM_REG_R0, value);

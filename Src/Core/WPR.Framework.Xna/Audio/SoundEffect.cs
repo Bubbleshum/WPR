@@ -8,6 +8,7 @@
 #endregion
 
 #region Using Statements
+using WPR.Engine.Audio;
 using System;
 using System.IO;
 using System.Collections.Generic;
@@ -54,12 +55,12 @@ namespace Microsoft.Xna.Framework.Audio
 			get
 			{
 				Device();
-				return XnaBackend.Audio.GetMasterVolume();
+				return AudioBackendRegistry.Sound.GetMasterVolume();
 			}
 			set
 			{
 				Device();
-				XnaBackend.Audio.SetMasterVolume(value);
+				AudioBackendRegistry.Sound.SetMasterVolume(value);
 			}
 		}
 
@@ -105,7 +106,7 @@ namespace Microsoft.Xna.Framework.Audio
 			{
 				FAudioContext dev = Device();
 				dev.SpeedOfSound = value;
-				XnaBackend.Audio.SetSpeedOfSound(dev.SpeedOfSound);
+				AudioBackendRegistry.Sound.SetSpeedOfSound(dev.SpeedOfSound);
 			}
 		}
 
@@ -229,7 +230,7 @@ namespace Microsoft.Xna.Framework.Audio
 
 			/* Easy stuff */
 			handle = new AudioBufferDesc();
-			handle.Flags = XnaBackend.Audio.EndOfStreamFlag;
+			handle.Flags = AudioBackendRegistry.Sound.EndOfStreamFlag;
 			handle.pContext = IntPtr.Zero;
 
 			/* Buffer data */
@@ -525,7 +526,7 @@ namespace Microsoft.Xna.Framework.Audio
 
 		/// <summary>
 		/// WPR (Stage 5c-3a): the audio device/context now lives in the BACKEND
-		/// (<c>WPR.Backend.FNA.FnaAudioBackend</c>), which owns every FAudio/F3DAudio struct â€” the
+		/// (<c>WPR.Audio.FAudio.FAudioSoundBackend</c>), which owns every FAudio/F3DAudio struct â€” the
 		/// context handle, mastering voice, 3D handle blob and the reverb submix chain. What remains
 		/// here is a thin shim holding the MANAGED device state XNA exposes (distance / doppler /
 		/// speed-of-sound) and forwarding lifetime + reverb to the backend.
@@ -566,18 +567,18 @@ namespace Microsoft.Xna.Framework.Audio
 
 			public void Dispose()
 			{
-				XnaBackend.Audio.DestroyDevice();
+				AudioBackendRegistry.Sound.DestroyDevice();
 				Context = null;
 			}
 
 			public void AttachReverb(IntPtr voice)
 			{
-				XnaBackend.Audio.AttachReverb(voice);
+				AudioBackendRegistry.Sound.AttachReverb(voice);
 			}
 
 			public static void Create()
 			{
-				if (!XnaBackend.HasAudio)
+				if (!AudioBackendRegistry.HasSound)
 				{
 					/* No audio backend registered (e.g. a headless host). Device() turns
 					 * this into NoAudioHardwareException, same as a missing sound card.
@@ -586,7 +587,7 @@ namespace Microsoft.Xna.Framework.Audio
 				}
 
 				AudioDeviceInfo info;
-				if (!XnaBackend.Audio.TryCreateDevice(DefaultSpeedOfSound, out info))
+				if (!AudioBackendRegistry.Sound.TryCreateDevice(DefaultSpeedOfSound, out info))
 				{
 					/* FAudio missing, no sound cards, or the soundcard failed to
 					 * configure â€” all of which FNA treated as "no device".

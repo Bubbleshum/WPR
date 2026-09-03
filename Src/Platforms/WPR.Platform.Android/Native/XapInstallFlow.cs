@@ -1,3 +1,4 @@
+using WPR.Shell;
 using System;
 using System.IO;
 using System.Threading;
@@ -69,33 +70,46 @@ namespace WPR.Platform.Android.Native
                 // stream; a content:// stream is forward-only. Staging a real file also lets
                 // the manifest read and the install read the same bytes twice without
                 // re-prompting the provider.
+                Log.Info(LogCategory.AppInstall, $"XAP install: staging {displayName}");
                 bool copied = await Task.Run(() => CopyToStaging(host, uri, stagedPath));
                 if (!copied)
                 {
                     progress.Dismiss();
-                    WpDialogs.Error(host, WPR.Platform.Android.Properties.Resources.InstallationFailed,
+                    WpDialogs.Error(host, WPR.Shell.Resources.InstallationFailed,
                         "Could not read the selected file. Pick it again from a location the app can open.");
                     return false;
                 }
 
                 progress.SetStage("reading manifest…");
+                Log.Info(LogCategory.AppInstall, $"XAP install: reading manifest of {displayName}");
 
-                ApplicationPreview? preview;
-                using (FileStream previewStream = new FileStream(stagedPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                // Off the UI thread, like the copy above. ReadPreview is not the cheap XML read
+                // its name suggests: it opens the whole .xap as a ZipArchive and then hands that
+                // archive to ApplicationVersionResolver, which INFLATES the game's main assembly
+                // out of it to read a real AssemblyVersion (half the library ships the 1.0.0.0
+                // manifest default). On a large package that is tens of megabytes of decompression
+                // plus an assembly parse, and doing it inline froze the launcher hard enough for
+                // Android to raise "WPR isn't responding" — reproduced on Pixel_Dev installing a
+                // 136 MB package as the third install of one session.
+                ApplicationPreview? preview = await Task.Run(() =>
                 {
-                    preview = ApplicationInstaller.ReadPreview(previewStream);
-                }
+                    using FileStream previewStream = new FileStream(
+                        stagedPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                    return ApplicationInstaller.ReadPreview(previewStream);
+                });
 
                 if (preview == null)
                 {
                     progress.Dismiss();
-                    WpDialogs.Error(host, WPR.Platform.Android.Properties.Resources.InstallationFailed,
+                    WpDialogs.Error(host, WPR.Shell.Resources.InstallationFailed,
                         LocaleUtils.GetDisplayName(ApplicationInstallError.InvalidManifestFiles));
                     return false;
                 }
 
                 progress.SetStage("installing…");
                 progress.SetProgress(0);
+                Log.Info(LogCategory.AppInstall,
+                    $"XAP install: extracting and patching '{preview.Name}' ({preview.ProductId})");
 
                 ApplicationInstallError error;
                 using (FileStream installStream = new FileStream(stagedPath, FileMode.Open, FileAccess.Read, FileShare.Read))
@@ -113,7 +127,7 @@ namespace WPR.Platform.Android.Native
 
                 if (error != ApplicationInstallError.None)
                 {
-                    WpDialogs.Error(host, WPR.Platform.Android.Properties.Resources.InstallationFailed,
+                    WpDialogs.Error(host, WPR.Shell.Resources.InstallationFailed,
                         LocaleUtils.GetDisplayName(error));
                     return false;
                 }
@@ -124,7 +138,7 @@ namespace WPR.Platform.Android.Native
             {
                 progress.Dismiss();
                 Log.Error(LogCategory.AppInstall, $"XAP install failed for {displayName}:\n{ex}");
-                WpDialogs.Error(host, WPR.Platform.Android.Properties.Resources.InstallationFailed, ex.Message);
+                WpDialogs.Error(host, WPR.Shell.Resources.InstallationFailed, ex.Message);
                 return false;
             }
             finally
@@ -139,8 +153,8 @@ namespace WPR.Platform.Android.Native
         private static Task<bool> ConfirmReplaceAsync(Activity host, WprApplication existing) =>
             WpDialogs.ConfirmAsync(
                 host,
-                WPR.Platform.Android.Properties.Resources.ApplicationAlreadyInstalled,
-                string.Format(WPR.Platform.Android.Properties.Resources.ApplicationAlreadyInstalledDescription, existing.Name));
+                WPR.Shell.Resources.ApplicationAlreadyInstalled,
+                string.Format(WPR.Shell.Resources.ApplicationAlreadyInstalledDescription, existing.Name));
 
         private static bool CopyToStaging(Context context, global::Android.Net.Uri uri, string destination)
         {

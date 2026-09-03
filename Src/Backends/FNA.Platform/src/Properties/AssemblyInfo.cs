@@ -27,6 +27,10 @@ using System.Resources;
 // bindings directly (notably the internal `FNA3D` P/Invoke class) so FNA's own DllImport resolver
 // (FNADllMap) fires for them. This is the RHI-seam implementation path — see FnaGraphicsBackend.
 [assembly: InternalsVisibleTo("WPR.Backend.FNA")]
+// WPR: same for the audio adapters, which moved to Src/Audio/WPR.Audio.FAudio on 2026-09-01. They
+// call the global-namespace FAudio/FACT bindings and FNAPlatform's microphone capture, both of
+// which must be invoked from a caller FNA trusts so FNADllMap resolves the native libraries.
+[assembly: InternalsVisibleTo("WPR.Audio.FAudio")]
 
 // Setting ComVisible to false makes the types in this assembly not visible
 // to COM components.  If you need to access a type in this assembly from

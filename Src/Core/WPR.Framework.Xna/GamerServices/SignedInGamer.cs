@@ -1,3 +1,4 @@
+using WPR.Engine.Notifications;
 using WPR.Common;
 
 
@@ -269,7 +270,7 @@ namespace Microsoft.Xna.Framework.GamerServices
                         // Tell FNA to ignore the focus blip for a short window around the toast.
                         WPR.Xna.Rhi.XnaBackend.SuppressFocusActivation(TimeSpan.FromSeconds(8));
 
-                        await NativeUI.NotificationManager.ShowNotification(new DesktopNotifications.Notification()
+                        await NotificationBackend.Manager.ShowNotification(new Notification()
                         {
                             Title = Properties.Resources.AchievementUnlocked,
                             Body = $"{achievements[0].GamerScore}G - {achievements[0].Name}",

@@ -22,10 +22,106 @@ namespace WPR.Wp8Native
         private readonly HStringHeap _strings;
         private readonly CallFrame _frame;
         private readonly CrtLibrary _crt;
+        private readonly SyncLibrary _sync;
         private readonly Dictionary<string, Action> _handlers;
 
         /// <summary>Stands in for a monotonic clock. Advanced by every timing call.</summary>
-        private long _tick = 0x1234;
+        private long _clock = 0x1234;
+
+        /// <summary>
+        /// A monotonic microsecond clock that advances with the frame loop, not with how
+        /// often it is asked.
+        /// </summary>
+        /// <remarks>
+        /// The original counter incremented once per query, so time passed at whatever rate
+        /// the image happened to read it. That is not merely imprecise, it makes the *shape*
+        /// of a frame wrong: a game reading the clock three times a frame - at the top, after
+        /// its update, and after its draw - sees a fixed one-unit gap between all three, so
+        /// "how long did the update take" and "how long since the last frame" come back equal,
+        /// which is a state a real clock can never produce and which no game is written to
+        /// expect.
+        /// <para>
+        /// A notional 60Hz against the dispatcher count is far closer, and it is monotonic in
+        /// both directions that matter: every query advances it by at least a microsecond, so
+        /// two reads in a frame never come back identical, and it never runs backwards when a
+        /// frame is slow.
+        /// </para>
+        /// <para>
+        /// The frame count on its own is not enough, and finding out why was the useful part.
+        /// This image has a **spin-wait frame limiter**: it reads the clock in a tight loop
+        /// until enough time has passed. Against a clock that only moves when the frame
+        /// counter does, that loop cannot ever finish inside the frame it is in - it went from
+        /// 3.2 clock reads per frame to 504, and the cost of a frame went from 1.2 million
+        /// instructions to 14.5 million. The old per-query counter was accidentally immune,
+        /// because a millisecond per read let the limiter out after about sixteen of them.
+        /// </para>
+        /// <para>
+        /// So time advances for both reasons: with frames, which gives the right delta between
+        /// them, and with repeated queries inside a frame, which lets a spin finish. The
+        /// within-frame part is capped below one frame so it can never overtake the frame
+        /// clock and run time backwards at the boundary.
+        /// </para>
+        /// </remarks>
+        /// <summary>
+        /// How much the virtual clock advances per turn round the image's main loop, from
+        /// <c>WPR_CLOCK</c>: microseconds, or <c>auto</c> to follow the host's own clock.
+        /// </summary>
+        /// <remarks>
+        /// The default, 16,667us, tells the image it is running at exactly 60fps however long
+        /// a frame really took. That is what makes a run reproducible - the same tap lands on
+        /// the same frame every time - and it is also why loading takes so long to watch: a
+        /// splash screen that waits five seconds waits 300 *frames*, and a frame here costs
+        /// far more than 16ms, so five seconds becomes the best part of a minute.
+        ///
+        /// <c>auto</c> hands the image the host's real elapsed time instead. Timed waits then
+        /// take the wall-clock time they would take on a phone, which is what an interactive
+        /// window wants; runs stop being frame-for-frame reproducible, which is why it is not
+        /// the default for the console probe.
+        /// </remarks>
+        private static readonly long FrameMicroseconds = ReadFrameMicroseconds();
+
+        private static readonly bool FollowHostClock =
+            string.Equals(
+                Environment.GetEnvironmentVariable("WPR_CLOCK"), "auto", StringComparison.OrdinalIgnoreCase);
+
+        private static long ReadFrameMicroseconds() =>
+            long.TryParse(Environment.GetEnvironmentVariable("WPR_CLOCK"), out long each) && each > 0
+                ? each
+                : 16_667;
+
+        private readonly System.Diagnostics.Stopwatch _hostClock = System.Diagnostics.Stopwatch.StartNew();
+
+        private long Microseconds()
+        {
+            long perFrame = FrameMicroseconds;
+            const long perQuery = 200;
+
+            if (FollowHostClock)
+            {
+                // Monotonic by construction, and never behind the last value handed out - an
+                // image that reads the clock twice in a row must not see it go backwards.
+                _clock = Math.Max(_clock + 1, _hostClock.ElapsedTicks / (System.Diagnostics.Stopwatch.Frequency / 1_000_000));
+                return _clock;
+            }
+
+            long frame = _winRt.ProcessEventsCalls;
+            if (frame != _clockFrame)
+            {
+                _clockFrame = frame;
+                _queriesThisFrame = 0;
+            }
+
+            // Time moves for two reasons, and both are needed. The frame count gives the
+            // right shape *between* frames - about 16ms of delta, which is what an image
+            // computes its animation from. Repeated queries move it *within* a frame, which
+            // is what lets a spin-wait finish.
+            long within = Math.Min(_queriesThisFrame++ * perQuery, perFrame - 1);
+            _clock = Math.Max(_clock + 1, (frame * perFrame) + within);
+            return _clock;
+        }
+
+        private long _clockFrame = -1;
+        private long _queriesThisFrame;
 
         /// <summary>Ticks per second reported to the image: one microsecond of resolution.</summary>
         private const long PerformanceFrequency = 1_000_000;
@@ -53,8 +149,8 @@ namespace WPR.Wp8Native
                 ["GetSystemTimeAsFileTime"] = () =>
                 {
                     // Writes a FILETIME through its only argument; the value is never checked.
-                    WriteInt64(Arg(0), 130000000000000000L + _tick);
-                    _tick += 1000;
+                    // FILETIME is in 100-nanosecond units, so ten per microsecond.
+                    WriteInt64(Arg(0), 130000000000000000L + (Microseconds() * 10));
                     Return(0);
                 },
                 ["QueryPerformanceCounter"] = QueryPerformance,
@@ -66,8 +162,8 @@ namespace WPR.Wp8Native
                     WriteInt64(Arg(0), PerformanceFrequency);
                     Return(1);
                 },
-                ["GetTickCount64"] = () => Return64(_tick++),
-                ["GetTickCount"] = () => Return(_tick++),
+                ["GetTickCount64"] = () => Return64(Microseconds() / 1000),
+                ["GetTickCount"] = () => Return(Microseconds() / 1000),
 
                 // --- identity ---
                 ["GetCurrentThreadId"] = () => Return(0x1000),
@@ -230,6 +326,8 @@ namespace WPR.Wp8Native
             _crt = new CrtLibrary(emulator, _frame);
             _crt.RegisterInto(_handlers);
             Files.RegisterInto(_handlers);
+            _sync = new SyncLibrary(emulator, _frame);
+            _sync.RegisterInto(_handlers);
         }
 
         /// <summary>
@@ -243,6 +341,15 @@ namespace WPR.Wp8Native
         /// delivered, so the caller carried on with a value it should never have seen.
         /// </summary>
         public IReadOnlyList<string> UndeliveredThrows => _undeliveredThrows;
+
+        private readonly List<string> _constructedExceptions = new();
+
+        /// <summary>
+        /// Platform exceptions the image constructed, with the HRESULT each carried. Each one is
+        /// a failing call the image noticed - which is a shorter list of what to fix than
+        /// anything else this probe prints.
+        /// </summary>
+        public IReadOnlyList<string> ConstructedExceptions => _constructedExceptions;
 
         public Direct3DRuntime Direct3D { get; }
 
@@ -285,7 +392,40 @@ namespace WPR.Wp8Native
             ["CoGetContextToken"] = () => FailWithNull(Arg(0), CoNotInitialized),
 
             // HRESULT CoCreateFreeThreadedMarshaler(IUnknown *pUnkOuter, IUnknown **ppunkMarshal).
-            ["CoCreateFreeThreadedMarshaler"] = () => FailWithNull(Arg(1), NotImplemented),
+            //
+            // Refusing this has a consequence worth knowing about, and it is not the obvious
+            // one. vccorlib asks for a marshaler while building the weak reference that every
+            // C++/CX event handler captures: it stores the weak reference, calls this, and on
+            // failure **releases the weak reference and nulls it**. So refusing does not
+            // disable marshalling, it disables weak references - and the symptom surfaces
+            // much later, as the first tap delivered to the game resolving null and calling
+            // through address zero.
+            //
+            // Answering it is worse. A free-threaded marshaler is *aggregated* into the outer
+            // object, and a stand-in that is not a real aggregate breaks the C++/CX bootstrap
+            // outright: measured, the image goes from 63,000 presented frames to dying on an
+            // invalid instruction having opened no files at all. Getting this right means
+            // implementing aggregation - honouring pUnkOuter, delegating QueryInterface back
+            // to the controlling unknown - not handing back an object.
+            // Success with a null marshaler. The caller stores a weak reference, calls this,
+            // and on failure releases that weak reference and nulls it - so refusing does not
+            // disable marshalling, it disables weak references for the whole image, and the
+            // first tap delivered to the game then resolves null.
+            //
+            // Handing back an object instead does not work: three versions were tried, from a
+            // bare stand-in to a properly aggregated inner unknown that delegates to the
+            // controlling unknown, and all three died the same way - the image calls a method
+            // on it and lands somewhere that is not a function.
+            //
+            // So this claims success and writes null, which is a lie about a pointer rather
+            // than about a vtable. That is the important difference: nothing can be called on
+            // null, so if the image ever does use the marshaler it is a null call at the
+            // exact instruction that used it, which is a fact rather than a mystery.
+            ["CoCreateFreeThreadedMarshaler"] = () =>
+            {
+                WriteIfPointer(Arg(1), 0);
+                Return(0);
+            },
 
             // HRESULT CoMarshalInterThreadInterfaceInStream(REFIID, IUnknown*, IStream**).
             ["CoMarshalInterThreadInterfaceInStream"] = () => FailWithNull(Arg(2), NotImplemented),
@@ -387,6 +527,25 @@ namespace WPR.Wp8Native
             // back a null object, and the caller dereferences it a few instructions later
             // with nothing in the trace to explain why. Preserving r0 costs nothing and
             // makes an unimplemented constructor merely uninitialised rather than fatal.
+            // A constructor of any Platform exception type. It has to behave like one: leave a
+            // vtable at this+0 so the object can be thrown, keep the HRESULT at this+4 where
+            // get_HResult expects it, and hand back this. Returning zero from a constructor is
+            // what turned a failing HRESULT into the CPU executing heap data.
+            if (function.StartsWith("??0", StringComparison.Ordinal) &&
+                function.Contains("Exception@Platform@@", StringComparison.Ordinal))
+            {
+                long self = Arg(0);
+                _emulator.WriteUInt32(self, (uint)_winRt.PlatformExceptionVtable());
+                _emulator.WriteUInt32(self + 4, (uint)Arg(1));
+                if (_constructedExceptions.Count < 24)
+                {
+                    _constructedExceptions.Add($"{function} hr=0x{Arg(1):X8} at 0x{_emulator.ReturnAddress:X8}");
+                }
+
+                Return(self);
+                return;
+            }
+
             if (function.StartsWith("??0", StringComparison.Ordinal))
             {
                 ConstructShapedObject(function);
@@ -464,7 +623,14 @@ namespace WPR.Wp8Native
             long instance = Arg(0);
             Return(instance);
 
-            if (instance == 0 || _emulator.ReadUInt32(instance) != 0)
+            // Leave an existing vtable alone - a derived constructor in the image sets it
+            // before calling this base constructor - but only if it is one. The old test was
+            // "non-zero", and an object carved out of a recycled heap block is non-zero at
+            // offset 0 whatever it used to be. A Platform::Exception was built in a block whose
+            // first word was its own address (a dead list sentinel); the guard skipped the
+            // vtable, the throw read that word as a vptr, read the same word again as the
+            // method, and the CPU branched into the object. A vtable's first slot is code.
+            if (instance == 0 || LooksLikeVtable(_emulator.ReadUInt32(instance)))
             {
                 return;
             }
@@ -478,8 +644,29 @@ namespace WPR.Wp8Native
             _emulator.WriteUInt32(instance, (uint)vtable);
         }
 
+        /// <summary>Whether a word could be a vtable pointer: it points at a slot holding code.</summary>
+        private bool LooksLikeVtable(long candidate)
+        {
+            if (candidate == 0)
+            {
+                return false;
+            }
+
+            try
+            {
+                return _emulator.IsExecutableCode(_emulator.ReadUInt32(candidate, 0));
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
         /// <summary>File I/O, backed by real files.</summary>
         public FileLibrary Files { get; }
+
+        /// <summary>The event and lock primitives, for reporting.</summary>
+        public SyncLibrary Sync => _sync;
 
         /// <summary>How many C++ static initialisers actually ran.</summary>
         public int StaticInitialisersRun { get; private set; }
@@ -978,8 +1165,8 @@ namespace WPR.Wp8Native
 
         private void QueryPerformance()
         {
-            WriteInt64(Arg(0), _tick * 1000);
-            _tick++;
+            // PerformanceFrequency is 1 MHz, so the counter is exactly microseconds.
+            WriteInt64(Arg(0), Microseconds());
             Return(1); // BOOL TRUE
         }
 
