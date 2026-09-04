@@ -1,4 +1,20 @@
 {
   "Name": "More Brain Exercise by Namco",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "I Am Everything",       "GamerScore": 0 },
+    { "Key": "Coming Back For More",  "GamerScore": 0 },
+    { "Key": "A Week Of Hard Work",   "GamerScore": 0 },
+    { "Key": "Scrupulous",            "GamerScore": 0 },
+    { "Key": "Frontman",              "GamerScore": 0 },
+    { "Key": "It is Not Temporary",   "GamerScore": 0 },
+    { "Key": "Party Time",            "GamerScore": 0 },
+    { "Key": "Mindblowing",           "GamerScore": 0 },
+    { "Key": "Forever Young",         "GamerScore": 0 },
+    { "Key": "You Have A Choice",     "GamerScore": 0 },
+    { "Key": "A Little Bonus",        "GamerScore": 0 },
+    { "Key": "Sudoku Rookie",         "GamerScore": 0 },
+    { "Key": "Sudoku Apprentice",     "GamerScore": 0 },
+    { "Key": "Sudoku Master",         "GamerScore": 0 }
+  ]
 }

@@ -1,4 +1,26 @@
 {
   "Name": "Parking Mania",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Licensed",         "GamerScore": 0 },
+    { "Key": "Master",           "GamerScore": 0 },
+    { "Key": "Parking maniac",   "GamerScore": 0 },
+    { "Key": "Parking pro",      "GamerScore": 0 },
+    { "Key": "First gear",       "GamerScore": 0 },
+    { "Key": "Second gear",      "GamerScore": 0 },
+    { "Key": "Third gear",       "GamerScore": 0 },
+    { "Key": "Fourth gear",      "GamerScore": 0 },
+    { "Key": "Overdrive",        "GamerScore": 0 },
+    { "Key": "Compact",          "GamerScore": 0 },
+    { "Key": "Sedan",            "GamerScore": 0 },
+    { "Key": "Sports",           "GamerScore": 0 },
+    { "Key": "Limousine",        "GamerScore": 0 },
+    { "Key": "No claims bonus",  "GamerScore": 0 },
+    { "Key": "Boxclever",        "GamerScore": 0 },
+    { "Key": "Turn on a dime",   "GamerScore": 0 },
+    { "Key": "Buck up",          "GamerScore": 0 },
+    { "Key": "Money box",        "GamerScore": 0 },
+    { "Key": "Jackpot",          "GamerScore": 0 },
+    { "Key": "Top buyer",        "GamerScore": 0 }
+  ]
 }

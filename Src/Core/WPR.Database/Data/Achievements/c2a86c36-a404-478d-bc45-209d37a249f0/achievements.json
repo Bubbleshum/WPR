@@ -1,4 +1,26 @@
 {
   "Name": "Tentacles",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "MAKE_A_PERFECT_RUN",                 "GamerScore": 0 },
+    { "Key": "COMPLETE_LEVEL_NO_DAMAGE",           "GamerScore": 0 },
+    { "Key": "DEFEAT_FIRST_GOBBLER_BOSS",          "GamerScore": 0 },
+    { "Key": "DEFEAT_SECOND_WORM_BOSS",            "GamerScore": 0 },
+    { "Key": "COMPLETE_DAMAGE_CHALLENGE",          "GamerScore": 0 },
+    { "Key": "DEFEAT_FIRST_SHOOTER_BOSS",          "GamerScore": 0 },
+    { "Key": "MAKE_5_CONSECUTIVE_KILLS",           "GamerScore": 0 },
+    { "Key": "GET_ALL_STARS",                      "GamerScore": 0 },
+    { "Key": "DEFEAT_SECOND_SHOOTER_BOSS",         "GamerScore": 0 },
+    { "Key": "COLLECT_ALL_PICKUPS",                "GamerScore": 0 },
+    { "Key": "GET_NO_PICKUPS",                     "GamerScore": 0 },
+    { "Key": "FIRST_KILL",                         "GamerScore": 0 },
+    { "Key": "DEFEAT_FIRST_WORM_BOSS",             "GamerScore": 0 },
+    { "Key": "KILL_GOBBLER",                       "GamerScore": 0 },
+    { "Key": "COMPLETE_TIME_CHALLENGE",            "GamerScore": 0 },
+    { "Key": "COMPLETE_PENETRATOR_LEVEL",          "GamerScore": 0 },
+    { "Key": "DEFEAT_SECOND_GOBBLER_BOSS",         "GamerScore": 0 },
+    { "Key": "COMPLETE_GAME",                      "GamerScore": 0 },
+    { "Key": "COMPLETE_ALL_CHALLENGES",            "GamerScore": 0 },
+    { "Key": "COMPLETE_ALL_LEVELS_WITHOUT_DYING",  "GamerScore": 0 }
+  ]
 }

@@ -1,4 +1,26 @@
 {
   "Name": "FIFA 15 Ultimate Team",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Corner Maestro",              "GamerScore": 0 },
+    { "Key": "Clean sheet",                 "GamerScore": 0 },
+    { "Key": "Fairplay",                    "GamerScore": 0 },
+    { "Key": "Feather touch",               "GamerScore": 0 },
+    { "Key": "Natural born talent",         "GamerScore": 0 },
+    { "Key": "Attacking Rage",              "GamerScore": 0 },
+    { "Key": "Iron Defense",                "GamerScore": 0 },
+    { "Key": "First Step",                  "GamerScore": 0 },
+    { "Key": "Aerial Threat",               "GamerScore": 0 },
+    { "Key": "One Two Master",              "GamerScore": 0 },
+    { "Key": "Give It Your All",            "GamerScore": 0 },
+    { "Key": "Hat Trick",                   "GamerScore": 0 },
+    { "Key": "A Handful Of Goals",          "GamerScore": 0 },
+    { "Key": "Defence Is The Best Attack",  "GamerScore": 0 },
+    { "Key": "A Job Well Done",             "GamerScore": 0 },
+    { "Key": "Inspiration",                 "GamerScore": 0 },
+    { "Key": "Long Range",                  "GamerScore": 0 },
+    { "Key": "One on One",                  "GamerScore": 0 },
+    { "Key": "Last Man Standing",           "GamerScore": 0 },
+    { "Key": "Woodwork and In",             "GamerScore": 0 }
+  ]
 }

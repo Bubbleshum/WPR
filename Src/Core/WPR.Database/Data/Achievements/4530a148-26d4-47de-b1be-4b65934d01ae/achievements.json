@@ -1,4 +1,26 @@
 {
   "Name": "Make It Rain - The Love of Money",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "BUSINESS_BILL_2",      "GamerScore": 0 },
+    { "Key": "BUSINESS_BILL_1M",     "GamerScore": 0 },
+    { "Key": "BUSINESS_BILL_1B",     "GamerScore": 0 },
+    { "Key": "BUSINESS_BILL_500KB",  "GamerScore": 0 },
+    { "Key": "BUSINESS_BILL_10KBB",  "GamerScore": 0 },
+    { "Key": "MONEY_1M",             "GamerScore": 0 },
+    { "Key": "MONEY_1B",             "GamerScore": 0 },
+    { "Key": "MONEY_1MBB",           "GamerScore": 0 },
+    { "Key": "POLITICAL_5M_BUCKET",  "GamerScore": 0 },
+    { "Key": "POLITICAL_L10_ROBOT",  "GamerScore": 0 },
+    { "Key": "FBI_MIRACLE_5",        "GamerScore": 0 },
+    { "Key": "FBI_GUILTY_10",        "GamerScore": 0 },
+    { "Key": "RATE_500",             "GamerScore": 0 },
+    { "Key": "RATE_50B",             "GamerScore": 0 },
+    { "Key": "RATE_500MB",           "GamerScore": 0 },
+    { "Key": "FACEBOOK_SHARE",       "GamerScore": 0 },
+    { "Key": "SWIPE_1M",             "GamerScore": 0 },
+    { "Key": "SWIPE_2M",             "GamerScore": 0 },
+    { "Key": "SWIPE_TURBO",          "GamerScore": 0 },
+    { "Key": "COMBO_BEE",            "GamerScore": 0 }
+  ]
 }

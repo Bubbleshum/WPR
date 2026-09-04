@@ -1,4 +1,36 @@
 {
   "Name": "What in the World?",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Is it on",              "GamerScore": 0 },
+    { "Key": "Social Member",         "GamerScore": 0 },
+    { "Key": "Prepared",              "GamerScore": 0 },
+    { "Key": "Resourceful",           "GamerScore": 0 },
+    { "Key": "Unpuzzleable",          "GamerScore": 0 },
+    { "Key": "Guru Master",           "GamerScore": 0 },
+    { "Key": "Audiovisual Guru",      "GamerScore": 0 },
+    { "Key": "Celebrity Guru",        "GamerScore": 0 },
+    { "Key": "Brands Guru",           "GamerScore": 0 },
+    { "Key": "Geographic Guru",       "GamerScore": 0 },
+    { "Key": "Characters Guru",       "GamerScore": 0 },
+    { "Key": "Level Beater 1",        "GamerScore": 0 },
+    { "Key": "Level Beater 2",        "GamerScore": 0 },
+    { "Key": "Level Beater 3",        "GamerScore": 0 },
+    { "Key": "Level Beater 4",        "GamerScore": 0 },
+    { "Key": "Level Beater 5",        "GamerScore": 0 },
+    { "Key": "Level 2 Unlocked",      "GamerScore": 0 },
+    { "Key": "Level 3 Unlocked",      "GamerScore": 0 },
+    { "Key": "Level 4 Unlocked",      "GamerScore": 0 },
+    { "Key": "Level 5 Unlocked",      "GamerScore": 0 },
+    { "Key": "The voice of success",  "GamerScore": 0 },
+    { "Key": "Good habits",           "GamerScore": 0 },
+    { "Key": "Master Eminence",       "GamerScore": 0 },
+    { "Key": "Audiovisual Eminence",  "GamerScore": 0 },
+    { "Key": "Celebrity Eminence",    "GamerScore": 0 },
+    { "Key": "Brands Eminence",       "GamerScore": 0 },
+    { "Key": "Geographic Eminence",   "GamerScore": 0 },
+    { "Key": "Characters Eminence",   "GamerScore": 0 },
+    { "Key": "Level Beater 6",        "GamerScore": 0 },
+    { "Key": "Level 6 Unlocked",      "GamerScore": 0 }
+  ]
 }

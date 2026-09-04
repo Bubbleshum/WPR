@@ -1,4 +1,26 @@
 {
   "Name": "Feed Me Oil",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "FAN_UNLOCK",         "GamerScore": 0 },
+    { "Key": "MAGNET_UNLOCK",      "GamerScore": 0 },
+    { "Key": "GRAVITY_UNLOCK",     "GamerScore": 0 },
+    { "Key": "WOODEN_COG",         "GamerScore": 0 },
+    { "Key": "STONE_COG",          "GamerScore": 0 },
+    { "Key": "IRON_COG",           "GamerScore": 0 },
+    { "Key": "GOLDEN_COG",         "GamerScore": 0 },
+    { "Key": "PLATINUM_COG",       "GamerScore": 0 },
+    { "Key": "KEEN_FEEDER",        "GamerScore": 0 },
+    { "Key": "FEED_GENUIS",        "GamerScore": 0 },
+    { "Key": "BUTTONS_CHEATER",    "GamerScore": 0 },
+    { "Key": "FEEDING_HAND",       "GamerScore": 0 },
+    { "Key": "OIL_PAINTER",        "GamerScore": 0 },
+    { "Key": "OIL_SPILLER",        "GamerScore": 0 },
+    { "Key": "OIL_SPILL_GOD",      "GamerScore": 0 },
+    { "Key": "FREE_RANGE_BRAIN",   "GamerScore": 0 },
+    { "Key": "ORGANIC_BRAIN",      "GamerScore": 0 },
+    { "Key": "OWN_FLOW_SEEKER",    "GamerScore": 0 },
+    { "Key": "THOUGHTFUL_FEEDER",  "GamerScore": 0 },
+    { "Key": "KEEP_TRYING",        "GamerScore": 0 }
+  ]
 }

@@ -1,4 +1,25 @@
 {
   "Name": "Earthworm Jim",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Blash it",                "GamerScore": 0 },
+    { "Key": "Shoo shoo",               "GamerScore": 0 },
+    { "Key": "Reloaded",                "GamerScore": 0 },
+    { "Key": "Black disaster",          "GamerScore": 0 },
+    { "Key": "Bin Bin Bin",             "GamerScore": 0 },
+    { "Key": "Goodbye New Junk City",   "GamerScore": 0 },
+    { "Key": "Yes I won",               "GamerScore": 0 },
+    { "Key": "Poor chicken",            "GamerScore": 0 },
+    { "Key": "Final Fight",             "GamerScore": 0 },
+    { "Key": "Thorn gone crazy",        "GamerScore": 0 },
+    { "Key": "Space challenge",         "GamerScore": 0 },
+    { "Key": "Earthworm never dies",    "GamerScore": 0 },
+    { "Key": "Worminator",              "GamerScore": 0 },
+    { "Key": "Whip Whip whip",          "GamerScore": 0 },
+    { "Key": "Shooting stars",          "GamerScore": 0 },
+    { "Key": "Stars Ruler",             "GamerScore": 0 },
+    { "Key": "A true hero never dies",  "GamerScore": 0 },
+    { "Key": "Never give up",           "GamerScore": 0 },
+    { "Key": "Hard work",               "GamerScore": 0 }
+  ]
 }

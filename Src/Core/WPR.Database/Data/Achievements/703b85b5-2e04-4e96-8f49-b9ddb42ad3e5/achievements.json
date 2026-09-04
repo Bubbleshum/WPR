@@ -1,4 +1,22 @@
 {
   "Name": "Da Vinci Pinball Machine",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Experimenter",     "GamerScore": 0 },
+    { "Key": "Renaissance Man",  "GamerScore": 0 },
+    { "Key": "1 Million",        "GamerScore": 0 },
+    { "Key": "3 Million",        "GamerScore": 0 },
+    { "Key": "5 Million",        "GamerScore": 0 },
+    { "Key": "10 Million",       "GamerScore": 0 },
+    { "Key": "20 Million",       "GamerScore": 0 },
+    { "Key": "50 Million",       "GamerScore": 0 },
+    { "Key": "Naturalist",       "GamerScore": 0 },
+    { "Key": "Alchemist",        "GamerScore": 0 },
+    { "Key": "Gun Master",       "GamerScore": 0 },
+    { "Key": "War Machine",      "GamerScore": 0 },
+    { "Key": "Sharpshooter",     "GamerScore": 0 },
+    { "Key": "Scientist",        "GamerScore": 0 },
+    { "Key": "Aerodynamicist",   "GamerScore": 0 },
+    { "Key": "Sky Conqueror",    "GamerScore": 0 }
+  ]
 }

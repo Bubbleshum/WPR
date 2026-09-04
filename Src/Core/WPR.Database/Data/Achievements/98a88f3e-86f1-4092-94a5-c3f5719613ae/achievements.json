@@ -1,4 +1,21 @@
 {
   "Name": "Orbital",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Bring it on",            "GamerScore": 0 },
+    { "Key": "Pure Fun",               "GamerScore": 0 },
+    { "Key": "Beam them up",           "GamerScore": 0 },
+    { "Key": "Burst into Space",       "GamerScore": 0 },
+    { "Key": "Near Death Experience",  "GamerScore": 0 },
+    { "Key": "Double Bouncer",         "GamerScore": 0 },
+    { "Key": "Triple Bouncer",         "GamerScore": 0 },
+    { "Key": "The game got me",        "GamerScore": 0 },
+    { "Key": "Addict",                 "GamerScore": 0 },
+    { "Key": "Space is needed",        "GamerScore": 0 },
+    { "Key": "Aaand another one",      "GamerScore": 0 },
+    { "Key": "A Friend of mine",       "GamerScore": 0 },
+    { "Key": "Best friends",           "GamerScore": 0 },
+    { "Key": "Survivor",               "GamerScore": 0 },
+    { "Key": "I got the game",         "GamerScore": 0 }
+  ]
 }

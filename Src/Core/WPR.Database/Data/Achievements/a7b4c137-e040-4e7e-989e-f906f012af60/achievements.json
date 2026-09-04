@@ -1,4 +1,23 @@
 {
   "Name": "Sally's Spa",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "STORY_COMPLETE_I",   "GamerScore": 0 },
+    { "Key": "STORY_COMPLETE_II",  "GamerScore": 0 },
+    { "Key": "PERFECT_WORLD",      "GamerScore": 0 },
+    { "Key": "HYPER_SHOPPER",      "GamerScore": 0 },
+    { "Key": "EMPLOYER",           "GamerScore": 0 },
+    { "Key": "SURVIVOR",           "GamerScore": 0 },
+    { "Key": "SUPER_SURVIVOR",     "GamerScore": 0 },
+    { "Key": "EXPERT_SURVIVOR",    "GamerScore": 0 },
+    { "Key": "PERFECTION",         "GamerScore": 0 },
+    { "Key": "SUPER_PERFECTION",   "GamerScore": 0 },
+    { "Key": "EXPERT_PERFECTION",  "GamerScore": 0 },
+    { "Key": "BEST_SELLER",        "GamerScore": 0 },
+    { "Key": "TEA_MASTER",         "GamerScore": 0 },
+    { "Key": "PAPER_DELIVERY",     "GamerScore": 0 },
+    { "Key": "MANI_PEDI_MASTER",   "GamerScore": 0 },
+    { "Key": "STONE_CHAMPION",     "GamerScore": 0 },
+    { "Key": "BEST_FRIENDS_GIFT",  "GamerScore": 0 }
+  ]
 }

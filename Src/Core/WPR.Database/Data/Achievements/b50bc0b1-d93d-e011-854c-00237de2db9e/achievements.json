@@ -1,4 +1,16 @@
 {
   "Name": "Game Room - Lunar Lander",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "VelocityGamer",           "GamerScore": 0 },
+    { "Key": "KeepItMoving",            "GamerScore": 0 },
+    { "Key": "RetroRoadie",             "GamerScore": 0 },
+    { "Key": "TryTryAgain",             "GamerScore": 0 },
+    { "Key": "GetTheBallRolling",       "GamerScore": 0 },
+    { "Key": "AcrossTheBoard",          "GamerScore": 0 },
+    { "Key": "GoldRush",                "GamerScore": 0 },
+    { "Key": "ShakingThingsUp",         "GamerScore": 0 },
+    { "Key": "CreditWhereCreditIsDue",  "GamerScore": 0 },
+    { "Key": "FullMoon",                "GamerScore": 0 }
+  ]
 }

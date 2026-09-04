@@ -1,4 +1,26 @@
 {
   "Name": "Microsoft Solitaire Collection",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Lucky 13",            "GamerScore": 0 },
+    { "Key": "Mountain Climber",    "GamerScore": 0 },
+    { "Key": "Jack of all Trades",  "GamerScore": 0 },
+    { "Key": "Flipping Out",        "GamerScore": 0 },
+    { "Key": "Klondike Medals",     "GamerScore": 0 },
+    { "Key": "Spider Medals",       "GamerScore": 0 },
+    { "Key": "FreeCell Medals",     "GamerScore": 0 },
+    { "Key": "Pyramid Medals",      "GamerScore": 0 },
+    { "Key": "TriPeaks Medals",     "GamerScore": 0 },
+    { "Key": "Victorious",          "GamerScore": 0 },
+    { "Key": "Classic",             "GamerScore": 0 },
+    { "Key": "King of the Hill",    "GamerScore": 0 },
+    { "Key": "All Hands on Deck",   "GamerScore": 0 },
+    { "Key": "Game 617",            "GamerScore": 0 },
+    { "Key": "Classic Speed Run",   "GamerScore": 0 },
+    { "Key": "Unraveler",           "GamerScore": 0 },
+    { "Key": "Number Runner",       "GamerScore": 0 },
+    { "Key": "Jackpot",             "GamerScore": 0 },
+    { "Key": "Journeyman",          "GamerScore": 0 },
+    { "Key": "Excavator",           "GamerScore": 0 }
+  ]
 }

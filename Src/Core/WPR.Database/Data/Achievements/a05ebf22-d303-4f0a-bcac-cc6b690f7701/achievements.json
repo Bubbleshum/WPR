@@ -1,4 +1,26 @@
 {
   "Name": "Trucking 3D! Construction Delivery Simulator",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "High Five",               "GamerScore": 0 },
+    { "Key": "Parking Boss",            "GamerScore": 0 },
+    { "Key": "Mansion Master",          "GamerScore": 0 },
+    { "Key": "Star of the Arena",       "GamerScore": 0 },
+    { "Key": "Airport Ace",             "GamerScore": 0 },
+    { "Key": "Truck Lover",             "GamerScore": 0 },
+    { "Key": "Truck Committed",         "GamerScore": 0 },
+    { "Key": "Time Hero",               "GamerScore": 0 },
+    { "Key": "Quick Trip Parker",       "GamerScore": 0 },
+    { "Key": "Shortcut Master",         "GamerScore": 0 },
+    { "Key": "Parking Master",          "GamerScore": 0 },
+    { "Key": "Smooth Parker",           "GamerScore": 0 },
+    { "Key": "Medical Pro",             "GamerScore": 0 },
+    { "Key": "Mister Plow",             "GamerScore": 0 },
+    { "Key": "Hight Parking",           "GamerScore": 0 },
+    { "Key": "OnaRoll Parker",          "GamerScore": 0 },
+    { "Key": "Five Stars Striker",      "GamerScore": 0 },
+    { "Key": "Norhern Parking Guru",    "GamerScore": 0 },
+    { "Key": "Wind City Parking Guru",  "GamerScore": 0 },
+    { "Key": "Big Apple Parking Guru",  "GamerScore": 0 }
+  ]
 }

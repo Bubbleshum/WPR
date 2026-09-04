@@ -1,4 +1,26 @@
 {
   "Name": "Gravity Guy 2",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "travel_total_02",      "GamerScore": 0 },
+    { "Key": "use_consumable_01",    "GamerScore": 0 },
+    { "Key": "lift_raise_02",        "GamerScore": 0 },
+    { "Key": "die_true_02",          "GamerScore": 0 },
+    { "Key": "free_sample_02",       "GamerScore": 0 },
+    { "Key": "level_up_01",          "GamerScore": 0 },
+    { "Key": "restart_01",           "GamerScore": 0 },
+    { "Key": "use_consumable_04",    "GamerScore": 0 },
+    { "Key": "use_skip_02",          "GamerScore": 0 },
+    { "Key": "collect_coin_01",      "GamerScore": 0 },
+    { "Key": "land_perfect_02",      "GamerScore": 0 },
+    { "Key": "collect_reward_05",    "GamerScore": 0 },
+    { "Key": "travel_total_05",      "GamerScore": 0 },
+    { "Key": "travel_total_06",      "GamerScore": 0 },
+    { "Key": "collect_coin_06",      "GamerScore": 0 },
+    { "Key": "travel_total_07",      "GamerScore": 0 },
+    { "Key": "mission_complete_01",  "GamerScore": 0 },
+    { "Key": "land_perfect_03",      "GamerScore": 0 },
+    { "Key": "bullseye_03",          "GamerScore": 0 },
+    { "Key": "buy_beautybeast_01",   "GamerScore": 0 }
+  ]
 }

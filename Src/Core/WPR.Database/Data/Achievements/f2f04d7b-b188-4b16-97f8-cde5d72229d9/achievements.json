@@ -1,4 +1,16 @@
 {
   "Name": "Tiki Taka Soccer",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Training Complete",             "GamerScore": 0 },
+    { "Key": "Score Hatrick",                 "GamerScore": 0 },
+    { "Key": "Score 100 Goals Is In Season",  "GamerScore": 0 },
+    { "Key": "Win Game 10 In Row",            "GamerScore": 0 },
+    { "Key": "Win Game All In Season",        "GamerScore": 0 },
+    { "Key": "Win Cup",                       "GamerScore": 0 },
+    { "Key": "Win League",                    "GamerScore": 0 },
+    { "Key": "Get Into Top League",           "GamerScore": 0 },
+    { "Key": "Earn 10M",                      "GamerScore": 0 },
+    { "Key": "Manager Level 25",              "GamerScore": 0 }
+  ]
 }

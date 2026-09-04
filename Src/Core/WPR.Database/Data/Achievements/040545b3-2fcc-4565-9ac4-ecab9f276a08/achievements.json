@@ -1,4 +1,26 @@
 {
   "Name": "Free Slots Fun Factory",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Classic",           "GamerScore": 0 },
+    { "Key": "Straight",          "GamerScore": 0 },
+    { "Key": "First Money",       "GamerScore": 0 },
+    { "Key": "Wheel of Fortune",  "GamerScore": 0 },
+    { "Key": "Auto Spinner",      "GamerScore": 0 },
+    { "Key": "Go Wild",           "GamerScore": 0 },
+    { "Key": "Wriggler",          "GamerScore": 0 },
+    { "Key": "Wow It s free",     "GamerScore": 0 },
+    { "Key": "It s Bonus Time",   "GamerScore": 0 },
+    { "Key": "Level Up",          "GamerScore": 0 },
+    { "Key": "All week long",     "GamerScore": 0 },
+    { "Key": "Wild Thing",        "GamerScore": 0 },
+    { "Key": "Freeloader",        "GamerScore": 0 },
+    { "Key": "Discoverer",        "GamerScore": 0 },
+    { "Key": "Moneybags",         "GamerScore": 0 },
+    { "Key": "Lucky One",         "GamerScore": 0 },
+    { "Key": "That was Huge",     "GamerScore": 0 },
+    { "Key": "Bule Eyed Boy",     "GamerScore": 0 },
+    { "Key": "Backslapper",       "GamerScore": 0 },
+    { "Key": "Friendly ",         "GamerScore": 0 }
+  ]
 }

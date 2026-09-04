@@ -1,4 +1,25 @@
 {
   "Name": "iBlast Moki",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Reached Formula 1 Speed",           "GamerScore": 0 },
+    { "Key": "Reached Speed of Sound",            "GamerScore": 0 },
+    { "Key": "Reached Speed of Light",            "GamerScore": 0 },
+    { "Key": "Mokiland Finished all Levels",      "GamerScore": 0 },
+    { "Key": "Blowingland Finished all Levels",   "GamerScore": 0 },
+    { "Key": "Waterland Finished all Levels",     "GamerScore": 0 },
+    { "Key": "Mountainland Finished all Levels",  "GamerScore": 0 },
+    { "Key": "Induland Finished all Levels",      "GamerScore": 0 },
+    { "Key": "Mokitozor Finished all Levels",     "GamerScore": 0 },
+    { "Key": "Waterland Boss Victory",            "GamerScore": 0 },
+    { "Key": "Mountainland Boss Victory",         "GamerScore": 0 },
+    { "Key": "Mokitozor Boss Victory",            "GamerScore": 0 },
+    { "Key": "Mokiland Got all Gold Medals",      "GamerScore": 0 },
+    { "Key": "Blowingland Got all Gold Medals",   "GamerScore": 0 },
+    { "Key": "Waterland Got all Gold Medals",     "GamerScore": 0 },
+    { "Key": "Mountainland Got all Gold Medals",  "GamerScore": 0 },
+    { "Key": "Induland Got all Gold Medals",      "GamerScore": 0 },
+    { "Key": "Mokitozor Got all Gold Medals",     "GamerScore": 0 },
+    { "Key": "Completed iBlast Moki",             "GamerScore": 0 }
+  ]
 }

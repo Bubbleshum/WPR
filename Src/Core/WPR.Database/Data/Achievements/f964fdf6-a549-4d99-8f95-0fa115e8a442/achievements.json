@@ -1,4 +1,18 @@
 {
   "Name": "Panzer Geekz",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Driving straight ahead",            "GamerScore": 0 },
+    { "Key": "Sixpack",                           "GamerScore": 0 },
+    { "Key": "Halfway there",                     "GamerScore": 0 },
+    { "Key": "3 4 of the way",                    "GamerScore": 0 },
+    { "Key": "10 stars on your shoulder",         "GamerScore": 0 },
+    { "Key": "100 stars on your shoulder",        "GamerScore": 0 },
+    { "Key": "It s full of stars",                "GamerScore": 0 },
+    { "Key": "27 down 27 to go",                  "GamerScore": 0 },
+    { "Key": "Down with the Axis of Evil",        "GamerScore": 0 },
+    { "Key": "Mind Bending",                      "GamerScore": 0 },
+    { "Key": "1000 percent Willpower and focus",  "GamerScore": 0 },
+    { "Key": "We hear you",                       "GamerScore": 0 }
+  ]
 }

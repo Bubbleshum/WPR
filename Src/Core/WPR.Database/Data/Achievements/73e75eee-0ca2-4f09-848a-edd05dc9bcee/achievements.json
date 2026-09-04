@@ -1,4 +1,20 @@
 {
   "Name": "SPY Mouse",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Credit Reading",           "GamerScore": 0 },
+    { "Key": "Explorer Mouse",           "GamerScore": 0 },
+    { "Key": "Easy Way Out",             "GamerScore": 0 },
+    { "Key": "What Mouse",               "GamerScore": 0 },
+    { "Key": "Philantropist",            "GamerScore": 0 },
+    { "Key": "Boss 1 Crumbs and Traps",  "GamerScore": 0 },
+    { "Key": "Boss 2 Crumbs and Traps",  "GamerScore": 0 },
+    { "Key": "Boss 3 Crumbs and Traps",  "GamerScore": 0 },
+    { "Key": "Boss 4 Crumbs and Traps",  "GamerScore": 0 },
+    { "Key": "Boss 5 Crumbs and Traps",  "GamerScore": 0 },
+    { "Key": "Boss 6 Crumbs and Traps",  "GamerScore": 0 },
+    { "Key": "Pretty Good",              "GamerScore": 0 },
+    { "Key": "Top Work",                 "GamerScore": 0 },
+    { "Key": "Super Achiever",           "GamerScore": 0 }
+  ]
 }

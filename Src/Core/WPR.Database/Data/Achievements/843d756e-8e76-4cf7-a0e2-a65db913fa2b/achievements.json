@@ -1,4 +1,26 @@
 {
   "Name": "iStunt 2",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "01GRAD",      "GamerScore": 0 },
+    { "Key": "02IHC",       "GamerScore": 0 },
+    { "Key": "03SSC",       "GamerScore": 0 },
+    { "Key": "04AL",        "GamerScore": 0 },
+    { "Key": "05TG",        "GamerScore": 0 },
+    { "Key": "06RS",        "GamerScore": 0 },
+    { "Key": "07SS",        "GamerScore": 0 },
+    { "Key": "08SO",        "GamerScore": 0 },
+    { "Key": "09I",         "GamerScore": 0 },
+    { "Key": "10ADDIC",     "GamerScore": 0 },
+    { "Key": "11FALC",      "GamerScore": 0 },
+    { "Key": "12CP",        "GamerScore": 0 },
+    { "Key": "13GP",        "GamerScore": 0 },
+    { "Key": "14NP",        "GamerScore": 0 },
+    { "Key": "15MRP",       "GamerScore": 0 },
+    { "Key": "16GRABS",     "GamerScore": 0 },
+    { "Key": "17UNLOCKSS",  "GamerScore": 0 },
+    { "Key": "18UNLOCKES",  "GamerScore": 0 },
+    { "Key": "19ES",        "GamerScore": 0 },
+    { "Key": "21DP",        "GamerScore": 0 }
+  ]
 }

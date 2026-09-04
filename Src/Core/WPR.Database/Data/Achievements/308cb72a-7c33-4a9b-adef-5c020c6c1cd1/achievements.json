@@ -1,4 +1,18 @@
 {
   "Name": "Pac-Man Kart Rally",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "One Step Ahead",        "GamerScore": 0 },
+    { "Key": "Dotted Line",           "GamerScore": 0 },
+    { "Key": "Gear Head",             "GamerScore": 0 },
+    { "Key": "Drift Away",            "GamerScore": 0 },
+    { "Key": "Champion",              "GamerScore": 0 },
+    { "Key": "Hardcore",              "GamerScore": 0 },
+    { "Key": "Mission Accomplished",  "GamerScore": 0 },
+    { "Key": "I Will Survive",        "GamerScore": 0 },
+    { "Key": "Unbeatable",            "GamerScore": 0 },
+    { "Key": "Karting King",          "GamerScore": 0 },
+    { "Key": "Record Breaker",        "GamerScore": 0 },
+    { "Key": "Classic PacMan",        "GamerScore": 0 }
+  ]
 }

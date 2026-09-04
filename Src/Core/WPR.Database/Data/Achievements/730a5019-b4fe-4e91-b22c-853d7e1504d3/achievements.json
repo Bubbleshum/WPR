@@ -1,4 +1,26 @@
 {
   "Name": "Extraction - Project Outbreak",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "EAGLE_EYES",       "GamerScore": 0 },
+    { "Key": "SAVIOUR",          "GamerScore": 0 },
+    { "Key": "GUARDIAN",         "GamerScore": 0 },
+    { "Key": "COLONEL_FIX_IT",   "GamerScore": 0 },
+    { "Key": "GRENADIER",        "GamerScore": 0 },
+    { "Key": "PRIVATE",          "GamerScore": 0 },
+    { "Key": "CAPTAIN",          "GamerScore": 0 },
+    { "Key": "COMMANDO",         "GamerScore": 0 },
+    { "Key": "GUNISHMENT",       "GamerScore": 0 },
+    { "Key": "ARMAGEDDON",       "GamerScore": 0 },
+    { "Key": "FORSAKEN",         "GamerScore": 0 },
+    { "Key": "ROLLING_THUNDER",  "GamerScore": 0 },
+    { "Key": "ELITE_SOLDIER",    "GamerScore": 0 },
+    { "Key": "HERO",             "GamerScore": 0 },
+    { "Key": "MAJESTIC",         "GamerScore": 0 },
+    { "Key": "PIMP_MY_ARSENAL",  "GamerScore": 0 },
+    { "Key": "MONEY_BAGS",       "GamerScore": 0 },
+    { "Key": "DESTROYER",        "GamerScore": 0 },
+    { "Key": "MASTER_AT_ARMS",   "GamerScore": 0 },
+    { "Key": "PUGILIST",         "GamerScore": 0 }
+  ]
 }

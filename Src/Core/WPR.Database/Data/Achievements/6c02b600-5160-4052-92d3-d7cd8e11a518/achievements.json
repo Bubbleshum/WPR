@@ -1,4 +1,26 @@
 {
   "Name": "Rabbids Go Phone",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "minigames_piranha",        "GamerScore": 0 },
+    { "Key": "minigames_yellowduck",     "GamerScore": 0 },
+    { "Key": "minigames_swatter",        "GamerScore": 0 },
+    { "Key": "minigames_wcbrush",        "GamerScore": 0 },
+    { "Key": "minigames_micro",          "GamerScore": 0 },
+    { "Key": "minigames_phonereal",      "GamerScore": 0 },
+    { "Key": "minigames_popgun",         "GamerScore": 0 },
+    { "Key": "minigames_jetpack",        "GamerScore": 0 },
+    { "Key": "minigames_guitar",         "GamerScore": 0 },
+    { "Key": "minigames_shield",         "GamerScore": 0 },
+    { "Key": "minigames_toiletpaper",    "GamerScore": 0 },
+    { "Key": "minigames_bow",            "GamerScore": 0 },
+    { "Key": "minigames_ghetoblaster",   "GamerScore": 0 },
+    { "Key": "minigames_nunchaku",       "GamerScore": 0 },
+    { "Key": "minigames_rugbyball",      "GamerScore": 0 },
+    { "Key": "minigames_sausagepolice",  "GamerScore": 0 },
+    { "Key": "minigames_all",            "GamerScore": 0 },
+    { "Key": "sharePicture",             "GamerScore": 0 },
+    { "Key": "useTrackList",             "GamerScore": 0 },
+    { "Key": "changeCostume",            "GamerScore": 0 }
+  ]
 }

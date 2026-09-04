@@ -1,4 +1,26 @@
 {
   "Name": "Hexic Rush",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Hexic Master",         "GamerScore": 0 },
+    { "Key": "Whats the Hurry",      "GamerScore": 0 },
+    { "Key": "Unique Gem",           "GamerScore": 0 },
+    { "Key": "Maximum Rush",         "GamerScore": 0 },
+    { "Key": "Beautiful Gem",        "GamerScore": 0 },
+    { "Key": "Star Gazer",           "GamerScore": 0 },
+    { "Key": "Color Collector",      "GamerScore": 0 },
+    { "Key": "Marathon Master",      "GamerScore": 0 },
+    { "Key": "Millionaire",          "GamerScore": 0 },
+    { "Key": "Hexic Addict",         "GamerScore": 0 },
+    { "Key": "Play Expert Already",  "GamerScore": 0 },
+    { "Key": "Collapse",             "GamerScore": 0 },
+    { "Key": "Bonus Time",           "GamerScore": 0 },
+    { "Key": "Bomb Squad",           "GamerScore": 0 },
+    { "Key": "Big Freeze",           "GamerScore": 0 },
+    { "Key": "Playing the field",    "GamerScore": 0 },
+    { "Key": "Flower Child",         "GamerScore": 0 },
+    { "Key": "Mix and Match",        "GamerScore": 0 },
+    { "Key": "Cluster Buster",       "GamerScore": 0 },
+    { "Key": "Ease Into It",         "GamerScore": 0 }
+  ]
 }

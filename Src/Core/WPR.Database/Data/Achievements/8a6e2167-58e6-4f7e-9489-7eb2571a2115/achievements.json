@@ -1,4 +1,22 @@
 {
   "Name": "Tiny Plane",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "coins_50",       "GamerScore": 0 },
+    { "Key": "coins_200",      "GamerScore": 0 },
+    { "Key": "coins_500",      "GamerScore": 0 },
+    { "Key": "no_items",       "GamerScore": 0 },
+    { "Key": "points_1000",    "GamerScore": 0 },
+    { "Key": "points_5000",    "GamerScore": 0 },
+    { "Key": "points_10000",   "GamerScore": 0 },
+    { "Key": "coins_5000",     "GamerScore": 0 },
+    { "Key": "coins_10000",    "GamerScore": 0 },
+    { "Key": "coins_20000",    "GamerScore": 0 },
+    { "Key": "coins_40000",    "GamerScore": 0 },
+    { "Key": "turbo_man",      "GamerScore": 0 },
+    { "Key": "stuck_sides",    "GamerScore": 0 },
+    { "Key": "bombs_5",        "GamerScore": 0 },
+    { "Key": "hardcore_mode",  "GamerScore": 0 },
+    { "Key": "fruit_300",      "GamerScore": 0 }
+  ]
 }

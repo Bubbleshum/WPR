@@ -1,4 +1,26 @@
 {
   "Name": "Gravity Guy",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "3checkpoints",              "GamerScore": 0 },
+    { "Key": "10checkpoints",             "GamerScore": 0 },
+    { "Key": "20checkpoints",             "GamerScore": 0 },
+    { "Key": "finishStory",               "GamerScore": 0 },
+    { "Key": "finishStoryWithoutDeath",   "GamerScore": 0 },
+    { "Key": "100deaths",                 "GamerScore": 0 },
+    { "Key": "20deathsInSection",         "GamerScore": 0 },
+    { "Key": "1hourConsecutivePlay",      "GamerScore": 0 },
+    { "Key": "10hourPlay",                "GamerScore": 0 },
+    { "Key": "1000gravSwitches",          "GamerScore": 0 },
+    { "Key": "distanceToMoon",            "GamerScore": 0 },
+    { "Key": "5deathsWOSwitching",        "GamerScore": 0 },
+    { "Key": "100deathByPursuitGuy",      "GamerScore": 0 },
+    { "Key": "35kEndlessScore",           "GamerScore": 0 },
+    { "Key": "50kEndlessScore",           "GamerScore": 0 },
+    { "Key": "100deathsEndless",          "GamerScore": 0 },
+    { "Key": "250deathsEndless",          "GamerScore": 0 },
+    { "Key": "finishRescue",              "GamerScore": 0 },
+    { "Key": "finishRescueWithoutDeath",  "GamerScore": 0 },
+    { "Key": "10000gravSwitches",         "GamerScore": 0 }
+  ]
 }

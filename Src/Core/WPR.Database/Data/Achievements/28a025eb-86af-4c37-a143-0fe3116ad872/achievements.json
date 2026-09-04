@@ -1,4 +1,21 @@
 {
   "Name": "Droplitz Delight",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Great_Start",      "GamerScore": 0 },
+    { "Key": "Amazing_Start",    "GamerScore": 0 },
+    { "Key": "Super_Start",      "GamerScore": 0 },
+    { "Key": "10000_Beginner",   "GamerScore": 0 },
+    { "Key": "8000_Normal",      "GamerScore": 0 },
+    { "Key": "6000_Insane",      "GamerScore": 0 },
+    { "Key": "Chain_3",          "GamerScore": 0 },
+    { "Key": "10x_Multiplier",   "GamerScore": 0 },
+    { "Key": "20x_Multiplier",   "GamerScore": 0 },
+    { "Key": "Droplitz_Freed",   "GamerScore": 0 },
+    { "Key": "Level_5_Passed",   "GamerScore": 0 },
+    { "Key": "Level_15_Passed",  "GamerScore": 0 },
+    { "Key": "Level_25_Passed",  "GamerScore": 0 },
+    { "Key": "Level_30_Passed",  "GamerScore": 0 },
+    { "Key": "Level_35_Passed",  "GamerScore": 0 }
+  ]
 }

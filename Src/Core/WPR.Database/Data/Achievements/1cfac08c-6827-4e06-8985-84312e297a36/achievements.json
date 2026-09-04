@@ -1,4 +1,26 @@
 {
   "Name": "Fragger",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "tutorial_complete",    "GamerScore": 0 },
+    { "Key": "first_kill",           "GamerScore": 0 },
+    { "Key": "double_frag",          "GamerScore": 0 },
+    { "Key": "triple_frag",          "GamerScore": 0 },
+    { "Key": "enraged_frag",         "GamerScore": 0 },
+    { "Key": "double_enraged_frag",  "GamerScore": 0 },
+    { "Key": "triple_enraged_frag",  "GamerScore": 0 },
+    { "Key": "50_enraged_frag",      "GamerScore": 0 },
+    { "Key": "precision_star",       "GamerScore": 0 },
+    { "Key": "100_frags",            "GamerScore": 0 },
+    { "Key": "250_frags",            "GamerScore": 0 },
+    { "Key": "1000_frags",           "GamerScore": 0 },
+    { "Key": "world_master",         "GamerScore": 0 },
+    { "Key": "triple_world_master",  "GamerScore": 0 },
+    { "Key": "hitpoints_master",     "GamerScore": 0 },
+    { "Key": "master_grenadier",     "GamerScore": 0 },
+    { "Key": "bonus_master",         "GamerScore": 0 },
+    { "Key": "persistence",          "GamerScore": 0 },
+    { "Key": "60k_points",           "GamerScore": 0 },
+    { "Key": "100k_points",          "GamerScore": 0 }
+  ]
 }

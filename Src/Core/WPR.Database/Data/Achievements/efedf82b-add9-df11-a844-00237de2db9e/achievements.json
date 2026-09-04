@@ -1,4 +1,19 @@
 {
   "Name": "The Revenants - Corridor of Souls",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Banish",                      "GamerScore": 0 },
+    { "Key": "Anura",                       "GamerScore": 0 },
+    { "Key": "Number_6",                    "GamerScore": 0 },
+    { "Key": "Its_a_Trap",                  "GamerScore": 0 },
+    { "Key": "Lucky_13",                    "GamerScore": 0 },
+    { "Key": "Synchronicity",               "GamerScore": 0 },
+    { "Key": "Exterminator",                "GamerScore": 0 },
+    { "Key": "Spiritus",                    "GamerScore": 0 },
+    { "Key": "Exorcist",                    "GamerScore": 0 },
+    { "Key": "Omnivore",                    "GamerScore": 0 },
+    { "Key": "Easy_Street_Millionaire",     "GamerScore": 0 },
+    { "Key": "Main_Street_Millionaire",     "GamerScore": 0 },
+    { "Key": "Extreme_Street_Millionaire",  "GamerScore": 0 }
+  ]
 }

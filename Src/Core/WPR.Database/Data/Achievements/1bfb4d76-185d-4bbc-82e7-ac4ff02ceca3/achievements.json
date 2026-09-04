@@ -1,4 +1,26 @@
 {
   "Name": "Shoot 1UP",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Max Multiplier",       "GamerScore": 0 },
+    { "Key": "Precious Ships",       "GamerScore": 0 },
+    { "Key": "Ship Hoarder",         "GamerScore": 0 },
+    { "Key": "Score Fiend",          "GamerScore": 0 },
+    { "Key": "Score Monger",         "GamerScore": 0 },
+    { "Key": "He Shoots He Scores",  "GamerScore": 0 },
+    { "Key": "Million Bucks",        "GamerScore": 0 },
+    { "Key": "Take It Easy",         "GamerScore": 0 },
+    { "Key": "Out of Retirement",    "GamerScore": 0 },
+    { "Key": "Love the Pain",        "GamerScore": 0 },
+    { "Key": "Tilt Master",          "GamerScore": 0 },
+    { "Key": "Trick Shot",           "GamerScore": 0 },
+    { "Key": "Ovoid",                "GamerScore": 0 },
+    { "Key": "Caecilian",            "GamerScore": 0 },
+    { "Key": "Robin Egg",            "GamerScore": 0 },
+    { "Key": "Right Stuff",          "GamerScore": 0 },
+    { "Key": "Vengeance Begins",     "GamerScore": 0 },
+    { "Key": "1UP Yours",            "GamerScore": 0 },
+    { "Key": "Tiltalating",          "GamerScore": 0 },
+    { "Key": "Jelly Milker",         "GamerScore": 0 }
+  ]
 }

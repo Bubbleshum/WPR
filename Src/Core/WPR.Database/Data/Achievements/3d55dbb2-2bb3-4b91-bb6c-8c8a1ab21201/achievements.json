@@ -1,4 +1,26 @@
 {
   "Name": "Fusion Sentient",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "SNATCHED_THE_PEBBLE",   "GamerScore": 0 },
+    { "Key": "ON_THE_TRAIL",          "GamerScore": 0 },
+    { "Key": "SELFLESS",              "GamerScore": 0 },
+    { "Key": "FAMILY_REUNION",        "GamerScore": 0 },
+    { "Key": "AN_END_TO_ALL_THINGS",  "GamerScore": 0 },
+    { "Key": "SPARTA_SCHMARTA",       "GamerScore": 0 },
+    { "Key": "MOVING_UP",             "GamerScore": 0 },
+    { "Key": "GOT_THEM_ALL",          "GamerScore": 0 },
+    { "Key": "THROUGH_THE_GRINDER",   "GamerScore": 0 },
+    { "Key": "BOOMSTICK",             "GamerScore": 0 },
+    { "Key": "EXPLOSIVE",             "GamerScore": 0 },
+    { "Key": "DONT_TASE_ME_BRO",      "GamerScore": 0 },
+    { "Key": "REPO_MAN",              "GamerScore": 0 },
+    { "Key": "REAPERS_UNDERSTUDY",    "GamerScore": 0 },
+    { "Key": "S_MCMONEYBAGS",         "GamerScore": 0 },
+    { "Key": "ESTATE_SALE",           "GamerScore": 0 },
+    { "Key": "NO_CHILD_LEFT_BEHIND",  "GamerScore": 0 },
+    { "Key": "SET_AND_SERVED",        "GamerScore": 0 },
+    { "Key": "SPEAK_SOFTLY",          "GamerScore": 0 },
+    { "Key": "LIFE_STARTS_AT_60",     "GamerScore": 0 }
+  ]
 }

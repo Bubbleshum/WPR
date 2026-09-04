@@ -1,4 +1,18 @@
 {
   "Name": "CarneyVale Showtime",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Star Dreamer",    "GamerScore": 0 },
+    { "Key": "Perfect Runner",  "GamerScore": 0 },
+    { "Key": "Over the Top",    "GamerScore": 0 },
+    { "Key": "Life Saver",      "GamerScore": 0 },
+    { "Key": "Up The Tempo",    "GamerScore": 0 },
+    { "Key": "Flawless Run",    "GamerScore": 0 },
+    { "Key": "Superstar",       "GamerScore": 0 },
+    { "Key": "Elite Mission",   "GamerScore": 0 },
+    { "Key": "Rocket Rodeo",    "GamerScore": 0 },
+    { "Key": "Top Performer",   "GamerScore": 0 },
+    { "Key": "Ace Performer",   "GamerScore": 0 },
+    { "Key": "Star Performer",  "GamerScore": 0 }
+  ]
 }

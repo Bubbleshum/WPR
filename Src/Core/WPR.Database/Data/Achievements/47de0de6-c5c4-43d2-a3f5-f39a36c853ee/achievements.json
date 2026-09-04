@@ -1,4 +1,26 @@
 {
   "Name": "Splinter Cell Conviction",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "First Blood",     "GamerScore": 0 },
+    { "Key": "Begin the hunt",  "GamerScore": 0 },
+    { "Key": "Headshot",        "GamerScore": 0 },
+    { "Key": "Dirty Hands",     "GamerScore": 0 },
+    { "Key": "Mind Reader",     "GamerScore": 0 },
+    { "Key": "Give me a Hug",   "GamerScore": 0 },
+    { "Key": "Who needs guns",  "GamerScore": 0 },
+    { "Key": "Graduate",        "GamerScore": 0 },
+    { "Key": "Diver",           "GamerScore": 0 },
+    { "Key": "Free Entrance",   "GamerScore": 0 },
+    { "Key": "Flashback",       "GamerScore": 0 },
+    { "Key": "Siblings",        "GamerScore": 0 },
+    { "Key": "Ghost",           "GamerScore": 0 },
+    { "Key": "Kind of Busy",    "GamerScore": 0 },
+    { "Key": "Bird of Prey",    "GamerScore": 0 },
+    { "Key": "Flash",           "GamerScore": 0 },
+    { "Key": "Gone Fishing",    "GamerScore": 0 },
+    { "Key": "Reunion",         "GamerScore": 0 },
+    { "Key": "Sam Fisher",      "GamerScore": 0 },
+    { "Key": "Splinter Cell",   "GamerScore": 0 }
+  ]
 }

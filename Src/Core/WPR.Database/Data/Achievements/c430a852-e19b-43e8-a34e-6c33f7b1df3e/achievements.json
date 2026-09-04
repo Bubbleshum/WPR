@@ -1,4 +1,26 @@
 {
   "Name": "Microsoft Minesweeper",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Happens to Everybody",       "GamerScore": 0 },
+    { "Key": "Good Start",                 "GamerScore": 0 },
+    { "Key": "Savior of the World",        "GamerScore": 0 },
+    { "Key": "Good Memory",                "GamerScore": 0 },
+    { "Key": "Serious Business",           "GamerScore": 0 },
+    { "Key": "Flag Happy",                 "GamerScore": 0 },
+    { "Key": "1 2 1",                      "GamerScore": 0 },
+    { "Key": "1 2 2 1",                    "GamerScore": 0 },
+    { "Key": "Room to Breathe",            "GamerScore": 0 },
+    { "Key": "Bomb Squad",                 "GamerScore": 0 },
+    { "Key": "Earning Your Stripes",       "GamerScore": 0 },
+    { "Key": "Decorated Sweeper",          "GamerScore": 0 },
+    { "Key": "Got the Stats to Prove it",  "GamerScore": 0 },
+    { "Key": "You are the Boss",           "GamerScore": 0 },
+    { "Key": "Path to Perfection",         "GamerScore": 0 },
+    { "Key": "Not AGAIN",                  "GamerScore": 0 },
+    { "Key": "Swept the Celling",          "GamerScore": 0 },
+    { "Key": "Three Good Days",            "GamerScore": 0 },
+    { "Key": "No Stone Unturned",          "GamerScore": 0 },
+    { "Key": "Can not Leave it Behind ",   "GamerScore": 0 }
+  ]
 }

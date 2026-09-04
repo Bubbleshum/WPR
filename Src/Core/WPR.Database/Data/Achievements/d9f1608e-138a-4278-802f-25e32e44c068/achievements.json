@@ -1,4 +1,23 @@
 {
   "Name": "Cut the Rope Experiments",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "acStudent",             "GamerScore": 0 },
+    { "Key": "acAssistant",           "GamerScore": 0 },
+    { "Key": "acDoctor",              "GamerScore": 0 },
+    { "Key": "acRopeCollector",       "GamerScore": 0 },
+    { "Key": "acRopeExpert",          "GamerScore": 0 },
+    { "Key": "acRookieSniper",        "GamerScore": 0 },
+    { "Key": "acSkilledSniper",       "GamerScore": 0 },
+    { "Key": "acHighJumper",          "GamerScore": 0 },
+    { "Key": "acCrazyJumper",         "GamerScore": 0 },
+    { "Key": "acNoviceWallClimber",   "GamerScore": 0 },
+    { "Key": "acVeteranWallClimber",  "GamerScore": 0 },
+    { "Key": "acTummyDelight",        "GamerScore": 0 },
+    { "Key": "acPartyAnimal",         "GamerScore": 0 },
+    { "Key": "acPhotoObserver",       "GamerScore": 0 },
+    { "Key": "acSnailTamer",          "GamerScore": 0 },
+    { "Key": "acDeepDiver",           "GamerScore": 0 },
+    { "Key": "acRoboMaster",          "GamerScore": 0 }
+  ]
 }

@@ -1,4 +1,15 @@
 {
   "Name": "Secrets and Treasures - The Lost Cities",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "achieve_000",  "GamerScore": 0 },
+    { "Key": "achieve_001",  "GamerScore": 0 },
+    { "Key": "achieve_002",  "GamerScore": 0 },
+    { "Key": "achieve_003",  "GamerScore": 0 },
+    { "Key": "achieve_004",  "GamerScore": 0 },
+    { "Key": "achieve_005",  "GamerScore": 0 },
+    { "Key": "achieve_006",  "GamerScore": 0 },
+    { "Key": "achieve_007",  "GamerScore": 0 },
+    { "Key": "achieve_008",  "GamerScore": 0 }
+  ]
 }

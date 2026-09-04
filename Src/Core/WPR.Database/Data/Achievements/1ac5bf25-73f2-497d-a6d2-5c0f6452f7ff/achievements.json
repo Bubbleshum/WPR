@@ -1,4 +1,20 @@
 {
   "Name": "Burn the Rope",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Starting Sparks",     "GamerScore": 0 },
+    { "Key": "Lumber Jack",         "GamerScore": 0 },
+    { "Key": "Tying it up",         "GamerScore": 0 },
+    { "Key": "Royal Flush",         "GamerScore": 0 },
+    { "Key": "WheelingAndDealing",  "GamerScore": 0 },
+    { "Key": "Shedarific",          "GamerScore": 0 },
+    { "Key": "Cabin Fever",         "GamerScore": 0 },
+    { "Key": "Rainbow",             "GamerScore": 0 },
+    { "Key": "Dead Ant",            "GamerScore": 0 },
+    { "Key": "Beetle Bopper",       "GamerScore": 0 },
+    { "Key": "Web Wizard",          "GamerScore": 0 },
+    { "Key": "Bomb Blaster",        "GamerScore": 0 },
+    { "Key": "Electrician",         "GamerScore": 0 },
+    { "Key": "Soaking Wet",         "GamerScore": 0 }
+  ]
 }

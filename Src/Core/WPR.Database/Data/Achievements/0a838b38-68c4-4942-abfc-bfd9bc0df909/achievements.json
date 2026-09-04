@@ -1,5 +1,22 @@
 {
   "Name": "Connect 4",
-  "Description": "The classic Hasbro two-player disc-dropping game. Line up four of your colour in a row — horizontally, vertically or diagonally — before your opponent does.",
-  "Achievements": []
+  "Description": "The classic Hasbro two-player disc-dropping game. Line up four of your colour in a row â€” horizontally, vertically or diagonally â€” before your opponent does.",
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "THE_JOURNEY_BEGINS",        "GamerScore": 0 },
+    { "Key": "AMATEUR_CONNECTOR",         "GamerScore": 0 },
+    { "Key": "JOURNEYMAN_CONNECTOR",      "GamerScore": 0 },
+    { "Key": "ADVANCED_CONNECTOR",        "GamerScore": 0 },
+    { "Key": "EPIC_CONNECTOR",            "GamerScore": 0 },
+    { "Key": "LEGENDARY_CONNECTOR",       "GamerScore": 0 },
+    { "Key": "EVERYTHING_IN_MODERATION",  "GamerScore": 0 },
+    { "Key": "LEARN_FROM_THE_BEST",       "GamerScore": 0 },
+    { "Key": "ECONOMIST",                 "GamerScore": 0 },
+    { "Key": "GENIUS",                    "GamerScore": 0 },
+    { "Key": "CROSSROADS",                "GamerScore": 0 },
+    { "Key": "SPICE_OF_LIFE",             "GamerScore": 0 },
+    { "Key": "SHAKE_RATTLE_AND_ROLL",     "GamerScore": 0 },
+    { "Key": "ON_A_ROLL",                 "GamerScore": 0 },
+    { "Key": "META_PLAYER",               "GamerScore": 0 }
+  ]
 }

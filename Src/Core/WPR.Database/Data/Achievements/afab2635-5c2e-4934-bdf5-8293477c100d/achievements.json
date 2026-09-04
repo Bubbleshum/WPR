@@ -1,4 +1,12 @@
 {
   "Name": "Hungry Shark Evolution",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Reef Shark",         "GamerScore": 0 },
+    { "Key": "Mako Shark",         "GamerScore": 0 },
+    { "Key": "Hammerhead Shark",   "GamerScore": 0 },
+    { "Key": "Tiger Shark",        "GamerScore": 0 },
+    { "Key": "Great White Shark",  "GamerScore": 0 },
+    { "Key": "Megalodon",          "GamerScore": 0 }
+  ]
 }

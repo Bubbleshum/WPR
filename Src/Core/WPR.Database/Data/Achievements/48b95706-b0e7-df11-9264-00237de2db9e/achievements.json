@@ -1,4 +1,18 @@
 {
   "Name": "Butterfly",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Chrysalis",      "GamerScore": 0 },
+    { "Key": "Poppies",        "GamerScore": 0 },
+    { "Key": "Daisies",        "GamerScore": 0 },
+    { "Key": "Nenuphars",      "GamerScore": 0 },
+    { "Key": "FeedMeSeymour",  "GamerScore": 0 },
+    { "Key": "FrogKiss",       "GamerScore": 0 },
+    { "Key": "Jaws",           "GamerScore": 0 },
+    { "Key": "GreenThumb",     "GamerScore": 0 },
+    { "Key": "DontLickFrogs",  "GamerScore": 0 },
+    { "Key": "LifeAquatic",    "GamerScore": 0 },
+    { "Key": "MarcoPollen",    "GamerScore": 0 },
+    { "Key": "Monarch",        "GamerScore": 0 }
+  ]
 }

@@ -1,4 +1,26 @@
 {
   "Name": "Picnic Wars",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "ACHIEVEMENT_FINISHGAME",                     "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_COMPLETE_VEGGIES_STAGE1",        "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_COMPLETE_VEGGIES_STAGE2",        "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_COMPLETE_VEGGIES_STAGE3",        "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_COMPLETE_VEGGIES_STAGE4",        "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_COMPLETE_FRUITS_STAGE1",         "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_COMPLETE_FRUITS_STAGE2",         "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_COMPLETE_FRUITS_STAGE3",         "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_COMPLETE_FRUITS_STAGE4",         "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_COMPLETE_STAGE1_LEVEL4_30SECS",  "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_BUNDLESFERTILIZER_GATHERED",     "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_ONEAMMO_KILL_2",                 "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_ONEAMMO_KILL_6",                 "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_UNLOCK_WEAPONS_6",               "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_UNLOCK_WEAPONS_ALL",             "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_UNLOCK_AMMO_8",                  "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_UNLOCK_AMMO_ALL",                "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_ACTIVATE_TNT_1",                 "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_ACTIVATE_TNT_20",                "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_DESTRUCTION_80",                 "GamerScore": 0 }
+  ]
 }

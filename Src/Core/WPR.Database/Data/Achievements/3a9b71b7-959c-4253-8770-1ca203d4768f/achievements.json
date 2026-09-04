@@ -1,4 +1,26 @@
 {
   "Name": "Contract Killer",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "BOUNTY_ACHIEVE_KILL_100_BOSSES",          "GamerScore": 0 },
+    { "Key": "BOUNTY_ACHIEVE_KILL_100_ENEMIES",         "GamerScore": 0 },
+    { "Key": "BOUNTY_ACHIEVE_REACH_10_LEVEL",           "GamerScore": 0 },
+    { "Key": "BOUNTY_ACHIEVE_REACH_20_LEVEL",           "GamerScore": 0 },
+    { "Key": "BOUNTY_ACHIEVE_EXTERMINATOR",             "GamerScore": 0 },
+    { "Key": "BOUNTY_ACHIEVE_500_HEADSHOTS",            "GamerScore": 0 },
+    { "Key": "BOUNTY_ACHIEVE_50_TIMES_WOUNDED",         "GamerScore": 0 },
+    { "Key": "BOUNTY_ACHIEVE_3_KILL_ONE_SHOT",          "GamerScore": 0 },
+    { "Key": "BOUNTY_ACHIEVE_FIRE_1000_ROUNDS",         "GamerScore": 0 },
+    { "Key": "BOUNTY_ACHIEVE_TRANQ_500_ENEMIES",        "GamerScore": 0 },
+    { "Key": "BOUNTY_ACHIEVE_KILL_100_NO_MISSES",       "GamerScore": 0 },
+    { "Key": "BOUNTY_ACHIEVE_RUNNING_HEADSHOT",         "GamerScore": 0 },
+    { "Key": "BOUNTY_ACHIEVE_25_X3_XP_MULT",            "GamerScore": 0 },
+    { "Key": "BOUNTY_ACHIEVE_USE_100_MEDKITS",          "GamerScore": 0 },
+    { "Key": "BOUNTY_ACHIEVE_KILL_13_IN_15_SEC",        "GamerScore": 0 },
+    { "Key": "BOUNTY_ACHIEVE_UNLOCK_10_INFORMANTS",     "GamerScore": 0 },
+    { "Key": "BOUNTY_ACHIEVE_GET_ALL_DAILY_BONUS",      "GamerScore": 0 },
+    { "Key": "BOUNTY_ACHIEVE_BUY_10_WEAPONS",           "GamerScore": 0 },
+    { "Key": "BOUNTY_ACHIEVE_OPEN_ALL_AMMO_TYPES",      "GamerScore": 0 },
+    { "Key": "BOUNTY_ACHIEVE_NO_KILLS_TILL_TIMER_END",  "GamerScore": 0 }
+  ]
 }

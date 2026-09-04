@@ -1,4 +1,26 @@
 {
   "Name": "The Harvest",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Survivor",          "GamerScore": 0 },
+    { "Key": "ScarabExpress",     "GamerScore": 0 },
+    { "Key": "RavenEmp",          "GamerScore": 0 },
+    { "Key": "RaptorWind",        "GamerScore": 0 },
+    { "Key": "DestructiveForce",  "GamerScore": 0 },
+    { "Key": "GreatExplorer",     "GamerScore": 0 },
+    { "Key": "JuicedUp",          "GamerScore": 0 },
+    { "Key": "Specialist",        "GamerScore": 0 },
+    { "Key": "Multitool",         "GamerScore": 0 },
+    { "Key": "LevelUP",           "GamerScore": 0 },
+    { "Key": "KittedOut",         "GamerScore": 0 },
+    { "Key": "AntiVenom",         "GamerScore": 0 },
+    { "Key": "Arachnocide",       "GamerScore": 0 },
+    { "Key": "Trashman",          "GamerScore": 0 },
+    { "Key": "Shutdown",          "GamerScore": 0 },
+    { "Key": "WarJournal",        "GamerScore": 0 },
+    { "Key": "SpeedRun",          "GamerScore": 0 },
+    { "Key": "Loyalty",           "GamerScore": 0 },
+    { "Key": "Juggernaut",        "GamerScore": 0 },
+    { "Key": "Completionist",     "GamerScore": 0 }
+  ]
 }

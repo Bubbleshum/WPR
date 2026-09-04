@@ -1,4 +1,20 @@
 {
   "Name": "IonBallEX",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "iamspartacus",     "GamerScore": 0 },
+    { "Key": "seriousskills",    "GamerScore": 0 },
+    { "Key": "handsfree",        "GamerScore": 0 },
+    { "Key": "doubletime",       "GamerScore": 0 },
+    { "Key": "triplethreat",     "GamerScore": 0 },
+    { "Key": "pointbreak",       "GamerScore": 0 },
+    { "Key": "eightball",        "GamerScore": 0 },
+    { "Key": "wipeout",          "GamerScore": 0 },
+    { "Key": "brassballs",       "GamerScore": 0 },
+    { "Key": "ionball",          "GamerScore": 0 },
+    { "Key": "sizematters",      "GamerScore": 0 },
+    { "Key": "spreaditout",      "GamerScore": 0 },
+    { "Key": "recordbreaker",    "GamerScore": 0 },
+    { "Key": "defeatleviathan",  "GamerScore": 0 }
+  ]
 }

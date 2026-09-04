@@ -1,4 +1,23 @@
 {
   "Name": "Wordament",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "SWIPE_THOSE_TILES",    "GamerScore": 0 },
+    { "Key": "SPIN_CYCLE",           "GamerScore": 0 },
+    { "Key": "BEAT_YOUR_FRENEMIES",  "GamerScore": 0 },
+    { "Key": "MULTILINGUAL",         "GamerScore": 0 },
+    { "Key": "CHACHING",             "GamerScore": 0 },
+    { "Key": "THEME_WORD",           "GamerScore": 0 },
+    { "Key": "SORE_FINGERS",         "GamerScore": 0 },
+    { "Key": "BETTER_THAN_HALF",     "GamerScore": 0 },
+    { "Key": "AUTOBIOGRAPHICAL",     "GamerScore": 0 },
+    { "Key": "DIAGRAM_MASTER",       "GamerScore": 0 },
+    { "Key": "THEME_TITAN",          "GamerScore": 0 },
+    { "Key": "SWEET_SIXTEEN",        "GamerScore": 0 },
+    { "Key": "WIN_THE_HOUR",         "GamerScore": 0 },
+    { "Key": "YOURE_GOOD",           "GamerScore": 0 },
+    { "Key": "ON_TOP",               "GamerScore": 0 },
+    { "Key": "TEN_IN_TEN",           "GamerScore": 0 },
+    { "Key": "CHAMP",                "GamerScore": 0 }
+  ]
 }

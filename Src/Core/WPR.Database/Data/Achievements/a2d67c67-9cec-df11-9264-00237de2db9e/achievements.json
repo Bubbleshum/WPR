@@ -1,4 +1,26 @@
 {
   "Name": "The Oregon Trail HD",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Easy prey",           "GamerScore": 0 },
+    { "Key": "Eagle hunt",          "GamerScore": 0 },
+    { "Key": "At your service",     "GamerScore": 0 },
+    { "Key": "Sweet pickin",        "GamerScore": 0 },
+    { "Key": "Trail Doctor",        "GamerScore": 0 },
+    { "Key": "Trail Blazin",        "GamerScore": 0 },
+    { "Key": "Mission possible",    "GamerScore": 0 },
+    { "Key": "Sweetness",           "GamerScore": 0 },
+    { "Key": "Close but no cigar",  "GamerScore": 0 },
+    { "Key": "Buddy system",        "GamerScore": 0 },
+    { "Key": "Oh my deer",          "GamerScore": 0 },
+    { "Key": "Bull eye",            "GamerScore": 0 },
+    { "Key": "Bear scare",          "GamerScore": 0 },
+    { "Key": "Chit n chat",         "GamerScore": 0 },
+    { "Key": "Swap meet",           "GamerScore": 0 },
+    { "Key": "The Eagle Landed",    "GamerScore": 0 },
+    { "Key": "Dad of the year",     "GamerScore": 0 },
+    { "Key": "Psycho Killer",       "GamerScore": 0 },
+    { "Key": "Gold digger",         "GamerScore": 0 },
+    { "Key": "Bear minimum",        "GamerScore": 0 }
+  ]
 }

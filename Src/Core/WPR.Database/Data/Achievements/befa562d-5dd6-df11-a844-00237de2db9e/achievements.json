@@ -1,4 +1,22 @@
 {
   "Name": "Flight Control",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "AirWolf",              "GamerScore": 0 },
+    { "Key": "CatastrophicFailure",  "GamerScore": 0 },
+    { "Key": "Crikey",               "GamerScore": 0 },
+    { "Key": "DangerZone",           "GamerScore": 0 },
+    { "Key": "GetAround",            "GamerScore": 0 },
+    { "Key": "HoldingPattern",       "GamerScore": 0 },
+    { "Key": "ImpatienceIsAVirtue",  "GamerScore": 0 },
+    { "Key": "Medic",                "GamerScore": 0 },
+    { "Key": "NoFlyZone",            "GamerScore": 0 },
+    { "Key": "NoPressure",           "GamerScore": 0 },
+    { "Key": "RushHour",             "GamerScore": 0 },
+    { "Key": "TopGun",               "GamerScore": 0 },
+    { "Key": "Fundamentals",         "GamerScore": 0 },
+    { "Key": "Centurion",            "GamerScore": 0 },
+    { "Key": "MillenialMan",         "GamerScore": 0 },
+    { "Key": "Over9000",             "GamerScore": 0 }
+  ]
 }

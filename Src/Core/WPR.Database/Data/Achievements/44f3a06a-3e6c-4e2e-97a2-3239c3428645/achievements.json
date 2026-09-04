@@ -1,4 +1,26 @@
 {
   "Name": "Doodle God Blitz",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "A_NAME_6_ELEMENTS_CREATED",                                "GamerScore": 0 },
+    { "Key": "A_NAME_10_GROUPS_CREATED",                                 "GamerScore": 0 },
+    { "Key": "A_NAME_LIFE_CREATED",                                      "GamerScore": 0 },
+    { "Key": "A_NAME_HUMAN_CREATED",                                     "GamerScore": 0 },
+    { "Key": "A_NAME_EPISODE_ONE_PASSED",                                "GamerScore": 0 },
+    { "Key": "A_NAME_EPISODE_TWO_PASSED",                                "GamerScore": 0 },
+    { "Key": "A_NAME_EPISODE_THREE_PASSED",                              "GamerScore": 0 },
+    { "Key": "A_NAME_EPISODE_FOUR_PASSED",                               "GamerScore": 0 },
+    { "Key": "A_NAME_EPISODE_ONE_PASSED_WITHOUT_HINTS",                  "GamerScore": 0 },
+    { "Key": "A_NAME_ALL_BAD_THINGS_CREATED",                            "GamerScore": 0 },
+    { "Key": "A_NAME_ALL_REACTIONS_REVEALED",                            "GamerScore": 0 },
+    { "Key": "A_NAME_ALL_DRINKS_CREATED",                                "GamerScore": 0 },
+    { "Key": "A_NAME_SAVE_THE_PRINCESS_QUEST_PASSED",                    "GamerScore": 0 },
+    { "Key": "A_NAME_ELEMENT_CREATED_3_OR_MORE_TIMES",                   "GamerScore": 0 },
+    { "Key": "A_NAME_SIMILAR_ELEMENTS_REACTED",                          "GamerScore": 0 },
+    { "Key": "A_NAME_ALL_REACTIONS_WITH_PHILOSOPHERS_STONE_DISCOVERED",  "GamerScore": 0 },
+    { "Key": "A_NAME_RUN_SANTA_RUN_QUEST_COMPLETED",                     "GamerScore": 0 },
+    { "Key": "A_NAME_SINS_VS_VIRTUES_QUEST_COMPLETED",                   "GamerScore": 0 },
+    { "Key": "A_NAME_20THCENTURY_QUEST_COMPLETED",                       "GamerScore": 0 },
+    { "Key": "A_NAME_ROBINZON_QUEST_COMPLETED",                          "GamerScore": 0 }
+  ]
 }

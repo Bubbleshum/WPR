@@ -1,4 +1,21 @@
 {
   "Name": "Star Wars Cantina",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "ACHIEVEMENT_X_HAPPY_CUSTOMERS_SERVED",          "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_X_HAPPY_TYPE_1_CUSTOMERS_SERVED",   "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_X_HAPPY_TYPE_2_CUSTOMERS_SERVED",   "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_X_HAPPY_TYPE_3_CUSTOMERS_SERVED",   "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_X_HAPPY_TYPE_4_CUSTOMERS_SERVED",   "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_X_HAPPY_TYPE_5_CUSTOMERS_SERVED",   "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_X_HAPPY_TYPE_6_CUSTOMERS_SERVED",   "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_X_HAPPY_CUSTOMERS_IN_A_ROW",        "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_Y_HAPPY_CUSTOMERS_IN_A_ROW",        "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_Z_HAPPY_CUSTOMERS_IN_A_ROW",        "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_U_HAPPY_CUSTOMERS_IN_A_ROW",        "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_V_HAPPY_CUSTOMERS_IN_A_ROW",        "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_X_CORRECT_DRINKS_SERVED",           "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_X_CORRECT_DRINKS_SERVED_IN_A_ROW",  "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_X_DRINKS_SERVED",                   "GamerScore": 0 }
+  ]
 }

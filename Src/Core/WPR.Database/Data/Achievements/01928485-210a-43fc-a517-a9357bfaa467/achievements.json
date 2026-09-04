@@ -1,4 +1,26 @@
 {
   "Name": "Tiger Woods PGA TOUR 12",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "ACH_I_GOT_THIS",                     "GamerScore": 0 },
+    { "Key": "ACH_PING",                           "GamerScore": 0 },
+    { "Key": "ACH_ACE_IN_THE_HOLE",                "GamerScore": 0 },
+    { "Key": "ACH_SCORE_A_BIRDIE",                 "GamerScore": 0 },
+    { "Key": "ACH_SCORE_AN_EAGLE",                 "GamerScore": 0 },
+    { "Key": "ACH_SINK_IT_LIKE_AN_ALBATROSS",      "GamerScore": 0 },
+    { "Key": "ACH_WIN_A_PGA_TOUR",                 "GamerScore": 0 },
+    { "Key": "ACH_FINISH_A_PGA_TOUR",              "GamerScore": 0 },
+    { "Key": "ACH_COMPLETE_TIGER_CHALLENGE",       "GamerScore": 0 },
+    { "Key": "ACH_COMPLETE_ALL_TIGER_CHALLENGES",  "GamerScore": 0 },
+    { "Key": "ACH_PAR_FOR_THE_COURSE",             "GamerScore": 0 },
+    { "Key": "ACH_INCONCEIVABLE",                  "GamerScore": 0 },
+    { "Key": "ACH_WHAT_A_ROCKET",                  "GamerScore": 0 },
+    { "Key": "ACH_WHAT_A_WOGAN",                   "GamerScore": 0 },
+    { "Key": "ACH_GREEN_IN_REGULATION",            "GamerScore": 0 },
+    { "Key": "ACH_SANDY_DUNKIN",                   "GamerScore": 0 },
+    { "Key": "ACH_MAKE_IT_RAIN",                   "GamerScore": 0 },
+    { "Key": "ACH_HAZARD_SAVE",                    "GamerScore": 0 },
+    { "Key": "ACH_PLAY_WITH_FRIENDS",              "GamerScore": 0 },
+    { "Key": "ACH_WIN_5_MULTIPLAYER_GAMES",        "GamerScore": 0 }
+  ]
 }

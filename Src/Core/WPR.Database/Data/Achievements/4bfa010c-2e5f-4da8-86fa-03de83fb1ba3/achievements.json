@@ -1,4 +1,26 @@
 {
   "Name": "Lara Croft Relic Run",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "athleticism",       "GamerScore": 0 },
+    { "Key": "bosstwice",         "GamerScore": 0 },
+    { "Key": "exploding",         "GamerScore": 0 },
+    { "Key": "threeinone",        "GamerScore": 0 },
+    { "Key": "cursesix",          "GamerScore": 0 },
+    { "Key": "shootdead",         "GamerScore": 0 },
+    { "Key": "slide",             "GamerScore": 0 },
+    { "Key": "smash",             "GamerScore": 0 },
+    { "Key": "noslide",           "GamerScore": 0 },
+    { "Key": "killsteal",         "GamerScore": 0 },
+    { "Key": "healthcrate",       "GamerScore": 0 },
+    { "Key": "million",           "GamerScore": 0 },
+    { "Key": "resurrect",         "GamerScore": 0 },
+    { "Key": "wallrun",           "GamerScore": 0 },
+    { "Key": "shootprojectiles",  "GamerScore": 0 },
+    { "Key": "stumble",           "GamerScore": 0 },
+    { "Key": "smallchange",       "GamerScore": 0 },
+    { "Key": "coincrates",        "GamerScore": 0 },
+    { "Key": "survivecurses",     "GamerScore": 0 },
+    { "Key": "twoshotgun",        "GamerScore": 0 }
+  ]
 }

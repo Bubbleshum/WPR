@@ -1,4 +1,26 @@
 {
   "Name": "The Sims FreePlay",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Lucky_Dog",             "GamerScore": 0 },
+    { "Key": "10_Goals_Down",         "GamerScore": 0 },
+    { "Key": "Onward_and_Upward",     "GamerScore": 0 },
+    { "Key": "The_Diet_Ends_Here",    "GamerScore": 0 },
+    { "Key": "Popcorn_Anyone",        "GamerScore": 0 },
+    { "Key": "Wedding_Bells",         "GamerScore": 0 },
+    { "Key": "Baby_Boomers",          "GamerScore": 0 },
+    { "Key": "Deep_Pockets",          "GamerScore": 0 },
+    { "Key": "100_Miles",             "GamerScore": 0 },
+    { "Key": "Life_of_Excess",        "GamerScore": 0 },
+    { "Key": "KA_BOOM",               "GamerScore": 0 },
+    { "Key": "Top_of_the_Class",      "GamerScore": 0 },
+    { "Key": "Sim_Town_90210",        "GamerScore": 0 },
+    { "Key": "Nemesis_of_the_State",  "GamerScore": 0 },
+    { "Key": "City_of_Gold",          "GamerScore": 0 },
+    { "Key": "1000_GOALS",            "GamerScore": 0 },
+    { "Key": "Wax_Off",               "GamerScore": 0 },
+    { "Key": "Pro_Dancer",            "GamerScore": 0 },
+    { "Key": "Ghost_Hunter",          "GamerScore": 0 },
+    { "Key": "Sim_Negotiator",        "GamerScore": 0 }
+  ]
 }

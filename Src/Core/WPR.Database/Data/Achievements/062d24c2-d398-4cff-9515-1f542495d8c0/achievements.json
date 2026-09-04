@@ -1,4 +1,26 @@
 {
   "Name": "Pool Pro Online 3",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Well Rounded",      "GamerScore": 0 },
+    { "Key": "Grasshopper",       "GamerScore": 0 },
+    { "Key": "Sink or Swim",      "GamerScore": 0 },
+    { "Key": "Time Sink",         "GamerScore": 0 },
+    { "Key": "Running Man",       "GamerScore": 0 },
+    { "Key": "Midnight Run",      "GamerScore": 0 },
+    { "Key": "Sure Shot",         "GamerScore": 0 },
+    { "Key": "Master Blaster",    "GamerScore": 0 },
+    { "Key": "Sniper",            "GamerScore": 0 },
+    { "Key": "Eagle Eye",         "GamerScore": 0 },
+    { "Key": "Combo 5",           "GamerScore": 0 },
+    { "Key": "Fat Cat",           "GamerScore": 0 },
+    { "Key": "Brave New World",   "GamerScore": 0 },
+    { "Key": "Lobby Lizard",      "GamerScore": 0 },
+    { "Key": "Snooker King",      "GamerScore": 0 },
+    { "Key": "Shark Bait",        "GamerScore": 0 },
+    { "Key": "Jet Setter",        "GamerScore": 0 },
+    { "Key": "King of the Hill",  "GamerScore": 0 },
+    { "Key": "Finesse",           "GamerScore": 0 },
+    { "Key": "Limit Breaker",     "GamerScore": 0 }
+  ]
 }

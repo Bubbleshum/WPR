@@ -1,4 +1,26 @@
 {
   "Name": "Runemals",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Applicant",       "GamerScore": 0 },
+    { "Key": "Novice ",         "GamerScore": 0 },
+    { "Key": "Initiate ",       "GamerScore": 0 },
+    { "Key": "Apprentice",      "GamerScore": 0 },
+    { "Key": "Disciple ",       "GamerScore": 0 },
+    { "Key": "Hunter",          "GamerScore": 0 },
+    { "Key": "Sailor",          "GamerScore": 0 },
+    { "Key": "Ranger",          "GamerScore": 0 },
+    { "Key": "Fireman",         "GamerScore": 0 },
+    { "Key": "Climber",         "GamerScore": 0 },
+    { "Key": "Warlock",         "GamerScore": 0 },
+    { "Key": "Fisherman King",  "GamerScore": 0 },
+    { "Key": "Archdruid",       "GamerScore": 0 },
+    { "Key": "Fire Lord",       "GamerScore": 0 },
+    { "Key": "Light Warden",    "GamerScore": 0 },
+    { "Key": "Dark Prince",     "GamerScore": 0 },
+    { "Key": "Healer",          "GamerScore": 0 },
+    { "Key": "Doctor",          "GamerScore": 0 },
+    { "Key": "Trader",          "GamerScore": 0 },
+    { "Key": "Miner",           "GamerScore": 0 }
+  ]
 }

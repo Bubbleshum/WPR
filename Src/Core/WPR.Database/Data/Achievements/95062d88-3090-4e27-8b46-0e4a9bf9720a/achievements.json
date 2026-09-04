@@ -1,4 +1,26 @@
 {
   "Name": "Real Football",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "First Goal",            "GamerScore": 0 },
+    { "Key": "First Victory",         "GamerScore": 0 },
+    { "Key": "Training Finisher",     "GamerScore": 0 },
+    { "Key": "Penalty Master",        "GamerScore": 0 },
+    { "Key": "Golden Boot",           "GamerScore": 0 },
+    { "Key": "Assist Leader",         "GamerScore": 0 },
+    { "Key": "Golden Globe",          "GamerScore": 0 },
+    { "Key": "Man of the Match",      "GamerScore": 0 },
+    { "Key": "Match Controller",      "GamerScore": 0 },
+    { "Key": "Extra Time Killer",     "GamerScore": 0 },
+    { "Key": "Best Audience",         "GamerScore": 0 },
+    { "Key": "Football Collector",    "GamerScore": 0 },
+    { "Key": "Iron Defender",         "GamerScore": 0 },
+    { "Key": "World Champion",        "GamerScore": 0 },
+    { "Key": "Cup Champion",          "GamerScore": 0 },
+    { "Key": "Club Cup Champion",     "GamerScore": 0 },
+    { "Key": "RFRS League Legend",    "GamerScore": 0 },
+    { "Key": "National League King",  "GamerScore": 0 },
+    { "Key": "League Cup Champion",   "GamerScore": 0 },
+    { "Key": "Player of the Year",    "GamerScore": 0 }
+  ]
 }

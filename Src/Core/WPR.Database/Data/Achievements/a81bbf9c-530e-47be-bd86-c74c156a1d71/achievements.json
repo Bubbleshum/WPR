@@ -1,4 +1,14 @@
 {
   "Name": "Sudoku",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "rank_ultimate",      "GamerScore": 0 },
+    { "Key": "never_too_proud",    "GamerScore": 0 },
+    { "Key": "pfff_pencils",       "GamerScore": 0 },
+    { "Key": "winner",             "GamerScore": 0 },
+    { "Key": "minuteman",          "GamerScore": 0 },
+    { "Key": "gotta_play_em_all",  "GamerScore": 0 },
+    { "Key": "overload",           "GamerScore": 0 },
+    { "Key": "i_dont_need_those",  "GamerScore": 0 }
+  ]
 }

@@ -1,4 +1,26 @@
 {
   "Name": "Full House Poker",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "LevelUpTo2",          "GamerScore": 0 },
+    { "Key": "TookDownAPro",        "GamerScore": 0 },
+    { "Key": "StylishHost",         "GamerScore": 0 },
+    { "Key": "ProBossTakedown",     "GamerScore": 0 },
+    { "Key": "LevelUpTo10",         "GamerScore": 0 },
+    { "Key": "WinProTournament",    "GamerScore": 0 },
+    { "Key": "LevelUpTo50",         "GamerScore": 0 },
+    { "Key": "Play100Hands",        "GamerScore": 0 },
+    { "Key": "Earn500KBankroll",    "GamerScore": 0 },
+    { "Key": "MileHigh",            "GamerScore": 0 },
+    { "Key": "CompleteTournament",  "GamerScore": 0 },
+    { "Key": "PullTheTrigger",      "GamerScore": 0 },
+    { "Key": "WinTournament",       "GamerScore": 0 },
+    { "Key": "GoneFishing",         "GamerScore": 0 },
+    { "Key": "Headshot",            "GamerScore": 0 },
+    { "Key": "PayTheMortgage",      "GamerScore": 0 },
+    { "Key": "CardRack",            "GamerScore": 0 },
+    { "Key": "HeroCall",            "GamerScore": 0 },
+    { "Key": "Sandbagger",          "GamerScore": 0 },
+    { "Key": "HateATMFees",         "GamerScore": 0 }
+  ]
 }

@@ -1,4 +1,26 @@
 {
   "Name": "Pocket God",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "PYGMYKABOB_MINION",       "GamerScore": 0 },
+    { "Key": "PYGMYKABOB_GOD",          "GamerScore": 0 },
+    { "Key": "PYGMYBOWLING_MINION",     "GamerScore": 0 },
+    { "Key": "PYGMYBOWLING_GOD",        "GamerScore": 0 },
+    { "Key": "HURRICANEZAP_MINION",     "GamerScore": 0 },
+    { "Key": "HURRICANEZAP_GOD",        "GamerScore": 0 },
+    { "Key": "COCONUTBOUNCING_MINION",  "GamerScore": 0 },
+    { "Key": "COCONUTBOUNCING_GOD",     "GamerScore": 0 },
+    { "Key": "BIRDBOMB_MINION",         "GamerScore": 0 },
+    { "Key": "BIRDBOMB_GOD",            "GamerScore": 0 },
+    { "Key": "SHARKSNAP_MINION",        "GamerScore": 0 },
+    { "Key": "SHARKSNAP_GOD",           "GamerScore": 0 },
+    { "Key": "OOGAJUMP_MINION",         "GamerScore": 0 },
+    { "Key": "OOGAJUMP_GOD",            "GamerScore": 0 },
+    { "Key": "KILLTREX_MINION",         "GamerScore": 0 },
+    { "Key": "KILLTREX_GOD",            "GamerScore": 0 },
+    { "Key": "KILLSPIDER_MINION",       "GamerScore": 0 },
+    { "Key": "KILLSPIDER_GOD",          "GamerScore": 0 },
+    { "Key": "KILLICEMONSTER_MINION",   "GamerScore": 0 },
+    { "Key": "KILLICEMONSTER_GOD",      "GamerScore": 0 }
+  ]
 }

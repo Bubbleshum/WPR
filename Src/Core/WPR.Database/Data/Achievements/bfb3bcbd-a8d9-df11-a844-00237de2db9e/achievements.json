@@ -1,4 +1,17 @@
 {
   "Name": "Tetris",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Tetriminator",  "GamerScore": 0 },
+    { "Key": "Millenium",     "GamerScore": 0 },
+    { "Key": "Waterfall",     "GamerScore": 0 },
+    { "Key": "Spinmaster",    "GamerScore": 0 },
+    { "Key": "Tenacious",     "GamerScore": 0 },
+    { "Key": "Master",        "GamerScore": 0 },
+    { "Key": "WayOver",       "GamerScore": 0 },
+    { "Key": "Expert",        "GamerScore": 0 },
+    { "Key": "Dodecadent",    "GamerScore": 0 },
+    { "Key": "OnARoll",       "GamerScore": 0 },
+    { "Key": "Frenzy",        "GamerScore": 0 }
+  ]
 }

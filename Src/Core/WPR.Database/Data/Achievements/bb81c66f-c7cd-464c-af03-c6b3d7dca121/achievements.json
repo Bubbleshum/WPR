@@ -1,5 +1,27 @@
 {
   "Name": "Asphalt Overdrive",
   "Description": "Gameloft's neon-soaked '80s arcade runner. Swipe to weave, jump and drift your muscle car through a stylised California, smashing roadblocks and outrunning the law.",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Disappearing Act",              "GamerScore": 0 },
+    { "Key": "Smooth Operator",               "GamerScore": 0 },
+    { "Key": "Escape Artist",                 "GamerScore": 0 },
+    { "Key": "Untouchable",                   "GamerScore": 0 },
+    { "Key": "Maestro of Evasion",            "GamerScore": 0 },
+    { "Key": "Ready for prime time",          "GamerScore": 0 },
+    { "Key": "Under cover",                   "GamerScore": 0 },
+    { "Key": "Money can not buy everything",  "GamerScore": 0 },
+    { "Key": "Keeping it cool",               "GamerScore": 0 },
+    { "Key": "King of the Streets",           "GamerScore": 0 },
+    { "Key": "Speed Freak",                   "GamerScore": 0 },
+    { "Key": "Speed Junkie",                  "GamerScore": 0 },
+    { "Key": "Serial Speeder",                "GamerScore": 0 },
+    { "Key": "Speed Demon",                   "GamerScore": 0 },
+    { "Key": "Faster Than Lightning",         "GamerScore": 0 },
+    { "Key": "Safety First",                  "GamerScore": 0 },
+    { "Key": "All the Good Stuff",            "GamerScore": 0 },
+    { "Key": "Car collector",                 "GamerScore": 0 },
+    { "Key": "Presto change0",                "GamerScore": 0 },
+    { "Key": "Vanity plates",                 "GamerScore": 0 }
+  ]
 }

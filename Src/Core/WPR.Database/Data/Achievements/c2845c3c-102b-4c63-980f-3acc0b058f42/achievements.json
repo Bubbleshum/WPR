@@ -1,4 +1,26 @@
 {
   "Name": "Need for Speed Hot Pursuit",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "COP_TUTORIAL",             "GamerScore": 0 },
+    { "Key": "COP_TIER1_RATING",         "GamerScore": 0 },
+    { "Key": "COP_TIER2_RATING",         "GamerScore": 0 },
+    { "Key": "COP_TIER3_RATING",         "GamerScore": 0 },
+    { "Key": "COP_TIER4_RATING",         "GamerScore": 0 },
+    { "Key": "COP_SPIKESTRIP_OILSLICK",  "GamerScore": 0 },
+    { "Key": "COP_ROADBLOCK_OVERDRIVE",  "GamerScore": 0 },
+    { "Key": "COP_NUDGE",                "GamerScore": 0 },
+    { "Key": "COP_CLEANDRIVING",         "GamerScore": 0 },
+    { "Key": "COP_DISTANCE",             "GamerScore": 0 },
+    { "Key": "RACER_TUTORIAL",           "GamerScore": 0 },
+    { "Key": "RACER_TIER1_RATING",       "GamerScore": 0 },
+    { "Key": "RACER_TIER2_RATING",       "GamerScore": 0 },
+    { "Key": "RACER_TIER3_RATING",       "GamerScore": 0 },
+    { "Key": "RACER_TIER4_RATING",       "GamerScore": 0 },
+    { "Key": "RACER_SPEED",              "GamerScore": 0 },
+    { "Key": "RACER_DRIFT",              "GamerScore": 0 },
+    { "Key": "RACER_NEARMISS",           "GamerScore": 0 },
+    { "Key": "RACER_HANDBRAKE",          "GamerScore": 0 },
+    { "Key": "RACER_NITROUS",            "GamerScore": 0 }
+  ]
 }

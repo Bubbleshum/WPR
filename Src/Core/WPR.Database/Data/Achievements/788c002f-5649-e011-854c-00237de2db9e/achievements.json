@@ -1,4 +1,17 @@
 {
   "Name": "Fable Coin Golf",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "complete_chap1",   "GamerScore": 0 },
+    { "Key": "complete_chap2",   "GamerScore": 0 },
+    { "Key": "complete_chap3",   "GamerScore": 0 },
+    { "Key": "master_powerups",  "GamerScore": 0 },
+    { "Key": "power_trees",      "GamerScore": 0 },
+    { "Key": "power_kill",       "GamerScore": 0 },
+    { "Key": "power_build",      "GamerScore": 0 },
+    { "Key": "all_silver",       "GamerScore": 0 },
+    { "Key": "all_gold",         "GamerScore": 0 },
+    { "Key": "sent_gold",        "GamerScore": 0 },
+    { "Key": "hole_in_one",      "GamerScore": 0 }
+  ]
 }

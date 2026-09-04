@@ -1,4 +1,21 @@
 {
   "Name": "Trivial Pursuit",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "FIRST_WEDGE",                     "GamerScore": 0 },
+    { "Key": "FAST_WORKER_ENTERTAINMENT",       "GamerScore": 0 },
+    { "Key": "FAST_WORKER_GEOGRAPHY",           "GamerScore": 0 },
+    { "Key": "FAST_WORKER_SCIENCE_AND_NATURE",  "GamerScore": 0 },
+    { "Key": "FAST_WORKER_HISTORY",             "GamerScore": 0 },
+    { "Key": "FAST_WORKER_SPORT_AND_LEISURE",   "GamerScore": 0 },
+    { "Key": "FAST_WORKER_ART_AND_LITERATURE",  "GamerScore": 0 },
+    { "Key": "YOU_WERE_A_BLUR",                 "GamerScore": 0 },
+    { "Key": "YOU_KNOW_TOO_MUCH",               "GamerScore": 0 },
+    { "Key": "YOU_DONT_KNOW_EVERYTHING",        "GamerScore": 0 },
+    { "Key": "SKILLED",                         "GamerScore": 0 },
+    { "Key": "TRIVIAL_PURSUIT_MASTER",          "GamerScore": 0 },
+    { "Key": "ABSOLUTE_GENIUS_OR_CHEATER",      "GamerScore": 0 },
+    { "Key": "GOLD_MEDAL",                      "GamerScore": 0 },
+    { "Key": "ARE_YOU_MIDAS",                   "GamerScore": 0 }
+  ]
 }

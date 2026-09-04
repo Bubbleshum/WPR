@@ -1,4 +1,21 @@
 {
   "Name": "Farm Frenzy 2",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "AwardsFastProduct",    "GamerScore": 0 },
+    { "Key": "AwardsBestTime",       "GamerScore": 0 },
+    { "Key": "Awards300Products",    "GamerScore": 0 },
+    { "Key": "AwardsWithoutClick",   "GamerScore": 0 },
+    { "Key": "AwardsAllUpgrades",    "GamerScore": 0 },
+    { "Key": "AwardsAllBears",       "GamerScore": 0 },
+    { "Key": "AwardsMillione",       "GamerScore": 0 },
+    { "Key": "AwardsAllAwards",      "GamerScore": 0 },
+    { "Key": "AwardsAllDepot",       "GamerScore": 0 },
+    { "Key": "AwardsFlyingProduct",  "GamerScore": 0 },
+    { "Key": "AwardsWithoutHint",    "GamerScore": 0 },
+    { "Key": "Awards10Levels",       "GamerScore": 0 },
+    { "Key": "AwardsAllLevels",      "GamerScore": 0 },
+    { "Key": "AwardsSlowly",         "GamerScore": 0 },
+    { "Key": "AwardsAllLevelsGold",  "GamerScore": 0 }
+  ]
 }

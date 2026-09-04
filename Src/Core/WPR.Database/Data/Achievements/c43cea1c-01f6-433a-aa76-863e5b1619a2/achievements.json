@@ -1,4 +1,26 @@
 {
   "Name": "Lode Runner Classic",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Up and Running",    "GamerScore": 0 },
+    { "Key": "Running Free",      "GamerScore": 0 },
+    { "Key": "Running Strong",    "GamerScore": 0 },
+    { "Key": "Running Rampant",   "GamerScore": 0 },
+    { "Key": "Running on Empty",  "GamerScore": 0 },
+    { "Key": "Outta My Way",      "GamerScore": 0 },
+    { "Key": "Down You Go",       "GamerScore": 0 },
+    { "Key": "and Stay There",    "GamerScore": 0 },
+    { "Key": "Lethal Runner",     "GamerScore": 0 },
+    { "Key": "Smoking Gun",       "GamerScore": 0 },
+    { "Key": "Hot Hand",          "GamerScore": 0 },
+    { "Key": "Gold Gatherer",     "GamerScore": 0 },
+    { "Key": "Loding up",         "GamerScore": 0 },
+    { "Key": "Gold Vision",       "GamerScore": 0 },
+    { "Key": "Ready Ore Not",     "GamerScore": 0 },
+    { "Key": "Gold Hoarder",      "GamerScore": 0 },
+    { "Key": "Making Tracks",     "GamerScore": 0 },
+    { "Key": "On a Roll",         "GamerScore": 0 },
+    { "Key": "Power Saver",       "GamerScore": 0 },
+    { "Key": "Do unto Others",    "GamerScore": 0 }
+  ]
 }

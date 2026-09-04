@@ -1,4 +1,25 @@
 {
   "Name": "Cut the Rope",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "acBronzeScissors",      "GamerScore": 0 },
+    { "Key": "acSilverScissors",      "GamerScore": 0 },
+    { "Key": "acGoldenScissors",      "GamerScore": 0 },
+    { "Key": "acRopeCutter",          "GamerScore": 0 },
+    { "Key": "acRopeCutterManiac",    "GamerScore": 0 },
+    { "Key": "acUltimateRopeCutter",  "GamerScore": 0 },
+    { "Key": "acBubblePopper",        "GamerScore": 0 },
+    { "Key": "acBubbleMaster",        "GamerScore": 0 },
+    { "Key": "acSpiderBuster",        "GamerScore": 0 },
+    { "Key": "acSpiderTamer",         "GamerScore": 0 },
+    { "Key": "acSpiderLover",         "GamerScore": 0 },
+    { "Key": "acWeightLoser",         "GamerScore": 0 },
+    { "Key": "acCalorieMinimizer",    "GamerScore": 0 },
+    { "Key": "acQuickFinger",         "GamerScore": 0 },
+    { "Key": "acMasterFinger",        "GamerScore": 0 },
+    { "Key": "acTummyTeaser",         "GamerScore": 0 },
+    { "Key": "acCandyJuggler",        "GamerScore": 0 },
+    { "Key": "acRomanticSoul",        "GamerScore": 0 },
+    { "Key": "acMagician",            "GamerScore": 0 }
+  ]
 }

@@ -1,4 +1,26 @@
 {
   "Name": "Abyss",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Fast recollector",                 "GamerScore": 0 },
+    { "Key": "Artificial Intelligence",          "GamerScore": 0 },
+    { "Key": "A thread of hope",                 "GamerScore": 0 },
+    { "Key": "Hope of human kind",               "GamerScore": 0 },
+    { "Key": "Provider of life",                 "GamerScore": 0 },
+    { "Key": "Hero of human kind",               "GamerScore": 0 },
+    { "Key": "A saviour has arisen",             "GamerScore": 0 },
+    { "Key": "Welcome to Abyss",                 "GamerScore": 0 },
+    { "Key": "One does not simply cross Abyss",  "GamerScore": 0 },
+    { "Key": "Houston we have a problem",        "GamerScore": 0 },
+    { "Key": "Robocide",                         "GamerScore": 0 },
+    { "Key": "Robocaust",                        "GamerScore": 0 },
+    { "Key": "Roboextinction",                   "GamerScore": 0 },
+    { "Key": "Promising future",                 "GamerScore": 0 },
+    { "Key": "Archeologist",                     "GamerScore": 0 },
+    { "Key": "Darkest hours",                    "GamerScore": 0 },
+    { "Key": "A little step for a Nep2no",       "GamerScore": 0 },
+    { "Key": "It was just a bad dream",          "GamerScore": 0 },
+    { "Key": "Legend of the Abyss",              "GamerScore": 0 },
+    { "Key": "Darkest corners of the Earth",     "GamerScore": 0 }
+  ]
 }

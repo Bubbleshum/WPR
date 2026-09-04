@@ -1,4 +1,26 @@
 {
   "Name": "Asphalt 7 Heat",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "ADRENALINE ACTIVATION",      "GamerScore": 0 },
+    { "Key": "BIG SPENDER",                "GamerScore": 0 },
+    { "Key": "IS THAT A LAMBO",            "GamerScore": 0 },
+    { "Key": "BLAZIN FAST",                "GamerScore": 0 },
+    { "Key": "HAWAIIAN SURF",              "GamerScore": 0 },
+    { "Key": "TIGHT REP",                  "GamerScore": 0 },
+    { "Key": "CAR COLLECTOR",              "GamerScore": 0 },
+    { "Key": "SLOW AND STEADY",            "GamerScore": 0 },
+    { "Key": "MONSTER TRUCK MADNESS",      "GamerScore": 0 },
+    { "Key": "THE MECHANIC",               "GamerScore": 0 },
+    { "Key": "DECAL DEVOURER",             "GamerScore": 0 },
+    { "Key": "SHARE THE PAIN",             "GamerScore": 0 },
+    { "Key": "HOT HAND",                   "GamerScore": 0 },
+    { "Key": "TRAFFIC CONTROLLER",         "GamerScore": 0 },
+    { "Key": "ALL STAR",                   "GamerScore": 0 },
+    { "Key": "MEGA MOOLAH",                "GamerScore": 0 },
+    { "Key": "KNOCKDOWN TITAN",            "GamerScore": 0 },
+    { "Key": "GET BY WITH A LITTLE HELP",  "GamerScore": 0 },
+    { "Key": "ULTRA REP",                  "GamerScore": 0 },
+    { "Key": "MAD REP",                    "GamerScore": 0 }
+  ]
 }

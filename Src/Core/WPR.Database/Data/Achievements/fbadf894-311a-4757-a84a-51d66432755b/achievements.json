@@ -1,4 +1,25 @@
 {
   "Name": "Pro Evolution Soccer 2012",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "FirstBall",            "GamerScore": 0 },
+    { "Key": "NationalSelection",    "GamerScore": 0 },
+    { "Key": "Legend",               "GamerScore": 0 },
+    { "Key": "UEFAChampionsLeague",  "GamerScore": 0 },
+    { "Key": "UEFAEuropaLeague",     "GamerScore": 0 },
+    { "Key": "EnglishLeague",        "GamerScore": 0 },
+    { "Key": "Ligue1",               "GamerScore": 0 },
+    { "Key": "ItalianLeague",        "GamerScore": 0 },
+    { "Key": "DutchLeague",          "GamerScore": 0 },
+    { "Key": "SpanishLeague",        "GamerScore": 0 },
+    { "Key": "InternationalCup",     "GamerScore": 0 },
+    { "Key": "EuropeanCup",          "GamerScore": 0 },
+    { "Key": "AfricaCup",            "GamerScore": 0 },
+    { "Key": "AmericaCup",           "GamerScore": 0 },
+    { "Key": "AsiaOceaniaCup",       "GamerScore": 0 },
+    { "Key": "KonamiCup",            "GamerScore": 0 },
+    { "Key": "LeagueLegend",         "GamerScore": 0 },
+    { "Key": "CupLegend",            "GamerScore": 0 },
+    { "Key": "NoLuckJustSkill",      "GamerScore": 0 }
+  ]
 }

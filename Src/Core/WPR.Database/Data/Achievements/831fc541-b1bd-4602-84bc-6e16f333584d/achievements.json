@@ -1,4 +1,24 @@
 {
   "Name": "Monster Island",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "first3Stars",     "GamerScore": 0 },
+    { "Key": "headshot",        "GamerScore": 0 },
+    { "Key": "2x1",             "GamerScore": 0 },
+    { "Key": "enragedKill",     "GamerScore": 0 },
+    { "Key": "lastGrenade",     "GamerScore": 0 },
+    { "Key": "kill50Grunts",    "GamerScore": 0 },
+    { "Key": "kill100Grunts",   "GamerScore": 0 },
+    { "Key": "kill300Grunts",   "GamerScore": 0 },
+    { "Key": "kill40Enraged",   "GamerScore": 0 },
+    { "Key": "island0_3Stars",  "GamerScore": 0 },
+    { "Key": "island1_3Stars",  "GamerScore": 0 },
+    { "Key": "island2_3Stars",  "GamerScore": 0 },
+    { "Key": "island3_3Stars",  "GamerScore": 0 },
+    { "Key": "firstSolution",   "GamerScore": 0 },
+    { "Key": "buySolutions",    "GamerScore": 0 },
+    { "Key": "firstSkip",       "GamerScore": 0 },
+    { "Key": "buySkips",        "GamerScore": 0 },
+    { "Key": "bigSpender",      "GamerScore": 0 }
+  ]
 }

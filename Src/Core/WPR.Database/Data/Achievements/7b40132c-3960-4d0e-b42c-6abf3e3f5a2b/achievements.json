@@ -1,4 +1,26 @@
 {
   "Name": "Yahtzee",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Apprentice",        "GamerScore": 0 },
+    { "Key": "Initiate",          "GamerScore": 0 },
+    { "Key": "Adept",             "GamerScore": 0 },
+    { "Key": "Globe trotter",     "GamerScore": 0 },
+    { "Key": "Sensei",            "GamerScore": 0 },
+    { "Key": "Yahtzeer",          "GamerScore": 0 },
+    { "Key": "Maestro",           "GamerScore": 0 },
+    { "Key": "Classic master",    "GamerScore": 0 },
+    { "Key": "Color juggler",     "GamerScore": 0 },
+    { "Key": "Rainbow master",    "GamerScore": 0 },
+    { "Key": "Duplicate master",  "GamerScore": 0 },
+    { "Key": "Fine strategist",   "GamerScore": 0 },
+    { "Key": "Battle master",     "GamerScore": 0 },
+    { "Key": "Minimalist",        "GamerScore": 0 },
+    { "Key": "Classic Sensei",    "GamerScore": 0 },
+    { "Key": "Rainbow sensei",    "GamerScore": 0 },
+    { "Key": "Duplicate sensei",  "GamerScore": 0 },
+    { "Key": "Battle sensei",     "GamerScore": 0 },
+    { "Key": "Back at you",       "GamerScore": 0 },
+    { "Key": "Full path",         "GamerScore": 0 }
+  ]
 }

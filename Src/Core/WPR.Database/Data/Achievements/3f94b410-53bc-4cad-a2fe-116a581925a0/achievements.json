@@ -1,5 +1,19 @@
 {
-  "Name": "Sonic CD",
+  "Name": "Sonic CD",
   "Description": "Rather than a straight port or an emulated title, this version of the 1993 Sonic CD is a completely redone edition for modern platforms, based on a fan-made Retro engine.",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "88 Miles Per Hour",       "GamerScore": 0 },
+    { "Key": "Just One Hug is Enough",  "GamerScore": 0 },
+    { "Key": "Paradise Found",          "GamerScore": 0 },
+    { "Key": "Take the High Road",      "GamerScore": 0 },
+    { "Key": "King of the Rings",       "GamerScore": 0 },
+    { "Key": "Statue Saviour",          "GamerScore": 0 },
+    { "Key": "Heavy Metal",             "GamerScore": 0 },
+    { "Key": "All Stages Clear",        "GamerScore": 0 },
+    { "Key": "Treasure Hunter",         "GamerScore": 0 },
+    { "Key": "Dr Eggman Got Served",    "GamerScore": 0 },
+    { "Key": "Just In Time",            "GamerScore": 0 },
+    { "Key": "Saviour of the Planet",   "GamerScore": 0 }
+  ]
 }

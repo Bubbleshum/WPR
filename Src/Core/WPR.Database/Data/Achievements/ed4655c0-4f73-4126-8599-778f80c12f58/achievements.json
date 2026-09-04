@@ -1,4 +1,26 @@
 {
   "Name": "Tiny Troopers 2 - Special Ops",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Death From Above",     "GamerScore": 0 },
+    { "Key": "Decked Out",           "GamerScore": 0 },
+    { "Key": "Diverse Tactics",      "GamerScore": 0 },
+    { "Key": "Spotter",              "GamerScore": 0 },
+    { "Key": "Are you trying",       "GamerScore": 0 },
+    { "Key": "Boot Camp",            "GamerScore": 0 },
+    { "Key": "Tank Hunter",          "GamerScore": 0 },
+    { "Key": "Medal of Honor",       "GamerScore": 0 },
+    { "Key": "Watch your step",      "GamerScore": 0 },
+    { "Key": "War Bonds",            "GamerScore": 0 },
+    { "Key": "Tag Collector",        "GamerScore": 0 },
+    { "Key": "Air Support",          "GamerScore": 0 },
+    { "Key": "Mow em down",          "GamerScore": 0 },
+    { "Key": "Into the frey",        "GamerScore": 0 },
+    { "Key": "Over the hill",        "GamerScore": 0 },
+    { "Key": "Coming Home",          "GamerScore": 0 },
+    { "Key": "Gate Crasher",         "GamerScore": 0 },
+    { "Key": "Chicken Killer",       "GamerScore": 0 },
+    { "Key": "Strength in numbers",  "GamerScore": 0 },
+    { "Key": "Suiter",               "GamerScore": 0 }
+  ]
 }

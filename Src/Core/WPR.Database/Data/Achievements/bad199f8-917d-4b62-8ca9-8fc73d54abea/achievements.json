@@ -1,4 +1,14 @@
 {
   "Name": "Fusion Dots",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Adventurer",          "GamerScore": 0 },
+    { "Key": "Explorer",            "GamerScore": 0 },
+    { "Key": "World Conqueror",     "GamerScore": 0 },
+    { "Key": "Black Silver",        "GamerScore": 0 },
+    { "Key": "Golden Golden",       "GamerScore": 0 },
+    { "Key": "Smash Them All",      "GamerScore": 0 },
+    { "Key": "Fly Me To The Moon",  "GamerScore": 0 },
+    { "Key": "Master Of Swap",      "GamerScore": 0 }
+  ]
 }

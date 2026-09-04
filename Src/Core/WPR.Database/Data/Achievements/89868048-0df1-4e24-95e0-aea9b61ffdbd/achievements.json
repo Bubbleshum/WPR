@@ -1,5 +1,27 @@
 {
   "Name": "UNO & Friends",
   "Description": "Gameloft's social take on the classic UNO card game. Match colours and numbers, unleash Wild and Draw cards, and race to empty your hand against friends and players online.",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "FEELIN_WILD",              "GamerScore": 0 },
+    { "Key": "WILD_CHILD",               "GamerScore": 0 },
+    { "Key": "CHALLENGER_APPROACHES",    "GamerScore": 0 },
+    { "Key": "UNO_CENTENNIAL",           "GamerScore": 0 },
+    { "Key": "IN_IT_FOR_THE_LONG_HAUL",  "GamerScore": 0 },
+    { "Key": "MASTER_OF_THE_GAME",       "GamerScore": 0 },
+    { "Key": "PRIMO_PLAYER",             "GamerScore": 0 },
+    { "Key": "LEVEL_25",                 "GamerScore": 0 },
+    { "Key": "LEVEL_50",                 "GamerScore": 0 },
+    { "Key": "LEVEL_100",                "GamerScore": 0 },
+    { "Key": "GO_GREEN",                 "GamerScore": 0 },
+    { "Key": "I_SEE_CARDS_OF_BLUE",      "GamerScore": 0 },
+    { "Key": "MELLOW_YELLOW",            "GamerScore": 0 },
+    { "Key": "KEEP_ON_GIVING",           "GamerScore": 0 },
+    { "Key": "AN_INVITING_FRIEND",       "GamerScore": 0 },
+    { "Key": "REMARKABLE_RED",           "GamerScore": 0 },
+    { "Key": "BACK_TO_BACK",             "GamerScore": 0 },
+    { "Key": "BONUS_COMPLETE",           "GamerScore": 0 },
+    { "Key": "THE_FINISHER",             "GamerScore": 0 },
+    { "Key": "POWER_UPS",                "GamerScore": 0 }
+  ]
 }

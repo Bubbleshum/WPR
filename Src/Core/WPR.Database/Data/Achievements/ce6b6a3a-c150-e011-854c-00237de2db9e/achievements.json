@@ -1,4 +1,14 @@
 {
   "Name": "Super Monkey Ball",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Monkey Island",     "GamerScore": 0 },
+    { "Key": "Smooth Sherbet",    "GamerScore": 0 },
+    { "Key": "Detritus Desert",   "GamerScore": 0 },
+    { "Key": "Volcanic Pools",    "GamerScore": 0 },
+    { "Key": "Space Case",        "GamerScore": 0 },
+    { "Key": "Bananas",           "GamerScore": 0 },
+    { "Key": "Crowned Champion",  "GamerScore": 0 },
+    { "Key": "Perfect Bonus",     "GamerScore": 0 }
+  ]
 }

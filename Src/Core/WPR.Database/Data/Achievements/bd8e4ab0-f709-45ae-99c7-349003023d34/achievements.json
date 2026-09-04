@@ -1,4 +1,16 @@
 {
   "Name": "Collapse!",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Buster",         "GamerScore": 0 },
+    { "Key": "Big Buster",     "GamerScore": 0 },
+    { "Key": "Huge Buster",    "GamerScore": 0 },
+    { "Key": "Clean Sweep",    "GamerScore": 0 },
+    { "Key": "Fast Sweep",     "GamerScore": 0 },
+    { "Key": "Rainbow Sweep",  "GamerScore": 0 },
+    { "Key": "Sniper",         "GamerScore": 0 },
+    { "Key": "Close Call",     "GamerScore": 0 },
+    { "Key": "Single Handed",  "GamerScore": 0 },
+    { "Key": "Puzzle Genius",  "GamerScore": 0 }
+  ]
 }

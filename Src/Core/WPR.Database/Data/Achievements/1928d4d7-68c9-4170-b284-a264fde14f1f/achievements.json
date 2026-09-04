@@ -1,4 +1,26 @@
 {
   "Name": "Fruit Ninja (2013)",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "1_FRUIT_NINJA",           "GamerScore": 0 },
+    { "Key": "2_GREAT_FRUIT_NINJA",     "GamerScore": 0 },
+    { "Key": "3_ULTIMATE_FRUIT_NINJA",  "GamerScore": 0 },
+    { "Key": "4_FRUIT_FIGHT",           "GamerScore": 0 },
+    { "Key": "5_FRUIT_BLITZ",           "GamerScore": 0 },
+    { "Key": "6_FRUIT_FRENZY",          "GamerScore": 0 },
+    { "Key": "7_FRUIT_RAMPAGE",         "GamerScore": 0 },
+    { "Key": "8_FRUIT_ANNIHILATION",    "GamerScore": 0 },
+    { "Key": "9_GO_BANANA",             "GamerScore": 0 },
+    { "Key": "10_NO_DOCTORS_HERE",      "GamerScore": 0 },
+    { "Key": "11_PURPLE_IS_A_FRUIT",    "GamerScore": 0 },
+    { "Key": "12_LUCKY_NINJA",          "GamerScore": 0 },
+    { "Key": "16_ARE_YOU_KIDDING",      "GamerScore": 0 },
+    { "Key": "17_WAKE_UP",              "GamerScore": 0 },
+    { "Key": "18_TEE_HEE",              "GamerScore": 0 },
+    { "Key": "19_ALMOST_CENTURY",       "GamerScore": 0 },
+    { "Key": "20_COMBO_MAMBO",          "GamerScore": 0 },
+    { "Key": "21_MOMENT_OF_ZEN",        "GamerScore": 0 },
+    { "Key": "23_YEAR_DRAGON",          "GamerScore": 0 },
+    { "Key": "25_OVER_ACHIEVER",        "GamerScore": 0 }
+  ]
 }

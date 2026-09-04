@@ -1,4 +1,26 @@
 {
   "Name": "Tiny Troopers",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "death_from_above",     "GamerScore": 0 },
+    { "Key": "decked_out",           "GamerScore": 0 },
+    { "Key": "diverse_tactics",      "GamerScore": 0 },
+    { "Key": "grenadier",            "GamerScore": 0 },
+    { "Key": "spotter",              "GamerScore": 0 },
+    { "Key": "rocketman",            "GamerScore": 0 },
+    { "Key": "are_you_even_trying",  "GamerScore": 0 },
+    { "Key": "moba_master",          "GamerScore": 0 },
+    { "Key": "boot_camp",            "GamerScore": 0 },
+    { "Key": "tank_hunter",          "GamerScore": 0 },
+    { "Key": "medal_of_honor",       "GamerScore": 0 },
+    { "Key": "watch_your_step",      "GamerScore": 0 },
+    { "Key": "war_bonds",            "GamerScore": 0 },
+    { "Key": "tag_collector",        "GamerScore": 0 },
+    { "Key": "air_support",          "GamerScore": 0 },
+    { "Key": "mow_em_down",          "GamerScore": 0 },
+    { "Key": "spec_ops",             "GamerScore": 0 },
+    { "Key": "into_the_frey",        "GamerScore": 0 },
+    { "Key": "over_the_hill",        "GamerScore": 0 },
+    { "Key": "coming_home",          "GamerScore": 0 }
+  ]
 }

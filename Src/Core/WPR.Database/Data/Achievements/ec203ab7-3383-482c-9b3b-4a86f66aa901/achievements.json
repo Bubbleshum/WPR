@@ -1,4 +1,22 @@
 {
   "Name": "Implode!",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "4 zones unlocked",      "GamerScore": 0 },
+    { "Key": "6 zones unlocked",      "GamerScore": 0 },
+    { "Key": "8 zones unlocked",      "GamerScore": 0 },
+    { "Key": "12 zones unlocked",     "GamerScore": 0 },
+    { "Key": "10 zones unlocked",     "GamerScore": 0 },
+    { "Key": "15 zones unlocked",     "GamerScore": 0 },
+    { "Key": "4 zones a plus",        "GamerScore": 0 },
+    { "Key": "6 zones a plus",        "GamerScore": 0 },
+    { "Key": "8 zones a plus",        "GamerScore": 0 },
+    { "Key": "10 zones a plus",       "GamerScore": 0 },
+    { "Key": "12 zones a plus",       "GamerScore": 0 },
+    { "Key": "15 zones a plus",       "GamerScore": 0 },
+    { "Key": "create a level",        "GamerScore": 0 },
+    { "Key": "blow up 10 buildings",  "GamerScore": 0 },
+    { "Key": "blow up 1 building",    "GamerScore": 0 },
+    { "Key": "first a plus",          "GamerScore": 0 }
+  ]
 }

@@ -1,4 +1,26 @@
 {
   "Name": "Gerbil Physics",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "OneHitWonderExploder",       "GamerScore": 0 },
+    { "Key": "Einstein",                   "GamerScore": 0 },
+    { "Key": "WipeoutProgress01",          "GamerScore": 0 },
+    { "Key": "SpinCycle",                  "GamerScore": 0 },
+    { "Key": "OneHitWonderDisintegrator",  "GamerScore": 0 },
+    { "Key": "GameProgress01",             "GamerScore": 0 },
+    { "Key": "DisintegrationMad",          "GamerScore": 0 },
+    { "Key": "WipeoutProgress02",          "GamerScore": 0 },
+    { "Key": "PenguinLover",               "GamerScore": 0 },
+    { "Key": "GameProgress02",             "GamerScore": 0 },
+    { "Key": "GoldProgress01",             "GamerScore": 0 },
+    { "Key": "SpeedFreak01",               "GamerScore": 0 },
+    { "Key": "GoldProgress02",             "GamerScore": 0 },
+    { "Key": "BombParty",                  "GamerScore": 0 },
+    { "Key": "FirstPickup",                "GamerScore": 0 },
+    { "Key": "GoldProgress00",             "GamerScore": 0 },
+    { "Key": "WipeoutProgress00",          "GamerScore": 0 },
+    { "Key": "FirstAlarmGerbils",          "GamerScore": 0 },
+    { "Key": "ScoreProgress00",            "GamerScore": 0 },
+    { "Key": "ScoreProgress01",            "GamerScore": 0 }
+  ]
 }

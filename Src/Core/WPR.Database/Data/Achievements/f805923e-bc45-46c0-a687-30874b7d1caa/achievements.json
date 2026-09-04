@@ -1,4 +1,26 @@
 {
   "Name": "Overkill 3",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Rank_5",                      "GamerScore": 0 },
+    { "Key": "Rank_15",                     "GamerScore": 0 },
+    { "Key": "Rank_25",                     "GamerScore": 0 },
+    { "Key": "Rank_35",                     "GamerScore": 0 },
+    { "Key": "Rank_45",                     "GamerScore": 0 },
+    { "Key": "Complete_area_slum",          "GamerScore": 0 },
+    { "Key": "Complete_area_rail",          "GamerScore": 0 },
+    { "Key": "Complete_area_lom",           "GamerScore": 0 },
+    { "Key": "Complete_area_incinerator",   "GamerScore": 0 },
+    { "Key": "Complete_area_suburbs",       "GamerScore": 0 },
+    { "Key": "Complete_area_incinerator2",  "GamerScore": 0 },
+    { "Key": "Complete_area_rail2",         "GamerScore": 0 },
+    { "Key": "Complete_area_westslums",     "GamerScore": 0 },
+    { "Key": "Complete_area_warehouses",    "GamerScore": 0 },
+    { "Key": "Complete_area_city",          "GamerScore": 0 },
+    { "Key": "Complete_area_powerplant",    "GamerScore": 0 },
+    { "Key": "kill_1",                      "GamerScore": 0 },
+    { "Key": "kill_2",                      "GamerScore": 0 },
+    { "Key": "kill_3",                      "GamerScore": 0 },
+    { "Key": "kill_4",                      "GamerScore": 0 }
+  ]
 }

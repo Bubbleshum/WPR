@@ -1,4 +1,26 @@
 {
   "Name": "Fight Game Rivals",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "ACH_FGRIVALS_01",  "GamerScore": 0 },
+    { "Key": "ACH_FGRIVALS_02",  "GamerScore": 0 },
+    { "Key": "ACH_FGRIVALS_03",  "GamerScore": 0 },
+    { "Key": "ACH_FGRIVALS_04",  "GamerScore": 0 },
+    { "Key": "ACH_FGRIVALS_05",  "GamerScore": 0 },
+    { "Key": "ACH_FGRIVALS_06",  "GamerScore": 0 },
+    { "Key": "ACH_FGRIVALS_07",  "GamerScore": 0 },
+    { "Key": "ACH_FGRIVALS_08",  "GamerScore": 0 },
+    { "Key": "ACH_FGRIVALS_09",  "GamerScore": 0 },
+    { "Key": "ACH_FGRIVALS_10",  "GamerScore": 0 },
+    { "Key": "ACH_FGRIVALS_11",  "GamerScore": 0 },
+    { "Key": "ACH_FGRIVALS_12",  "GamerScore": 0 },
+    { "Key": "ACH_FGRIVALS_13",  "GamerScore": 0 },
+    { "Key": "ACH_FGRIVALS_14",  "GamerScore": 0 },
+    { "Key": "ACH_FGRIVALS_15",  "GamerScore": 0 },
+    { "Key": "ACH_FGRIVALS_16",  "GamerScore": 0 },
+    { "Key": "ACH_FGRIVALS_17",  "GamerScore": 0 },
+    { "Key": "ACH_FGRIVALS_18",  "GamerScore": 0 },
+    { "Key": "ACH_FGRIVALS_19",  "GamerScore": 0 },
+    { "Key": "ACH_FGRIVALS_20",  "GamerScore": 0 }
+  ]
 }

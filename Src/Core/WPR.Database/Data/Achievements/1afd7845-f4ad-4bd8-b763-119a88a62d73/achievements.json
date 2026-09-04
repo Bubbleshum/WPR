@@ -1,4 +1,16 @@
 {
   "Name": "Toy Soldiers - Boot Camp",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "TourOfDuty",       "GamerScore": 0 },
+    { "Key": "Persistence",      "GamerScore": 0 },
+    { "Key": "Perseverance",     "GamerScore": 0 },
+    { "Key": "DDT",              "GamerScore": 0 },
+    { "Key": "DropAndGiveMe20",  "GamerScore": 0 },
+    { "Key": "RocketStar",       "GamerScore": 0 },
+    { "Key": "InTheZone",        "GamerScore": 0 },
+    { "Key": "ThrillSeeker",     "GamerScore": 0 },
+    { "Key": "Firestarter",      "GamerScore": 0 },
+    { "Key": "RollCall",         "GamerScore": 0 }
+  ]
 }

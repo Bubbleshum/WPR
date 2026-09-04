@@ -1,4 +1,22 @@
 {
   "Name": "Glow Artisan",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "TUTORIAL_COMPLETE",         "GamerScore": 0 },
+    { "Key": "MEDAL_MOVE_ANY",            "GamerScore": 0 },
+    { "Key": "MEDAL_ANY_TIME",            "GamerScore": 0 },
+    { "Key": "TROPHY_APPRENTICE_FIRST",   "GamerScore": 0 },
+    { "Key": "TROPHY_APPRENTICE_SECOND",  "GamerScore": 0 },
+    { "Key": "TROPHY_APPRENTICE_THIRD",   "GamerScore": 0 },
+    { "Key": "TROPHY_APPRENTICE_ALL",     "GamerScore": 0 },
+    { "Key": "TROPHY_ARTISAN_ALL",        "GamerScore": 0 },
+    { "Key": "TROPHY_MASTER_ALL",         "GamerScore": 0 },
+    { "Key": "TROPHY_BONUS_ALL",          "GamerScore": 0 },
+    { "Key": "MEDAL_MOVE_HALF",           "GamerScore": 0 },
+    { "Key": "MEDAL_TIME_HALF",           "GamerScore": 0 },
+    { "Key": "MEDAL_MOVE_ALL",            "GamerScore": 0 },
+    { "Key": "MEDAL_TIME_ALL",            "GamerScore": 0 },
+    { "Key": "CREATE_PICTURE",            "GamerScore": 0 },
+    { "Key": "CREATE_TIMED",              "GamerScore": 0 }
+  ]
 }

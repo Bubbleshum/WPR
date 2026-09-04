@@ -1,4 +1,26 @@
 {
   "Name": "Ridiculous Marathon",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Newbie",                     "GamerScore": 0 },
+    { "Key": "Amateur",                    "GamerScore": 0 },
+    { "Key": "Pro",                        "GamerScore": 0 },
+    { "Key": "Rockstar",                   "GamerScore": 0 },
+    { "Key": "Fancy dress",                "GamerScore": 0 },
+    { "Key": "Wild life",                  "GamerScore": 0 },
+    { "Key": "Full Wardrobe",              "GamerScore": 0 },
+    { "Key": "Zoo",                        "GamerScore": 0 },
+    { "Key": "This is getting serious",    "GamerScore": 0 },
+    { "Key": "Rocket Scientist",           "GamerScore": 0 },
+    { "Key": "Daily challenge",            "GamerScore": 0 },
+    { "Key": "Weekly challenge",           "GamerScore": 0 },
+    { "Key": "Wats inside",                "GamerScore": 0 },
+    { "Key": "On my way",                  "GamerScore": 0 },
+    { "Key": "All missions accomplished",  "GamerScore": 0 },
+    { "Key": "Pinata hater",               "GamerScore": 0 },
+    { "Key": "So much coins",              "GamerScore": 0 },
+    { "Key": "I believe I can fly",        "GamerScore": 0 },
+    { "Key": "Multiplier COMBO",           "GamerScore": 0 },
+    { "Key": "Fenix",                      "GamerScore": 0 }
+  ]
 }

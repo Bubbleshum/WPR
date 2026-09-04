@@ -1,4 +1,17 @@
 {
   "Name": "The Game of Life",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "LivingTheLife",            "GamerScore": 0 },
+    { "Key": "VarietyIsTheSpiceOfLife",  "GamerScore": 0 },
+    { "Key": "FamilyValues",             "GamerScore": 0 },
+    { "Key": "GoldPlated",               "GamerScore": 0 },
+    { "Key": "DontBlameMe",              "GamerScore": 0 },
+    { "Key": "TopOfTheWorld",            "GamerScore": 0 },
+    { "Key": "MVP",                      "GamerScore": 0 },
+    { "Key": "MoneyMoneyMoney",          "GamerScore": 0 },
+    { "Key": "InItToWinIt",              "GamerScore": 0 },
+    { "Key": "OnPatrol",                 "GamerScore": 0 },
+    { "Key": "LifetimeAchievement",      "GamerScore": 0 }
+  ]
 }

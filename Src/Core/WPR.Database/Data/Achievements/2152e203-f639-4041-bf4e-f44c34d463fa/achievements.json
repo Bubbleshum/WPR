@@ -1,4 +1,26 @@
 {
   "Name": "Skulls of the Shogun",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Achievement01",  "GamerScore": 0 },
+    { "Key": "Achievement02",  "GamerScore": 0 },
+    { "Key": "Achievement03",  "GamerScore": 0 },
+    { "Key": "Achievement04",  "GamerScore": 0 },
+    { "Key": "Achievement05",  "GamerScore": 0 },
+    { "Key": "Achievement06",  "GamerScore": 0 },
+    { "Key": "Achievement07",  "GamerScore": 0 },
+    { "Key": "Achievement08",  "GamerScore": 0 },
+    { "Key": "Achievement09",  "GamerScore": 0 },
+    { "Key": "Achievement10",  "GamerScore": 0 },
+    { "Key": "Achievement11",  "GamerScore": 0 },
+    { "Key": "Achievement12",  "GamerScore": 0 },
+    { "Key": "Achievement13",  "GamerScore": 0 },
+    { "Key": "Achievement14",  "GamerScore": 0 },
+    { "Key": "Achievement15",  "GamerScore": 0 },
+    { "Key": "Achievement16",  "GamerScore": 0 },
+    { "Key": "Achievement17",  "GamerScore": 0 },
+    { "Key": "Achievement18",  "GamerScore": 0 },
+    { "Key": "Achievement19",  "GamerScore": 0 },
+    { "Key": "Achievement20",  "GamerScore": 0 }
+  ]
 }

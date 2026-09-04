@@ -1,5 +1,27 @@
 {
   "Name": "Age of Sparta",
   "Description": "Age of Sparta is a strategy game that combines base building and management with battles through a campaign and worldwide PvP, much like the developer's earlier title World at Arms.",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "PRUDENT",             "GamerScore": 0 },
+    { "Key": "RELENTLESS",          "GamerScore": 0 },
+    { "Key": "PERFECTION",          "GamerScore": 0 },
+    { "Key": "READY_TO_FIGHT",      "GamerScore": 0 },
+    { "Key": "QUICK_AND_ACCURATE",  "GamerScore": 0 },
+    { "Key": "BEASTS_OF_THE_LAND",  "GamerScore": 0 },
+    { "Key": "DEVASTATOR",          "GamerScore": 0 },
+    { "Key": "DISCIPLE_OF_ARES",    "GamerScore": 0 },
+    { "Key": "ETERNAL_CITY",        "GamerScore": 0 },
+    { "Key": "AESTHETICS",          "GamerScore": 0 },
+    { "Key": "RICH_AS_CROESUS",     "GamerScore": 0 },
+    { "Key": "FAITHFUL",            "GamerScore": 0 },
+    { "Key": "RULER_OF_MANY",       "GamerScore": 0 },
+    { "Key": "FORTIFIED",           "GamerScore": 0 },
+    { "Key": "VENGEFUL",            "GamerScore": 0 },
+    { "Key": "ASCENDING_OLYMPUS",   "GamerScore": 0 },
+    { "Key": "GENERAL",             "GamerScore": 0 },
+    { "Key": "RULER_OF_THE_SKIES",  "GamerScore": 0 },
+    { "Key": "BOUNTY_HUNTER",       "GamerScore": 0 },
+    { "Key": "BLOODTHIRSTY",        "GamerScore": 0 }
+  ]
 }

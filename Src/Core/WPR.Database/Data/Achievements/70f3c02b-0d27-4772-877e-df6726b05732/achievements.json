@@ -1,4 +1,17 @@
 {
   "Name": "Roll in the Hole",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "15 lollipops",   "GamerScore": 0 },
+    { "Key": "40 lollipops",   "GamerScore": 0 },
+    { "Key": "80 lollipops",   "GamerScore": 0 },
+    { "Key": "160 lollipops",  "GamerScore": 0 },
+    { "Key": "240 lollipops",  "GamerScore": 0 },
+    { "Key": "World 1",        "GamerScore": 0 },
+    { "Key": "World 2",        "GamerScore": 0 },
+    { "Key": "World 3",        "GamerScore": 0 },
+    { "Key": "World 4",        "GamerScore": 0 },
+    { "Key": "World 5",        "GamerScore": 0 },
+    { "Key": "All lollipops",  "GamerScore": 0 }
+  ]
 }

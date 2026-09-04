@@ -1,4 +1,22 @@
 {
   "Name": "Who Wants to Be a Millionaire (DE)",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "ACHIEVEMENT_01",  "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_02",  "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_03",  "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_04",  "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_05",  "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_06",  "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_07",  "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_08",  "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_09",  "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_10",  "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_11",  "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_12",  "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_13",  "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_14",  "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_15",  "GamerScore": 0 },
+    { "Key": "ACHIEVEMENT_16",  "GamerScore": 0 }
+  ]
 }

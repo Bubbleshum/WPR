@@ -1,4 +1,26 @@
 {
   "Name": "FIFA 14",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "A Handful Of Goals",   "GamerScore": 0 },
+    { "Key": "A Job Well Done",      "GamerScore": 0 },
+    { "Key": "Ace from the Spot",    "GamerScore": 0 },
+    { "Key": "Aerial Threat",        "GamerScore": 0 },
+    { "Key": "Attacking Rage",       "GamerScore": 0 },
+    { "Key": "Clean sheet",          "GamerScore": 0 },
+    { "Key": "Double Hero",          "GamerScore": 0 },
+    { "Key": "Fairplay",             "GamerScore": 0 },
+    { "Key": "Feather touch",        "GamerScore": 0 },
+    { "Key": "First Step",           "GamerScore": 0 },
+    { "Key": "Getting Out There",    "GamerScore": 0 },
+    { "Key": "Hat Trick",            "GamerScore": 0 },
+    { "Key": "Natural born talent",  "GamerScore": 0 },
+    { "Key": "One on One",           "GamerScore": 0 },
+    { "Key": "Playmaker",            "GamerScore": 0 },
+    { "Key": "Pro player",           "GamerScore": 0 },
+    { "Key": "Shot stopper",         "GamerScore": 0 },
+    { "Key": "Sniper",               "GamerScore": 0 },
+    { "Key": "Win the derby",        "GamerScore": 0 },
+    { "Key": "Woodwork and In",      "GamerScore": 0 }
+  ]
 }

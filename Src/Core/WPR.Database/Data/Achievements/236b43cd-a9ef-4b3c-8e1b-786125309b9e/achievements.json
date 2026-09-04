@@ -1,4 +1,26 @@
 {
   "Name": "Mush",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "BeginnersLuck",           "GamerScore": 0 },
+    { "Key": "InPursuitOfHappiness",    "GamerScore": 0 },
+    { "Key": "IntoTheDoldrums",         "GamerScore": 0 },
+    { "Key": "Befuddled",               "GamerScore": 0 },
+    { "Key": "SeeingRed",               "GamerScore": 0 },
+    { "Key": "HappyGoLucky",            "GamerScore": 0 },
+    { "Key": "Pessimist",               "GamerScore": 0 },
+    { "Key": "ThisWayUp",               "GamerScore": 0 },
+    { "Key": "AngerManagement",         "GamerScore": 0 },
+    { "Key": "HomeInTimeForTea",        "GamerScore": 0 },
+    { "Key": "MoodMaestro",             "GamerScore": 0 },
+    { "Key": "EmotionNinja",            "GamerScore": 0 },
+    { "Key": "Only9MillionToGo",        "GamerScore": 0 },
+    { "Key": "Magpie",                  "GamerScore": 0 },
+    { "Key": "Evasive",                 "GamerScore": 0 },
+    { "Key": "SmileThroughHeartBreak",  "GamerScore": 0 },
+    { "Key": "Electromaniac",           "GamerScore": 0 },
+    { "Key": "SpinningOut",             "GamerScore": 0 },
+    { "Key": "SmashingGoodTime",        "GamerScore": 0 },
+    { "Key": "EmotionallyComplete",     "GamerScore": 0 }
+  ]
 }

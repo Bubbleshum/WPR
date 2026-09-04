@@ -1,4 +1,26 @@
 {
   "Name": "Shark Dash",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "HUNGRY",                "GamerScore": 0 },
+    { "Key": "DUCK_MEET_MOUTH",       "GamerScore": 0 },
+    { "Key": "RUBBER_RING",           "GamerScore": 0 },
+    { "Key": "INFLATABLE_EXPLOSION",  "GamerScore": 0 },
+    { "Key": "UNDERWATER_POP",        "GamerScore": 0 },
+    { "Key": "LIBERATION",            "GamerScore": 0 },
+    { "Key": "CUTTER_SHARK",          "GamerScore": 0 },
+    { "Key": "MVP_SHARK",             "GamerScore": 0 },
+    { "Key": "BURSTING_BUBBLES",      "GamerScore": 0 },
+    { "Key": "DIZZY_BLOCK",           "GamerScore": 0 },
+    { "Key": "BLOCK_OVERBOARD",       "GamerScore": 0 },
+    { "Key": "FIREWORKS",             "GamerScore": 0 },
+    { "Key": "DEEP_BLUE",             "GamerScore": 0 },
+    { "Key": "A_LITTLE_NUDGE",        "GamerScore": 0 },
+    { "Key": "COME_TO_POPPA",         "GamerScore": 0 },
+    { "Key": "DRYING_IN_THE_SUN",     "GamerScore": 0 },
+    { "Key": "PARTY_POPPER",          "GamerScore": 0 },
+    { "Key": "SPRAYFISH_PARTY",       "GamerScore": 0 },
+    { "Key": "SHARK_GOT_BOUNCE",      "GamerScore": 0 },
+    { "Key": "I_AM_IRON_HEAD",        "GamerScore": 0 }
+  ]
 }

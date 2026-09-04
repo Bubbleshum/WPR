@@ -1,4 +1,24 @@
 {
   "Name": "Doodle God",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "GOOD_START",               "GamerScore": 0 },
+    { "Key": "CREATOR_OF_DIVERSITY",     "GamerScore": 0 },
+    { "Key": "CREATOR_OF_LIFE",          "GamerScore": 0 },
+    { "Key": "CREATOR_OF_HUMANITY",      "GamerScore": 0 },
+    { "Key": "GOD_OF_FUN",               "GamerScore": 0 },
+    { "Key": "DEITY_OF_DARKNESS",        "GamerScore": 0 },
+    { "Key": "PRACTICE_MAKES_PERFECT",   "GamerScore": 0 },
+    { "Key": "SIMILAR_TO_SIMILAR",       "GamerScore": 0 },
+    { "Key": "CREATOR_OF_CIVILIZATION",  "GamerScore": 0 },
+    { "Key": "CREATOR_OF_TECHNOLOGY",    "GamerScore": 0 },
+    { "Key": "CREATOR_OF_MODERNITY",     "GamerScore": 0 },
+    { "Key": "CREATOR_OF_MAGIC",         "GamerScore": 0 },
+    { "Key": "HALF_THE_KINGDOM",         "GamerScore": 0 },
+    { "Key": "HONORABLE_SANTA",          "GamerScore": 0 },
+    { "Key": "HEAVENLY_VIRTUES",         "GamerScore": 0 },
+    { "Key": "Y2K_READY",                "GamerScore": 0 },
+    { "Key": "BRILLIANT_INVENTOR",       "GamerScore": 0 },
+    { "Key": "MASTER_OF_THE_WORLDS",     "GamerScore": 0 }
+  ]
 }

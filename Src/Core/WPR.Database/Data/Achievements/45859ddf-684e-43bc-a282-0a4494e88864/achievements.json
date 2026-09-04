@@ -1,4 +1,26 @@
 {
   "Name": "Galactic Reign",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Design a Ship",              "GamerScore": 0 },
+    { "Key": "Win a Battle",               "GamerScore": 0 },
+    { "Key": "Activate Scanners",          "GamerScore": 0 },
+    { "Key": "A Good Start",               "GamerScore": 0 },
+    { "Key": "Strike Up the Colors",       "GamerScore": 0 },
+    { "Key": "Win a Game",                 "GamerScore": 0 },
+    { "Key": "Master and Commander",       "GamerScore": 0 },
+    { "Key": "We Happy Few",               "GamerScore": 0 },
+    { "Key": "Once More Unto the Breach",  "GamerScore": 0 },
+    { "Key": "Scour from the Stars",       "GamerScore": 0 },
+    { "Key": "The Engine of War",          "GamerScore": 0 },
+    { "Key": "Always Go At Them",          "GamerScore": 0 },
+    { "Key": "Overwhelming Force",         "GamerScore": 0 },
+    { "Key": "You Sank My Dreadnaught",    "GamerScore": 0 },
+    { "Key": "I Have the High Ground",     "GamerScore": 0 },
+    { "Key": "Sever the Supply Lines",     "GamerScore": 0 },
+    { "Key": "Sticks and Stones",          "GamerScore": 0 },
+    { "Key": "Playing the Long Game",      "GamerScore": 0 },
+    { "Key": "Tactician",                  "GamerScore": 0 },
+    { "Key": "Master Tactician",           "GamerScore": 0 }
+  ]
 }

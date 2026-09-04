@@ -1,4 +1,19 @@
 {
   "Name": "Doodle Jump",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "DOJ_SPRING_SHOES_JUMPER",     "GamerScore": 0 },
+    { "Key": "DOJ_SERIAL_SPRINGER",         "GamerScore": 0 },
+    { "Key": "DOJ_SUPER_SERIAL_SPRINGER",   "GamerScore": 0 },
+    { "Key": "DOJ_MONSTER_BOUNCER",         "GamerScore": 0 },
+    { "Key": "DOJ_SUPER_MONSTER_BOUNCER",   "GamerScore": 0 },
+    { "Key": "DOJ_CONFLICT_AVOIDER",        "GamerScore": 0 },
+    { "Key": "DOJ_SUPER_CONFLICT_AVOIDER",  "GamerScore": 0 },
+    { "Key": "DOJ_SHARP_SHOOTER",           "GamerScore": 0 },
+    { "Key": "DOJ_SUPER_SHARP_SHOOTER",     "GamerScore": 0 },
+    { "Key": "DOJ_PROPELLERHEAD",           "GamerScore": 0 },
+    { "Key": "DOJ_JETPACK_RIDER",           "GamerScore": 0 },
+    { "Key": "DOJ_OLD_FASHIONED_JUMPER",    "GamerScore": 0 },
+    { "Key": "DOJ_UFO_ABDUCTION_SURVIVOR",  "GamerScore": 0 }
+  ]
 }

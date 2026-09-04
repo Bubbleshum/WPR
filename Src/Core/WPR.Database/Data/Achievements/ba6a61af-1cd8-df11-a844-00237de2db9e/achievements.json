@@ -1,4 +1,18 @@
 {
   "Name": "Monopoly",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Everybody Starts Somewhere",  "GamerScore": 0 },
+    { "Key": "Now Youre On Your Way",       "GamerScore": 0 },
+    { "Key": "Moving On Up",                "GamerScore": 0 },
+    { "Key": "The View From The Top",       "GamerScore": 0 },
+    { "Key": "Rolled To Jail",              "GamerScore": 0 },
+    { "Key": "Rolled To Freedom",           "GamerScore": 0 },
+    { "Key": "Globe Trotter",               "GamerScore": 0 },
+    { "Key": "Taking Sides",                "GamerScore": 0 },
+    { "Key": "Transport King",              "GamerScore": 0 },
+    { "Key": "Youve Got The Power",         "GamerScore": 0 },
+    { "Key": "Deal Of The Century",         "GamerScore": 0 },
+    { "Key": "No Mercy",                    "GamerScore": 0 }
+  ]
 }

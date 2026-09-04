@@ -1,4 +1,18 @@
 {
   "Name": "Jet Set Go",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "achievement_01",  "GamerScore": 0 },
+    { "Key": "achievement_02",  "GamerScore": 0 },
+    { "Key": "achievement_03",  "GamerScore": 0 },
+    { "Key": "achievement_04",  "GamerScore": 0 },
+    { "Key": "achievement_05",  "GamerScore": 0 },
+    { "Key": "achievement_06",  "GamerScore": 0 },
+    { "Key": "achievement_07",  "GamerScore": 0 },
+    { "Key": "achievement_08",  "GamerScore": 0 },
+    { "Key": "achievement_09",  "GamerScore": 0 },
+    { "Key": "achievement_10",  "GamerScore": 0 },
+    { "Key": "achievement_11",  "GamerScore": 0 },
+    { "Key": "achievement_12",  "GamerScore": 0 }
+  ]
 }

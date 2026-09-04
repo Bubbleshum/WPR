@@ -1,4 +1,26 @@
 {
   "Name": "Crackdown 2 Project Sunburst",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "FIRST_TIME_BUYER",                 "GamerScore": 0 },
+    { "Key": "RESPECT_MY_AUTHORI_TAH",           "GamerScore": 0 },
+    { "Key": "BAD_TOUCH",                        "GamerScore": 0 },
+    { "Key": "FIRST_HAND_EXPERIENCE",            "GamerScore": 0 },
+    { "Key": "HOMELAND_SECURITY",                "GamerScore": 0 },
+    { "Key": "WALKING_TALL",                     "GamerScore": 0 },
+    { "Key": "TO_THE_MAX",                       "GamerScore": 0 },
+    { "Key": "SHOULDA_SEEN_IT_WHEN_I_GOT_HERE",  "GamerScore": 0 },
+    { "Key": "GET_OFFA_MY_LAWN",                 "GamerScore": 0 },
+    { "Key": "SKILLS_FOR_KILLS",                 "GamerScore": 0 },
+    { "Key": "SLUMBER_PARTY",                    "GamerScore": 0 },
+    { "Key": "POKER_NIGHT",                      "GamerScore": 0 },
+    { "Key": "SCAVENGER_HUNT",                   "GamerScore": 0 },
+    { "Key": "GIFT_FROM_AFAR",                   "GamerScore": 0 },
+    { "Key": "NO_SOLICITING",                    "GamerScore": 0 },
+    { "Key": "WELCOME_MAT_OF_DOOM",              "GamerScore": 0 },
+    { "Key": "PAINT_THE_TOWN_RED",               "GamerScore": 0 },
+    { "Key": "WORKIN_OVERTIME",                  "GamerScore": 0 },
+    { "Key": "DAWN_OF_A_NEW_DAY",                "GamerScore": 0 },
+    { "Key": "WHAT_GOES_AROUND",                 "GamerScore": 0 }
+  ]
 }

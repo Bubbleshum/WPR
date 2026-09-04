@@ -1,4 +1,26 @@
 {
   "Name": "Carcassonne",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Apprentice",     "GamerScore": 0 },
+    { "Key": "Graduate",       "GamerScore": 0 },
+    { "Key": "Abbot",          "GamerScore": 0 },
+    { "Key": "Burgomaster",    "GamerScore": 0 },
+    { "Key": "Emperor",        "GamerScore": 0 },
+    { "Key": "RoadWarden",     "GamerScore": 0 },
+    { "Key": "LoneWolf",       "GamerScore": 0 },
+    { "Key": "Shepherd",       "GamerScore": 0 },
+    { "Key": "Count",          "GamerScore": 0 },
+    { "Key": "Missionary",     "GamerScore": 0 },
+    { "Key": "Scrooge",        "GamerScore": 0 },
+    { "Key": "Duke",           "GamerScore": 0 },
+    { "Key": "Builder",        "GamerScore": 0 },
+    { "Key": "Duelist",        "GamerScore": 0 },
+    { "Key": "Hefaistos",      "GamerScore": 0 },
+    { "Key": "Crusade",        "GamerScore": 0 },
+    { "Key": "BestOfTheBest",  "GamerScore": 0 },
+    { "Key": "Knight",         "GamerScore": 0 },
+    { "Key": "SecularPower",   "GamerScore": 0 },
+    { "Key": "RingRing",       "GamerScore": 0 }
+  ]
 }

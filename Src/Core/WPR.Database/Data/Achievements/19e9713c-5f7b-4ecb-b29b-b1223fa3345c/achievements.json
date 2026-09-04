@@ -1,4 +1,13 @@
 {
   "Name": "Twins Minigame",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Conjoined",     "GamerScore": 0 },
+    { "Key": "Bipolar",       "GamerScore": 0 },
+    { "Key": "Pointer",       "GamerScore": 0 },
+    { "Key": "Pairing",       "GamerScore": 0 },
+    { "Key": "Far away",      "GamerScore": 0 },
+    { "Key": "Last fortune",  "GamerScore": 0 },
+    { "Key": "No love",       "GamerScore": 0 }
+  ]
 }

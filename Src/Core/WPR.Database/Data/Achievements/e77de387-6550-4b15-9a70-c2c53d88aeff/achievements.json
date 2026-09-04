@@ -1,4 +1,24 @@
 {
   "Name": "Flight Control Rocket",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Land_1000",             "GamerScore": 0 },
+    { "Key": "Land_10000",            "GamerScore": 0 },
+    { "Key": "Finger_Zinger",         "GamerScore": 0 },
+    { "Key": "Full_Screen_Ahead",     "GamerScore": 0 },
+    { "Key": "Pointy_Plane_1",        "GamerScore": 0 },
+    { "Key": "Pointy_Plane_2",        "GamerScore": 0 },
+    { "Key": "Malt_Runway_1",         "GamerScore": 0 },
+    { "Key": "Malt_Runway_2",         "GamerScore": 0 },
+    { "Key": "Professional_Pilot",    "GamerScore": 0 },
+    { "Key": "Expert_Pilot",          "GamerScore": 0 },
+    { "Key": "Master_Pilot",          "GamerScore": 0 },
+    { "Key": "Procrastinator",        "GamerScore": 0 },
+    { "Key": "Catching_Them_All",     "GamerScore": 0 },
+    { "Key": "Maxing_Them_All",       "GamerScore": 0 },
+    { "Key": "Certified_Pilot",       "GamerScore": 0 },
+    { "Key": "Explorer",              "GamerScore": 0 },
+    { "Key": "Edge_of_the_Universe",  "GamerScore": 0 },
+    { "Key": "The_Fourth_Dimension",  "GamerScore": 0 }
+  ]
 }

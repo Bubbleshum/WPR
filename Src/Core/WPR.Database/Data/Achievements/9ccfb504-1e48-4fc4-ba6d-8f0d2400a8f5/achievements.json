@@ -1,4 +1,33 @@
 {
   "Name": "Bad Piggies",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Ground Hog Day",        "GamerScore": 0 },
+    { "Key": "When Pigs Fly",         "GamerScore": 0 },
+    { "Key": "Well Grounded",         "GamerScore": 0 },
+    { "Key": "Born to be Airborne",   "GamerScore": 0 },
+    { "Key": "Ground Breaker",        "GamerScore": 0 },
+    { "Key": "Pretty Fly",            "GamerScore": 0 },
+    { "Key": "Junior Wrecker",        "GamerScore": 0 },
+    { "Key": "Hogffeur",              "GamerScore": 0 },
+    { "Key": "Complex Complex",       "GamerScore": 0 },
+    { "Key": "Skilled Pilot",         "GamerScore": 0 },
+    { "Key": "Poppers Theory I",      "GamerScore": 0 },
+    { "Key": "Tourist I",             "GamerScore": 0 },
+    { "Key": "Discoverer",            "GamerScore": 0 },
+    { "Key": "Super Charged",         "GamerScore": 0 },
+    { "Key": "Indestructible",        "GamerScore": 0 },
+    { "Key": "Chips for Whips",       "GamerScore": 0 },
+    { "Key": "Magnet Master",         "GamerScore": 0 },
+    { "Key": "Sweet Nightmares",      "GamerScore": 0 },
+    { "Key": "Ham Helsing",           "GamerScore": 0 },
+    { "Key": "Literate Individual",   "GamerScore": 0 },
+    { "Key": "Gap The Bridge",        "GamerScore": 0 },
+    { "Key": "Pigfall",               "GamerScore": 0 },
+    { "Key": "A Maze Ing",            "GamerScore": 0 },
+    { "Key": "That will Do Pig",      "GamerScore": 0 },
+    { "Key": "Rube Goldpig Machine",  "GamerScore": 0 },
+    { "Key": "Gotta Go Fast",         "GamerScore": 0 },
+    { "Key": "Full Reverse",          "GamerScore": 0 }
+  ]
 }

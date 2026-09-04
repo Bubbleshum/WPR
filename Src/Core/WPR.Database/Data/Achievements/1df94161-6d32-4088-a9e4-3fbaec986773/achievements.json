@@ -1,4 +1,21 @@
 {
   "Name": "Turn N Run",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "viewer_3D",                  "GamerScore": 0 },
+    { "Key": "seeker_3D",                  "GamerScore": 0 },
+    { "Key": "Curious_3D_viewer",          "GamerScore": 0 },
+    { "Key": "Turns_specialist",           "GamerScore": 0 },
+    { "Key": "Turns_master",               "GamerScore": 0 },
+    { "Key": "Skilled_jumper",             "GamerScore": 0 },
+    { "Key": "Master_jumper",              "GamerScore": 0 },
+    { "Key": "Skilled_teleporter",         "GamerScore": 0 },
+    { "Key": "Master_teleporter",          "GamerScore": 0 },
+    { "Key": "Good_hunter",                "GamerScore": 0 },
+    { "Key": "Excellent_hunter",           "GamerScore": 0 },
+    { "Key": "Master_hunter",              "GamerScore": 0 },
+    { "Key": "Flowers_planet_explorer",    "GamerScore": 0 },
+    { "Key": "Desert_planet_explorer",     "GamerScore": 0 },
+    { "Key": "Mushrooms_planet_explorer",  "GamerScore": 0 }
+  ]
 }

@@ -1,4 +1,16 @@
 {
   "Name": "Kinectimals Unleashed",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Achievement_02_LotsOfPets",           "GamerScore": 0 },
+    { "Key": "Achievement_05_HappyPuppy",           "GamerScore": 0 },
+    { "Key": "Achievement_14_GoingForGold",         "GamerScore": 0 },
+    { "Key": "Achievement_17_DogsLife",             "GamerScore": 0 },
+    { "Key": "Achievement_18_PussyfootingAround",   "GamerScore": 0 },
+    { "Key": "Achievement_19_BearWithMe",           "GamerScore": 0 },
+    { "Key": "Achievement_20_AllKindsOfFun",        "GamerScore": 0 },
+    { "Key": "Achievement_29_ReigningCatsAndDogs",  "GamerScore": 0 },
+    { "Key": "Achievement_41_HuntingSuccess",       "GamerScore": 0 },
+    { "Key": "Achievement_48_ImpeccablePedigree",   "GamerScore": 0 }
+  ]
 }

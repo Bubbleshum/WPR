@@ -1,4 +1,26 @@
 {
   "Name": "Glyder - Adventure Worlds",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "01_100Crystals",      "GamerScore": 0 },
+    { "Key": "02_TeminalVelocity",  "GamerScore": 0 },
+    { "Key": "03_4mins",            "GamerScore": 0 },
+    { "Key": "04_1kmHeight",        "GamerScore": 0 },
+    { "Key": "05_5Extras",          "GamerScore": 0 },
+    { "Key": "06_3Challenges",      "GamerScore": 0 },
+    { "Key": "07_Squeebils",        "GamerScore": 0 },
+    { "Key": "08_Arctasia",         "GamerScore": 0 },
+    { "Key": "09_Oasis",            "GamerScore": 0 },
+    { "Key": "10_SpiralHeights",    "GamerScore": 0 },
+    { "Key": "11_MagmaCore",        "GamerScore": 0 },
+    { "Key": "12_Sporelle",         "GamerScore": 0 },
+    { "Key": "13_Perpetua",         "GamerScore": 0 },
+    { "Key": "14_Ascension",        "GamerScore": 0 },
+    { "Key": "15_AllCrystals",      "GamerScore": 0 },
+    { "Key": "16_FlightMaster",     "GamerScore": 0 },
+    { "Key": "17_RaiseTheDead",     "GamerScore": 0 },
+    { "Key": "18_AllGoals",         "GamerScore": 0 },
+    { "Key": "19_AllChallenges",    "GamerScore": 0 },
+    { "Key": "20_AllExtras",        "GamerScore": 0 }
+  ]
 }

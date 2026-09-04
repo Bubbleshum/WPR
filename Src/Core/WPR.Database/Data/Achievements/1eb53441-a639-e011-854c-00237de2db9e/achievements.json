@@ -1,4 +1,20 @@
 {
   "Name": "I Love Katamari",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Katamari_1",   "GamerScore": 0 },
+    { "Key": "Katamari_2",   "GamerScore": 0 },
+    { "Key": "Katamari_3",   "GamerScore": 0 },
+    { "Key": "Katamari_4",   "GamerScore": 0 },
+    { "Key": "Katamari_5",   "GamerScore": 0 },
+    { "Key": "Katamari_6",   "GamerScore": 0 },
+    { "Key": "Katamari_7",   "GamerScore": 0 },
+    { "Key": "Katamari_8",   "GamerScore": 0 },
+    { "Key": "Katamari_9",   "GamerScore": 0 },
+    { "Key": "Katamari_10",  "GamerScore": 0 },
+    { "Key": "Katamari_11",  "GamerScore": 0 },
+    { "Key": "Katamari_12",  "GamerScore": 0 },
+    { "Key": "Katamari_13",  "GamerScore": 0 },
+    { "Key": "Katamari_14",  "GamerScore": 0 }
+  ]
 }

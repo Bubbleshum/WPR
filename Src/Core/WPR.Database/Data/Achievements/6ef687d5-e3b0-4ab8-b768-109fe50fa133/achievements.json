@@ -1,4 +1,22 @@
 {
   "Name": "Sid Meier's Pirates!",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Freshman",        "GamerScore": 0 },
+    { "Key": "Brotherhood",     "GamerScore": 0 },
+    { "Key": "Cannoneer",       "GamerScore": 0 },
+    { "Key": "Dancer",          "GamerScore": 0 },
+    { "Key": "Ceremony",        "GamerScore": 0 },
+    { "Key": "Family Reunion",  "GamerScore": 0 },
+    { "Key": "Love Cheater",    "GamerScore": 0 },
+    { "Key": "Pirate Hunter",   "GamerScore": 0 },
+    { "Key": "Explorer",        "GamerScore": 0 },
+    { "Key": "Avenger",         "GamerScore": 0 },
+    { "Key": "Sword Master",    "GamerScore": 0 },
+    { "Key": "Strategist",      "GamerScore": 0 },
+    { "Key": "Archaeologist",   "GamerScore": 0 },
+    { "Key": "Money Grubber",   "GamerScore": 0 },
+    { "Key": "Patriot",         "GamerScore": 0 },
+    { "Key": "Musician",        "GamerScore": 0 }
+  ]
 }

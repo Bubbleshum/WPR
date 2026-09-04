@@ -1,4 +1,26 @@
 {
   "Name": "Little Acorns",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Year1",           "GamerScore": 0 },
+    { "Key": "Year2",           "GamerScore": 0 },
+    { "Key": "Year3",           "GamerScore": 0 },
+    { "Key": "Year4",           "GamerScore": 0 },
+    { "Key": "Year1FullClear",  "GamerScore": 0 },
+    { "Key": "Year2FullClear",  "GamerScore": 0 },
+    { "Key": "Year3FullClear",  "GamerScore": 0 },
+    { "Key": "Year4FullClear",  "GamerScore": 0 },
+    { "Key": "Perfectionist",   "GamerScore": 0 },
+    { "Key": "HourPlayed",      "GamerScore": 0 },
+    { "Key": "JollyJumper",     "GamerScore": 0 },
+    { "Key": "GrappleCombo",    "GamerScore": 0 },
+    { "Key": "GrappleMaster",   "GamerScore": 0 },
+    { "Key": "FruitFrenzy",     "GamerScore": 0 },
+    { "Key": "ComboKill",       "GamerScore": 0 },
+    { "Key": "MultiKill",       "GamerScore": 0 },
+    { "Key": "Pinball",         "GamerScore": 0 },
+    { "Key": "Elevators",       "GamerScore": 0 },
+    { "Key": "SparkleMotion",   "GamerScore": 0 },
+    { "Key": "NiceCatch",       "GamerScore": 0 }
+  ]
 }

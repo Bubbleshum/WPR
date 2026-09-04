@@ -1,4 +1,34 @@
 {
   "Name": "Equalicious",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Good student",              "GamerScore": 0 },
+    { "Key": "Professor",                 "GamerScore": 0 },
+    { "Key": "Eminence",                  "GamerScore": 0 },
+    { "Key": "Pythagoras",                "GamerScore": 0 },
+    { "Key": "Zeus of Mathematics",       "GamerScore": 0 },
+    { "Key": "Ahmes Ppyrus",              "GamerScore": 0 },
+    { "Key": "Pharaoh of Mathematics",    "GamerScore": 0 },
+    { "Key": "Liu Hui",                   "GamerScore": 0 },
+    { "Key": "Emperor of Mathematics",    "GamerScore": 0 },
+    { "Key": "Divide by 0",               "GamerScore": 0 },
+    { "Key": "3141592",                   "GamerScore": 0 },
+    { "Key": "Fibonacci",                 "GamerScore": 0 },
+    { "Key": "Researcher",                "GamerScore": 0 },
+    { "Key": "Socializing",               "GamerScore": 0 },
+    { "Key": "The party guy",             "GamerScore": 0 },
+    { "Key": "Making friends",            "GamerScore": 0 },
+    { "Key": "The smartest of the gang",  "GamerScore": 0 },
+    { "Key": "Winning streak",            "GamerScore": 0 },
+    { "Key": "Velociraptor",              "GamerScore": 0 },
+    { "Key": "Gotcha",                    "GamerScore": 0 },
+    { "Key": "Al Khwarizmi",              "GamerScore": 0 },
+    { "Key": "Caliph of Mathematics",     "GamerScore": 0 },
+    { "Key": "Around the wolrd",          "GamerScore": 0 },
+    { "Key": "World Champion",            "GamerScore": 0 },
+    { "Key": "Experienced Traveler",      "GamerScore": 0 },
+    { "Key": "World Champion x2",         "GamerScore": 0 },
+    { "Key": "Globetrotter",              "GamerScore": 0 },
+    { "Key": "Unbeatable",                "GamerScore": 0 }
+  ]
 }

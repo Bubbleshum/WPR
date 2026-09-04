@@ -1,4 +1,26 @@
 {
   "Name": "KooZac",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Level_completion",               "GamerScore": 0 },
+    { "Key": "Activate_all_stages",            "GamerScore": 0 },
+    { "Key": "Collect_1000_coins",             "GamerScore": 0 },
+    { "Key": "Collect_10000_coins",            "GamerScore": 0 },
+    { "Key": "Collect_100000_coins",           "GamerScore": 0 },
+    { "Key": "Blocks_fallen_1000",             "GamerScore": 0 },
+    { "Key": "Blocks_fallen_5000",             "GamerScore": 0 },
+    { "Key": "Blocks_fallen_10000",            "GamerScore": 0 },
+    { "Key": "Spend_coins_on_Boosts_1000",     "GamerScore": 0 },
+    { "Key": "Spend_coins_on_Boosts_5000",     "GamerScore": 0 },
+    { "Key": "Spend_coins_on_Boosts_10000",    "GamerScore": 0 },
+    { "Key": "Buy_all_Boosts",                 "GamerScore": 0 },
+    { "Key": "Destroy_500_blocks",             "GamerScore": 0 },
+    { "Key": "Destroy_1000_blocks",            "GamerScore": 0 },
+    { "Key": "Destroy_5000_blocks",            "GamerScore": 0 },
+    { "Key": "Destroy_10000_blocks",           "GamerScore": 0 },
+    { "Key": "Pass_on_all_levels_of_3_stars",  "GamerScore": 0 },
+    { "Key": "Dial_10000_points",              "GamerScore": 0 },
+    { "Key": "Dial_30000_points",              "GamerScore": 0 },
+    { "Key": "Dial_60000_points",              "GamerScore": 0 }
+  ]
 }

@@ -1,4 +1,26 @@
 {
   "Name": "TextTwist 2",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "ACH_HIGH_FIVE",       "GamerScore": 0 },
+    { "Key": "ACH_ON_A_ROLL",       "GamerScore": 0 },
+    { "Key": "ACH_KNOCKOUT",        "GamerScore": 0 },
+    { "Key": "ACH_BRAINSTORM",      "GamerScore": 0 },
+    { "Key": "ACH_LIGHTNING_BOLT",  "GamerScore": 0 },
+    { "Key": "ACH_TWISTED",         "GamerScore": 0 },
+    { "Key": "ACH_SWIFT_SPELLER",   "GamerScore": 0 },
+    { "Key": "ACH_ROCK_STEADY",     "GamerScore": 0 },
+    { "Key": "ACH_BINGO_BLASTER",   "GamerScore": 0 },
+    { "Key": "ACH_BINGO_BOSS",      "GamerScore": 0 },
+    { "Key": "ACH_BINGO_BONKERS",   "GamerScore": 0 },
+    { "Key": "ACH_WORD_NERD",       "GamerScore": 0 },
+    { "Key": "ACH_WORD_HERDER",     "GamerScore": 0 },
+    { "Key": "ACH_APPRENTICE",      "GamerScore": 0 },
+    { "Key": "ACH_JOURNEYMAN",      "GamerScore": 0 },
+    { "Key": "ACH_GRAND_MASTER",    "GamerScore": 0 },
+    { "Key": "ACH_ROUNDABOUT",      "GamerScore": 0 },
+    { "Key": "ACH_LETTER_LOON",     "GamerScore": 0 },
+    { "Key": "ACH_LETTER_MANIAC",   "GamerScore": 0 },
+    { "Key": "ACH_NUTTY_CAKE",      "GamerScore": 0 }
+  ]
 }

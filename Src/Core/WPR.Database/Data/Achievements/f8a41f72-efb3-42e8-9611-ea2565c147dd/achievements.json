@@ -1,4 +1,26 @@
 {
   "Name": "Blobster",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "SupremeVertigo",              "GamerScore": 0 },
+    { "Key": "ObeseBlobster",               "GamerScore": 0 },
+    { "Key": "BlobuleBandit",               "GamerScore": 0 },
+    { "Key": "LordOfTheBlobules",           "GamerScore": 0 },
+    { "Key": "RobinsonCrusoe",              "GamerScore": 0 },
+    { "Key": "ImmortalBlobsterGod",         "GamerScore": 0 },
+    { "Key": "BlobzillasTreasure",          "GamerScore": 0 },
+    { "Key": "TheEyeOfTheBlobule",          "GamerScore": 0 },
+    { "Key": "BouncingBlobsterHiddenBlob",  "GamerScore": 0 },
+    { "Key": "BlobtopiaMessiah",            "GamerScore": 0 },
+    { "Key": "LevelComplete",               "GamerScore": 0 },
+    { "Key": "WorldWipeMeadow",             "GamerScore": 0 },
+    { "Key": "WorldWipeDesert",             "GamerScore": 0 },
+    { "Key": "WorldWipeJungle",             "GamerScore": 0 },
+    { "Key": "WorldWipeWinter",             "GamerScore": 0 },
+    { "Key": "GoingtheDistance",            "GamerScore": 0 },
+    { "Key": "PerpetuumMobile",             "GamerScore": 0 },
+    { "Key": "Assassin",                    "GamerScore": 0 },
+    { "Key": "LongDistanceBlobber",         "GamerScore": 0 },
+    { "Key": "SupremeVoyageWorldsEnd",      "GamerScore": 0 }
+  ]
 }

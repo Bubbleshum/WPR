@@ -1,4 +1,19 @@
 {
   "Name": "BulletAsylum",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "pew_pew",                 "GamerScore": 0 },
+    { "Key": "blam_blam",               "GamerScore": 0 },
+    { "Key": "zap_zap",                 "GamerScore": 0 },
+    { "Key": "impenetrable_defense",    "GamerScore": 0 },
+    { "Key": "stick_it_to_em",          "GamerScore": 0 },
+    { "Key": "sharpshooter",            "GamerScore": 0 },
+    { "Key": "sniper",                  "GamerScore": 0 },
+    { "Key": "special_forces",          "GamerScore": 0 },
+    { "Key": "dont_cross_the_streams",  "GamerScore": 0 },
+    { "Key": "welcome_to_the_club",     "GamerScore": 0 },
+    { "Key": "maximum_awesome",         "GamerScore": 0 },
+    { "Key": "perfectly_efficient",     "GamerScore": 0 },
+    { "Key": "thankyou",                "GamerScore": 0 }
+  ]
 }

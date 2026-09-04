@@ -1,4 +1,26 @@
 {
   "Name": "Chickens Can't Fly",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "tutorialComplete",    "GamerScore": 0 },
+    { "Key": "firstGoldMedal",      "GamerScore": 0 },
+    { "Key": "butcheryComplete",    "GamerScore": 0 },
+    { "Key": "cemeteryComplete",    "GamerScore": 0 },
+    { "Key": "militaryComplete",    "GamerScore": 0 },
+    { "Key": "physicsComplete",     "GamerScore": 0 },
+    { "Key": "survivor",            "GamerScore": 0 },
+    { "Key": "magnetMaster",        "GamerScore": 0 },
+    { "Key": "goldenChicken",       "GamerScore": 0 },
+    { "Key": "millionCorn",         "GamerScore": 0 },
+    { "Key": "strongerThanCat",     "GamerScore": 0 },
+    { "Key": "breakStuff",          "GamerScore": 0 },
+    { "Key": "hatesWalls",          "GamerScore": 0 },
+    { "Key": "sausageEater",        "GamerScore": 0 },
+    { "Key": "megaMultiplier",      "GamerScore": 0 },
+    { "Key": "noFlapping",          "GamerScore": 0 },
+    { "Key": "chickenscantfly",     "GamerScore": 0 },
+    { "Key": "competitiveChicken",  "GamerScore": 0 },
+    { "Key": "usedDelayed",         "GamerScore": 0 },
+    { "Key": "expertChicken",       "GamerScore": 0 }
+  ]
 }

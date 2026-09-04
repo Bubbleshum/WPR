@@ -1,4 +1,20 @@
 {
   "Name": "Contre Jour",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "speedy",            "GamerScore": 0 },
+    { "Key": "mighty_bird",       "GamerScore": 0 },
+    { "Key": "rush_hour",         "GamerScore": 0 },
+    { "Key": "fast_perfect",      "GamerScore": 0 },
+    { "Key": "spider",            "GamerScore": 0 },
+    { "Key": "blue_lantern",      "GamerScore": 0 },
+    { "Key": "sunrise",           "GamerScore": 0 },
+    { "Key": "little_prince",     "GamerScore": 0 },
+    { "Key": "chapter1_perfect",  "GamerScore": 0 },
+    { "Key": "chapter2_perfect",  "GamerScore": 0 },
+    { "Key": "chapter3_perfect",  "GamerScore": 0 },
+    { "Key": "chapter4_perfect",  "GamerScore": 0 },
+    { "Key": "chapter5_perfect",  "GamerScore": 0 },
+    { "Key": "chapter6_perfect",  "GamerScore": 0 }
+  ]
 }

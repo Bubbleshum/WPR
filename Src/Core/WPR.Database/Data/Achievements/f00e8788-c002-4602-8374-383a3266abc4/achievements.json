@@ -1,4 +1,26 @@
 {
   "Name": "Hitman GO",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "GameSetMatch",           "GamerScore": 0 },
+    { "Key": "Party s Over",           "GamerScore": 0 },
+    { "Key": "Wedding Crasher",        "GamerScore": 0 },
+    { "Key": "Deal Breaker",           "GamerScore": 0 },
+    { "Key": "Curtains Down",          "GamerScore": 0 },
+    { "Key": "Red Eye",                "GamerScore": 0 },
+    { "Key": "Meeting Adjourned",      "GamerScore": 0 },
+    { "Key": "Brain Freeze",           "GamerScore": 0 },
+    { "Key": "Sale B2G1",              "GamerScore": 0 },
+    { "Key": "Flesh Wound",            "GamerScore": 0 },
+    { "Key": "Time Waster",            "GamerScore": 0 },
+    { "Key": "The Long Walk",          "GamerScore": 0 },
+    { "Key": "Fashionista",            "GamerScore": 0 },
+    { "Key": "Dead End",               "GamerScore": 0 },
+    { "Key": "Two For One",            "GamerScore": 0 },
+    { "Key": "Creepy Crawler",         "GamerScore": 0 },
+    { "Key": "Hint Rebel",             "GamerScore": 0 },
+    { "Key": "Litterbug",              "GamerScore": 0 },
+    { "Key": "Controlled Demolition",  "GamerScore": 0 },
+    { "Key": "Dog Whisperer",          "GamerScore": 0 }
+  ]
 }

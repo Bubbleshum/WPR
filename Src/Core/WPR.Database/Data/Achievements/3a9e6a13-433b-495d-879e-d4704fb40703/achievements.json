@@ -1,5 +1,27 @@
 {
   "Name": "Asphalt 8: Airborne",
   "Description": "Gameloft's high-octane arcade racer. Tear across 9 locations in licensed supercars, pulling barrel rolls and mid-air stunts through 300+ career events.",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "High Flier",             "GamerScore": 0 },
+    { "Key": "Newcar Smell",           "GamerScore": 0 },
+    { "Key": "Car Buff",               "GamerScore": 0 },
+    { "Key": "Who is next",            "GamerScore": 0 },
+    { "Key": "Baby Steps",             "GamerScore": 0 },
+    { "Key": "Buring Rubber",          "GamerScore": 0 },
+    { "Key": "Target Acquired",        "GamerScore": 0 },
+    { "Key": "The Winner",             "GamerScore": 0 },
+    { "Key": "Nice Guy",               "GamerScore": 0 },
+    { "Key": "Asphalt Newcomer",       "GamerScore": 0 },
+    { "Key": "First One In The Bag",   "GamerScore": 0 },
+    { "Key": "The Finish Line",        "GamerScore": 0 },
+    { "Key": "Show Me The Money",      "GamerScore": 0 },
+    { "Key": "Chest Of Medals",        "GamerScore": 0 },
+    { "Key": "Handyman",               "GamerScore": 0 },
+    { "Key": "A Fine Racing Machine",  "GamerScore": 0 },
+    { "Key": "Max Power",              "GamerScore": 0 },
+    { "Key": "To The Max",             "GamerScore": 0 },
+    { "Key": "Perfect Nitro",          "GamerScore": 0 },
+    { "Key": "Clean Win",              "GamerScore": 0 }
+  ]
 }

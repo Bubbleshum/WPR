@@ -1,4 +1,16 @@
 {
   "Name": "MiniSquadron",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Bang",            "GamerScore": 0 },
+    { "Key": "Boiiing",         "GamerScore": 0 },
+    { "Key": "Peashooter",      "GamerScore": 0 },
+    { "Key": "My First Plane",  "GamerScore": 0 },
+    { "Key": "The Survivor",    "GamerScore": 0 },
+    { "Key": "Big Guns",        "GamerScore": 0 },
+    { "Key": "Easy Peasy",      "GamerScore": 0 },
+    { "Key": "Mmmm Planes",     "GamerScore": 0 },
+    { "Key": "Globetrotter",    "GamerScore": 0 },
+    { "Key": "Indestructible",  "GamerScore": 0 }
+  ]
 }

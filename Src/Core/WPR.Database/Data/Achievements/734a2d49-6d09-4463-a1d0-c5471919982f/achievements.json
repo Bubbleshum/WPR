@@ -1,4 +1,26 @@
 {
   "Name": "Real Racing 2",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "CC_ACHIEVEMENT_AMATEUR",                      "GamerScore": 0 },
+    { "Key": "CC_ACHIEVEMENT_PROAM",                        "GamerScore": 0 },
+    { "Key": "CC_ACHIEVEMENT_PRO",                          "GamerScore": 0 },
+    { "Key": "CC_ACHIEVEMENT_FACEOFF",                      "GamerScore": 0 },
+    { "Key": "CC_ACHIEVEMENT_THE_ELIMINATOR",               "GamerScore": 0 },
+    { "Key": "CC_ACHIEVEMENT_NLTG_CLUB_DIVISION",           "GamerScore": 0 },
+    { "Key": "CC_ACHIEVEMENT_NLTG_SHOWDOWN",                "GamerScore": 0 },
+    { "Key": "CC_ACHIEVEMENT_NLTG_GRAND_NATION",            "GamerScore": 0 },
+    { "Key": "CC_ACHIEVEMENT_NLTG_PRO_CIRCUIT",             "GamerScore": 0 },
+    { "Key": "CC_ACHIEVEMENT_NLTG_WORLD_SERIES",            "GamerScore": 0 },
+    { "Key": "CC_ACHIEVEMENT_PERFECTIONIST",                "GamerScore": 0 },
+    { "Key": "CC_ACHIEVEMENT_PURIST",                       "GamerScore": 0 },
+    { "Key": "CC_ACHIEVEMENT_DARK_HORSE",                   "GamerScore": 0 },
+    { "Key": "CC_ACHIEVEMENT_UPGRADE_ADDICT",               "GamerScore": 0 },
+    { "Key": "CC_ACHIEVEMENT_STRING_OF_SUCCESS",            "GamerScore": 0 },
+    { "Key": "CC_ACHIEVEMENT_CAR_COLLECTOR_MONEY_TO_BURN",  "GamerScore": 0 },
+    { "Key": "CC_ACHIEVEMENT_HIGHFLIER",                    "GamerScore": 0 },
+    { "Key": "CC_ACHIEVEMENT_SPRAY_SHOP_VETERAN",           "GamerScore": 0 },
+    { "Key": "CC_ACHIEVEMENT_SPOTLESS",                     "GamerScore": 0 },
+    { "Key": "CC_ACHIEVEMENT_POLE_OR_BUST",                 "GamerScore": 0 }
+  ]
 }

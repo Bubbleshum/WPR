@@ -1,4 +1,16 @@
 {
   "Name": "Frogger",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Puddle Jumper",   "GamerScore": 0 },
+    { "Key": "Pond Hopper",     "GamerScore": 0 },
+    { "Key": "River Skipper",   "GamerScore": 0 },
+    { "Key": "Lake Leaper",     "GamerScore": 0 },
+    { "Key": "Ocean Vaulter",   "GamerScore": 0 },
+    { "Key": "Ladies Man",      "GamerScore": 0 },
+    { "Key": "Square Dancer",   "GamerScore": 0 },
+    { "Key": "Frequent Flyer",  "GamerScore": 0 },
+    { "Key": "Never Say Die",   "GamerScore": 0 },
+    { "Key": "Croc Jockey",     "GamerScore": 0 }
+  ]
 }

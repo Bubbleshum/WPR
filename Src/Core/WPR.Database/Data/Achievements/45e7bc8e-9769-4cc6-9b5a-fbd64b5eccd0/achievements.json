@@ -1,4 +1,22 @@
 {
   "Name": "geoDefense Swarm",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "E1",  "GamerScore": 0 },
+    { "Key": "E2",  "GamerScore": 0 },
+    { "Key": "E3",  "GamerScore": 0 },
+    { "Key": "M1",  "GamerScore": 0 },
+    { "Key": "M2",  "GamerScore": 0 },
+    { "Key": "M3",  "GamerScore": 0 },
+    { "Key": "H1",  "GamerScore": 0 },
+    { "Key": "H2",  "GamerScore": 0 },
+    { "Key": "H3",  "GamerScore": 0 },
+    { "Key": "LB",  "GamerScore": 0 },
+    { "Key": "LL",  "GamerScore": 0 },
+    { "Key": "LM",  "GamerScore": 0 },
+    { "Key": "LS",  "GamerScore": 0 },
+    { "Key": "LV",  "GamerScore": 0 },
+    { "Key": "CC",  "GamerScore": 0 },
+    { "Key": "TH",  "GamerScore": 0 }
+  ]
 }

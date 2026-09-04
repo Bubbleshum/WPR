@@ -1,4 +1,26 @@
 {
   "Name": "Hamster Universe",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Reach 100 Billion Energy",          "GamerScore": 0 },
+    { "Key": "Collect 100 Billion Energy",        "GamerScore": 0 },
+    { "Key": "100 Million Energy per Second",     "GamerScore": 0 },
+    { "Key": "35 Tasks",                          "GamerScore": 0 },
+    { "Key": "25K Clicks",                        "GamerScore": 0 },
+    { "Key": "35 Lottery Wins",                   "GamerScore": 0 },
+    { "Key": "Reach 200 Septillion Energy",       "GamerScore": 0 },
+    { "Key": "Collect Octillion Energy",          "GamerScore": 0 },
+    { "Key": "10 Quintillion Energy per Second",  "GamerScore": 0 },
+    { "Key": "500 Tasks",                         "GamerScore": 0 },
+    { "Key": "600K Clicks",                       "GamerScore": 0 },
+    { "Key": "500 Lottery Wins",                  "GamerScore": 0 },
+    { "Key": "Mastery Energy Hoarder",            "GamerScore": 0 },
+    { "Key": "Mastery Energy Gatherer",           "GamerScore": 0 },
+    { "Key": "Mastery Lazy Generator",            "GamerScore": 0 },
+    { "Key": "Mastery Devoted Servant",           "GamerScore": 0 },
+    { "Key": "Mastery Unyielding Clicker",        "GamerScore": 0 },
+    { "Key": "Mastery Inveterate Gambler",        "GamerScore": 0 },
+    { "Key": "Mastery Energetic",                 "GamerScore": 0 },
+    { "Key": "Total Mastery",                     "GamerScore": 0 }
+  ]
 }

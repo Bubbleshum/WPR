@@ -1,4 +1,26 @@
 {
   "Name": "Monster Burner",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Snooker Ace",        "GamerScore": 0 },
+    { "Key": "Pretty Heart",       "GamerScore": 0 },
+    { "Key": "Plain Walker",       "GamerScore": 0 },
+    { "Key": "Lake Dryer",         "GamerScore": 0 },
+    { "Key": "Gold Rusher",        "GamerScore": 0 },
+    { "Key": "Highlander",         "GamerScore": 0 },
+    { "Key": "Lighthouse Keeper",  "GamerScore": 0 },
+    { "Key": "Ghost slayer",       "GamerScore": 0 },
+    { "Key": "Game Master",        "GamerScore": 0 },
+    { "Key": "Millionaire",        "GamerScore": 0 },
+    { "Key": "Survivor",           "GamerScore": 0 },
+    { "Key": "Sociopath",          "GamerScore": 0 },
+    { "Key": "Prepared for war",   "GamerScore": 0 },
+    { "Key": "Plains Master",      "GamerScore": 0 },
+    { "Key": "Lake Master",        "GamerScore": 0 },
+    { "Key": "Mountains Master",   "GamerScore": 0 },
+    { "Key": "Lighthouse Master",  "GamerScore": 0 },
+    { "Key": "Ghost Master",       "GamerScore": 0 },
+    { "Key": "Vampire Master",     "GamerScore": 0 },
+    { "Key": "Vampire Slayer",     "GamerScore": 0 }
+  ]
 }

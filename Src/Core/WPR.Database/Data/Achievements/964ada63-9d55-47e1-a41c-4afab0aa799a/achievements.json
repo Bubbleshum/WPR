@@ -1,4 +1,26 @@
 {
   "Name": "Let's Golf 2",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "New Trainer",        "GamerScore": 0 },
+    { "Key": "Good Start",         "GamerScore": 0 },
+    { "Key": "Nice Shot",          "GamerScore": 0 },
+    { "Key": "Nice Chip_in",       "GamerScore": 0 },
+    { "Key": "Special Skill",      "GamerScore": 0 },
+    { "Key": "Junior Golfer ",     "GamerScore": 0 },
+    { "Key": "Great Result",       "GamerScore": 0 },
+    { "Key": "New Champion",       "GamerScore": 0 },
+    { "Key": "Hole_in_One",        "GamerScore": 0 },
+    { "Key": "Just Beginning",     "GamerScore": 0 },
+    { "Key": "First Gift",         "GamerScore": 0 },
+    { "Key": "Eagle Eye",          "GamerScore": 0 },
+    { "Key": "Intrepid Explorer",  "GamerScore": 0 },
+    { "Key": "First Medal",        "GamerScore": 0 },
+    { "Key": "First Birdie",       "GamerScore": 0 },
+    { "Key": "Wise One",           "GamerScore": 0 },
+    { "Key": "Secret Code",        "GamerScore": 0 },
+    { "Key": "Relentless Effort",  "GamerScore": 0 },
+    { "Key": "Family Group",       "GamerScore": 0 },
+    { "Key": "World Tour",         "GamerScore": 0 }
+  ]
 }

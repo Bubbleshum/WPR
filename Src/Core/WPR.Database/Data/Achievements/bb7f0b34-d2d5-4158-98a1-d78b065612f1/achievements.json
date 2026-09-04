@@ -1,4 +1,26 @@
 {
   "Name": "Gun Bros",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "GUNBROS_ACHIEVE_SERVICE_TARGETS_B",               "GamerScore": 0 },
+    { "Key": "GUNBROS_ACHIEVE_SERVICE_TARGETS_C",               "GamerScore": 0 },
+    { "Key": "GUNBROS_ACHIEVE_SERVICE_TARGETS_D",               "GamerScore": 0 },
+    { "Key": "GUNBROS_ACHIEVE_REACH_LEVEL_B",                   "GamerScore": 0 },
+    { "Key": "GUNBROS_ACHIEVE_REACH_LEVEL_D",                   "GamerScore": 0 },
+    { "Key": "GUNBROS_ACHIEVE_REACH_LEVEL_C",                   "GamerScore": 0 },
+    { "Key": "GUNBROS_ACHIEVE_COMPLETE_REVOLUTION_A",           "GamerScore": 0 },
+    { "Key": "GUNBROS_ACHIEVE_COMPLETE_REVOLUTION_B",           "GamerScore": 0 },
+    { "Key": "GUNBROS_ACHIEVE_PURCHASE_GUNS_A",                 "GamerScore": 0 },
+    { "Key": "GUNBROS_ACHIEVE_PURCHASE_ARMORS_A",               "GamerScore": 0 },
+    { "Key": "GUNBROS_ACHIEVE_PURCHASE_POWERUPS_A",             "GamerScore": 0 },
+    { "Key": "GUNBROS_ACHIEVE_COMPLETE_PERFECT_WAVES_C",        "GamerScore": 0 },
+    { "Key": "GUNBROS_ACHIEVE_SERVICE_TARGETS_WITH_PISTOL_A",   "GamerScore": 0 },
+    { "Key": "GUNBROS_ACHIEVE_SERVICE_TARGETS_WITH_RIFLE_A",    "GamerScore": 0 },
+    { "Key": "GUNBROS_ACHIEVE_SERVICE_TARGETS_WITH_SHOTGUN_A",  "GamerScore": 0 },
+    { "Key": "GUNBROS_ACHIEVE_SERVICE_TARGETS_WITH_SPREAD_A",   "GamerScore": 0 },
+    { "Key": "GUNBROS_ACHIEVE_SAVE_COINS_C",                    "GamerScore": 0 },
+    { "Key": "GUNBROS_ACHIEVE_STREAK_ZOMBIES_A",                "GamerScore": 0 },
+    { "Key": "GUNBROS_ACHIEVE_BRO_CHALLENGE_A",                 "GamerScore": 0 },
+    { "Key": "GUNBROS_ACHIEVE_BRO_BUFF_A",                      "GamerScore": 0 }
+  ]
 }

@@ -1,4 +1,25 @@
 {
   "Name": "Tetris Blitz",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Step it Up",                 "GamerScore": 0 },
+    { "Key": "Tetris Ace",                 "GamerScore": 0 },
+    { "Key": "All According to Plan",      "GamerScore": 0 },
+    { "Key": "Eliminator",                 "GamerScore": 0 },
+    { "Key": "On A Roll",                  "GamerScore": 0 },
+    { "Key": "Time Flies",                 "GamerScore": 0 },
+    { "Key": "Drop it like it is hot",     "GamerScore": 0 },
+    { "Key": "Mind over Matter",           "GamerScore": 0 },
+    { "Key": "Rapid Fire",                 "GamerScore": 0 },
+    { "Key": "The Need for Speed",         "GamerScore": 0 },
+    { "Key": "Finisher Buffet",            "GamerScore": 0 },
+    { "Key": "Proud Owner",                "GamerScore": 0 },
+    { "Key": "Gatherer",                   "GamerScore": 0 },
+    { "Key": "Scale the Mountain",         "GamerScore": 0 },
+    { "Key": "You have Outdone Yourself",  "GamerScore": 0 },
+    { "Key": "Frenetic",                   "GamerScore": 0 },
+    { "Key": "Eradicator",                 "GamerScore": 0 },
+    { "Key": "All for One",                "GamerScore": 0 },
+    { "Key": "Over Achiever",              "GamerScore": 0 }
+  ]
 }

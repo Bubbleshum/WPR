@@ -1,4 +1,26 @@
 {
   "Name": "NBA JAM",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "New",     "GamerScore": 0 },
+    { "Key": "New_1",   "GamerScore": 0 },
+    { "Key": "New_2",   "GamerScore": 0 },
+    { "Key": "New_3",   "GamerScore": 0 },
+    { "Key": "New_4",   "GamerScore": 0 },
+    { "Key": "New_5",   "GamerScore": 0 },
+    { "Key": "New_6",   "GamerScore": 0 },
+    { "Key": "New_7",   "GamerScore": 0 },
+    { "Key": "New_8",   "GamerScore": 0 },
+    { "Key": "New_9",   "GamerScore": 0 },
+    { "Key": "New_10",  "GamerScore": 0 },
+    { "Key": "New_11",  "GamerScore": 0 },
+    { "Key": "New_12",  "GamerScore": 0 },
+    { "Key": "New_13",  "GamerScore": 0 },
+    { "Key": "New_14",  "GamerScore": 0 },
+    { "Key": "New_15",  "GamerScore": 0 },
+    { "Key": "New_16",  "GamerScore": 0 },
+    { "Key": "New_17",  "GamerScore": 0 },
+    { "Key": "New_18",  "GamerScore": 0 },
+    { "Key": "New_19",  "GamerScore": 0 }
+  ]
 }

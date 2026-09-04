@@ -1,4 +1,16 @@
 {
   "Name": "Shuffle Party",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "challenger",        "GamerScore": 0 },
+    { "Key": "conqueror",         "GamerScore": 0 },
+    { "Key": "challenge_master",  "GamerScore": 0 },
+    { "Key": "x_marks_the_spot",  "GamerScore": 0 },
+    { "Key": "gobble_gobble",     "GamerScore": 0 },
+    { "Key": "over_175_club",     "GamerScore": 0 },
+    { "Key": "roadhouse_billy",   "GamerScore": 0 },
+    { "Key": "hanger",            "GamerScore": 0 },
+    { "Key": "payday",            "GamerScore": 0 },
+    { "Key": "shop_o_holic",      "GamerScore": 0 }
+  ]
 }

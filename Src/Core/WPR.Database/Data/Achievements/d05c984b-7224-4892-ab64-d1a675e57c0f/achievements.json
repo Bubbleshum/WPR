@@ -1,4 +1,26 @@
 {
   "Name": "Tentacles - Enter the Mind",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Down the knife hole",      "GamerScore": 0 },
+    { "Key": "Pacifist",                 "GamerScore": 0 },
+    { "Key": "Duck and cover",           "GamerScore": 0 },
+    { "Key": "Undertaker",               "GamerScore": 0 },
+    { "Key": "Orbiter",                  "GamerScore": 0 },
+    { "Key": "Center of attention",      "GamerScore": 0 },
+    { "Key": "Humpty Dumpty",            "GamerScore": 0 },
+    { "Key": "Freudian",                 "GamerScore": 0 },
+    { "Key": "Not today",                "GamerScore": 0 },
+    { "Key": "Oscillating",              "GamerScore": 0 },
+    { "Key": "Explosive Love",           "GamerScore": 0 },
+    { "Key": "Fabulous",                 "GamerScore": 0 },
+    { "Key": "Mindbuster",               "GamerScore": 0 },
+    { "Key": "Selective Hunter",         "GamerScore": 0 },
+    { "Key": "Purple Prize",             "GamerScore": 0 },
+    { "Key": "Black Magic",              "GamerScore": 0 },
+    { "Key": "Bullfighter",              "GamerScore": 0 },
+    { "Key": "No Regrets",               "GamerScore": 0 },
+    { "Key": "Reach Multiplier",         "GamerScore": 0 },
+    { "Key": "Reach Higher Multiplier",  "GamerScore": 0 }
+  ]
 }

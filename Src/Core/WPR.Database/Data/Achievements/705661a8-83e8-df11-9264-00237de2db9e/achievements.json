@@ -1,4 +1,21 @@
 {
   "Name": "Bubble Town 2",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Achievement1",   "GamerScore": 0 },
+    { "Key": "Achievement2",   "GamerScore": 0 },
+    { "Key": "Achievement3",   "GamerScore": 0 },
+    { "Key": "Achievement4",   "GamerScore": 0 },
+    { "Key": "Achievement5",   "GamerScore": 0 },
+    { "Key": "Achievement6",   "GamerScore": 0 },
+    { "Key": "Achievement7",   "GamerScore": 0 },
+    { "Key": "Achievement8",   "GamerScore": 0 },
+    { "Key": "Achievement9",   "GamerScore": 0 },
+    { "Key": "Achievement10",  "GamerScore": 0 },
+    { "Key": "Achievement11",  "GamerScore": 0 },
+    { "Key": "Achievement12",  "GamerScore": 0 },
+    { "Key": "Achievement13",  "GamerScore": 0 },
+    { "Key": "Achievement14",  "GamerScore": 0 },
+    { "Key": "Achievement15",  "GamerScore": 0 }
+  ]
 }

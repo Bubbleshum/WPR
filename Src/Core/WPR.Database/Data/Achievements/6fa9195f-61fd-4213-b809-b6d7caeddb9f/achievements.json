@@ -1,4 +1,26 @@
 {
   "Name": "Microsoft Bingo",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "COMPLETE_25_MATCHES",               "GamerScore": 0 },
+    { "Key": "COMPLETE_100_MATCHES",              "GamerScore": 0 },
+    { "Key": "UNLOCK_50_LUGGAGE",                 "GamerScore": 0 },
+    { "Key": "USE_50_POWERUP",                    "GamerScore": 0 },
+    { "Key": "USE_200_POWERUP",                   "GamerScore": 0 },
+    { "Key": "CALL_20_BINGO_CORNER",              "GamerScore": 0 },
+    { "Key": "DAUB_500_CELLS",                    "GamerScore": 0 },
+    { "Key": "DAUB_2000_CELLS",                   "GamerScore": 0 },
+    { "Key": "REACH_LEVEL_10",                    "GamerScore": 0 },
+    { "Key": "REACH_LEVEL_30",                    "GamerScore": 0 },
+    { "Key": "COMPLETE_30_POWER_BINGO",           "GamerScore": 0 },
+    { "Key": "CHARGE_POWERUP_BAR_IN_10_SECONDS",  "GamerScore": 0 },
+    { "Key": "SPEND_1000_COINS",                  "GamerScore": 0 },
+    { "Key": "SPEND_10000_COINS",                 "GamerScore": 0 },
+    { "Key": "COMPLETE_1_COLLECTION",             "GamerScore": 0 },
+    { "Key": "COMPLETE_3_COLLECTIONS",            "GamerScore": 0 },
+    { "Key": "CALL_4_BINGO_SIMULTANEOUSLY",       "GamerScore": 0 },
+    { "Key": "PLAY_EACH_DESTINATION_IN_ORDER",    "GamerScore": 0 },
+    { "Key": "COMPLETE_1_TRAVEL_PATTERN",         "GamerScore": 0 },
+    { "Key": "ENDURE_5_NUMBERS_YOU_DONT_HAVE",    "GamerScore": 0 }
+  ]
 }

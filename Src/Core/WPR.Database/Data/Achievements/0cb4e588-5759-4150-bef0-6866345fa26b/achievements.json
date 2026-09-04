@@ -1,4 +1,26 @@
 {
   "Name": "Modern Combat 4",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "ATHLETIC_TRAINING",  "GamerScore": 0 },
+    { "Key": "SPLASH_DAMMAGE",     "GamerScore": 0 },
+    { "Key": "WORLD_TOUR",         "GamerScore": 0 },
+    { "Key": "LUCKY_STREAK",       "GamerScore": 0 },
+    { "Key": "MVP",                "GamerScore": 0 },
+    { "Key": "FINDERS_KEEPERS",    "GamerScore": 0 },
+    { "Key": "SURVIVOR",           "GamerScore": 0 },
+    { "Key": "RICOCHET",           "GamerScore": 0 },
+    { "Key": "FURIOUSLY_FAST",     "GamerScore": 0 },
+    { "Key": "COMMANDO",           "GamerScore": 0 },
+    { "Key": "BULLS_EYE",          "GamerScore": 0 },
+    { "Key": "EAGLE_EYE",          "GamerScore": 0 },
+    { "Key": "DRAGON_EYE",         "GamerScore": 0 },
+    { "Key": "ELUSIVE_TARGET",     "GamerScore": 0 },
+    { "Key": "INCOMING",           "GamerScore": 0 },
+    { "Key": "BEGINNER",           "GamerScore": 0 },
+    { "Key": "KILLER",             "GamerScore": 0 },
+    { "Key": "UPGRADE",            "GamerScore": 0 },
+    { "Key": "JUMPER",             "GamerScore": 0 },
+    { "Key": "GRENADE",            "GamerScore": 0 }
+  ]
 }

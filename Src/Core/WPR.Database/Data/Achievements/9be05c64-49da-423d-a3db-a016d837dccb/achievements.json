@@ -1,4 +1,26 @@
 {
   "Name": "Jet Car Stunts",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Platforming_Easy_Bronze",         "GamerScore": 0 },
+    { "Key": "Platforming_Hard_Silver",         "GamerScore": 0 },
+    { "Key": "Platforming_Impossible_Gold",     "GamerScore": 0 },
+    { "Key": "Time_Trial_Easy_Bronze",          "GamerScore": 0 },
+    { "Key": "Time_Trial_Intermediate_Silver",  "GamerScore": 0 },
+    { "Key": "Time_Trial_Hard_Gold",            "GamerScore": 0 },
+    { "Key": "Bonus_Easy_Bronze",               "GamerScore": 0 },
+    { "Key": "Bonus_Hard_Silver",               "GamerScore": 0 },
+    { "Key": "Bonus_Impossible_Gold",           "GamerScore": 0 },
+    { "Key": "Freestyle_Easy_Bronze",           "GamerScore": 0 },
+    { "Key": "Freestyle_Intermediate_Silver",   "GamerScore": 0 },
+    { "Key": "Freestyle_Hard_Gold",             "GamerScore": 0 },
+    { "Key": "Free_Platforming_Gold",           "GamerScore": 0 },
+    { "Key": "Free_Time_Trial_Gold",            "GamerScore": 0 },
+    { "Key": "Completed_Tutorial",              "GamerScore": 0 },
+    { "Key": "Double_Barrel_Roll",              "GamerScore": 0 },
+    { "Key": "Double_Back_Flip",                "GamerScore": 0 },
+    { "Key": "Spin",                            "GamerScore": 0 },
+    { "Key": "Big_Jump",                        "GamerScore": 0 },
+    { "Key": "Hyper_ballistic",                 "GamerScore": 0 }
+  ]
 }

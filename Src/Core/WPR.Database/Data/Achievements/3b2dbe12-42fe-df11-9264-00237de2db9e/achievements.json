@@ -1,4 +1,18 @@
 {
   "Name": "Puzzle Quest 2",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "HAPPILYEVERAFTER",  "GamerScore": 0 },
+    { "Key": "SAVEVERLOREN",      "GamerScore": 0 },
+    { "Key": "PWNT",              "GamerScore": 0 },
+    { "Key": "CHEATINGAI",        "GamerScore": 0 },
+    { "Key": "EPICWIN",           "GamerScore": 0 },
+    { "Key": "EPICFAIL",          "GamerScore": 0 },
+    { "Key": "OMGHAX",            "GamerScore": 0 },
+    { "Key": "GATEHACKER",        "GamerScore": 0 },
+    { "Key": "KINGGODD",          "GamerScore": 0 },
+    { "Key": "SHADOWBRINGER",     "GamerScore": 0 },
+    { "Key": "ABOMINABLE",        "GamerScore": 0 },
+    { "Key": "DRAGONSLAYER",      "GamerScore": 0 }
+  ]
 }

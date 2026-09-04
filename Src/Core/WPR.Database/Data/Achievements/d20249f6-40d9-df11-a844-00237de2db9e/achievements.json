@@ -1,4 +1,26 @@
 {
   "Name": "UNO",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "The double UNO",         "GamerScore": 0 },
+    { "Key": "Cool winner",            "GamerScore": 0 },
+    { "Key": "Skip Card",              "GamerScore": 0 },
+    { "Key": "Reverse Card",           "GamerScore": 0 },
+    { "Key": "Wild Card",              "GamerScore": 0 },
+    { "Key": "Two Card",               "GamerScore": 0 },
+    { "Key": "Four Card",              "GamerScore": 0 },
+    { "Key": "Win 1  st Easy",         "GamerScore": 0 },
+    { "Key": "Win 1  st Normal",       "GamerScore": 0 },
+    { "Key": "Win 1  st Hard",         "GamerScore": 0 },
+    { "Key": "Win 1  st Tournament",   "GamerScore": 0 },
+    { "Key": "Win 3  rd Tournament",   "GamerScore": 0 },
+    { "Key": "Win 5  th Tournament",   "GamerScore": 0 },
+    { "Key": "Win 7  th Tournament",   "GamerScore": 0 },
+    { "Key": "Win 10  th Tournament",  "GamerScore": 0 },
+    { "Key": "Win 11  th Tournament",  "GamerScore": 0 },
+    { "Key": "Win 12  th Tournament",  "GamerScore": 0 },
+    { "Key": "Win 13  th Tournament",  "GamerScore": 0 },
+    { "Key": "Win 14  th Tournament",  "GamerScore": 0 },
+    { "Key": "Win 15  th Tournament",  "GamerScore": 0 }
+  ]
 }

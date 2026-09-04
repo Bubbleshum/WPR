@@ -1,4 +1,26 @@
 {
   "Name": "Microsoft Mahjong",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "The Fun Begins",         "GamerScore": 0 },
+    { "Key": "Mahjong Pro",            "GamerScore": 0 },
+    { "Key": "A Fresh Coat of Paint",  "GamerScore": 0 },
+    { "Key": "Force of Habit",         "GamerScore": 0 },
+    { "Key": "Speed Player",           "GamerScore": 0 },
+    { "Key": "High Five",              "GamerScore": 0 },
+    { "Key": "On Second Thought",      "GamerScore": 0 },
+    { "Key": "Ultimate Matchmaker",    "GamerScore": 0 },
+    { "Key": "Dragon Master",          "GamerScore": 0 },
+    { "Key": "Warmed Up",              "GamerScore": 0 },
+    { "Key": "On A Roll",              "GamerScore": 0 },
+    { "Key": "Mahjong Champion",       "GamerScore": 0 },
+    { "Key": "Smooth Sailing",         "GamerScore": 0 },
+    { "Key": "Finished Already",       "GamerScore": 0 },
+    { "Key": "Gaining Recognition",    "GamerScore": 0 },
+    { "Key": "Matchmaking Legend",     "GamerScore": 0 },
+    { "Key": "Take It To Go",          "GamerScore": 0 },
+    { "Key": "Winning Is a Habit",     "GamerScore": 0 },
+    { "Key": "Highlighter",            "GamerScore": 0 },
+    { "Key": "SpiceOfLife",            "GamerScore": 0 }
+  ]
 }

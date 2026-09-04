@@ -1,4 +1,26 @@
 {
   "Name": "Revolution",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "beginnersluck",       "GamerScore": 0 },
+    { "Key": "doover",              "GamerScore": 0 },
+    { "Key": "jammies",             "GamerScore": 0 },
+    { "Key": "jammertime",          "GamerScore": 0 },
+    { "Key": "savesomefordinner",   "GamerScore": 0 },
+    { "Key": "takecover",           "GamerScore": 0 },
+    { "Key": "theskyisfalling",     "GamerScore": 0 },
+    { "Key": "allrevvedup",         "GamerScore": 0 },
+    { "Key": "cognition",           "GamerScore": 0 },
+    { "Key": "sprocketeer",         "GamerScore": 0 },
+    { "Key": "minimover",           "GamerScore": 0 },
+    { "Key": "longhaul",            "GamerScore": 0 },
+    { "Key": "moverandashaker",     "GamerScore": 0 },
+    { "Key": "fortyniner",          "GamerScore": 0 },
+    { "Key": "argonaut",            "GamerScore": 0 },
+    { "Key": "goldtycoon",          "GamerScore": 0 },
+    { "Key": "emptyfortknox",       "GamerScore": 0 },
+    { "Key": "fastmover",           "GamerScore": 0 },
+    { "Key": "precision",           "GamerScore": 0 },
+    { "Key": "thesocialconstruct",  "GamerScore": 0 }
+  ]
 }

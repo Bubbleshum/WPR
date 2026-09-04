@@ -1,4 +1,25 @@
 {
   "Name": "Cracking Sands",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "avFirst",           "GamerScore": 0 },
+    { "Key": "avCharged",         "GamerScore": 0 },
+    { "Key": "avJumper",          "GamerScore": 0 },
+    { "Key": "avCheekless",       "GamerScore": 0 },
+    { "Key": "avSheep",           "GamerScore": 0 },
+    { "Key": "avEagle",           "GamerScore": 0 },
+    { "Key": "avTiger",           "GamerScore": 0 },
+    { "Key": "avAllThePoints",    "GamerScore": 0 },
+    { "Key": "avKnockout",        "GamerScore": 0 },
+    { "Key": "avMyTime",          "GamerScore": 0 },
+    { "Key": "avYourTime",        "GamerScore": 0 },
+    { "Key": "avRocketeer",       "GamerScore": 0 },
+    { "Key": "avMinesweeper",     "GamerScore": 0 },
+    { "Key": "avVampire",         "GamerScore": 0 },
+    { "Key": "avMrFreeze",        "GamerScore": 0 },
+    { "Key": "avTackly",          "GamerScore": 0 },
+    { "Key": "avItemMaster",      "GamerScore": 0 },
+    { "Key": "avUpgradeMaster",   "GamerScore": 0 },
+    { "Key": "avTreasureHunter",  "GamerScore": 0 }
+  ]
 }

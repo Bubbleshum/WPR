@@ -1,5 +1,27 @@
 {
-  "Name": "Big Buck Hunter Pro",
+  "Name": "Big Buck Hunter Pro",
   "Description": "Big Buck Hunter Pro is an arcade-style hunting game. Based on a new platform, it features a two-player simultaneous \"Shootout\" mode with improved graphics.",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "License to Kill",        "GamerScore": 0 },
+    { "Key": "Nice Rack",              "GamerScore": 0 },
+    { "Key": "Bullseye",               "GamerScore": 0 },
+    { "Key": "3 Up 3 Down",            "GamerScore": 0 },
+    { "Key": "Hunter Hero",            "GamerScore": 0 },
+    { "Key": "Eatin Venison Tonight",  "GamerScore": 0 },
+    { "Key": "King of the Hill",       "GamerScore": 0 },
+    { "Key": "Feed the Whole Family",  "GamerScore": 0 },
+    { "Key": "Need a Bigger Truck",    "GamerScore": 0 },
+    { "Key": "Feed the Whole State",   "GamerScore": 0 },
+    { "Key": "Big Rack Connoisseur",   "GamerScore": 0 },
+    { "Key": "The Marksman",           "GamerScore": 0 },
+    { "Key": "Pass it Around",         "GamerScore": 0 },
+    { "Key": "Cleaned Em Out",         "GamerScore": 0 },
+    { "Key": "Foul Play",              "GamerScore": 0 },
+    { "Key": "Au Revoir Gopher",       "GamerScore": 0 },
+    { "Key": "Party Is Over",          "GamerScore": 0 },
+    { "Key": "Fully Croaked",          "GamerScore": 0 },
+    { "Key": "Lonesome Hunter",        "GamerScore": 0 },
+    { "Key": "Air Pie Marksman",       "GamerScore": 0 }
+  ]
 }

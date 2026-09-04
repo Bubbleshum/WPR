@@ -1,4 +1,36 @@
 {
   "Name": "Monster Go!",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Tell the world",         "GamerScore": 0 },
+    { "Key": "Show the love",          "GamerScore": 0 },
+    { "Key": "New Gear",               "GamerScore": 0 },
+    { "Key": "Feel the power",         "GamerScore": 0 },
+    { "Key": "Help please",            "GamerScore": 0 },
+    { "Key": "Millionaire",            "GamerScore": 0 },
+    { "Key": "Life find a way",        "GamerScore": 0 },
+    { "Key": "Ninja",                  "GamerScore": 0 },
+    { "Key": "Combo Master",           "GamerScore": 0 },
+    { "Key": "Treasure Hunter",        "GamerScore": 0 },
+    { "Key": "Grown up",               "GamerScore": 0 },
+    { "Key": "Favorite Snack",         "GamerScore": 0 },
+    { "Key": "Fever Master",           "GamerScore": 0 },
+    { "Key": "Sacred Crown",           "GamerScore": 0 },
+    { "Key": "Maximum Potential",      "GamerScore": 0 },
+    { "Key": "Twice the fun",          "GamerScore": 0 },
+    { "Key": "Never give up",          "GamerScore": 0 },
+    { "Key": "The Collector",          "GamerScore": 0 },
+    { "Key": "Marathon",               "GamerScore": 0 },
+    { "Key": "Gotta complete em all",  "GamerScore": 0 },
+    { "Key": "Spell the Magic",        "GamerScore": 0 },
+    { "Key": "Youve got a friend",     "GamerScore": 0 },
+    { "Key": "Guardian Fighter",       "GamerScore": 0 },
+    { "Key": "Good Looking",           "GamerScore": 0 },
+    { "Key": "Well Prepared",          "GamerScore": 0 },
+    { "Key": "Open the Zoo",           "GamerScore": 0 },
+    { "Key": "No More Kid",            "GamerScore": 0 },
+    { "Key": "Yolo",                   "GamerScore": 0 },
+    { "Key": "Change of plan",         "GamerScore": 0 },
+    { "Key": "All the special",        "GamerScore": 0 }
+  ]
 }

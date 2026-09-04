@@ -1,4 +1,26 @@
 {
   "Name": "iBomber Defense",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Campaign Allies",          "GamerScore": 0 },
+    { "Key": "Campaign Axis",            "GamerScore": 0 },
+    { "Key": "Rookie Allied Survivor",   "GamerScore": 0 },
+    { "Key": "Soldier Allied Survivor",  "GamerScore": 0 },
+    { "Key": "Veteran Allied Survivor",  "GamerScore": 0 },
+    { "Key": "Rookie Allied Defender",   "GamerScore": 0 },
+    { "Key": "Soldier Allied Defender",  "GamerScore": 0 },
+    { "Key": "Veteran Allied Defender",  "GamerScore": 0 },
+    { "Key": "Rookie Allied Guard",      "GamerScore": 0 },
+    { "Key": "Soldier Allied Guard",     "GamerScore": 0 },
+    { "Key": "Veteran Allied Guard",     "GamerScore": 0 },
+    { "Key": "Rookie Axis Survivor",     "GamerScore": 0 },
+    { "Key": "Soldier Axis Survivor",    "GamerScore": 0 },
+    { "Key": "Veteran Axis Survivor",    "GamerScore": 0 },
+    { "Key": "Rookie Axis Defender",     "GamerScore": 0 },
+    { "Key": "Soldier Axis Defender",    "GamerScore": 0 },
+    { "Key": "Veteran Axis Defender",    "GamerScore": 0 },
+    { "Key": "Rookie Axis Guard",        "GamerScore": 0 },
+    { "Key": "Soldier Axis Guard",       "GamerScore": 0 },
+    { "Key": "Veteran Axis Guard",       "GamerScore": 0 }
+  ]
 }

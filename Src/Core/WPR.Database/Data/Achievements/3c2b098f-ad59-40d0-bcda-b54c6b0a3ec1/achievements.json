@@ -1,4 +1,26 @@
 {
   "Name": "iO The Game",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Freeloader",            "GamerScore": 0 },
+    { "Key": "First Checkpoint",      "GamerScore": 0 },
+    { "Key": "A Safe Pair Of Hands",  "GamerScore": 0 },
+    { "Key": "Three Times A Charm",   "GamerScore": 0 },
+    { "Key": "Free Four All",         "GamerScore": 0 },
+    { "Key": "Five A Ball",           "GamerScore": 0 },
+    { "Key": "Six Pack",              "GamerScore": 0 },
+    { "Key": "Impeccaball ride",      "GamerScore": 0 },
+    { "Key": "Incrediball ride",      "GamerScore": 0 },
+    { "Key": "Impossiball ride",      "GamerScore": 0 },
+    { "Key": "First Blood",           "GamerScore": 0 },
+    { "Key": "Gold Grabber",          "GamerScore": 0 },
+    { "Key": "On A Roll",             "GamerScore": 0 },
+    { "Key": "Ballseye",              "GamerScore": 0 },
+    { "Key": "Mad Medal Collector",   "GamerScore": 0 },
+    { "Key": "Bronze Stud",           "GamerScore": 0 },
+    { "Key": "Silver Fox",            "GamerScore": 0 },
+    { "Key": "Gold Digger",           "GamerScore": 0 },
+    { "Key": "Little Big Adventure",  "GamerScore": 0 },
+    { "Key": "Big Shot",              "GamerScore": 0 }
+  ]
 }

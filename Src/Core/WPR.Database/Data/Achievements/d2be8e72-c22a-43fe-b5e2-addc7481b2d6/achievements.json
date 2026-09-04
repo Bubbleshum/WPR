@@ -1,4 +1,26 @@
 {
   "Name": "Despicable Me Minion Rush",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Newbie",            "GamerScore": 0 },
+    { "Key": "Despicable You",    "GamerScore": 0 },
+    { "Key": "Fruit Enthusiast",  "GamerScore": 0 },
+    { "Key": "Forge Ahead",       "GamerScore": 0 },
+    { "Key": "Bananas",           "GamerScore": 0 },
+    { "Key": "Excursionist",      "GamerScore": 0 },
+    { "Key": "Head Start",        "GamerScore": 0 },
+    { "Key": "Feeling Lucky",     "GamerScore": 0 },
+    { "Key": "PowerSeeker",       "GamerScore": 0 },
+    { "Key": "Miss The Bus",      "GamerScore": 0 },
+    { "Key": "Try Again",         "GamerScore": 0 },
+    { "Key": "Cold as Ice",       "GamerScore": 0 },
+    { "Key": "Adventurer",        "GamerScore": 0 },
+    { "Key": "Mopping Minion",    "GamerScore": 0 },
+    { "Key": "Mucho Macho",       "GamerScore": 0 },
+    { "Key": "Rocketeer",         "GamerScore": 0 },
+    { "Key": "Hitchhiker",        "GamerScore": 0 },
+    { "Key": "Beach Bummin",      "GamerScore": 0 },
+    { "Key": "The Evil Eye",      "GamerScore": 0 },
+    { "Key": "Unstoppable",       "GamerScore": 0 }
+  ]
 }

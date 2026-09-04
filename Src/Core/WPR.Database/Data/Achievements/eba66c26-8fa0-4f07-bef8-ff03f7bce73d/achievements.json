@@ -1,4 +1,16 @@
 {
   "Name": "Chaos Rings",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "ACH_01",  "GamerScore": 0 },
+    { "Key": "ACH_02",  "GamerScore": 0 },
+    { "Key": "ACH_03",  "GamerScore": 0 },
+    { "Key": "ACH_04",  "GamerScore": 0 },
+    { "Key": "ACH_05",  "GamerScore": 0 },
+    { "Key": "ACH_06",  "GamerScore": 0 },
+    { "Key": "ACH_07",  "GamerScore": 0 },
+    { "Key": "ACH_08",  "GamerScore": 0 },
+    { "Key": "ACH_09",  "GamerScore": 0 },
+    { "Key": "ACH_10",  "GamerScore": 0 }
+  ]
 }

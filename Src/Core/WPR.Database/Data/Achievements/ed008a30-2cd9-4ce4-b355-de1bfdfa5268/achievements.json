@@ -1,4 +1,26 @@
 {
   "Name": "Total Conquest",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Make_Room",                     "GamerScore": 0 },
+    { "Key": "Delicious_Dishes",              "GamerScore": 0 },
+    { "Key": "The_Golden_Touch",              "GamerScore": 0 },
+    { "Key": "Here_Comes_the_Neighboorhood",  "GamerScore": 0 },
+    { "Key": "Barrack_Boss",                  "GamerScore": 0 },
+    { "Key": "Super_Star",                    "GamerScore": 0 },
+    { "Key": "Chemical_Comforts",             "GamerScore": 0 },
+    { "Key": "Caesar_of _Slaughter",          "GamerScore": 0 },
+    { "Key": "Walled_In",                     "GamerScore": 0 },
+    { "Key": "Break_Their_Defenses",          "GamerScore": 0 },
+    { "Key": "Free_Food",                     "GamerScore": 0 },
+    { "Key": "Kleptomaniac",                  "GamerScore": 0 },
+    { "Key": "Destroyer_of_Cities",           "GamerScore": 0 },
+    { "Key": "Caught_in_the_Crossfire",       "GamerScore": 0 },
+    { "Key": "Ready_for_War",                 "GamerScore": 0 },
+    { "Key": "Annihilator",                   "GamerScore": 0 },
+    { "Key": "Historically_Accurate",         "GamerScore": 0 },
+    { "Key": "Power_Grind_1",                 "GamerScore": 0 },
+    { "Key": "Power_Grind_2",                 "GamerScore": 0 },
+    { "Key": "Power_Grind_3",                 "GamerScore": 0 }
+  ]
 }

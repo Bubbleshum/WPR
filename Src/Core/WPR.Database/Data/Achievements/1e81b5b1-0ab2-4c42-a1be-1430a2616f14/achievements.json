@@ -1,4 +1,26 @@
 {
   "Name": "Real Football 2013",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "NATURAL_BORN_WINNER",            "GamerScore": 0 },
+    { "Key": "POOR_GOALKEEPER",                "GamerScore": 0 },
+    { "Key": "HAT_TRICK",                      "GamerScore": 0 },
+    { "Key": "TOP_SCORER",                     "GamerScore": 0 },
+    { "Key": "COLD_BLOOD",                     "GamerScore": 0 },
+    { "Key": "LATE_VICTORY",                   "GamerScore": 0 },
+    { "Key": "JUST_STARTED_AND_ALREADY_OVER",  "GamerScore": 0 },
+    { "Key": "LIVING_ON_THE_EDGE",             "GamerScore": 0 },
+    { "Key": "ASSISTMAN",                      "GamerScore": 0 },
+    { "Key": "GREAT_SAVE",                     "GamerScore": 0 },
+    { "Key": "YOU_OWN_A_CITY_NOW",             "GamerScore": 0 },
+    { "Key": "VENI_VIDI_VICI",                 "GamerScore": 0 },
+    { "Key": "GREAT_FINISH",                   "GamerScore": 0 },
+    { "Key": "COMEBACK",                       "GamerScore": 0 },
+    { "Key": "LONG_TERM_COMEBACK",             "GamerScore": 0 },
+    { "Key": "ONE_FOR_ALL_ALL_FOR_ONE",        "GamerScore": 0 },
+    { "Key": "TIKI_TAKA",                      "GamerScore": 0 },
+    { "Key": "THE_SPECIALIST",                 "GamerScore": 0 },
+    { "Key": "UNBEATABLE",                     "GamerScore": 0 },
+    { "Key": "LEGENDARY_PLAYER",               "GamerScore": 0 }
+  ]
 }

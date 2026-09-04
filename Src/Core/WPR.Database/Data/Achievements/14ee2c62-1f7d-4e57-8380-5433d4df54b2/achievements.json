@@ -1,4 +1,24 @@
 {
   "Name": "Final Fantasy III",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "KILL_ZIN",                "GamerScore": 0 },
+    { "Key": "KILL_SALAMANDER",         "GamerScore": 0 },
+    { "Key": "KILL_KRAKEN",             "GamerScore": 0 },
+    { "Key": "KILL_TITAN",              "GamerScore": 0 },
+    { "Key": "KILL_CLOUD_OF_DARKNESS",  "GamerScore": 0 },
+    { "Key": "GET_ALL_WEAPON",          "GamerScore": 0 },
+    { "Key": "MONEY_50000",             "GamerScore": 0 },
+    { "Key": "MONEY_500000",            "GamerScore": 0 },
+    { "Key": "GET_BEAST",               "GamerScore": 0 },
+    { "Key": "GET_ALL_BEAST",           "GamerScore": 0 },
+    { "Key": "TREASURE_50",             "GamerScore": 0 },
+    { "Key": "TREASURE_100",            "GamerScore": 0 },
+    { "Key": "MONSTER_50",              "GamerScore": 0 },
+    { "Key": "MONSTER_100",             "GamerScore": 0 },
+    { "Key": "GET_ULTIMA_WEAPON",       "GamerScore": 0 },
+    { "Key": "KILL_IRON_GIANT",         "GamerScore": 0 },
+    { "Key": "ONE_JOB",                 "GamerScore": 0 },
+    { "Key": "ALL_JOB",                 "GamerScore": 0 }
+  ]
 }

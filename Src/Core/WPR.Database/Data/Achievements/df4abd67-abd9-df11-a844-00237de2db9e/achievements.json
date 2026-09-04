@@ -1,4 +1,18 @@
 {
   "Name": "OMG - Our Manic Game",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "CloseCombat",     "GamerScore": 0 },
+    { "Key": "Points",          "GamerScore": 0 },
+    { "Key": "Marathon",        "GamerScore": 0 },
+    { "Key": "Nerves",          "GamerScore": 0 },
+    { "Key": "MrClear",         "GamerScore": 0 },
+    { "Key": "Hyperactive",     "GamerScore": 0 },
+    { "Key": "RainbowWarrior",  "GamerScore": 0 },
+    { "Key": "Fan",             "GamerScore": 0 },
+    { "Key": "Pts",             "GamerScore": 0 },
+    { "Key": "idle",            "GamerScore": 0 },
+    { "Key": "KillingSpree",    "GamerScore": 0 },
+    { "Key": "GodMode",         "GamerScore": 0 }
+  ]
 }

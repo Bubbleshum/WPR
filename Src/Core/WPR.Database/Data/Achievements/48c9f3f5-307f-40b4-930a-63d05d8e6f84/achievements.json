@@ -1,4 +1,18 @@
 {
   "Name": "Ms. Splosion Man",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "ACH_1_HELL_HATH_NO_FURY",         "GamerScore": 0 },
+    { "Key": "ACH_2_EYE_OF_THE_TIGRESS",        "GamerScore": 0 },
+    { "Key": "ACH_3_FRUSTURATION",              "GamerScore": 0 },
+    { "Key": "ACH_4_TO_THE_CONSERVATORY",       "GamerScore": 0 },
+    { "Key": "ACH_5_YOULL_BELIEVE_MS_CAN_FLY",  "GamerScore": 0 },
+    { "Key": "ACH_6_SORE_THUMBS_INFLATED_EGO",  "GamerScore": 0 },
+    { "Key": "ACH_7_CONGRATURATION",            "GamerScore": 0 },
+    { "Key": "ACH_8_URGE_TO_KILL_RISING",       "GamerScore": 0 },
+    { "Key": "ACH_9_BEST_OF_THE_BEST",          "GamerScore": 0 },
+    { "Key": "ACH_10_SILVER_SHOE_AWARD",        "GamerScore": 0 },
+    { "Key": "ACH_11_GOLDEN_SHOE_AWARD",        "GamerScore": 0 },
+    { "Key": "ACH_12_WORLDS_FINEST",            "GamerScore": 0 }
+  ]
 }

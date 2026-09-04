@@ -1,4 +1,16 @@
 {
   "Name": "Minesweeper",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "rank_ultimate",              "GamerScore": 0 },
+    { "Key": "happens_to_everybody",       "GamerScore": 0 },
+    { "Key": "use_what_now",               "GamerScore": 0 },
+    { "Key": "click_click_boom",           "GamerScore": 0 },
+    { "Key": "high_five",                  "GamerScore": 0 },
+    { "Key": "piece_of_cake",              "GamerScore": 0 },
+    { "Key": "serious_business",           "GamerScore": 0 },
+    { "Key": "the_world_is_safe_for_now",  "GamerScore": 0 },
+    { "Key": "i_dont_need_those",          "GamerScore": 0 },
+    { "Key": "training_wheels",            "GamerScore": 0 }
+  ]
 }

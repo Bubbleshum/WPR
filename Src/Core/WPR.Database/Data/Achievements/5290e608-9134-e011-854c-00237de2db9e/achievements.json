@@ -1,4 +1,26 @@
 {
   "Name": "Deer Hunter 3D",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Headshot",          "GamerScore": 0 },
+    { "Key": "Perfect Headshot",  "GamerScore": 0 },
+    { "Key": "Clean Kills",       "GamerScore": 0 },
+    { "Key": "Trifecta",          "GamerScore": 0 },
+    { "Key": "Only The Best",     "GamerScore": 0 },
+    { "Key": "Back By Lunch",     "GamerScore": 0 },
+    { "Key": "Deadeye",           "GamerScore": 0 },
+    { "Key": "Naturalist",        "GamerScore": 0 },
+    { "Key": "Elite",             "GamerScore": 0 },
+    { "Key": "Patriot",           "GamerScore": 0 },
+    { "Key": "Viking",            "GamerScore": 0 },
+    { "Key": "Comrade Shooter",   "GamerScore": 0 },
+    { "Key": "Caballero",         "GamerScore": 0 },
+    { "Key": "Month Long Hunt",   "GamerScore": 0 },
+    { "Key": "All Year Round",    "GamerScore": 0 },
+    { "Key": "Three In A Row",    "GamerScore": 0 },
+    { "Key": "Double Kill",       "GamerScore": 0 },
+    { "Key": "Multi Kill",        "GamerScore": 0 },
+    { "Key": "Two in the Hand",   "GamerScore": 0 },
+    { "Key": "Thanksgiving",      "GamerScore": 0 }
+  ]
 }

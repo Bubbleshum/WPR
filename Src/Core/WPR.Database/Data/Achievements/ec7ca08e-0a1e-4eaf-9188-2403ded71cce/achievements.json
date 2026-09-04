@@ -1,4 +1,21 @@
 {
   "Name": "Hexic",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Boost Blossom",       "GamerScore": 0 },
+    { "Key": "Reaching the Stars",  "GamerScore": 0 },
+    { "Key": "Photo Finish",        "GamerScore": 0 },
+    { "Key": "Boost Engineer",      "GamerScore": 0 },
+    { "Key": "Make em Count",       "GamerScore": 0 },
+    { "Key": "Five Alive",          "GamerScore": 0 },
+    { "Key": "Line Clearing",       "GamerScore": 0 },
+    { "Key": "Color Clearing",      "GamerScore": 0 },
+    { "Key": "Quick Learner",       "GamerScore": 0 },
+    { "Key": "Trying Hard",         "GamerScore": 0 },
+    { "Key": "Hexified",            "GamerScore": 0 },
+    { "Key": "Hexy Hero",           "GamerScore": 0 },
+    { "Key": "The Number",          "GamerScore": 0 },
+    { "Key": "Fear of Cells",       "GamerScore": 0 },
+    { "Key": "Glitch Collector",    "GamerScore": 0 }
+  ]
 }

@@ -1,4 +1,26 @@
 {
   "Name": "Parachute Panic",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Lifesaver",          "GamerScore": 0 },
+    { "Key": "Death Gourmet",      "GamerScore": 0 },
+    { "Key": "Endgame N",          "GamerScore": 0 },
+    { "Key": "Endgame E",          "GamerScore": 0 },
+    { "Key": "No Risk No Fun",     "GamerScore": 0 },
+    { "Key": "Airborne Predator",  "GamerScore": 0 },
+    { "Key": "Area 51",            "GamerScore": 0 },
+    { "Key": "Pioneer",            "GamerScore": 0 },
+    { "Key": "Noob",               "GamerScore": 0 },
+    { "Key": "1 Up",               "GamerScore": 0 },
+    { "Key": "Free as a Bird",     "GamerScore": 0 },
+    { "Key": "Fisherman",          "GamerScore": 0 },
+    { "Key": "Weatherman",         "GamerScore": 0 },
+    { "Key": "Baby Boom",          "GamerScore": 0 },
+    { "Key": "Perfect Couple",     "GamerScore": 0 },
+    { "Key": "Xbox Addict",        "GamerScore": 0 },
+    { "Key": "100 in a Row",       "GamerScore": 0 },
+    { "Key": "Promotion",          "GamerScore": 0 },
+    { "Key": "Easter Egg",         "GamerScore": 0 },
+    { "Key": "Doodler Champion",   "GamerScore": 0 }
+  ]
 }

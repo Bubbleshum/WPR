@@ -1,4 +1,26 @@
 {
   "Name": "Jetpack Joyride",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "A_MAN_A_SON",            "GamerScore": 0 },
+    { "Key": "ALPHA_CHARLIE",          "GamerScore": 0 },
+    { "Key": "BLING_OUT",              "GamerScore": 0 },
+    { "Key": "BULLSEYE",               "GamerScore": 0 },
+    { "Key": "CLASS_ACT",              "GamerScore": 0 },
+    { "Key": "CRAZY_FREAKING_SKILLS",  "GamerScore": 0 },
+    { "Key": "FOR_SCIENCE",            "GamerScore": 0 },
+    { "Key": "FUZZY_LOCKS",            "GamerScore": 0 },
+    { "Key": "GERMAPHOBE",             "GamerScore": 0 },
+    { "Key": "GOLD_DIGGER",            "GamerScore": 0 },
+    { "Key": "JAMES_WHO",              "GamerScore": 0 },
+    { "Key": "NOT_SO_GREEN",           "GamerScore": 0 },
+    { "Key": "PRETTY_WOMAN",           "GamerScore": 0 },
+    { "Key": "ROMEO_ALPHA",            "GamerScore": 0 },
+    { "Key": "SPICE_OF_LIFE",          "GamerScore": 0 },
+    { "Key": "TEEHEETWO",              "GamerScore": 0 },
+    { "Key": "REJECTED",               "GamerScore": 0 },
+    { "Key": "VETERAN",                "GamerScore": 0 },
+    { "Key": "HAPPY_SNAP",             "GamerScore": 0 },
+    { "Key": "DOG_DISTANCE",           "GamerScore": 0 }
+  ]
 }

@@ -1,4 +1,18 @@
 {
   "Name": "Throne Together",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Budding Builder",         "GamerScore": 0 },
+    { "Key": "Accredited Architect",    "GamerScore": 0 },
+    { "Key": "Certified Contractor",    "GamerScore": 0 },
+    { "Key": "Speedy Engineering",      "GamerScore": 0 },
+    { "Key": "Gargling",                "GamerScore": 0 },
+    { "Key": "By the Book",             "GamerScore": 0 },
+    { "Key": "Join the Circus",         "GamerScore": 0 },
+    { "Key": "Holey Cathedral",         "GamerScore": 0 },
+    { "Key": "Light My Fire",           "GamerScore": 0 },
+    { "Key": "A Helping Hand",          "GamerScore": 0 },
+    { "Key": "Positive Reinforcement",  "GamerScore": 0 },
+    { "Key": "Shoddy Foundation",       "GamerScore": 0 }
+  ]
 }

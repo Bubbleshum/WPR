@@ -1,4 +1,26 @@
 {
   "Name": "Game Chest - Logic Games",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "ach01",  "GamerScore": 0 },
+    { "Key": "ach02",  "GamerScore": 0 },
+    { "Key": "ach03",  "GamerScore": 0 },
+    { "Key": "ach04",  "GamerScore": 0 },
+    { "Key": "ach05",  "GamerScore": 0 },
+    { "Key": "ach06",  "GamerScore": 0 },
+    { "Key": "ach07",  "GamerScore": 0 },
+    { "Key": "ach08",  "GamerScore": 0 },
+    { "Key": "ach09",  "GamerScore": 0 },
+    { "Key": "ach10",  "GamerScore": 0 },
+    { "Key": "ach11",  "GamerScore": 0 },
+    { "Key": "ach12",  "GamerScore": 0 },
+    { "Key": "ach13",  "GamerScore": 0 },
+    { "Key": "ach14",  "GamerScore": 0 },
+    { "Key": "ach15",  "GamerScore": 0 },
+    { "Key": "ach16",  "GamerScore": 0 },
+    { "Key": "ach17",  "GamerScore": 0 },
+    { "Key": "ach18",  "GamerScore": 0 },
+    { "Key": "ach19",  "GamerScore": 0 },
+    { "Key": "ach20",  "GamerScore": 0 }
+  ]
 }

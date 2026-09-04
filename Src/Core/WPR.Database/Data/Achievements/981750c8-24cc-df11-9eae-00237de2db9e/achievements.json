@@ -1,4 +1,21 @@
 {
   "Name": "Flowerz",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Classic Master",  "GamerScore": 0 },
+    { "Key": "Clean Slate",     "GamerScore": 0 },
+    { "Key": "Green Thumb",     "GamerScore": 0 },
+    { "Key": "Flowerz Zen",     "GamerScore": 0 },
+    { "Key": "Butterfly Luck",  "GamerScore": 0 },
+    { "Key": "Flowerz Addict",  "GamerScore": 0 },
+    { "Key": "Plan Far Ahead",  "GamerScore": 0 },
+    { "Key": "Petal Power",     "GamerScore": 0 },
+    { "Key": "Window Garden",   "GamerScore": 0 },
+    { "Key": "Florist",         "GamerScore": 0 },
+    { "Key": "Leisure Garden",  "GamerScore": 0 },
+    { "Key": "Plan Ahead",      "GamerScore": 0 },
+    { "Key": "Rotating Crops",  "GamerScore": 0 },
+    { "Key": "Bouquet",         "GamerScore": 0 },
+    { "Key": "First Bloom",     "GamerScore": 0 }
+  ]
 }

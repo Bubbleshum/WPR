@@ -1,4 +1,26 @@
 {
   "Name": "AlphaJax",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Bingo",          "GamerScore": 0 },
+    { "Key": "Primary",        "GamerScore": 0 },
+    { "Key": "Secondary",      "GamerScore": 0 },
+    { "Key": "Tertiary",       "GamerScore": 0 },
+    { "Key": "Initial",        "GamerScore": 0 },
+    { "Key": "Squeaker",       "GamerScore": 0 },
+    { "Key": "Compound",       "GamerScore": 0 },
+    { "Key": "Compatriot",     "GamerScore": 0 },
+    { "Key": "Proficiency",    "GamerScore": 0 },
+    { "Key": "Replay",         "GamerScore": 0 },
+    { "Key": "Unpredictable",  "GamerScore": 0 },
+    { "Key": "Proposal",       "GamerScore": 0 },
+    { "Key": "Innaugural",     "GamerScore": 0 },
+    { "Key": "Duplicate",      "GamerScore": 0 },
+    { "Key": "Philologer",     "GamerScore": 0 },
+    { "Key": "Decennial",      "GamerScore": 0 },
+    { "Key": "Jubilee",        "GamerScore": 0 },
+    { "Key": "Vocabulist",     "GamerScore": 0 },
+    { "Key": "Glossologist",   "GamerScore": 0 },
+    { "Key": "Lexicographer",  "GamerScore": 0 }
+  ]
 }

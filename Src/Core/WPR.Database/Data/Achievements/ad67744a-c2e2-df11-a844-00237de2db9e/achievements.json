@@ -1,4 +1,18 @@
 {
   "Name": "Fast and the Furious - Adrenaline",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "The Rookie",         "GamerScore": 0 },
+    { "Key": "Valley Girl",        "GamerScore": 0 },
+    { "Key": "City Boy",           "GamerScore": 0 },
+    { "Key": "Harbor Master",      "GamerScore": 0 },
+    { "Key": "Coast Guard",        "GamerScore": 0 },
+    { "Key": "Dominator",          "GamerScore": 0 },
+    { "Key": "Full Garage",        "GamerScore": 0 },
+    { "Key": "Maximum Overdrive",  "GamerScore": 0 },
+    { "Key": "Clean Run",          "GamerScore": 0 },
+    { "Key": "Cop Out",            "GamerScore": 0 },
+    { "Key": "Gear Head",          "GamerScore": 0 },
+    { "Key": "Nitrous Burnout",    "GamerScore": 0 }
+  ]
 }

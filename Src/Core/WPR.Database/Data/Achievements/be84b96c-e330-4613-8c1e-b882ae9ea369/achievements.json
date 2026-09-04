@@ -1,4 +1,26 @@
 {
   "Name": "Order & Chaos Online",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Ready To Go",         "GamerScore": 0 },
+    { "Key": "Jackpot",             "GamerScore": 0 },
+    { "Key": "A Talent Rises",      "GamerScore": 0 },
+    { "Key": "Getting Stronger",    "GamerScore": 0 },
+    { "Key": "Clumsy Apprentice",   "GamerScore": 0 },
+    { "Key": "Champion",            "GamerScore": 0 },
+    { "Key": "A Hero Path",         "GamerScore": 0 },
+    { "Key": "Unstoppable",         "GamerScore": 0 },
+    { "Key": "Untouchable",         "GamerScore": 0 },
+    { "Key": "Invincible",          "GamerScore": 0 },
+    { "Key": "Loremaster",          "GamerScore": 0 },
+    { "Key": "Famous Hero",         "GamerScore": 0 },
+    { "Key": "No Time To Waste",    "GamerScore": 0 },
+    { "Key": "To Be A Merchant",    "GamerScore": 0 },
+    { "Key": "Greedy Piggy",        "GamerScore": 0 },
+    { "Key": "Quenching Life",      "GamerScore": 0 },
+    { "Key": "Scavenger Master",    "GamerScore": 0 },
+    { "Key": "Good Collector",      "GamerScore": 0 },
+    { "Key": "Superior Collector",  "GamerScore": 0 },
+    { "Key": "Epic Collector",      "GamerScore": 0 }
+  ]
 }

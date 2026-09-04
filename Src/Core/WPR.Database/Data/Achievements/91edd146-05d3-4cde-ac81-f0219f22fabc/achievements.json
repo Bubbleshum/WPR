@@ -1,4 +1,18 @@
 {
   "Name": "The Great Wobo Escape",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "Obeyed Orders",        "GamerScore": 0 },
+    { "Key": "Small Savior",         "GamerScore": 0 },
+    { "Key": "Dangerous Drillings",  "GamerScore": 0 },
+    { "Key": "Parted Pathways",      "GamerScore": 0 },
+    { "Key": "Abhorrent Abyss",      "GamerScore": 0 },
+    { "Key": "Tesla Trouble",        "GamerScore": 0 },
+    { "Key": "Tricky Tunnels",       "GamerScore": 0 },
+    { "Key": "Cruel Confrontation",  "GamerScore": 0 },
+    { "Key": "A Friend in Need",     "GamerScore": 0 },
+    { "Key": "The Great Escape",     "GamerScore": 0 },
+    { "Key": "Birdie",               "GamerScore": 0 },
+    { "Key": "Condor",               "GamerScore": 0 }
+  ]
 }

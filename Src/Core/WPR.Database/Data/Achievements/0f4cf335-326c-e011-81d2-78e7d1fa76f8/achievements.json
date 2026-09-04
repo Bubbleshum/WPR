@@ -1,4 +1,19 @@
 {
   "Name": "Enigmo",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "DropInTheBucket",     "GamerScore": 0 },
+    { "Key": "JrTechnician",        "GamerScore": 0 },
+    { "Key": "LabAssistant",        "GamerScore": 0 },
+    { "Key": "MadScientist",        "GamerScore": 0 },
+    { "Key": "Efficient",           "GamerScore": 0 },
+    { "Key": "SpareParts",          "GamerScore": 0 },
+    { "Key": "WereThoseImportant",  "GamerScore": 0 },
+    { "Key": "BetterThanNothing",   "GamerScore": 0 },
+    { "Key": "DedicatedDropper",    "GamerScore": 0 },
+    { "Key": "DropAndGiveMeSixty",  "GamerScore": 0 },
+    { "Key": "Respectable",         "GamerScore": 0 },
+    { "Key": "Enigmaster",          "GamerScore": 0 },
+    { "Key": "NoUseCrying",         "GamerScore": 0 }
+  ]
 }

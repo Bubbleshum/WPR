@@ -1,4 +1,26 @@
 {
   "Name": "Sally's Salon - Luxury Edition",
-  "Achievements": []
+  "KeySource": "xlast",
+  "Achievements": [
+    { "Key": "PURSE_1",                 "GamerScore": 0 },
+    { "Key": "PURSE_2",                 "GamerScore": 0 },
+    { "Key": "PURSE_3",                 "GamerScore": 0 },
+    { "Key": "PURSE_4",                 "GamerScore": 0 },
+    { "Key": "PURSE_5",                 "GamerScore": 0 },
+    { "Key": "SALON_1",                 "GamerScore": 0 },
+    { "Key": "SALON_2",                 "GamerScore": 0 },
+    { "Key": "SALON_3",                 "GamerScore": 0 },
+    { "Key": "SALON_4",                 "GamerScore": 0 },
+    { "Key": "COMPLETED_ALL_OLD",       "GamerScore": 0 },
+    { "Key": "SALON_6",                 "GamerScore": 0 },
+    { "Key": "SALON_7",                 "GamerScore": 0 },
+    { "Key": "SALON_8",                 "GamerScore": 0 },
+    { "Key": "SALON_9",                 "GamerScore": 0 },
+    { "Key": "PERFORMANCE_GOOD",        "GamerScore": 0 },
+    { "Key": "PERFORMANCE_HIGH",        "GamerScore": 0 },
+    { "Key": "PERFORMANCE_EXCELLENT",   "GamerScore": 0 },
+    { "Key": "COMPLETED_ALL",           "GamerScore": 0 },
+    { "Key": "COMPLETED_ALL_EXPERT",    "GamerScore": 0 },
+    { "Key": "COMPLETED_ALL_PLATINUM",  "GamerScore": 0 }
+  ]
 }
