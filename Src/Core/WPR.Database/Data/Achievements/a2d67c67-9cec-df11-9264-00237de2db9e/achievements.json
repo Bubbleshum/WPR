@@ -1,5 +1,6 @@
 {
   "Name": "The Oregon Trail HD",
+  "Description": "The wagon journey west: buy supplies, ford rivers, hunt for food and try to get the party to Oregon alive.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Easy prey",          "Name": "Easy prey",          "GamerScore":  5, "Description": "Get yer first food by killin' 4 small animals" },

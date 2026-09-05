@@ -1,5 +1,6 @@
 {
   "Name": "Fragger",
+  "Description": "Miniclip's projectile puzzler: lob grenades along an arc to reach enemies tucked behind cover.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "tutorial_complete",   "Name": "Learn The Trade",         "GamerScore":  5, "Description": "Complete the game tutorial." },

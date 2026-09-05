@@ -1,5 +1,6 @@
 {
   "Name": "Tentacles - Enter the Mind",
+  "Description": "The sequel to Tentacles, swinging Lemmy through the inside of a mind after the eyes that live there.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Down the knife hole",     "Name": "Down the knife hole", "GamerScore": 10, "Description": "Fly through the hole of any knife." },

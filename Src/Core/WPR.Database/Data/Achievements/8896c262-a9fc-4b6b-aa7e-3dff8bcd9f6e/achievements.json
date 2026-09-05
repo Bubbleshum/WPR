@@ -1,5 +1,6 @@
 {
   "Name": "Shark Dash",
+  "Description": "A physics puzzle about launching a shark at rubber ducks in a bathtub.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "HUNGRY",               "Name": "Hungry",               "GamerScore":  5, "Description": "Hungry" },

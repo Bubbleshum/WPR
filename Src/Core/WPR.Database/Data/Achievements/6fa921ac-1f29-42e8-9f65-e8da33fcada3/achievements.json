@@ -1,5 +1,6 @@
 {
   "Name": "Temple Run 2",
+  "Description": "The sequel to Temple Run, adding zip lines, mine carts and a course that turns as well as branches.",
   "Achievements": [
     { "Key": "Novice Runner",     "Name": "Novice Runner",     "GamerScore":  5, "Description": "Run 500 meters" },
     { "Key": "Pocket Change",     "Name": "Pocket Change",     "GamerScore":  5, "Description": "Collect 100 coins" },

@@ -1,5 +1,6 @@
 {
   "Name": "Bubble Town 2",
+  "Description": "A bubble shooter: fire matching orbs into the cluster above and drop what they detach.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Achievement1",  "Name": "Ousting the General",    "GamerScore": 10, "Description": "Defeat the Lump General" },
@@ -13,7 +14,7 @@
     { "Key": "Achievement9",  "Name": "Soaped-Up",              "GamerScore":  5, "Description": "Awarded when player has used all the power-ups" },
     { "Key": "Achievement10", "Name": "Soap and Glory",         "GamerScore": 10, "Description": "The player must match 3 borbs after having banked off of 3 walls, with a single shot." },
     { "Key": "Achievement11", "Name": "In It To Win It",        "GamerScore": 20, "Description": "The player must reach a score of 150,000" },
-    { "Key": "Achievement12", "Name": "Take it to the Bankâ€™", "GamerScore": 10, "Description": "Complete any level using bank shots." },
+    { "Key": "Achievement12", "Name": "Take it to the BankÃ¢â‚¬â„¢", "GamerScore": 10, "Description": "Complete any level using bank shots." },
     { "Key": "Achievement13", "Name": "Dead Eye",               "GamerScore": 10, "Description": "Hit the eye evey time when open without missing" },
     { "Key": "Achievement14", "Name": "Fuzz-tastic",            "GamerScore": 20, "Description": "The player must gain 200 fuzzballs" },
     { "Key": "Achievement15", "Name": "Canny Cannon",           "GamerScore": 20, "Description": "The player must attain a score of 15,000 inside a single level." }

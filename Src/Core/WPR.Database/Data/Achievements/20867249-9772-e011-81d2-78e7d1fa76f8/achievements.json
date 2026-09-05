@@ -1,5 +1,6 @@
 {
   "Name": "geoDefense",
+  "Description": "Tower defence on stark geometric mazes, drawn in vector graphics and escalating quickly.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "E1", "Name": "Easy Start",       "GamerScore":  1, "Description": "Beat any of the easy levels" },

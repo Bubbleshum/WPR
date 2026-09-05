@@ -1,5 +1,6 @@
 {
   "Name": "Mush",
+  "Description": "A platformer whose hero changes with its mood -- happy, sad, confused and angry each move differently, and a level is solved by switching between them.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "BeginnersLuck",          "Name": "Beginner's Luck",         "GamerScore": 10, "Description": "Complete the first level." },

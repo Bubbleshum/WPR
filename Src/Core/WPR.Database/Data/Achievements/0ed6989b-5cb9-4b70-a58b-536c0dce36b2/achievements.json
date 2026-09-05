@@ -1,5 +1,6 @@
 {
   "Name": "FIFA 14",
+  "Description": "EA's football game, with licensed clubs, players and competitions.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "A Handful Of Goals",  "Name": "A Handful Of Goals",  "GamerScore": 15, "Description": "Score 5 goals in a match - with the same player." },

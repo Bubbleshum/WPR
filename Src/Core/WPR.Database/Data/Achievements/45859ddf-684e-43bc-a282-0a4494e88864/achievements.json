@@ -1,5 +1,6 @@
 {
   "Name": "Galactic Reign",
+  "Description": "Turn-based strategy of fleet building and territorial conquest, played asynchronously against other commanders.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Design a Ship",             "Name": "Design a Ship",             "GamerScore":  5, "Description": "Design a new ship." },

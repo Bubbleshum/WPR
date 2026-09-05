@@ -1,5 +1,6 @@
 {
   "Name": "N.O.V.A. 3",
+  "Description": "Gameloft's science-fiction shooter, the third Near Orbit Vanguard Alliance campaign, with vehicle sections and online deathmatch.",
   "Achievements": [
     { "Key": "Full Armory",          "Name": "Full Armory",          "GamerScore": 15, "Description": "Wield 7 weapons in a match." },
     { "Key": "Slick",                "Name": "Slick",                "GamerScore": 20, "Description": "Capture 3 flags without dying in a match." },

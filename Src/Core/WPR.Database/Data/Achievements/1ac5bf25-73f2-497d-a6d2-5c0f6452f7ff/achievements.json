@@ -1,5 +1,6 @@
 {
   "Name": "Burn the Rope",
+  "Description": "A puzzle game about burning a rope, where the flame only ever travels upward, so the phone has to be rotated to keep it alight.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Starting Sparks",    "Name": "Starting Sparks",    "GamerScore": 10, "Description": "Get a gold on all the Fire Pit levels." },

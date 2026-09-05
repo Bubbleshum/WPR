@@ -1,5 +1,6 @@
 {
   "Name": "Doodle Jump",
+  "Description": "An endless vertical jumper: tilt the phone to bounce the Doodler from platform to platform, ever higher.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "DOJ_SPRING_SHOES_JUMPER",    "Name": "Spring Shoes Jumper",    "GamerScore":  5, "Description": "Jumped with spring shoes without falling" },

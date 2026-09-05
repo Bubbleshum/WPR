@@ -1,5 +1,6 @@
 {
   "Name": "The Dark Knight Rises",
+  "Description": "Gameloft's open-world Batman game, following the film across a Gotham under siege.",
   "Achievements": [
     { "Key": "Dark Wings",              "Name": "Dark Wings",              "GamerScore": 10, "Description": "Glide 300 meters" },
     { "Key": "Going Up ",               "Name": "Going Up",                "GamerScore": 10, "Description": "Reach 90 meters in height" },

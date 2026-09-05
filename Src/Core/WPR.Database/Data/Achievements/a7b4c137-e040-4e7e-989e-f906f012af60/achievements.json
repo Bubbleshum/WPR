@@ -1,5 +1,6 @@
 {
   "Name": "Sally's Spa",
+  "Description": "A time-management game about running a spa, keeping several customers happy at once.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "STORY_COMPLETE_I",  "Name": "Story Complete I",     "GamerScore": 10, "Description": "Complete the story in Normal difficulty mode." },

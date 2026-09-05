@@ -1,5 +1,6 @@
 {
   "Name": "Cracking Sands",
+  "Description": "A kart racer with weapons, driven across desert tracks.",
   "Achievements": [
     { "Key": "avFirst",          "Name": "First!",                   "GamerScore":  5, "Description": "Finish first in any race." },
     { "Key": "avCharged",        "Name": "Charged",                  "GamerScore": 10, "Description": "Collect 10 super charge pickups." },

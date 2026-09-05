@@ -1,5 +1,6 @@
 {
   "Name": "Galaga Legions DX",
+  "Description": "Namco's re-imagining of Galaga, with swarms of enemies and satellite guns that fire wherever you point them.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "ACH_01", "Name": "Grand Champion",                  "GamerScore": 10, "Description": "Cleared Championship!" },

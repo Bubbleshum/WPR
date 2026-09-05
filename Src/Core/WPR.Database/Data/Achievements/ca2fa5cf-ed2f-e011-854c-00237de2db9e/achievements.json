@@ -1,5 +1,6 @@
 {
   "Name": "Zombie Attack 2",
+  "Description": "A survival shooter about holding off waves of zombies.",
   "Achievements": [
     { "Key": "Eagle Eye Engagement", "Name": "Eagle Eye Engagement", "Description": "Earn a grade of 'B' or higher on the 'Eagle Eye Engagement' Challenge.", "GamerScore": 10, "Icon": "Eagle_Eye_Engagement.png" },
     { "Key": "Aerial Assault", "Name": "Aerial Assault", "Description": "Earn a grade of 'A' or higher on the 'Aerial Assault' Challenge.", "GamerScore": 10, "Icon": "Aerial_Assault.png" },

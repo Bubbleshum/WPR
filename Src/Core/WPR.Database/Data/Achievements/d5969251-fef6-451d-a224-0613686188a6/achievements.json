@@ -1,5 +1,6 @@
 {
   "Name": "Jetpack Joyride",
+  "Description": "Halfbrick's one-button runner: steal a machine-gun jetpack and get as far through the lab as the lasers allow.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "A_MAN_A_SON",           "Name": "A man, my son",         "GamerScore": 15, "Description": "Finish all the missions, and start again." },

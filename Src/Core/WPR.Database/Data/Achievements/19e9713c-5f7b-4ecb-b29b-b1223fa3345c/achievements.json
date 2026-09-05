@@ -1,5 +1,6 @@
 {
   "Name": "Twins Minigame",
+  "Description": "An endless platformer about a pair of twins: spawn the second and switch between them in mid-air to keep going.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Conjoined",    "Name": "Conjoined",    "GamerScore": 35, "Description": "Get 800 points in Twins mode in one session" },

@@ -1,5 +1,6 @@
 {
   "Name": "Overkill 3",
+  "Description": "A cover shooter: duck behind cover, lean out and fire, and upgrade the weapon between missions.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Rank_5",                     "Name": "Rank 5",                        "GamerScore":  5, "Description": "Reach rank 5 to unlock this achievement." },

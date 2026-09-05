@@ -1,5 +1,6 @@
 {
   "Name": "Panzer Geekz",
+  "Description": "A tank combat game.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Driving straight ahead",           "Name": "Driving straight ahead...",   "GamerScore":  5, "Description": "Complete the first level" },

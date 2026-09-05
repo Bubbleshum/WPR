@@ -1,5 +1,6 @@
 {
   "Name": "Spider Jack",
+  "Description": "A puzzle game about a spider spinning webs to catch its dinner and avoid becoming someone else's.",
   "Achievements": [
     { "Key": "Collect 50 stars", "Name": "Good Spider", "Description": "Collect 50 stars.", "GamerScore": 5, "Icon": "Collect_50_stars.png" },
     { "Key": "Collect 150 stars", "Name": "Excellent Spider", "Description": "Collect 150 stars.", "GamerScore": 10, "Icon": "Collect_150_stars.png" },

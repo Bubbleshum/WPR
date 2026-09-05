@@ -1,5 +1,6 @@
 {
   "Name": "Wordament",
+  "Description": "A live word game: everyone plays the same letter grid at the same time and is ranked against everyone else.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "SWIPE_THOSE_TILES",   "Name": "Swipe those tiles",          "GamerScore": 10, "Description": "Complete 10 rounds" },

@@ -1,5 +1,6 @@
 {
   "Name": "Extraction - Project Outbreak",
+  "Description": "A shooter about containing an outbreak: hold the line, escort scientists and soldiers out, and keep the weapon installations working.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "EAGLE_EYES",      "Name": "Eagle Eyes",      "GamerScore": 10, "Description": "Kill 50 enemies with skill shots." },

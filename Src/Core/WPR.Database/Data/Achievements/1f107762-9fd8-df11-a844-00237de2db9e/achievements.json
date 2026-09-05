@@ -1,5 +1,6 @@
 {
   "Name": "Glow Artisan",
+  "Description": "A puzzle game of sliding and rotating coloured tiles until they complete a glowing pattern.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "TUTORIAL_COMPLETE",        "Name": "Color Theory 101",            "GamerScore": 10, "Description": "Complete the Tutorial." },

@@ -1,5 +1,6 @@
 {
   "Name": "Hungry Shark Evolution",
+  "Description": "Swim as a shark and eat whatever fits, growing into progressively larger species.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Reef Shark",        "Name": "Reef Shark",        "GamerScore": 20, "Description": "Complete Super Mission 1 using Reef shark." },

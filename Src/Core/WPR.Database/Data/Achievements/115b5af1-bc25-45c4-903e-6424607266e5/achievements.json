@@ -1,5 +1,6 @@
 {
   "Name": "Trivial Pursuit",
+  "Description": "The wedge-collecting trivia board game, played across its six question categories.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "FIRST_WEDGE",                    "Name": "First Wedge",                    "GamerScore":  5, "Description": "Win your first wedge (Classic)" },

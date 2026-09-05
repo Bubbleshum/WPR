@@ -1,5 +1,6 @@
 {
   "Name": "Lode Runner Classic",
+  "Description": "The original ladder-and-gold platformer: collect the gold, dig through the floor to trap guards, and climb out.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Up and Running",   "Name": "Up and Running",     "GamerScore":  5, "Description": "Complete all 3 tutorial levels" },

@@ -1,5 +1,6 @@
 {
   "Name": "Doodle God",
+  "Description": "A puzzle game about combining elements -- earth, air, fire and water -- until you have invented everything else.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "GOOD_START",              "Name": "Good Start",              "GamerScore":  5, "Description": "Create 6 elements" },

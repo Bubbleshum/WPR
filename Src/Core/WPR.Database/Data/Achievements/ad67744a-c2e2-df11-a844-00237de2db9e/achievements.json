@@ -1,5 +1,6 @@
 {
   "Name": "Fast and the Furious - Adrenaline",
+  "Description": "A street-racing game drawn from the films: race city, valley and harbour circuits, and spend the winnings filling the garage.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "The Rookie",         "GamerScore": 0 },

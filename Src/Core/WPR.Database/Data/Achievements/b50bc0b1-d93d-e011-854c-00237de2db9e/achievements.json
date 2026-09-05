@@ -1,5 +1,6 @@
 {
   "Name": "Game Room - Lunar Lander",
+  "Description": "The 1979 Atari original, brought to Game Room: land the module gently, on limited fuel, against the moon's gravity.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "VelocityGamer",          "Name": "Velocity Gamer",             "GamerScore": 20, "Description": "Travel at over 35 mph (55 km/h) while playing a game" },

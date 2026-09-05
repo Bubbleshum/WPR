@@ -1,5 +1,6 @@
 {
   "Name": "Hexic Rush",
+  "Description": "A timed take on Hexic: rotate clusters of three hexes to line up colours, against the clock.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Hexic Master",        "Name": "Hexic Master",             "GamerScore": 25, "Description": "Create a flower of Black Pearls while in Marathon mode." },

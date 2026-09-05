@@ -1,5 +1,6 @@
 {
   "Name": "Orbital",
+  "Description": "A puzzle shooter: fire orbs that grow where they land, and clear them before the growing wall reaches the bottom.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Bring it on",           "Name": "Bring it on",           "GamerScore":  5, "Description": "Destroy your first Orb" },

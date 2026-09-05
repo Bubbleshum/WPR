@@ -1,5 +1,6 @@
 {
   "Name": "UNO",
+  "Description": "The card game: match colour or number, and say it when you are down to one.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "The double UNO",        "Name": "The double UNO",        "GamerScore":  5, "Description": "When you called UNO twice for the first time" },

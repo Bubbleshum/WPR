@@ -1,5 +1,6 @@
 {
   "Name": "Fusion Sentient",
+  "Description": "NinjaBee's real-time strategy game: train at the Luna Academy, assemble a roster of sentient units and fight a campaign across the Order's worlds.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "SNATCHED_THE_PEBBLE",  "Name": "Snatched the Pebble",  "GamerScore": 10, "Description": "Finish training at the Luna Academy" },

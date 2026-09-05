@@ -1,5 +1,6 @@
 {
   "Name": "Tetris Blitz",
+  "Description": "A two-minute Tetris: score as much as possible before the clock runs out, with power-ups and auto-placement.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Step it Up",                "Name": "Step it Up",                "GamerScore":  5, "Description": "Score 100,000 or more points in a single game" },

@@ -1,5 +1,6 @@
 {
   "Name": "Fling",
+  "Description": "A puzzle game about flinging furballs off the board until exactly one is left.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Solved10Puzzles",  "GamerScore":  0 },

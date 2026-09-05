@@ -1,5 +1,6 @@
 {
   "Name": "Rayman Fiesta Run",
+  "Description": "The follow-up to Jungle Run, where Rayman runs by himself through a food-themed world and the player handles everything else.",
   "Achievements": [
     { "Key": "Entree",               "Name": "Starter",              "GamerScore":  5, "Description": "Collect 100 Lums" },
     { "Key": "Dessert",              "Name": "Dessert",              "GamerScore":  5, "Description": "Collect 1,000 Lums" },

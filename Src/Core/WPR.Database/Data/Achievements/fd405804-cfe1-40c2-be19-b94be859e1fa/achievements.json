@@ -1,5 +1,6 @@
 {
   "Name": "Vampire Rush",
+  "Description": "A tower-defence game about holding back the undead.",
   "Achievements": [
     { "Key": "Apperentice", "Name": "Apprentice", "Description": "Kill 100 monsters.", "GamerScore": 10, "Icon": "Apperentice.png" },
     { "Key": "Vampire Hunter", "Name": "Vampire Hunter", "Description": "Kill 1000 monsters.", "GamerScore": 10, "Icon": "Vampire_Hunter.png" },

@@ -1,5 +1,6 @@
 {
   "Name": "Modern Combat 4",
+  "Description": "Gameloft's first-person shooter, a globe-spanning campaign against a terrorist network, with online multiplayer.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "ATHLETIC_TRAINING", "Name": "Athletic Training", "GamerScore":  5, "Description": "Jump over 20 obstacles in the same game" },

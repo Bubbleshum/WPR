@@ -1,5 +1,6 @@
 {
   "Name": "Rabbids Big Bang",
+  "Description": "Ubisoft's physics game: fling Rabbids into orbit and slingshot them around planets to reach the goal.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "ACH_TIME_SHOP",      "Name": "Window-shopping",        "GamerScore":  3, "Description": "Stay 5 minutes in shop without buying anything" },

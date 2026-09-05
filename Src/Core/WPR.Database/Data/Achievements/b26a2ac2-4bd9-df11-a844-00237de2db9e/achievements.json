@@ -1,5 +1,6 @@
 {
   "Name": "Glyder - Adventure Worlds",
+  "Description": "A gliding game about riding air currents across open worlds, collecting what floats there.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "01_100Crystals",     "Name": "Barrelful",           "GamerScore":  5, "Description": "Collect 100 crystals." },

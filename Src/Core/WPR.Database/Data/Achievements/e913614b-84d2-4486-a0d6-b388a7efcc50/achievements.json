@@ -1,5 +1,6 @@
 {
   "Name": "Hamster Universe",
+  "Description": "A game about a hamster and the universe it manages to get itself into.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Reach 100 Billion Energy",         "Name": "Reach 100 Billion Energy",         "GamerScore":  5, "Description": "Reach energy level of 100B" },
@@ -20,7 +21,7 @@
     { "Key": "Mastery Devoted Servant",          "Name": "Mastery: Devoted Servant",         "GamerScore": 15, "Description": "Complete all achievements that require you to complete certain number of tasks" },
     { "Key": "Mastery Unyielding Clicker",       "Name": "Mastery: Unyielding Clicker",      "GamerScore": 15, "Description": "Complete all achievements that require you to click the hamster for certain number of times" },
     { "Key": "Mastery Inveterate Gambler",       "Name": "Mastery: Inveterate Gambler",      "GamerScore": 15, "Description": "Complete all achievements that require you to win certain number of lotteries" },
-    { "Key": "Mastery Energetic",                "Name": "Mastery: Energetic",               "GamerScore": 20, "Description": "Complete â€œMastery: Energy Hoarderâ€, â€œMastery: Energy Gathererâ€ and â€œMastery: Lazy Generatorâ€" },
+    { "Key": "Mastery Energetic",                "Name": "Mastery: Energetic",               "GamerScore": 20, "Description": "Complete Ã¢â‚¬Å“Mastery: Energy HoarderÃ¢â‚¬Â, Ã¢â‚¬Å“Mastery: Energy GathererÃ¢â‚¬Â and Ã¢â‚¬Å“Mastery: Lazy GeneratorÃ¢â‚¬Â" },
     { "Key": "Total Mastery",                    "Name": "Total Mastery",                    "GamerScore": 30, "Description": "Complete all achievements" }
   ]
 }

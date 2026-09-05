@@ -1,5 +1,6 @@
 {
   "Name": "Game Chest - Solitaire",
+  "Description": "A collection of solitaire card games in one package.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "ach01", "Name": "Walk the Line",                "GamerScore": 15, "Description": "Have only aces on all four home stacks at one time in Klondike." },

@@ -1,5 +1,6 @@
 {
   "Name": "Sudoku",
+  "Description": "The number-placement puzzle: fill the grid so every row, column and box holds one to nine exactly once.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "rank_ultimate",     "Name": "Ultimate",              "GamerScore": 10, "Description": "Reach the Ultimate rank." },

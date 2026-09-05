@@ -1,5 +1,6 @@
 {
   "Name": "Blobster",
+  "Description": "A platformer about a blob that stretches, sticks and squeezes through the level.",
   "Achievements": [
     { "Key": "SupremeVertigo",             "Name": "Supreme Vertigo",                "GamerScore":  5, "Description": "Jump 100 yards up in the air" },
     { "Key": "ObeseBlobster",              "Name": "Obese Blobster",                 "GamerScore":  5, "Description": "Eat blob food" },

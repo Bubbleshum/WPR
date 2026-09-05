@@ -1,5 +1,6 @@
 {
   "Name": "iBomber Defense",
+  "Description": "A tower-defence game set in the Second World War, placing gun emplacements along the enemy's route.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Campaign Allies",         "Name": "Campaign Allies",         "GamerScore": 10, "Description": "Complete the Allies campaign." },

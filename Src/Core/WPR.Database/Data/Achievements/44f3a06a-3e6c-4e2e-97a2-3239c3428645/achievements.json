@@ -1,5 +1,6 @@
 {
   "Name": "Doodle God Blitz",
+  "Description": "A timed take on Doodle God: combine elements against the clock and invent as much as the round allows.",
   "Achievements": [
     { "Key": "A_NAME_6_ELEMENTS_CREATED",                               "Name": "Good Start",              "GamerScore": 0, "Description": "6 elements created" },
     { "Key": "A_NAME_10_GROUPS_CREATED",                                "Name": "Creator of Diversity",    "GamerScore": 0, "Description": "10 groups created" },

@@ -1,12 +1,13 @@
 {
   "Name": "Microsoft Minesweeper",
+  "Description": "The classic minefield puzzle, clearing a grid by reading the numbers and never uncovering a mine.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Happens to Everybody",      "Name": "Happens to Everybody",      "GamerScore": 10, "Description": "Trigger your first mine on your phone." },
     { "Key": "Good Start",                "Name": "Good Start",                "GamerScore": 10, "Description": "Complete a minefield for the first time on your phone." },
     { "Key": "Savior of the World",       "Name": "Savior of the World",       "GamerScore": 10, "Description": "Win a game on each board on your phone." },
     { "Key": "Good Memory",               "Name": "Good Memory",               "GamerScore": 10, "Description": "Complete a minefield on your phone without using any flags." },
-    { "Key": "Serious Business",          "Name": "Serious Business",          "GamerScore": 10, "Description": "Uncover a square touching 6 or more mines. No â€œplay same boardâ€ or custom board allowed." },
+    { "Key": "Serious Business",          "Name": "Serious Business",          "GamerScore": 10, "Description": "Uncover a square touching 6 or more mines. No Ã¢â‚¬Å“play same boardÃ¢â‚¬Â or custom board allowed." },
     { "Key": "Flag Happy",                "Name": "Flag Happy",                "GamerScore": 10, "Description": "Place a flag on every single tile of a board in classic mode." },
     { "Key": "1 2 1",                     "Name": "1 2 1",                     "GamerScore": 10, "Description": "Complete 1-2-1 pattern within 3 seconds and without chording 20 times." },
     { "Key": "1 2 2 1",                   "Name": "1 2 2 1",                   "GamerScore": 10, "Description": "Complete 1-2-2-1 pattern within 3 seconds and without chording 20 times." },

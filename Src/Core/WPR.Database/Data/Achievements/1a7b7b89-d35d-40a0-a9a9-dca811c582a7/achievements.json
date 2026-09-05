@@ -1,5 +1,6 @@
 {
   "Name": "MiniSquadron",
+  "Description": "A side-scrolling dogfighter with a large roster of unlockable aircraft, each handling differently.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Bang",           "Name": "Bang",           "GamerScore":  5, "Description": "Shoot down your first enemy plane." },

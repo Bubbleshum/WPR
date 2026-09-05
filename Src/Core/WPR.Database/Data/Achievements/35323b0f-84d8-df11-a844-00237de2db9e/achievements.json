@@ -1,5 +1,6 @@
 {
   "Name": "The Harvest",
+  "Description": "A third-person action game in which a hardsuit pilot fights an alien harvest across an occupied world.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Survivor",         "Name": "Survivor",          "GamerScore":  5, "Description": "Escape the crash site" },

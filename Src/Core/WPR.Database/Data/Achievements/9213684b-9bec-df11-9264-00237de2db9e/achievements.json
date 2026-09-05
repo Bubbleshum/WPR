@@ -1,5 +1,6 @@
 {
   "Name": "Star Wars Cantina",
+  "Description": "A time-management game behind the bar of a Star Wars cantina, serving Jawas, stormtroopers, smugglers and bounty hunters before their patience runs out.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "ACHIEVEMENT_X_HAPPY_CUSTOMERS_SERVED",         "Name": "Best Cantina on the Outer Rim",  "GamerScore": 20, "Description": "Serve 1000 customers and make them happy." },

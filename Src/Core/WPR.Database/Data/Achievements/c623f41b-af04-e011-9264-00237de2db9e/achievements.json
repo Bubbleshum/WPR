@@ -1,5 +1,6 @@
 {
   "Name": "Rise of Glory",
+  "Description": "A First World War dogfighting game, flying biplanes across campaign missions.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Rookie",         "Name": "Rookie",         "GamerScore": 10, "Description": "Kill 3 enemies without getting killed" },

@@ -1,5 +1,6 @@
 {
   "Name": "Microsoft Bingo",
+  "Description": "Bingo, played over several cards at once against the clock.",
   "Achievements": [
     { "Key": "COMPLETE_25_MATCHES",              "Name": "Wanderlust",          "GamerScore": 15, "Description": "Complete 25 bingo matches." },
     { "Key": "COMPLETE_100_MATCHES",             "Name": "Sight Seeker",        "GamerScore": 10, "Description": "Complete 100 Bingo matches." },

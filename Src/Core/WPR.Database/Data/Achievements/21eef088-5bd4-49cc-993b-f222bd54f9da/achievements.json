@@ -1,5 +1,6 @@
 {
   "Name": "Monster Burner",
+  "Description": "An arcade puzzle game about burning monsters as they climb the screen toward you.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Snooker Ace",       "Name": "Snooker Ace",       "GamerScore": 10, "Description": "Scored a *25 combo" },

@@ -1,5 +1,6 @@
 {
   "Name": "Minesweeper",
+  "Description": "The classic minefield puzzle, clearing a grid by reading the numbers and never uncovering a mine.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "rank_ultimate",             "Name": "Ultimate",                     "GamerScore":  5, "Description": "Reach the Ultimate rank." },

@@ -1,5 +1,6 @@
 {
   "Name": "ExZeus 2",
+  "Description": "A rail shooter with mechs: fly forward on a fixed path and clear everything that comes at you.",
   "Achievements": [
     { "Key": "Megalopolis Completed Hard", "Name": "Megalopolis Completed Hard",  "GamerScore":  5, "Description": "Completed the Megalopolis level on Hard difficulty" },
     { "Key": "Frozenland Completed Hard",  "Name": "Frozenland Completed Hard",   "GamerScore":  5, "Description": "Completed the Frozenland level on Hard difficulty" },

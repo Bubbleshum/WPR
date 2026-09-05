@@ -1,5 +1,6 @@
 {
   "Name": "Pac-Man Kart Rally",
+  "Description": "A kart racer set in the Pac-Man world, with power pellets to collect and ghosts loose on the track.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "One Step Ahead",       "Name": "One Step Ahead",       "GamerScore": 20, "Description": "Finish 3 races 1 lap before at least 1 opponent." },

@@ -1,5 +1,6 @@
 {
   "Name": "Lara Croft Relic Run",
+  "Description": "An endless runner set in the Tomb Raider world: sprint, vault and wall-run through ruins, with vehicle and boss sections.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "athleticism",      "Name": "Athleticism",      "GamerScore": 10, "Description": "Execute 20 parkour moves in one run." },

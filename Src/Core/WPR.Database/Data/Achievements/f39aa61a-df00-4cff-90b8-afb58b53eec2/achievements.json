@@ -1,5 +1,6 @@
 {
   "Name": "Gerbil Physics",
+  "Description": "A physics demolition game: blow up stacks of gerbils and bring the structure down.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "OneHitWonderExploder",      "Name": "One Hit Wonder Exploder",          "GamerScore":  5, "Description": "Complete the site 25. Spooky using only one Exploder." },

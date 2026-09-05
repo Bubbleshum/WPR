@@ -1,5 +1,6 @@
 {
   "Name": "iO The Game",
+  "Description": "A physics game about growing and shrinking a ball to roll it through obstacle courses that only fit one size.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Freeloader",           "Name": "Freeloader",           "GamerScore":  5, "Description": "Complete trial pack" },

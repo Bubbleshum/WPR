@@ -1,5 +1,6 @@
 {
   "Name": "Game Room - Pitfall!",
+  "Description": "The 1982 Activision original, brought to Game Room: guide Pitfall Harry through the jungle after treasure, over pits and crocodiles.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "VelocityGamer",          "Name": "Velocity Gamer",             "GamerScore": 20, "Description": "Travel at over 35 mph (55 km/h) while playing a game" },

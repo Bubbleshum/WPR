@@ -1,5 +1,6 @@
 {
   "Name": "Contre Jour",
+  "Description": "A silhouetted physics puzzle: reshape the ground itself and use ropes and vines to guide Petit toward the light.",
   "Achievements": [
     { "Key": "speedy",           "Name": "Speedy Racer",               "GamerScore": 10, "Description": "Reach speed 500 pixels per second on the ground" },
     { "Key": "mighty_bird",      "Name": "The Mighty Bird",            "GamerScore": 10, "Description": "Reach speed 1000 pixels per second in the air" },

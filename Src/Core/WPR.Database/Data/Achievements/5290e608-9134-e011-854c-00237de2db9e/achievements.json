@@ -1,5 +1,6 @@
 {
   "Name": "Deer Hunter 3D",
+  "Description": "Glu's hunting game: track and shoot game across a series of environments and seasons.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Headshot",         "Name": "Headshot!",         "GamerScore":  5, "Description": "The first Headshot!" },

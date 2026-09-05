@@ -1,5 +1,6 @@
 {
   "Name": "Throne Together",
+  "Description": "A physics building puzzle: stack blocks to a blueprint and keep the castle standing, earning stars for how well it holds.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Budding Builder",        "Name": "Budding Builder",        "GamerScore": 10, "Description": "Get 10 Stars across all levels" },

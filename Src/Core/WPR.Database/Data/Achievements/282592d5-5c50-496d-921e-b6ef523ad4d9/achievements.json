@@ -1,5 +1,6 @@
 {
   "Name": "Microsoft Solitaire Collection",
+  "Description": "Five solitaire card games in one: Klondike, Spider, FreeCell, Pyramid and TriPeaks.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Lucky 13",           "Name": "Lucky 13",           "GamerScore": 10, "Description": "Get 10,000 points in Pyramid." },

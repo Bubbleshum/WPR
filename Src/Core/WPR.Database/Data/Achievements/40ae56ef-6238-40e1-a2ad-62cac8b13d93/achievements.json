@@ -1,5 +1,6 @@
 {
   "Name": "Assassin's Creed Pirates",
+  "Description": "Ubisoft's naval combat game: command a pirate ship through the Caribbean in ship-to-ship battles.",
   "Achievements": [
     { "Key": "On my way",             "Name": "On my way",             "GamerScore": 10, "Description": "Complete A Legend is Born" },
     { "Key": "Sea Rover",             "Name": "On my way",             "GamerScore": 10, "Description": "Complete 10 secondary missions" },
@@ -17,8 +18,8 @@
     { "Key": "Buccaneer",             "Name": "Buccaneer",             "GamerScore": 10, "Description": "Reach Level 10" },
     { "Key": "Brother of the Coast",  "Name": "Brother of the Coast",  "GamerScore": 10, "Description": "Reach Level 20" },
     { "Key": "The Navigator",         "Name": "The Navigator",         "GamerScore": 10, "Description": "Reach 100% sync on Scorpion Reef" },
-    { "Key": "The Explorer",          "Name": "The Explorer",          "GamerScore": 10, "Description": "Reach 100% sync on BahÃ­a de Guadiana" },
-    { "Key": "The Adventurer",        "Name": "The Adventurer",        "GamerScore": 10, "Description": "Reach 100% sync on Los MÃ¡rtires" },
+    { "Key": "The Explorer",          "Name": "The Explorer",          "GamerScore": 10, "Description": "Reach 100% sync on BahÃƒÂ­a de Guadiana" },
+    { "Key": "The Adventurer",        "Name": "The Adventurer",        "GamerScore": 10, "Description": "Reach 100% sync on Los MÃƒÂ¡rtires" },
     { "Key": "The Discoverer",        "Name": "The Discoverer",        "GamerScore": 10, "Description": "Reach 100% sync on La Habana" },
     { "Key": "The Seeker",            "Name": "The Seeker",            "GamerScore": 10, "Description": "Reach 100% sync on Grand Bahama" }
   ]

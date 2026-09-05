@@ -1,5 +1,6 @@
 {
   "Name": "Ice Age Village",
+  "Description": "Build a village for the Ice Age herd, collecting acorns and settling more animals into it.",
   "Achievements": [
     { "Key": "FOR_BEGINNER_ONLY",       "Name": "For Beginners Only",       "GamerScore": 10, "Description": "For Beginners Only" },
     { "Key": "OM_NOM_NOM",              "Name": "Om Nom Nom!",              "GamerScore": 10, "Description": "Om Nom Nom!" },

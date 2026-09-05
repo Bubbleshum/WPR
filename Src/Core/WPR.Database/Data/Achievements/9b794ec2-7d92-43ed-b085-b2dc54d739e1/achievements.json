@@ -1,5 +1,6 @@
 {
   "Name": "Real Soccer 2013",
+  "Description": "Gameloft's football game, with club competitions and online matches.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "NATURAL_BORN_WINNER",           "Name": "Natural-Born Winner",           "GamerScore":  1, "Description": "Win your first match" },

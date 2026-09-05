@@ -1,5 +1,6 @@
 {
   "Name": "IonBallEX",
+  "Description": "A brick-breaking game with power-ups, boss fights and a science-fiction setting.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "iamspartacus",    "Name": "I Am Spartacus",   "GamerScore":  5, "Description": "Defeat the Centurion" },

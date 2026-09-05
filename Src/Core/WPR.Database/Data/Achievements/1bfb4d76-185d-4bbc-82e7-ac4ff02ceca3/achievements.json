@@ -1,5 +1,6 @@
 {
   "Name": "Shoot 1UP",
+  "Description": "A shoot-'em-up whose power-ups add more ships to your formation instead of upgrading the one you have.",
   "Achievements": [
     { "Key": "Max Multiplier",      "Name": "Max Multiplier",      "GamerScore":  5, "Description": "Kill the boss with the best ship spread" },
     { "Key": "Precious Ships",      "Name": "Precious Ships",      "GamerScore": 10, "Description": "Beat a non-Tilt level without losing a ship" },

@@ -1,5 +1,6 @@
 {
   "Name": "Roll in the Hole",
+  "Description": "A puzzle game about rolling a ball into the hole, collecting lollipops on the way through a series of worlds.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "15 lollipops",  "Name": "15 lollipops",  "GamerScore": 10, "Description": "Find and collect 15 lollipops." },

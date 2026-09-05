@@ -1,5 +1,6 @@
 {
   "Name": "Six-Guns",
+  "Description": "Gameloft's open-world Western: ride across Arizona and Oregon taking on outlaws and, before long, the undead.",
   "Achievements": [
     { "Key": "Western 101",            "Name": "Western 101",            "GamerScore": 10, "Description": "Complete the tutorial mission." },
     { "Key": "Straight to Hell",       "Name": "Straight to Hell",       "GamerScore": 10, "Description": "Kill one demon of each type." },

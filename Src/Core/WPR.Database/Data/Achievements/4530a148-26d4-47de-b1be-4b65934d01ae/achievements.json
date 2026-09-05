@@ -1,5 +1,6 @@
 {
   "Name": "Make It Rain - The Love of Money",
+  "Description": "A tapping game about accumulating an absurd fortune, and then finding somewhere to put it.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "BUSINESS_BILL_2",     "Name": "Self made",           "GamerScore":  5, "Description": "Buy a Paper route" },

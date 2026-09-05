@@ -1,5 +1,6 @@
 {
   "Name": "Jet Car Stunts",
+  "Description": "A driving game about precision rather than speed: rocket-powered cars on narrow ramps suspended over nothing.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Platforming_Easy_Bronze",        "Name": "Platforming : Bronze",   "GamerScore":  5, "Description": "Complete all the levels in \"Original - Platforming - Easy\" with at least a bronze medal." },

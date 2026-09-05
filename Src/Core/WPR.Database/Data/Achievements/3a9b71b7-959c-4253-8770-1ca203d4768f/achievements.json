@@ -1,5 +1,6 @@
 {
   "Name": "Contract Killer",
+  "Description": "Glu's sniper game: take contracts and eliminate targets from a distance.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "BOUNTY_ACHIEVE_KILL_100_BOSSES",         "Name": "Professional",         "GamerScore": 10, "Description": "Kill 100 Bosses" },

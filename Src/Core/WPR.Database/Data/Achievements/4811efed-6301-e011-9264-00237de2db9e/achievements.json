@@ -1,5 +1,6 @@
 {
   "Name": "Crackdown 2 Project Sunburst",
+  "Description": "A top-down shooter set in the Crackdown universe, defending Pacific City from the Freaks.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "FIRST_TIME_BUYER",                "Name": "First Time Buyer.",               "GamerScore": 10, "Description": "Use the map to choose a location for your first base." },

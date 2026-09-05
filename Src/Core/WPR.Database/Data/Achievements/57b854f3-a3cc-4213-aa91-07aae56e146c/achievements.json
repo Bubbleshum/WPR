@@ -1,5 +1,6 @@
 {
   "Name": "Fight Game Rivals",
+  "Description": "A street-fighting game about building a crew and taking on rival fighters.",
   "Achievements": [
     { "Key": "ACH_FGRIVALS_01", "Name": "Know The Feeling",     "GamerScore":  5, "Description": "Won your first fight" },
     { "Key": "ACH_FGRIVALS_02", "Name": "Faster",               "GamerScore":  5, "Description": "Unlocked and bought your first Dexterity skill" },
@@ -10,7 +11,7 @@
     { "Key": "ACH_FGRIVALS_07", "Name": "Fighter Fashion",      "GamerScore":  5, "Description": "Unlocked first new fighter variation" },
     { "Key": "ACH_FGRIVALS_08", "Name": "On Your Way To Glory", "GamerScore": 10, "Description": "Won your first tournament" },
     { "Key": "ACH_FGRIVALS_09", "Name": "Legendary",            "GamerScore": 25, "Description": "Won all tournaments with all fighters" },
-    { "Key": "ACH_FGRIVALS_10", "Name": "DÃ©jÃ  Vu",              "GamerScore": 10, "Description": "Logged in for 10 consecutive days" },
+    { "Key": "ACH_FGRIVALS_10", "Name": "DÃƒÂ©jÃƒÂ  Vu",              "GamerScore": 10, "Description": "Logged in for 10 consecutive days" },
     { "Key": "ACH_FGRIVALS_11", "Name": "Hammerfall",           "GamerScore": 15, "Description": "Won a fight against Alistair Overeem" },
     { "Key": "ACH_FGRIVALS_12", "Name": "Powerhouse",           "GamerScore":  5, "Description": "Defeated an opponent in the tournament in 5 rounds or less" },
     { "Key": "ACH_FGRIVALS_13", "Name": "Dedicated Fighter",    "GamerScore": 10, "Description": "Finished a tournament from start to finish in a single session" },

@@ -1,5 +1,6 @@
 {
   "Name": "FIFA 15 Ultimate Team",
+  "Description": "EA's card-collecting football mode: build a squad from player cards and take it online.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Corner Maestro",             "Name": "Corner Maestro",             "GamerScore": 15, "Description": "Score off the post or cross bar in a match." },

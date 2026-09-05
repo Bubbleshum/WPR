@@ -1,5 +1,6 @@
 {
   "Name": "Turn N Run",
+  "Description": "A running puzzle played on a block world you can rotate: swipe to turn, jump the gaps and drop through portals, in either the flat or the three-dimensional view.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "viewer_3D",                 "Name": "3D viewer",                 "GamerScore":  5, "Description": "Tap 3D view button" },

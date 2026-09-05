@@ -1,5 +1,6 @@
 {
   "Name": "Who Wants to Be a Millionaire (EN)",
+  "Description": "The television quiz show, played through fifteen questions with three lifelines. English edition.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "ACHIEVEMENT_01", "Name": "Beginner",                         "GamerScore":  5, "Description": "Play a complete game of \"Who Wants To Be A Millionaire?\"." },

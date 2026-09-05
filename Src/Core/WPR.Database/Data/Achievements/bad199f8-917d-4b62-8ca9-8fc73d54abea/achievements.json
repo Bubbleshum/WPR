@@ -1,5 +1,6 @@
 {
   "Name": "Fusion Dots",
+  "Description": "A puzzle game about merging coloured dots into larger ones.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Adventurer",         "Name": "Adventurer",         "GamerScore": 25, "Description": "Unlock first 20 stages" },

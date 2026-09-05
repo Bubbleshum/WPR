@@ -1,5 +1,6 @@
 {
   "Name": "Yahtzee",
+  "Description": "The dice game: five dice, three rolls a turn, and thirteen categories to fill.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Apprentice",       "Name": "Apprentice",       "GamerScore":  5, "Description": "Finish chapter Intro" },

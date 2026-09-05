@@ -1,5 +1,6 @@
 {
   "Name": "Let's Golf 2",
+  "Description": "Gameloft's cartoon golf game, played across themed courses with a three-tap swing.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "New Trainer",       "Name": "New Trainer",       "GamerScore":  5, "Description": "New Trainer" },

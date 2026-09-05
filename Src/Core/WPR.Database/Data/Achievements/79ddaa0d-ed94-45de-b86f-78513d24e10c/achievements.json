@@ -1,5 +1,6 @@
 {
   "Name": "Real Soccer",
+  "Description": "Gameloft's football game, with league and cup competitions.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "First Goal",           "Name": "First goal",           "GamerScore":  5, "Description": "Score your first goal and reach the end of the period" },

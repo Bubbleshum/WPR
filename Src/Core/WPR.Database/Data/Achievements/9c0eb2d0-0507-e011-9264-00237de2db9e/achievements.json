@@ -1,5 +1,6 @@
 {
   "Name": "Game Chest - Logic Games",
+  "Description": "A collection of pen-and-paper logic puzzles in one package.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "ach01", "Name": "Not Like This",                 "GamerScore": 10, "Description": "Blow up in your first two moves, twice in a row, in Minesweeper." },

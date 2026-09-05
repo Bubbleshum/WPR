@@ -1,5 +1,6 @@
 {
   "Name": "NBA JAM",
+  "Description": "EA's exaggerated two-on-two arcade basketball, with real NBA rosters and players who catch fire after three baskets.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "New",    "Name": "Atlantic Division represent",   "GamerScore": 10, "Description": "Beat the Atlantic Division Legend Team in Classic Campaign." },

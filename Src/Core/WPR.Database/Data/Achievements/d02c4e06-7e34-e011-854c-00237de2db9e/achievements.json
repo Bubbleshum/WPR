@@ -1,5 +1,6 @@
 {
   "Name": "Burn It All!",
+  "Description": "A puzzle game about setting a chain alight and making sure the fire reaches everything.",
   "Achievements": [
     { "Key": "Scholar", "Name": "Scholar", "Description": "Entirely read the \"How To Play\" pages.", "GamerScore": 5, "Icon": "Scholar.png" },
     { "Key": "Stubborn", "Name": "Stubborn", "Description": "Retry the same level four times in a row.", "GamerScore": 5, "Icon": "Stubborn.png" },

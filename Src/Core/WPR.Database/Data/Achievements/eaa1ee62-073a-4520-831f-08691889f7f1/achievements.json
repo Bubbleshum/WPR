@@ -1,5 +1,6 @@
 {
   "Name": "Gravity Guy 2",
+  "Description": "The sequel to Gravity Guy, still one button, still flipping gravity to stay ahead of the chase.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "travel_total_02",     "Name": "Run Guy, run!",           "GamerScore": 10, "Description": "Travel a total of 100,000m" },

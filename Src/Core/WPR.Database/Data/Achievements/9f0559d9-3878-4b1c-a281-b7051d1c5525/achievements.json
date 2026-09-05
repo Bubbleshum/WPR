@@ -1,5 +1,6 @@
 {
   "Name": "Secrets and Treasures - The Lost Cities",
+  "Description": "A hidden-object game set among lost cities, finding what the scene has buried in it.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "achieve_000", "Name": "'X' Marks the Spot!",             "GamerScore":  5, "Description": "Discover your 1st Map Piece." },

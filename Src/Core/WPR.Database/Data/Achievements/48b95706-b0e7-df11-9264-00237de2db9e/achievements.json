@@ -1,5 +1,6 @@
 {
   "Name": "Butterfly",
+  "Description": "Fly a butterfly through flower-filled stages, dodging the carnivorous plants, frogs and carp that would rather it did not pass.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Chrysalis",     "Name": "Chrysalis",         "GamerScore":  5, "Description": "Clear the tutorial stage." },

@@ -1,22 +1,23 @@
 {
   "Name": "Who Wants to Be a Millionaire (FR)",
+  "Description": "The television quiz show, played through fifteen questions with three lifelines. French edition.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "ACHIEVEMENT_01", "Name": "DÃ©butant",                     "GamerScore":  5, "Description": "Jouez une partie complÃ¨te de \"Qui Veut Gagner Des Millions ?\"." },
-    { "Key": "ACHIEVEMENT_02", "Name": "Les plus rapides",              "GamerScore":  5, "Description": "Devinez le bon ordre des 4 rÃ©ponses dans un round de PrioritÃ© aux plus rapides." },
+    { "Key": "ACHIEVEMENT_01", "Name": "DÃƒÂ©butant",                     "GamerScore":  5, "Description": "Jouez une partie complÃƒÂ¨te de \"Qui Veut Gagner Des Millions ?\"." },
+    { "Key": "ACHIEVEMENT_02", "Name": "Les plus rapides",              "GamerScore":  5, "Description": "Devinez le bon ordre des 4 rÃƒÂ©ponses dans un round de PrioritÃƒÂ© aux plus rapides." },
     { "Key": "ACHIEVEMENT_03", "Name": "Pas de mains vides",            "GamerScore":  5, "Description": "Atteignez le premier palier." },
-    { "Key": "ACHIEVEMENT_04", "Name": "Je me sens plus en sÃ©curitÃ©", "GamerScore":  5, "Description": "Atteignez le deuxiÃ¨me palier." },
-    { "Key": "ACHIEVEMENT_05", "Name": "Je-sais-tout",                  "GamerScore":  5, "Description": "RÃ©pondez aux questions 1 Ã 7 correctement sans utiliser de Jokers." },
-    { "Key": "ACHIEVEMENT_06", "Name": "Etape finale",                  "GamerScore": 10, "Description": "RÃ©pondez aux questions 8 Ã 12 correctement sans utiliser de Jokers." },
-    { "Key": "ACHIEVEMENT_07", "Name": "Petit futÃ©",                   "GamerScore":  5, "Description": "RÃ©pondez aux questions 1 Ã 2 correctement sans utiliser de Jokers." },
-    { "Key": "ACHIEVEMENT_08", "Name": "Brillant",                      "GamerScore":  5, "Description": "RÃ©pondez aux questions 3 Ã 7 correctement sans utiliser de Jokers." },
-    { "Key": "ACHIEVEMENT_09", "Name": "Dans le mille",                 "GamerScore": 10, "Description": "RÃ©pondez correctement Ã une question entre 3 et 7 en moins de 2 secondes." },
-    { "Key": "ACHIEVEMENT_10", "Name": "MÃ©moire instantanÃ©e",         "GamerScore": 10, "Description": "RÃ©pondez correctement Ã une question entre 8 et 12 en moins de 4 secondes." },
-    { "Key": "ACHIEVEMENT_11", "Name": "Millionnaire!",                 "GamerScore": 10, "Description": "RÃ©pondez correctement Ã la derniÃ¨re question." },
-    { "Key": "ACHIEVEMENT_12", "Name": "Je n'en ai pas besoin de tant", "GamerScore": 15, "Description": "RÃ©pondez correctement Ã la derniÃ¨re question en gardant un Joker non utilisÃ©." },
-    { "Key": "ACHIEVEMENT_13", "Name": "ExpÃ©rimentÃ©",                 "GamerScore": 25, "Description": "Vous avez rÃ©pondu correctement Ã la derniÃ¨re question et il vous reste deux Jokers non utilisÃ©." },
-    { "Key": "ACHIEVEMENT_14", "Name": "MaÃ®trise",                     "GamerScore": 35, "Description": "RÃ©pondez correctement Ã la derniÃ¨re question sans avoir utilisÃ© de Joker." },
-    { "Key": "ACHIEVEMENT_15", "Name": "Millionnaire pressÃ©",          "GamerScore": 20, "Description": "RÃ©pondez correctement aux 15 questions en moins de 90 secondes." },
-    { "Key": "ACHIEVEMENT_16", "Name": "Millionnaire fulgurant",        "GamerScore": 30, "Description": "RÃ©pondez correctement aux 15 questions en moins de 60 secondes." }
+    { "Key": "ACHIEVEMENT_04", "Name": "Je me sens plus en sÃƒÂ©curitÃƒÂ©", "GamerScore":  5, "Description": "Atteignez le deuxiÃƒÂ¨me palier." },
+    { "Key": "ACHIEVEMENT_05", "Name": "Je-sais-tout",                  "GamerScore":  5, "Description": "RÃƒÂ©pondez aux questions 1 Ãƒ 7 correctement sans utiliser de Jokers." },
+    { "Key": "ACHIEVEMENT_06", "Name": "Etape finale",                  "GamerScore": 10, "Description": "RÃƒÂ©pondez aux questions 8 Ãƒ 12 correctement sans utiliser de Jokers." },
+    { "Key": "ACHIEVEMENT_07", "Name": "Petit futÃƒÂ©",                   "GamerScore":  5, "Description": "RÃƒÂ©pondez aux questions 1 Ãƒ 2 correctement sans utiliser de Jokers." },
+    { "Key": "ACHIEVEMENT_08", "Name": "Brillant",                      "GamerScore":  5, "Description": "RÃƒÂ©pondez aux questions 3 Ãƒ 7 correctement sans utiliser de Jokers." },
+    { "Key": "ACHIEVEMENT_09", "Name": "Dans le mille",                 "GamerScore": 10, "Description": "RÃƒÂ©pondez correctement Ãƒ une question entre 3 et 7 en moins de 2 secondes." },
+    { "Key": "ACHIEVEMENT_10", "Name": "MÃƒÂ©moire instantanÃƒÂ©e",         "GamerScore": 10, "Description": "RÃƒÂ©pondez correctement Ãƒ une question entre 8 et 12 en moins de 4 secondes." },
+    { "Key": "ACHIEVEMENT_11", "Name": "Millionnaire!",                 "GamerScore": 10, "Description": "RÃƒÂ©pondez correctement Ãƒ la derniÃƒÂ¨re question." },
+    { "Key": "ACHIEVEMENT_12", "Name": "Je n'en ai pas besoin de tant", "GamerScore": 15, "Description": "RÃƒÂ©pondez correctement Ãƒ la derniÃƒÂ¨re question en gardant un Joker non utilisÃƒÂ©." },
+    { "Key": "ACHIEVEMENT_13", "Name": "ExpÃƒÂ©rimentÃƒÂ©",                 "GamerScore": 25, "Description": "Vous avez rÃƒÂ©pondu correctement Ãƒ la derniÃƒÂ¨re question et il vous reste deux Jokers non utilisÃƒÂ©." },
+    { "Key": "ACHIEVEMENT_14", "Name": "MaÃƒÂ®trise",                     "GamerScore": 35, "Description": "RÃƒÂ©pondez correctement Ãƒ la derniÃƒÂ¨re question sans avoir utilisÃƒÂ© de Joker." },
+    { "Key": "ACHIEVEMENT_15", "Name": "Millionnaire pressÃƒÂ©",          "GamerScore": 20, "Description": "RÃƒÂ©pondez correctement aux 15 questions en moins de 90 secondes." },
+    { "Key": "ACHIEVEMENT_16", "Name": "Millionnaire fulgurant",        "GamerScore": 30, "Description": "RÃƒÂ©pondez correctement aux 15 questions en moins de 60 secondes." }
   ]
 }

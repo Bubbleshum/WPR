@@ -1,5 +1,6 @@
 {
   "Name": "Kinectimals Unleashed",
+  "Description": "A pet game about raising and playing with a wild cub, teaching it tricks and taking it exploring.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Achievement_02_LotsOfPets",          "Name": "Lots of Pets",           "GamerScore": 20, "Description": "Collect 50% of pets" },

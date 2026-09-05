@@ -1,5 +1,6 @@
 {
   "Name": "Parachute Panic",
+  "Description": "An arcade game about guiding parachutists safely down to a waiting boat, past everything that would rather they did not arrive.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Lifesaver",         "Name": "Life Jacket",       "GamerScore": 25, "Description": "Unlock all extra lives." },

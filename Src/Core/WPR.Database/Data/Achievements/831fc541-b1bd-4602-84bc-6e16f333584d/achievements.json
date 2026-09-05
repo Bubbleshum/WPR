@@ -1,5 +1,6 @@
 {
   "Name": "Monster Island",
+  "Description": "A tower-defence game defending an island from waves of monsters.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "first3Stars",    "Name": "Like a boss",               "GamerScore": 10, "Description": "Complete a level with 3 stars" },

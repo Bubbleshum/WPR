@@ -1,5 +1,6 @@
 {
   "Name": "Parking Mania",
+  "Description": "A driving puzzle about parking: reach the marked bay without touching anything on the way in.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Licensed",        "Name": "Licensed",        "GamerScore": 10, "Description": "Complete 10 levels." },

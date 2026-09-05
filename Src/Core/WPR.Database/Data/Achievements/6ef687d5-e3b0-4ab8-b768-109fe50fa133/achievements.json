@@ -1,5 +1,6 @@
 {
   "Name": "Sid Meier's Pirates!",
+  "Description": "Sail the Caribbean as a privateer: raid ports, duel captains, hunt treasure and shift allegiance between four empires.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Freshman",       "Name": "Freshman",       "GamerScore":  5, "Description": "Capture the First Ship" },

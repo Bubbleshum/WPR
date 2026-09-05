@@ -1,5 +1,6 @@
 {
   "Name": "Super Monkey Ball",
+  "Description": "Tilt the world, not the monkey: roll a monkey in a ball to the goal without falling off the edge.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Monkey Island",    "Name": "Conquer Monkey Island World",   "GamerScore": 25, "Description": "Complete all of the stages of the Monkey Island World" },

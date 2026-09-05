@@ -1,5 +1,6 @@
 {
   "Name": "geoDefense Swarm",
+  "Description": "A tower-defence sequel played on open fields rather than fixed mazes, so the path is yours to shape.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "E1", "Name": "Easy Start",    "GamerScore":  1, "Description": "Beat any Easy Level" },

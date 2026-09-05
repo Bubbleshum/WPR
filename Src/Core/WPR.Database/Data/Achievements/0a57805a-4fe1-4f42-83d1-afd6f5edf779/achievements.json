@@ -1,5 +1,6 @@
 {
   "Name": "What in the World?",
+  "Description": "A picture quiz from Game Troopers: identify a place, person or object from a photograph before the timer runs out.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Is it on",             "Name": "Is it on?",            "GamerScore": 10, "Description": "Solve a level using the microphone" },

@@ -1,5 +1,6 @@
 {
   "Name": "Chaos Rings",
+  "Description": "Square Enix's role-playing game: paired combatants fight through an arena tournament with no way out but forward.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "ACH_01", "Name": "Clear the Escher scenario.", "GamerScore": 10, "Description": "Clear the Escher scenario." },

@@ -1,5 +1,6 @@
 {
   "Name": "Splinter Cell Conviction",
+  "Description": "Gameloft's stealth-action game following Sam Fisher, built around light, shadow and taking guards quietly.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "First Blood",    "Name": "First Blood",     "GamerScore":  5, "Description": "Kill 1 enemy." },

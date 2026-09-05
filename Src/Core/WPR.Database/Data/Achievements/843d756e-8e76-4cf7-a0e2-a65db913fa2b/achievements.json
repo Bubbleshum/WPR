@@ -1,5 +1,6 @@
 {
   "Name": "iStunt 2",
+  "Description": "A snowboarding game of flips, grinds and gravity switches down a course built out of physics puzzles.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "01GRAD",     "Name": "Graduation",                "GamerScore":  5, "Description": "Complete Tutorials." },

@@ -1,5 +1,6 @@
 {
   "Name": "Real Football 2013",
+  "Description": "Gameloft's football game, pairing the matches themselves with club management between them.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "NATURAL_BORN_WINNER",            "GamerScore": 0 },

@@ -1,5 +1,6 @@
 {
   "Name": "Final Fantasy III",
+  "Description": "Square Enix's role-playing game: four Warriors of the Light, the job-change system, and turn-based party combat.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "KILL_ZIN",               "Name": "Gone Adventuring with the Wind", "GamerScore":  5 },

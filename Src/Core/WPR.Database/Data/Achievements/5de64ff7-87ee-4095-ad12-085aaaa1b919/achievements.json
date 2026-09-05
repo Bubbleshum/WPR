@@ -1,5 +1,6 @@
 {
   "Name": "Feed Me Oil",
+  "Description": "A physics puzzle about routing a stream of oil across the screen, placing fans, funnels and mirrors to redirect the flow.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "FAN_UNLOCK",        "Name": "The Fan",           "GamerScore":  5, "Description": "Unlock new element" },

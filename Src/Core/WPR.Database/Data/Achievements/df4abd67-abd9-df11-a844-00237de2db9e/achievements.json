@@ -1,5 +1,6 @@
 {
   "Name": "OMG - Our Manic Game",
+  "Description": "A frantic collection of short manic challenges.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "CloseCombat",    "Name": "Close Combat",                  "GamerScore": 15, "Description": "Get close to enemies to kill them." },

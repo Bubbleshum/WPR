@@ -1,5 +1,6 @@
 {
   "Name": "Tiny Plane",
+  "Description": "An endless flier: keep a tiny plane in the air as long as you can, collecting coins and points along the way.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "coins_50",      "Name": "50 Coins",               "GamerScore":  5, "Description": "Finish a single game with a total of 50 coins or more." },

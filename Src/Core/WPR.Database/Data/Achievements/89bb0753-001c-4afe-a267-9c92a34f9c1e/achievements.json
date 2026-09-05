@@ -1,5 +1,6 @@
 {
   "Name": "Kingdoms & Lords",
+  "Description": "Gameloft's kingdom builder: farm, fortify and raise an army, then raid the neighbours with it.",
   "Achievements": [
     { "Key": "BARBARIAN_GENERAL",          "Name": "Barbarian General",          "GamerScore": 10, "Description": "Defeat Barbarian General." },
     { "Key": "ONE_STEP_ONE_FOOTPRINT",     "Name": "One Step, One Footprint",    "GamerScore": 10, "Description": "Raise the population to 150." },

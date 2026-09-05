@@ -1,5 +1,6 @@
 {
   "Name": "Real Football",
+  "Description": "Gameloft's football game, with league play and a career mode.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "First Goal",            "GamerScore": 0 },

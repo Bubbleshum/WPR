@@ -1,5 +1,6 @@
 {
   "Name": "Tiny Troopers",
+  "Description": "A top-down squad shooter: lead a handful of soldiers through missions, calling in air strikes when it gets bad.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "death_from_above",    "Name": "Death From Above",     "GamerScore": 10, "Description": "Use an Airstrike to Kill 3 Enemies At Once" },
@@ -17,7 +18,7 @@
     { "Key": "war_bonds",           "Name": "War Bonds",            "GamerScore": 10, "Description": "Earn 200,000 Command Points" },
     { "Key": "tag_collector",       "Name": "Tag Collector",        "GamerScore":  5, "Description": "Collect 25 Dog Tags" },
     { "Key": "air_support",         "Name": "Air Support",          "GamerScore":  5, "Description": "Order 10 items from HQ" },
-    { "Key": "mow_em_down",         "Name": "Mow â€˜Em Down!",      "GamerScore":  5, "Description": "Kill 50 Enemies with Machine Gunner" },
+    { "Key": "mow_em_down",         "Name": "Mow Ã¢â‚¬ËœEm Down!",      "GamerScore":  5, "Description": "Kill 50 Enemies with Machine Gunner" },
     { "Key": "spec_ops",            "Name": "Spec Ops",             "GamerScore":  5, "Description": "Kill 50 Enemies with Delta Force" },
     { "Key": "into_the_frey",       "Name": "Into the Frey",        "GamerScore": 10, "Description": "Complete Chapter 1" },
     { "Key": "over_the_hill",       "Name": "Over the hill",        "GamerScore": 25, "Description": "Complete Chapter 2" },

@@ -1,5 +1,6 @@
 {
   "Name": "Rocket Riot",
+  "Description": "A rocket-propelled shooter in a fully destructible pixel arena, where cover lasts only as long as it is not shot.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Achievement01", "Name": "Deathless Destruction",          "GamerScore": 15, "Description": "Finish a destroy the object level without killing an enemy." },

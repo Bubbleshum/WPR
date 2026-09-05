@@ -1,5 +1,6 @@
 {
   "Name": "The Amazing Spider-Man",
+  "Description": "Gameloft's open-world Spider-Man, swinging across Manhattan between story missions.",
   "Achievements": [
     { "Key": "Parkour Pro",             "Name": "Parkour Pro",             "GamerScore": 10, "Description": "Jump over 20 obstacles while running" },
     { "Key": "Wall Crawler",            "Name": "Wall Crawler",            "GamerScore": 10, "Description": "Wall climb a total of 3 kilometers" },

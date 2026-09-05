@@ -1,5 +1,6 @@
 {
   "Name": "Cut the Rope",
+  "Description": "ZeptoLab's physics puzzler: slice ropes in the right order so the sweet swings into Om Nom's mouth, collecting three stars on the way.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "acBronzeScissors",     "Name": "Bronze Scissors",      "GamerScore": 10, "Description": "Collect 50 stars" },

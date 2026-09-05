@@ -1,5 +1,6 @@
 {
   "Name": "Wordament Snap Attack",
+  "Description": "A Wordament spin-off that turns a photographed grid of letters into a puzzle to solve against the clock.",
   "Achievements": [
     { "Key": "FirstSnap",    "Name": "First Snap",     "GamerScore": 10, "Description": "Make a Snap. Place your tiles on the board to make words." },
     { "Key": "Bonus",        "Name": "Bonus",          "GamerScore": 10, "Description": "Play on a bonus tile" },
@@ -19,6 +20,6 @@
     { "Key": "Addict",       "Name": "Addict",         "GamerScore": 10, "Description": "Achieve 2,500,000 total points" },
     { "Key": "SimulSnap",    "Name": "Simul-Snap",     "GamerScore": 10, "Description": "By moving a single tile, create multiple independent snaps" },
     { "Key": "SwapSnap",     "Name": "Swap Snap",      "GamerScore": 10, "Description": "Tap 2 tiles to swap them and make a new snap" },
-    { "Key": "WorldChamp",   "Name": "World Champ",    "GamerScore": 20, "Description": "Place in the top 250 players in any of the â€œTop Playerâ€ leaderboards" }
+    { "Key": "WorldChamp",   "Name": "World Champ",    "GamerScore": 20, "Description": "Place in the top 250 players in any of the Ã¢â‚¬Å“Top PlayerÃ¢â‚¬Â leaderboards" }
   ]
 }

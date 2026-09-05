@@ -1,5 +1,6 @@
 {
   "Name": "Puzzle Quest 2",
+  "Description": "A match-three puzzle game wrapped in a role-playing campaign, where matching gems casts the spells in turn-based duels.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "HAPPILYEVERAFTER", "Name": "Happily Ever After", "GamerScore": 30, "Description": "Complete the game" },

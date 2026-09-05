@@ -1,5 +1,6 @@
 {
   "Name": "BulletAsylum",
+  "Description": "A defence shooter about protecting a structure from everything falling on it.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "pew_pew",                "Name": "Pew Pew",                 "GamerScore": 20, "Description": "Shoot a total of 10,000 light gun bullets." },

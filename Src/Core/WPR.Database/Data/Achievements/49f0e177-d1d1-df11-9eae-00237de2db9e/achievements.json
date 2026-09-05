@@ -1,5 +1,6 @@
 {
   "Name": "Twin Blades - The Reaping Vanguard",
+  "Description": "A side-scrolling action game about a scythe-wielding nun cutting down waves of the undead.",
   "Achievements": [
     { "Key": "100KillStory", "Name": "1st Class Nun", "Description": "Kill 100 zombies in story mode.", "GamerScore": 5, "Icon": "100KillStory.png" },
     { "Key": "500KillStory", "Name": "Nun Corporal", "Description": "Kill 500 zombies in story mode.", "GamerScore": 5, "Icon": "500KillStory.png" },

@@ -1,5 +1,6 @@
 {
   "Name": "Microsoft Mahjong",
+  "Description": "Mahjong solitaire: clear the layout by matching free pairs of tiles until none are left.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "The Fun Begins",        "Name": "The Fun Begins",        "GamerScore": 10, "Description": "Complete your first puzzle on your phone." },

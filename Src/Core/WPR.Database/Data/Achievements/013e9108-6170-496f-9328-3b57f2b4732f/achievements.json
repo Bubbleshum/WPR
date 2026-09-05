@@ -1,5 +1,6 @@
 {
   "Name": "Asphalt 7 Heat",
+  "Description": "Gameloft's arcade racer, with sixty licensed cars across fifteen real-world tracks and an online multiplayer mode.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "ADRENALINE ACTIVATION",     "Name": "ADRENALINE ACTIVATION",     "GamerScore": 10, "Description": "Enter Adrenaline mode with the DeLorean DMC-12" },

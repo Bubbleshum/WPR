@@ -1,5 +1,6 @@
 {
   "Name": "Toy Soldiers - Boot Camp",
+  "Description": "Tower defence fought with toy soldiers across a tabletop battlefield, with turrets that can be taken over and fired by hand.",
   "Achievements": [
     { "Key": "TourOfDuty",      "Name": "Tour of Duty",        "GamerScore": 10, "Description": "Play all 3 minigames." },
     { "Key": "Persistence",     "Name": "Persistence",         "GamerScore": 15, "Description": "Play a minigame 5 times in a row." },

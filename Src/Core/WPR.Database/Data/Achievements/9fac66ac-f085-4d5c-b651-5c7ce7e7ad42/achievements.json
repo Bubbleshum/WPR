@@ -1,5 +1,6 @@
 {
   "Name": "Super Monkey Ball 2 - Sakura Edition",
+  "Description": "Tilt the world, not the monkey: roll a monkey in a ball to the goal without falling off the edge.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "0",  "Name": "Jumble Jungle Champion",  "GamerScore":  5, "Description": "Complete all levels in Jumble Jungle" },

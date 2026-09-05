@@ -1,5 +1,6 @@
 {
   "Name": "Collapse!",
+  "Description": "A block puzzle: tap groups of matching coloured blocks to remove them before the stack reaches the top.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Buster",        "Name": "Buster",        "GamerScore": 10, "Description": "Remove more than 20 blocks with one move." },

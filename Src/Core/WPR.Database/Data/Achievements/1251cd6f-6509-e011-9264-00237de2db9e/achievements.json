@@ -1,5 +1,6 @@
 {
   "Name": "Revolution",
+  "Description": "A puzzle game about gears: jam and drop the cogs of a mechanism so that the ones you need keep turning.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "beginnersluck",      "Name": "Beginners Luck",       "GamerScore": 10, "Description": "Complete all tutorial levels (1 to 5)." },

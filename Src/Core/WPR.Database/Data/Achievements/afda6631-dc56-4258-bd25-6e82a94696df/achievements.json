@@ -1,5 +1,6 @@
 {
   "Name": "Monster Go!",
+  "Description": "A puzzle game about matching and collecting monsters.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Tell the world",        "Name": "Tell the world",         "GamerScore":  5, "Description": "Use share feature" },

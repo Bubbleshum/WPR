@@ -1,5 +1,6 @@
 {
   "Name": "The Great Wobo Escape",
+  "Description": "A stealth puzzle-platformer about a robot escaping captivity, one hand-built level at a time.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Obeyed Orders",       "Name": "Obeyed Orders",       "GamerScore": 15, "Description": "Complete the level \"Obeyed Orders\"" },

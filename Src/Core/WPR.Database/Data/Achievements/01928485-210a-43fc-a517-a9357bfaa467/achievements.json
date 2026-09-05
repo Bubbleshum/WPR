@@ -1,5 +1,6 @@
 {
   "Name": "Tiger Woods PGA TOUR 12",
+  "Description": "EA's golf simulation, played across licensed courses with the swing controlled by touch.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "ACH_I_GOT_THIS",                    "Name": "I got this",                "GamerScore":  5, "Description": "From the Fairway, land within 1 yard of the flagstick from at least 100 yards away" },

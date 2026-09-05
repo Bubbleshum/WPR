@@ -1,5 +1,6 @@
 {
   "Name": "Rabbids Go Phone",
+  "Description": "A toy box of Rabbids: poke, shake and provoke them, finding every way each object can be used and unlocking the next one.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "minigames_piranha",       "Name": "Flying piranha!",          "GamerScore": 10, "Description": "Find all the ways to interact and unlock the piranha fish." },

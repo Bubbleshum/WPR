@@ -1,5 +1,6 @@
 {
   "Name": "Gravity Guy",
+  "Description": "An auto-runner whose one control flips gravity, dropping the runner onto the ceiling to get past what is ahead.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "3checkpoints",             "Name": "3 checkpoints",               "GamerScore":  5, "Description": "Pass 3 consecutive checkpoints without dying." },

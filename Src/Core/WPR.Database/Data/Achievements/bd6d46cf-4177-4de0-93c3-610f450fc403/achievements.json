@@ -1,5 +1,6 @@
 {
   "Name": "Chickens Can't Fly",
+  "Description": "A ragdoll physics game about launching a chicken through laboratory experiments -- hatchery, butchery, cemetery, military and physics -- each scored for a medal.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "tutorialComplete",   "Name": "Chicken is ready for science!",  "GamerScore":  5, "Description": "Complete all the Hatchery experiments" },

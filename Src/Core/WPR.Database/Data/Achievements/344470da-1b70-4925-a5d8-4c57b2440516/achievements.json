@@ -1,5 +1,6 @@
 {
   "Name": "Picnic Wars",
+  "Description": "A puzzle game about chopping through waves of fruit and vegetables, in separate Veggie and Fruit campaigns.",
   "Achievements": [
     { "Key": "ACHIEVEMENT_FINISHGAME",                    "Name": "The Finisher",          "GamerScore": 20, "Icon": "the_finisher.png",         "Description": "Finished the game" },
     { "Key": "ACHIEVEMENT_COMPLETE_VEGGIES_STAGE1",       "Name": "Ancient Pulped",        "GamerScore": 10, "Icon": "ancient_pulped.png",       "Description": "Completed all levels in Stage 1 Veggie mode" },

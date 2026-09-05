@@ -1,5 +1,6 @@
 {
   "Name": "Tiny Troopers 2 - Special Ops",
+  "Description": "The sequel to Tiny Troopers: a small squad, top-down missions, and air support when it goes wrong.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Death From Above",    "Name": "Death From Above",     "GamerScore": 10, "Description": "You have used an airstrike to kill 3 enemies." },

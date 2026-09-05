@@ -1,5 +1,6 @@
 {
   "Name": "Shuffle Party",
+  "Description": "Table shuffleboard, sliding weighted pucks down the lane for points without sliding them off the end.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "challenger",       "Name": "Challenger",       "GamerScore":  5, "Description": "Complete a Challenge Mode Level with 3 stars." },

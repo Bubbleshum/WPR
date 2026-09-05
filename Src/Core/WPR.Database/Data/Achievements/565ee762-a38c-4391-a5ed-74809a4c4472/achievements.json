@@ -1,5 +1,6 @@
 {
   "Name": "DoDonPachi Maximum",
+  "Description": "CAVE's bullet-hell shooter: dense, patterned enemy fire threaded by a ship with a hitbox far smaller than it looks.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "ACH_01", "Name": "DEPLOY",                        "GamerScore":  5, "Description": "Play the game for the first time." },

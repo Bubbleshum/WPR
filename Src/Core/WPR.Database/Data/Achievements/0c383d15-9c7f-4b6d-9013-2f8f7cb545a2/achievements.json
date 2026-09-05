@@ -1,5 +1,6 @@
 {
   "Name": "Ridiculous Marathon",
+  "Description": "An endless runner from Game Troopers, dodging obstacles along a course that never stops getting harder.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Newbie",                    "Name": "Newbie",                    "GamerScore":  5, "Description": "Beat the score: 5.000" },
@@ -7,9 +8,9 @@
     { "Key": "Pro",                       "Name": "Pro",                       "GamerScore": 15, "Description": "Beat the score: 100.000" },
     { "Key": "Rockstar",                  "Name": "Rockstar",                  "GamerScore": 20, "Description": "Beat the score: 500.000" },
     { "Key": "Fancy dress",               "Name": "Fancy dress",               "GamerScore":  5, "Description": "Purchase a main character cosmetic" },
-    { "Key": "Wild life",                 "Name": "Wild life",                 "GamerScore":  5, "Description": "Purchase a piÃ±ata cosmetic" },
+    { "Key": "Wild life",                 "Name": "Wild life",                 "GamerScore":  5, "Description": "Purchase a piÃƒÂ±ata cosmetic" },
     { "Key": "Full Wardrobe",             "Name": "Full Wardrobe",             "GamerScore": 10, "Description": "Purchase all main character cosmetics" },
-    { "Key": "Zoo",                       "Name": "Zoo",                       "GamerScore": 10, "Description": "Purchase all piÃ±ata cosmetics" },
+    { "Key": "Zoo",                       "Name": "Zoo",                       "GamerScore": 10, "Description": "Purchase all piÃƒÂ±ata cosmetics" },
     { "Key": "This is getting serious",   "Name": "This is getting serious",   "GamerScore":  5, "Description": "Get the first level of all powerups" },
     { "Key": "Rocket Scientist",          "Name": "Rocket Scientist",          "GamerScore": 10, "Description": "Upgrade all powerups to maximum level" },
     { "Key": "Daily challenge",           "Name": "Daily challenge",           "GamerScore":  5, "Description": "Complete a daily challenge" },
@@ -17,7 +18,7 @@
     { "Key": "Wats inside",               "Name": "Wats inside?",              "GamerScore":  5, "Description": "Get a mysterious box with the daily challenges" },
     { "Key": "On my way",                 "Name": "On my way",                 "GamerScore":  5, "Description": "Get x5 multiplier completing misions" },
     { "Key": "All missions accomplished", "Name": "All missions accomplished", "GamerScore": 20, "Description": "Get x20 multiplier completing misions" },
-    { "Key": "Pinata hater",              "Name": "Pinata hater",              "GamerScore":  5, "Description": "Crash while using a piÃ±ata 10 times" },
+    { "Key": "Pinata hater",              "Name": "Pinata hater",              "GamerScore":  5, "Description": "Crash while using a piÃƒÂ±ata 10 times" },
     { "Key": "So much coins",             "Name": "So much coins",             "GamerScore": 10, "Description": "Use a magnet and a jetpack at once" },
     { "Key": "I believe I can fly",       "Name": "I believe I can fly",       "GamerScore":  5, "Description": "Use the double jump to jump on a log" },
     { "Key": "Multiplier COMBO",          "Name": "Multiplier COMBO",          "GamerScore": 30, "Description": "Get x50 multiplier during a game" },

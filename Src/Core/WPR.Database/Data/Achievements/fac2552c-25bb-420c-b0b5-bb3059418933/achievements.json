@@ -1,5 +1,6 @@
 {
   "Name": "Amazing Alex",
+  "Description": "Rovio's contraption puzzler: arrange everyday objects into a Rube Goldberg machine that gets the ball to the target.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "CONTRAPTIONIST",       "Name": "Contraptionist",            "GamerScore": 20, "Description": "Create your own level" },

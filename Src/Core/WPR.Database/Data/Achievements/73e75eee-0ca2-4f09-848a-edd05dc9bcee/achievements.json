@@ -1,5 +1,6 @@
 {
   "Name": "SPY Mouse",
+  "Description": "A stealth puzzle game: draw a path to steal the cheese without walking into a cat's line of sight.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Credit Reading",          "Name": "Behind the Scenes",       "GamerScore":  5, "Description": "Read the Credits" },

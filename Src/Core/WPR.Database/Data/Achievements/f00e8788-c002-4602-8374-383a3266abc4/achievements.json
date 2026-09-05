@@ -1,5 +1,6 @@
 {
   "Name": "Hitman GO",
+  "Description": "Hitman as a turn-based board game: move Agent 47 a node at a time past guards who move in fixed patterns.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "GameSetMatch",          "Name": "Game-Set-Match",        "GamerScore": 15, "Description": "Completed all objectives in the first chapter." },

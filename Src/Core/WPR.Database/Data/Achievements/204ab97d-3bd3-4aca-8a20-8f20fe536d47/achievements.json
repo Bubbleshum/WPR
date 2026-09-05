@@ -1,5 +1,6 @@
 {
   "Name": "AlphaJax",
+  "Description": "A turn-based multiplayer word game played on a board against friends, a move at a time.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Bingo",         "Name": "Bingo",         "GamerScore": 15, "Description": "Clear your rack in a single move" },

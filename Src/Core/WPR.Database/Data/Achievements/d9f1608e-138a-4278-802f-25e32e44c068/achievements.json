@@ -1,5 +1,6 @@
 {
   "Name": "Cut the Rope Experiments",
+  "Description": "Cut the Rope under a professor's supervision, adding suction cups and rope shooters to the puzzles.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "acStudent",            "Name": "Student",              "GamerScore": 10, "Description": "Collect 50 stars" },

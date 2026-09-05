@@ -1,5 +1,6 @@
 {
   "Name": "Fruit Ninja (2013)",
+  "Description": "Halfbrick's blade game: swipe to slice fruit thrown into the air, and never touch a bomb.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "1_FRUIT_NINJA",          "Name": "Fruit Ninja",          "GamerScore":  5, "Description": "Get a score of 50 in Classic Mode" },

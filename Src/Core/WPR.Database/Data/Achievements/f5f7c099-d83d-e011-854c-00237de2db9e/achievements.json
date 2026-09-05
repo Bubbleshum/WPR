@@ -1,5 +1,6 @@
 {
   "Name": "Game Room - Centipede",
+  "Description": "The 1981 Atari original, brought to Game Room: shoot the centipede as it winds down through the mushroom field.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "VelocityGamer",          "Name": "Velocity Gamer",             "GamerScore": 20, "Description": "Travel at over 35 mph (55 km/h) while playing a game" },

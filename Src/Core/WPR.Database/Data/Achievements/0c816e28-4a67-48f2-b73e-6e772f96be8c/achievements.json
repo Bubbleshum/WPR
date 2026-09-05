@@ -1,5 +1,6 @@
 {
   "Name": "Runemals",
+  "Description": "A Game Troopers puzzle battler where matching runes on the board summons creatures to fight in your place.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Applicant",      "Name": "Applicant",      "GamerScore":  4, "Description": "Finish the tutorial" },

@@ -1,5 +1,6 @@
 {
   "Name": "Equalicious",
+  "Description": "A mathematics puzzle: balance the equation for three stars, across level sets themed on ancient Greece, Egypt and China.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Good student",             "Name": "Outstanding student",   "GamerScore":  5, "Description": "Get 3 stars on one level." },

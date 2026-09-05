@@ -1,5 +1,6 @@
 {
   "Name": "Free Slots Fun Factory",
+  "Description": "A collection of themed slot machines from Game Troopers, played with virtual coins.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Classic",          "Name": "Classic",           "GamerScore":  5, "Description": "Unlock the Classic theme" },

@@ -1,5 +1,6 @@
 {
   "Name": "Order & Chaos Online",
+  "Description": "Gameloft's massively multiplayer role-playing game, with parties, raids and open-world questing.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Ready To Go",        "Name": "Ready to Go",        "GamerScore":  5, "Description": "Finish a Tutorial Mission" },

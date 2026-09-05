@@ -1,5 +1,6 @@
 {
   "Name": "Sally's Salon - Luxury Edition",
+  "Description": "A time-management game about running a hair salon, serving customers before their patience runs out.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "PURSE_1",                "Name": "Starter Purse",     "GamerScore":  4, "Description": "Earn $3,000." },

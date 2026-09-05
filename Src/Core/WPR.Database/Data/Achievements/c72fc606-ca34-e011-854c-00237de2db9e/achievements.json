@@ -1,5 +1,6 @@
 {
   "Name": "Full House Poker",
+  "Description": "Texas Hold'em against tables of other players, with a career of tournaments to climb.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "LevelUpTo2",         "GamerScore":  0 },

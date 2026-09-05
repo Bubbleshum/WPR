@@ -1,5 +1,6 @@
 {
   "Name": "Da Vinci Pinball Machine",
+  "Description": "A pinball table themed on Leonardo da Vinci's machines, played for its tasks and a running score.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Experimenter",    "Name": "Experimenter",    "GamerScore": 10, "Description": "Lose 100 or more balls." },

@@ -1,5 +1,6 @@
 {
   "Name": "iBlast Moki",
+  "Description": "A physics puzzle about placing bombs so that their blasts roll the Mokis to the exit.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Reached Formula 1 Speed",          "Name": "Reached Formula 1 Speed",          "GamerScore": 10, "Description": "Throw Moki really fast in the air" },

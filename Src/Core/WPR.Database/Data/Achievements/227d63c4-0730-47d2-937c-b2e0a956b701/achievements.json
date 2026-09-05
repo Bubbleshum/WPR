@@ -1,5 +1,6 @@
 {
   "Name": "KooZac",
+  "Description": "A falling-block puzzle from Square Enix where blocks are cleared by making their numbers add up to a target.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Level_completion",              "Name": "Complete the first level",         "GamerScore": 10, "Description": "Complete the first level" },

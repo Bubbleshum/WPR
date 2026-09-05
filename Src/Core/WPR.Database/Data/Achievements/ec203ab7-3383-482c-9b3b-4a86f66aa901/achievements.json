@@ -1,5 +1,6 @@
 {
   "Name": "Implode!",
+  "Description": "A demolition puzzle: place charges so the building comes down entirely, and within budget.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "4 zones unlocked",     "Name": "4 Zones Unlocked",  "GamerScore": 10, "Description": "Unlock 4 zones in the game." },

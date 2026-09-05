@@ -1,5 +1,6 @@
 {
   "Name": "Flowerz",
+  "Description": "A puzzle game of planting coloured flowers so that matching runs of them bloom and clear.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Classic Master", "Name": "Master Florist", "GamerScore": 25, "Description": "Score 9,000 points during a single Standard game." },

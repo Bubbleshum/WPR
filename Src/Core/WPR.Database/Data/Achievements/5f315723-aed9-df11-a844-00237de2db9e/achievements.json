@@ -1,5 +1,6 @@
 {
   "Name": "CarneyVale Showtime",
+  "Description": "A physics game about a circus acrobat, grappling and swinging between anchor points to climb the big top.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Star Dreamer",   "Name": "Star Dreamer",   "GamerScore": 15, "Description": "Collect the Secret Star on 10 different levels." },

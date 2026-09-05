@@ -1,5 +1,6 @@
 {
   "Name": "Real Racing 2",
+  "Description": "A racing simulation with licensed cars, real circuits and a full career season.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "CC_ACHIEVEMENT_AMATEUR",                     "Name": "Amateur",                      "GamerScore":  5, "Description": "Reach driver level: Amateur" },

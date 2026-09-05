@@ -1,5 +1,6 @@
 {
   "Name": "Bad Piggies",
+  "Description": "The pigs' side of Angry Birds: build a contraption out of crates, wheels and engines, and hope it survives the trip.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Ground Hog Day",       "Name": "Ground Hog Day",       "GamerScore":  5, "Description": "Complete Episode 1" },

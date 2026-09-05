@@ -1,5 +1,6 @@
 {
   "Name": "Pool Pro Online 3",
+  "Description": "Namco's pocket billiards game, covering eight-ball and nine-ball against the computer or another player.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Well Rounded",     "Name": "Well Rounded",     "GamerScore":  5, "Description": "Complete a game of 8 Ball, 9 Ball, and Snooker." },

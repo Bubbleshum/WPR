@@ -1,5 +1,6 @@
 {
   "Name": "Flight Control",
+  "Description": "An air-traffic puzzle: draw each aircraft's landing path and never let two of them meet.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "AirWolf",             "Name": "Air Wolf",               "GamerScore":  5, "Description": "Land more than 10 helicopters in a single game." },

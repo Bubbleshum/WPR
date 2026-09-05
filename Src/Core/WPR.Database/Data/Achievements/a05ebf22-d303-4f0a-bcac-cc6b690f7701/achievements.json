@@ -1,5 +1,6 @@
 {
   "Name": "Trucking 3D! Construction Delivery Simulator",
+  "Description": "A driving game about hauling construction loads and arriving with them still on the trailer.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "High Five",              "Name": "Hight Five",             "GamerScore":  5, "Description": "Finish five levels" },

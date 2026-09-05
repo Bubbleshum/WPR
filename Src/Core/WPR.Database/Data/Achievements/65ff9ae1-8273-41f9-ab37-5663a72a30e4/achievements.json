@@ -1,5 +1,6 @@
 {
   "Name": "Jet Set Go",
+  "Description": "A time-management game about serving travellers around the world -- Montreal, Hawaii, Italy, London, Hong Kong -- for a five-star rank in each.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "achievement_01", "Name": "Do The Darwin",     "GamerScore": 15, "Description": "Hit 40 dance steps in a row in the Galapagos." },

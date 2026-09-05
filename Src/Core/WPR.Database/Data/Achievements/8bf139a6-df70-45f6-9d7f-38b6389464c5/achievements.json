@@ -1,5 +1,6 @@
 {
   "Name": "KenKen Will Shortz",
+  "Description": "The arithmetic grid puzzle: fill the square so each row and column has no repeats and every cage reaches its target.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Hard Solver",       "Name": "Hard Solver",       "GamerScore":  5, "Description": "Beat single puzzle of any grid size on Hard." },

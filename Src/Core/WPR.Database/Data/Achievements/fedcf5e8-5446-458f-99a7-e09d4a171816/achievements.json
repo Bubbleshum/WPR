@@ -1,5 +1,6 @@
 {
   "Name": "Farm Frenzy 2",
+  "Description": "A time-management farm game: feed animals, gather produce, process it and get it to market before it spoils.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "AwardsFastProduct",   "Name": "Elbow Grease",      "GamerScore": 10, "Description": "For expedient production." },

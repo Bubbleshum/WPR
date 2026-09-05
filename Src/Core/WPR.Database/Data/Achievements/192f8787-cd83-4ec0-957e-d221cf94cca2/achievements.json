@@ -1,5 +1,6 @@
 {
   "Name": "Abyss",
+  "Description": "A platformer about descending into the abyss to gather Gaia, where dying repeatedly is part of learning the route.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Fast recollector",                "Name": "Fast recollector",                "GamerScore":  5, "Description": "Get 2 Gaias in less than 5 seconds" },
@@ -18,7 +19,7 @@
     { "Key": "Promising future",                "Name": "Promising future",                "GamerScore":  5, "Description": "Complete the tutorial" },
     { "Key": "Archeologist",                    "Name": "Archeologist",                    "GamerScore": 15, "Description": "Gather all 6 pieces of the first Nep2no vessel" },
     { "Key": "Darkest hours",                   "Name": "Darkest hours",                   "GamerScore": 20, "Description": "Beat game using minimum brightness settings" },
-    { "Key": "A little step for a Nep2no",      "Name": "A little step for a Nep2noâ€¦",   "GamerScore":  5, "Description": "Finish your first Abyss level" },
+    { "Key": "A little step for a Nep2no",      "Name": "A little step for a Nep2noÃ¢â‚¬Â¦",   "GamerScore":  5, "Description": "Finish your first Abyss level" },
     { "Key": "It was just a bad dream",         "Name": "It was just a bad dream",         "GamerScore":  5, "Description": "Finish your first Nightmare level" },
     { "Key": "Legend of the Abyss",             "Name": "Legend of the Abyss",             "GamerScore": 15, "Description": "Beat all Abyss levels" },
     { "Key": "Darkest corners of the Earth",    "Name": "Darkest corners of the Earth",    "GamerScore": 20, "Description": "Beat all Nightmare levels" }

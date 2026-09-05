@@ -1,5 +1,6 @@
 {
   "Name": "Total Conquest",
+  "Description": "Gameloft's Roman city builder: raise a village, train legions and raid other players.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Make_Room",                    "Name": "Make Room",                   "GamerScore": 10, "Description": "Clear 2 obstacles" },

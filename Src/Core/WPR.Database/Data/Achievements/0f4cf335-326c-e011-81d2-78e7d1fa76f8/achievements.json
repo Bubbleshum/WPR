@@ -1,5 +1,6 @@
 {
   "Name": "Enigmo",
+  "Description": "A physics puzzler: place bumpers, sliders and sponges to steer falling droplets of water, oil and lava into their vessels.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "DropInTheBucket",    "Name": "Drop in the Bucket",     "GamerScore":  5, "Description": "Complete the first level." },

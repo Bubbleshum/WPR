@@ -1,5 +1,6 @@
 {
   "Name": "Gun Bros",
+  "Description": "Glu's twin-stick shooter: two brothers, escalating weaponry, and waves of things to point it at.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "GUNBROS_ACHIEVE_SERVICE_TARGETS_B",              "Name": "Ravager",     "GamerScore": 10, "Description": "Service 5,000 targets" },

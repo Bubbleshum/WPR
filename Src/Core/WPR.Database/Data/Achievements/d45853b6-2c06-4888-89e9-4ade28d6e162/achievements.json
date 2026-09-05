@@ -1,5 +1,6 @@
 {
   "Name": "Breeze",
+  "Description": "Take control of the wind and steer things gently to where they need to be.",
   "Achievements": [
     { "Key": "IPressedTheRedButton", "Name": "I pressed the Red Button!", "Description": "Use an air-brake.", "GamerScore": 5, "Icon": "IPressedTheRedButton.png" },
     { "Key": "Apprentice", "Name": "Apprentice", "Description": "Reach level 5 in any game mode.", "GamerScore": 5, "Icon": "Apprentice.png" },

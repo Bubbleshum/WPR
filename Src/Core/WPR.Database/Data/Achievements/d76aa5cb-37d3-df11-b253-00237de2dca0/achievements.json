@@ -1,5 +1,6 @@
 {
   "Name": "Frogger",
+  "Description": "Get the frog across the road and the river without being flattened or drowned.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Puddle Jumper",  "Name": "Puddle Jumper",   "GamerScore": 10, "Description": "Complete level 3." },

@@ -1,5 +1,6 @@
 {
   "Name": "Monopoly",
+  "Description": "The property trading board game: buy streets, build houses and bankrupt everyone else.",
   "Achievements": [
     { "Key": "Everybody Starts Somewhere", "Name": "Everybody Starts Somewhere", "GamerScore": 10, "Description": "Buy a property." },
     { "Key": "Now Youre On Your Way",      "Name": "Now You're On Your Way",     "GamerScore": 10, "Description": "Own a monopoly." },

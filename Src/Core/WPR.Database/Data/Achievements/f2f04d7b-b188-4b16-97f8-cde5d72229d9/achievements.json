@@ -1,5 +1,6 @@
 {
   "Name": "Tiki Taka Soccer",
+  "Description": "A football game played in short passes, in the possession style it is named after.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Training Complete",            "Name": "Training master",    "GamerScore":  5, "Description": "Complete training" },

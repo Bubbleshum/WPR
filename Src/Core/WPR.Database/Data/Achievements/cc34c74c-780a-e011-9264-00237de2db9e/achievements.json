@@ -1,5 +1,6 @@
 {
   "Name": "Pac-Man",
+  "Description": "The maze original: clear the dots, avoid four ghosts, and turn the tables with a power pellet.",
   "Achievements": [
     { "Key": "PacAcv_1", "Name": "THE FIRST STEP", "Description": "Clear Stage 1.", "GamerScore": 1, "Icon": "PacAcv_1.png" },
     { "Key": "PacAcv_2", "Name": "ELEMENTARY COFFEE BREAK", "Description": "See the first coffee break.", "GamerScore": 2, "Icon": "PacAcv_2.png" },

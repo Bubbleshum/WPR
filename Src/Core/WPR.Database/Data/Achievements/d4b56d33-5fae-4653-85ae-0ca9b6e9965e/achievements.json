@@ -1,5 +1,6 @@
 {
   "Name": "Carcassonne",
+  "Description": "The tile-laying board game: build roads, cities and cloisters, and place followers to claim them.",
   "Achievements": [
     { "Key": "Apprentice",    "Name": "Apprentice",             "GamerScore": 15, "Description": "Win your first game of Carcassonne." },
     { "Key": "Graduate",      "Name": "Graduate",               "GamerScore": 15, "Description": "Complete the Basic and the River II tutorial." },

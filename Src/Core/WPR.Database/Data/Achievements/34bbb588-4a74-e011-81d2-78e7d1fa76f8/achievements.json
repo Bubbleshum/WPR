@@ -1,5 +1,6 @@
 {
   "Name": "Pac-Man Championship Edition DX",
+  "Description": "Time-attack Pac-Man, built around waking sleeping ghosts and chaining them into ever-longer trains.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "ACH_01", "Name": "Sparkster",                  "GamerScore":  5, "Description": "Emit sparks for 1 second!" },

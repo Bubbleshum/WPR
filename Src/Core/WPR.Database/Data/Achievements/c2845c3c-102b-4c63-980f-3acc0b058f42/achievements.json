@@ -1,5 +1,6 @@
 {
   "Name": "Need for Speed Hot Pursuit",
+  "Description": "EA's police-chase racer, driven either as the racer or as the pursuing patrol car.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "COP_TUTORIAL",            "Name": "Training Wheels",      "GamerScore":  1, "Description": "Finish the tutorial." },

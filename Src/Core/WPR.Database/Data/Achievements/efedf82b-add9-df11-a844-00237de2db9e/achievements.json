@@ -1,5 +1,6 @@
 {
   "Name": "The Revenants - Corridor of Souls",
+  "Description": "An action game fought through a corridor of souls.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Banish",                     "Name": "Banish",                     "GamerScore":  5, "Description": "Capture 5 or more enemies in a single vortex." },

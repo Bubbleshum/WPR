@@ -1,5 +1,6 @@
 {
   "Name": "I Love Katamari",
+  "Description": "Namco's rolling game: push a sticky ball around a scene, picking up everything smaller than itself until it is enormous.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Katamari_1",  "Name": "Milk Bottle",                     "GamerScore":  1, "Description": "Roll up Milk Bottle" },

@@ -1,5 +1,6 @@
 {
   "Name": "Pro Evolution Soccer 2012",
+  "Description": "Konami's football simulation, with licensed teams, tactical control and a full season mode.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "FirstBall",           "Name": "First ball",            "GamerScore":  5, "Description": "Win a match." },

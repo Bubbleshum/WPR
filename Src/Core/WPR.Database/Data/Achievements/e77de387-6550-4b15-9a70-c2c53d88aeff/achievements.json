@@ -1,5 +1,6 @@
 {
   "Name": "Flight Control Rocket",
+  "Description": "Flight Control moved into space: draw landing paths for spacecraft and keep them from colliding.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Land_1000",            "Name": "Landing 1,000!",       "GamerScore":  5, "Description": "Land 1,000 ships on any runway." },

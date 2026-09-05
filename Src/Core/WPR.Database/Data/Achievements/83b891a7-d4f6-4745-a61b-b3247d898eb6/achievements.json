@@ -1,5 +1,6 @@
 {
   "Name": "TextTwist 2",
+  "Description": "A word game: make as many words as you can from a scrambled handful of letters, and find the longest one to advance.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "ACH_HIGH_FIVE",      "Name": "High Five",      "GamerScore":  1, "Description": "Solve five words without twisting in Unlimited, Standard, Daily Word or Letter Mania." },

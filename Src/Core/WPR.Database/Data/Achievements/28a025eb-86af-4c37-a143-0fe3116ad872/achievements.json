@@ -1,5 +1,6 @@
 {
   "Name": "Droplitz Delight",
+  "Description": "A pipe-rotating puzzle: turn the dials to route droplets from the top of the board to the bottom before they run dry.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Great_Start",     "Name": "Great Start",     "GamerScore":  5, "Description": "Create a path before the game-start countdown finishes" },

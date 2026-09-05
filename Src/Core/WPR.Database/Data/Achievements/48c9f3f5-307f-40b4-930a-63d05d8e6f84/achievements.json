@@ -1,5 +1,6 @@
 {
   "Name": "Ms. Splosion Man",
+  "Description": "A platformer whose heroine has no jump at all -- only an explosion that launches her, chainable three times before she must land.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "ACH_1_HELL_HATH_NO_FURY",        "Name": "Hell Hath No Fury",            "GamerScore":  5, "Description": "Destroy 10 pieces of scenery." },

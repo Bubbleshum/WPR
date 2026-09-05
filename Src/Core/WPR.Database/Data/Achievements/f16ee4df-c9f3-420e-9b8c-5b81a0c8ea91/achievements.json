@@ -1,5 +1,6 @@
 {
   "Name": "Storm in a Teacup",
+  "Description": "A physics platformer about a boy in a teacup, blown along by storms and steered over the obstacles between.",
   "Achievements": [
     { "Key": "Take a Bow", "Name": "Take a Bow", "Description": "Achieve a Perfect on the credits level.", "GamerScore": 10, "Icon": "Take_a_Bow.png" },
     { "Key": "Complete Bonus", "Name": "Complete Bonus", "Description": "Complete all of the bonus levels.", "GamerScore": 10, "Icon": "Complete_Bonus.png" },

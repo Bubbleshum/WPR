@@ -1,5 +1,6 @@
 {
   "Name": "Despicable Me Minion Rush",
+  "Description": "An endless runner as a Minion, sprinting through Gru's lab and the sets of the films.",
   "KeySource": "xlast",
   "Achievements": [
     { "Key": "Newbie",           "Name": "Newbie",           "GamerScore": 10, "Description": "Finished tutorial" },
