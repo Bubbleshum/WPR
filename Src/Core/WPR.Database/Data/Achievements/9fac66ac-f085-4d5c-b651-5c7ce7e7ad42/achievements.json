@@ -2,19 +2,19 @@
   "Name": "Super Monkey Ball 2 - Sakura Edition",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "0",   "GamerScore": 0 },
-    { "Key": "1",   "GamerScore": 0 },
-    { "Key": "2",   "GamerScore": 0 },
-    { "Key": "3",   "GamerScore": 0 },
-    { "Key": "4",   "GamerScore": 0 },
-    { "Key": "5",   "GamerScore": 0 },
-    { "Key": "6",   "GamerScore": 0 },
-    { "Key": "7",   "GamerScore": 0 },
-    { "Key": "8",   "GamerScore": 0 },
-    { "Key": "9",   "GamerScore": 0 },
-    { "Key": "10",  "GamerScore": 0 },
-    { "Key": "11",  "GamerScore": 0 },
-    { "Key": "12",  "GamerScore": 0 },
-    { "Key": "13",  "GamerScore": 0 }
+    { "Key": "0",   "GamerScore":  5 },
+    { "Key": "1",   "GamerScore":  5 },
+    { "Key": "2",   "GamerScore":  5 },
+    { "Key": "3",   "GamerScore":  5 },
+    { "Key": "4",   "GamerScore":  5 },
+    { "Key": "5",   "GamerScore":  5 },
+    { "Key": "6",   "GamerScore":  5 },
+    { "Key": "7",   "GamerScore":  5 },
+    { "Key": "8",   "GamerScore": 10 },
+    { "Key": "9",   "GamerScore": 20 },
+    { "Key": "10",  "GamerScore": 25 },
+    { "Key": "11",  "GamerScore": 30 },
+    { "Key": "12",  "GamerScore": 50 },
+    { "Key": "13",  "GamerScore": 25 }
   ]
 }
