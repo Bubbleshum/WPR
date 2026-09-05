@@ -12,6 +12,19 @@ form of this document. This file is the continuation plan.
 
 ---
 
+## 0. Resuming
+
+This branch (`wp8-native`) lives in the worktree `.claude/worktrees/wp8-native`; `main` has a
+short pointer at `Plans/WP8-NATIVE-RESUME.md`. State at the last WIP commit:
+
+- **Unicorn path:** complete through level select; the `IArmCpu` seam is proven byte-identical
+  at frame 300 (`22fef79f2de186622e93838aeec50282`, `WPR_TAP=0`).
+- **dynarmic path:** shim proven, CRT init completes (195 initialisers, 2,070 imports), no frame
+  yet. `WPR_CPU=dynarmic`; the report's `final PC` / `final regs` / `trap at pc` lines exist for
+  this chase.
+- **Level entry:** `INGAME_RIO0` — chapter 0 from a stale saved `settings.lua`
+  (`defaultChapter` is 2). Delete `%TEMP%\wpr-wp8-sandbox` and re-run to confirm.
+
 ## 1. Where it is
 
 | | |
