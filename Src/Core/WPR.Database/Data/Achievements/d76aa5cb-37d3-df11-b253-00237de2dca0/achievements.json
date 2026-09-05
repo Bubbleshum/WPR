@@ -2,15 +2,15 @@
   "Name": "Frogger",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "Puddle Jumper",   "GamerScore": 0 },
-    { "Key": "Pond Hopper",     "GamerScore": 0 },
-    { "Key": "River Skipper",   "GamerScore": 0 },
-    { "Key": "Lake Leaper",     "GamerScore": 0 },
-    { "Key": "Ocean Vaulter",   "GamerScore": 0 },
-    { "Key": "Ladies Man",      "GamerScore": 0 },
-    { "Key": "Square Dancer",   "GamerScore": 0 },
-    { "Key": "Frequent Flyer",  "GamerScore": 0 },
-    { "Key": "Never Say Die",   "GamerScore": 0 },
-    { "Key": "Croc Jockey",     "GamerScore": 0 }
+    { "Key": "Puddle Jumper",  "Name": "Puddle Jumper",   "GamerScore": 10, "Description": "Complete level 3." },
+    { "Key": "Pond Hopper",    "Name": "Pond Hopper",     "GamerScore": 15, "Description": "Complete level 6." },
+    { "Key": "River Skipper",  "Name": "River Skipper",   "GamerScore": 20, "Description": "Complete level 9." },
+    { "Key": "Lake Leaper",    "Name": "Lake Leaper",     "GamerScore": 25, "Description": "Complete level 12." },
+    { "Key": "Ocean Vaulter",  "Name": "Ocean Vaulter",   "GamerScore": 30, "Description": "Complete level 15." },
+    { "Key": "Ladies Man",     "Name": "Ladies Man",      "GamerScore": 20, "Description": "Successfully bring 3 girl frogs across the river." },
+    { "Key": "Square Dancer",  "Name": "Square Dancer",   "GamerScore": 10, "Description": "Complete a level by placing Frogger in the final square from left to right." },
+    { "Key": "Frequent Flyer", "Name": "Frequent Fly-er", "GamerScore": 20, "Description": "Eat 3 flies in one level." },
+    { "Key": "Never Say Die",  "Name": "Never Say Die",   "GamerScore": 30, "Description": "Cross the level 15 times without dying." },
+    { "Key": "Croc Jockey",    "Name": "Croc Jockey",     "GamerScore": 20, "Description": "Complete a level after jumping to a home spot from an alligator 3 times." }
   ]
 }

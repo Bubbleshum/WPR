@@ -2,18 +2,18 @@
   "Name": "Enigmo",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "DropInTheBucket",     "GamerScore": 0 },
-    { "Key": "JrTechnician",        "GamerScore": 0 },
-    { "Key": "LabAssistant",        "GamerScore": 0 },
-    { "Key": "MadScientist",        "GamerScore": 0 },
-    { "Key": "Efficient",           "GamerScore": 0 },
-    { "Key": "SpareParts",          "GamerScore": 0 },
-    { "Key": "WereThoseImportant",  "GamerScore": 0 },
-    { "Key": "BetterThanNothing",   "GamerScore": 0 },
-    { "Key": "DedicatedDropper",    "GamerScore": 0 },
-    { "Key": "DropAndGiveMeSixty",  "GamerScore": 0 },
-    { "Key": "Respectable",         "GamerScore": 0 },
-    { "Key": "Enigmaster",          "GamerScore": 0 },
-    { "Key": "NoUseCrying",         "GamerScore": 0 }
+    { "Key": "DropInTheBucket",    "Name": "Drop in the Bucket",     "GamerScore":  5, "Description": "Complete the first level." },
+    { "Key": "JrTechnician",       "Name": "Jr Technician",          "GamerScore": 10, "Description": "Complete the first 10 levels." },
+    { "Key": "LabAssistant",       "Name": "Lab Assistant",          "GamerScore": 20, "Description": "Complete the first 25 levels." },
+    { "Key": "MadScientist",       "Name": "Mad Scientist",          "GamerScore": 30, "Description": "Complete all 50 levels." },
+    { "Key": "Efficient",          "Name": "Efficient",              "GamerScore":  5, "Description": "Complete a level with 1 or more unused pieces." },
+    { "Key": "SpareParts",         "Name": "Spare Parts",            "GamerScore": 15, "Description": "Complete a level with 2 or more unused pieces." },
+    { "Key": "WereThoseImportant", "Name": "Were Those Important",   "GamerScore": 25, "Description": "Complete a level with 4 or more unused pieces." },
+    { "Key": "BetterThanNothing",  "Name": "Better Than Nothing",    "GamerScore": 10, "Description": "Finish a level with between 0 and 100 bonus points." },
+    { "Key": "DedicatedDropper",   "Name": "Dedicated Dropper",      "GamerScore": 20, "Description": "Play 20 consecutive levels in one session." },
+    { "Key": "DropAndGiveMeSixty", "Name": "Drop and Give Me Sixty", "GamerScore": 20, "Description": "Play for an hour." },
+    { "Key": "Respectable",        "Name": "Respectable",            "GamerScore": 15, "Description": "Score 250,000 points." },
+    { "Key": "Enigmaster",         "Name": "Enigmaster",             "GamerScore": 15, "Description": "Score 500,000 points." },
+    { "Key": "NoUseCrying",        "Name": "No Use Crying",          "GamerScore": 10, "Description": "Spill over 1,000,000 drops!" }
   ]
 }

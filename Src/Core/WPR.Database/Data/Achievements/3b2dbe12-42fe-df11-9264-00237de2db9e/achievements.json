@@ -2,17 +2,17 @@
   "Name": "Puzzle Quest 2",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "HAPPILYEVERAFTER",  "GamerScore": 0 },
-    { "Key": "SAVEVERLOREN",      "GamerScore": 0 },
-    { "Key": "PWNT",              "GamerScore": 0 },
-    { "Key": "CHEATINGAI",        "GamerScore": 0 },
-    { "Key": "EPICWIN",           "GamerScore": 0 },
-    { "Key": "EPICFAIL",          "GamerScore": 0 },
-    { "Key": "OMGHAX",            "GamerScore": 0 },
-    { "Key": "GATEHACKER",        "GamerScore": 0 },
-    { "Key": "KINGGODD",          "GamerScore": 0 },
-    { "Key": "SHADOWBRINGER",     "GamerScore": 0 },
-    { "Key": "ABOMINABLE",        "GamerScore": 0 },
-    { "Key": "DRAGONSLAYER",      "GamerScore": 0 }
+    { "Key": "HAPPILYEVERAFTER", "Name": "Happily Ever After", "GamerScore": 30, "Description": "Complete the game" },
+    { "Key": "SAVEVERLOREN",     "Name": "Save Verloren",      "GamerScore":  5, "Description": "Save the town of Verloren from invading Goblins and Trolls" },
+    { "Key": "PWNT",             "Name": "PWNT!",              "GamerScore":  5, "Description": "Defeat an opponent on your first turn during any single player game mode" },
+    { "Key": "CHEATINGAI",       "Name": "Cheating AI",        "GamerScore":  5, "Description": "Be defeated by an opponent on their first turn during any single player game mode" },
+    { "Key": "EPICWIN",          "Name": "Epic Win",           "GamerScore": 10, "Description": "Defeat an opponent while on 1 Life Point during any single player game mode" },
+    { "Key": "EPICFAIL",         "Name": "Epic Fail",          "GamerScore": 10, "Description": "Lose to an opponent while on 1 Life Point during any single player game mode" },
+    { "Key": "OMGHAX",           "Name": "OMGHAX",             "GamerScore": 20, "Description": "Make a match of 8 gems in a row in any battle game mode" },
+    { "Key": "GATEHACKER",       "Name": "Gate Hacker",        "GamerScore": 20, "Description": "Use the Bash mini-game to destroy every locked gate, door or chest possible!" },
+    { "Key": "KINGGODD",         "Name": "King Godd",          "GamerScore": 10, "Description": "Defeat King Godd and complete the 'King Godd' quest" },
+    { "Key": "SHADOWBRINGER",    "Name": "Shadowbringer",      "GamerScore": 15, "Description": "Defeat the Shadowbringer and complete the 'Shadowbringer' quest" },
+    { "Key": "ABOMINABLE",       "Name": "Abominable",         "GamerScore": 30, "Description": "Defeat the Yeti and complete the challenge quest" },
+    { "Key": "DRAGONSLAYER",     "Name": "Dragonslayer",       "GamerScore": 40, "Description": "Defeat the Green Dragon and complete the challenge quest" }
   ]
 }

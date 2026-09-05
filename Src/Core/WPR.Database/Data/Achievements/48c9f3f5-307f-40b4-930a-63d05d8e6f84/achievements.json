@@ -2,17 +2,17 @@
   "Name": "Ms. Splosion Man",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "ACH_1_HELL_HATH_NO_FURY",         "GamerScore": 0 },
-    { "Key": "ACH_2_EYE_OF_THE_TIGRESS",        "GamerScore": 0 },
-    { "Key": "ACH_3_FRUSTURATION",              "GamerScore": 0 },
-    { "Key": "ACH_4_TO_THE_CONSERVATORY",       "GamerScore": 0 },
-    { "Key": "ACH_5_YOULL_BELIEVE_MS_CAN_FLY",  "GamerScore": 0 },
-    { "Key": "ACH_6_SORE_THUMBS_INFLATED_EGO",  "GamerScore": 0 },
-    { "Key": "ACH_7_CONGRATURATION",            "GamerScore": 0 },
-    { "Key": "ACH_8_URGE_TO_KILL_RISING",       "GamerScore": 0 },
-    { "Key": "ACH_9_BEST_OF_THE_BEST",          "GamerScore": 0 },
-    { "Key": "ACH_10_SILVER_SHOE_AWARD",        "GamerScore": 0 },
-    { "Key": "ACH_11_GOLDEN_SHOE_AWARD",        "GamerScore": 0 },
-    { "Key": "ACH_12_WORLDS_FINEST",            "GamerScore": 0 }
+    { "Key": "ACH_1_HELL_HATH_NO_FURY",        "Name": "Hell Hath No Fury",            "GamerScore":  5, "Description": "Destroy 10 pieces of scenery." },
+    { "Key": "ACH_2_EYE_OF_THE_TIGRESS",       "Name": "Eye of the Tigress",           "GamerScore":  5, "Description": "Complete level 2-1 without dying." },
+    { "Key": "ACH_3_FRUSTURATION",             "Name": "Frusturation!",                "GamerScore": 10, "Description": "Complete level 2-1 in Hardcore Mode." },
+    { "Key": "ACH_4_TO_THE_CONSERVATORY",      "Name": "To the Conservatory!",         "GamerScore": 15, "Description": "Find a secret exit." },
+    { "Key": "ACH_5_YOULL_BELIEVE_MS_CAN_FLY", "Name": "You'll Believe a Ms. Can Fly", "GamerScore": 10, "Description": "Complete Single Player level 3-14 without touching the ground." },
+    { "Key": "ACH_6_SORE_THUMBS_INFLATED_EGO", "Name": "Sore Thumbs, Inflated Ego",    "GamerScore": 20, "Description": "Complete the game." },
+    { "Key": "ACH_7_CONGRATURATION",           "Name": "Congraturation!",              "GamerScore": 20, "Description": "Complete level 3-1 without dying." },
+    { "Key": "ACH_8_URGE_TO_KILL_RISING",      "Name": "Urge to Kill Rising",          "GamerScore": 20, "Description": "Complete level 3-1 in Hardcore Mode." },
+    { "Key": "ACH_9_BEST_OF_THE_BEST",         "Name": "Best of the Best",             "GamerScore": 30, "Description": "Complete the game in Hardcore Mode." },
+    { "Key": "ACH_10_SILVER_SHOE_AWARD",       "Name": "The Silver Shoe Award",        "GamerScore": 15, "Description": "Collect 20 pairs of shoes." },
+    { "Key": "ACH_11_GOLDEN_SHOE_AWARD",       "Name": "The Golden Shoe Award",        "GamerScore": 25, "Description": "Collect all 47 pairs of shoes." },
+    { "Key": "ACH_12_WORLDS_FINEST",           "Name": "World's Finest",               "GamerScore": 25, "Description": "Find all the secret exits." }
   ]
 }

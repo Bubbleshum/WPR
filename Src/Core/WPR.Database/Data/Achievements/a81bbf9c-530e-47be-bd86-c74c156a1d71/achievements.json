@@ -2,13 +2,13 @@
   "Name": "Sudoku",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "rank_ultimate",      "GamerScore": 0 },
-    { "Key": "never_too_proud",    "GamerScore": 0 },
-    { "Key": "pfff_pencils",       "GamerScore": 0 },
-    { "Key": "winner",             "GamerScore": 0 },
-    { "Key": "minuteman",          "GamerScore": 0 },
-    { "Key": "gotta_play_em_all",  "GamerScore": 0 },
-    { "Key": "overload",           "GamerScore": 0 },
-    { "Key": "i_dont_need_those",  "GamerScore": 0 }
+    { "Key": "rank_ultimate",     "Name": "Ultimate",              "GamerScore": 10, "Description": "Reach the Ultimate rank." },
+    { "Key": "never_too_proud",   "Name": "Never too proud",       "GamerScore":  5, "Description": "Give up on a puzzle to earn points." },
+    { "Key": "pfff_pencils",      "Name": "Pfffff, pencils",       "GamerScore":  5, "Description": "Finish a puzzle without using any pencil marks." },
+    { "Key": "winner",            "Name": "Winner",                "GamerScore":  5, "Description": "Solve your first Expert puzzle in Classic mode." },
+    { "Key": "minuteman",         "Name": "Minuteman",             "GamerScore":  5, "Description": "Solve a puzzle in under a minute." },
+    { "Key": "gotta_play_em_all", "Name": "Gotta play 'em all",    "GamerScore": 10, "Description": "Finish a puzzle in each difficulty in both Classic and Lightning modes." },
+    { "Key": "overload",          "Name": "Overload",              "GamerScore":  5, "Description": "Max out the combo multiplier in Lightning mode." },
+    { "Key": "i_dont_need_those", "Name": "I don't need those...", "GamerScore":  5, "Description": "Finish a puzzle without using any powerups as rank: Player or higher." }
   ]
 }

@@ -2,15 +2,15 @@
   "Name": "Amazing Alex",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "CONTRAPTIONIST",        "GamerScore": 0 },
-    { "Key": "WORLDOFCONTRAPTIONS",   "GamerScore": 0 },
-    { "Key": "SCHOOLSOUT",            "GamerScore": 0 },
-    { "Key": "LAWNMOWER",             "GamerScore": 0 },
-    { "Key": "BEDTIME",               "GamerScore": 0 },
-    { "Key": "KINGOFTHETREEHOUSE",    "GamerScore": 0 },
-    { "Key": "BOOKSMART",             "GamerScore": 0 },
-    { "Key": "KNOCKOUT",              "GamerScore": 0 },
-    { "Key": "ITSNOTEASYBEINGGREEN",  "GamerScore": 0 },
-    { "Key": "CHOPPERPILOT",          "GamerScore": 0 }
+    { "Key": "CONTRAPTIONIST",       "Name": "Contraptionist",            "GamerScore": 20, "Description": "Create your own level" },
+    { "Key": "WORLDOFCONTRAPTIONS",  "Name": "World of Contraptions",     "GamerScore": 20, "Description": "Complete a downloaded level" },
+    { "Key": "SCHOOLSOUT",           "Name": "School's Out",              "GamerScore": 20, "Description": "Complete all levels in The Classroom" },
+    { "Key": "LAWNMOWER",            "Name": "Lawn Mower",                "GamerScore": 20, "Description": "Complete all levels in The Backyard" },
+    { "Key": "BEDTIME",              "Name": "Bedtime",                   "GamerScore": 20, "Description": "Complete all levels in Alex's Bedroom" },
+    { "Key": "KINGOFTHETREEHOUSE",   "Name": "King of the TreeHouse",     "GamerScore": 20, "Description": "Complete all levels in The Treehouse" },
+    { "Key": "BOOKSMART",            "Name": "Book Smart",                "GamerScore": 20, "Description": "Collect all stars in The Classroom" },
+    { "Key": "KNOCKOUT",             "Name": "Knockout",                  "GamerScore": 20, "Description": "Collect all stars in The Backyard" },
+    { "Key": "ITSNOTEASYBEINGGREEN", "Name": "It's Not Easy Being Green", "GamerScore": 20, "Description": "Collect all stars in Alex's Bedroom" },
+    { "Key": "CHOPPERPILOT",         "Name": "Chopper Pilot",             "GamerScore": 20, "Description": "Collect all stars in The Treehouse" }
   ]
 }

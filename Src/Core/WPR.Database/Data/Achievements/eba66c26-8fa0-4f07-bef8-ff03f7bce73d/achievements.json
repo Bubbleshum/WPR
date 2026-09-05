@@ -2,15 +2,15 @@
   "Name": "Chaos Rings",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "ACH_01",  "GamerScore": 0 },
-    { "Key": "ACH_02",  "GamerScore": 0 },
-    { "Key": "ACH_03",  "GamerScore": 0 },
-    { "Key": "ACH_04",  "GamerScore": 0 },
-    { "Key": "ACH_05",  "GamerScore": 0 },
-    { "Key": "ACH_06",  "GamerScore": 0 },
-    { "Key": "ACH_07",  "GamerScore": 0 },
-    { "Key": "ACH_08",  "GamerScore": 0 },
-    { "Key": "ACH_09",  "GamerScore": 0 },
-    { "Key": "ACH_10",  "GamerScore": 0 }
+    { "Key": "ACH_01", "Name": "Clear the Escher scenario.", "GamerScore": 10, "Description": "Clear the Escher scenario." },
+    { "Key": "ACH_02", "Name": "Clear the Eluca scenario.",  "GamerScore": 10, "Description": "Clear the Eluca scenario." },
+    { "Key": "ACH_03", "Name": "Clear the Olgar scenario.",  "GamerScore": 10, "Description": "Clear the Olgar scenario." },
+    { "Key": "ACH_04", "Name": "Clear the Ayuta scenario.",  "GamerScore": 10, "Description": "Clear the Ayuta scenario." },
+    { "Key": "ACH_05", "Name": "Clear all areas.",           "GamerScore": 30, "Description": "Clear all areas." },
+    { "Key": "ACH_06", "Name": "Defeat all hidden bosses.",  "GamerScore": 20, "Description": "Defeat all hidden bosses with each pair of heroes." },
+    { "Key": "ACH_07", "Name": "Defeat PiuPiu.",             "GamerScore": 30, "Description": "Defeat PiuPiu." },
+    { "Key": "ACH_08", "Name": "Defeat 1000 enemies.",       "GamerScore": 20, "Description": "Achieve victory in over 1000 battles." },
+    { "Key": "ACH_09", "Name": "Reach level 100.",           "GamerScore": 30, "Description": "Reach level 100 with any character." },
+    { "Key": "ACH_10", "Name": "All Genes max level.",       "GamerScore": 30, "Description": "Raise all genes to max level." }
   ]
 }

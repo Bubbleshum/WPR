@@ -2,15 +2,15 @@
   "Name": "Shuffle Party",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "challenger",        "GamerScore": 0 },
-    { "Key": "conqueror",         "GamerScore": 0 },
-    { "Key": "challenge_master",  "GamerScore": 0 },
-    { "Key": "x_marks_the_spot",  "GamerScore": 0 },
-    { "Key": "gobble_gobble",     "GamerScore": 0 },
-    { "Key": "over_175_club",     "GamerScore": 0 },
-    { "Key": "roadhouse_billy",   "GamerScore": 0 },
-    { "Key": "hanger",            "GamerScore": 0 },
-    { "Key": "payday",            "GamerScore": 0 },
-    { "Key": "shop_o_holic",      "GamerScore": 0 }
+    { "Key": "challenger",       "Name": "Challenger",       "GamerScore":  5, "Description": "Complete a Challenge Mode Level with 3 stars." },
+    { "Key": "conqueror",        "Name": "Conqueror",        "GamerScore":  5, "Description": "Complete all Challenge Levels." },
+    { "Key": "challenge_master", "Name": "Challenge Master", "GamerScore":  5, "Description": "Earn 3 stars on all Challenge Levels." },
+    { "Key": "x_marks_the_spot", "Name": "X marks the spot", "GamerScore":  5, "Description": "Perform a strike in Bowling." },
+    { "Key": "gobble_gobble",    "Name": "Gobble Gobble!!!", "GamerScore":  5, "Description": "Perform 3 strikes in a row in Bowling." },
+    { "Key": "over_175_club",    "Name": "Over 175 Club",    "GamerScore":  5, "Description": "Obtain a Bowling score of 175+" },
+    { "Key": "roadhouse_billy",  "Name": "Roadhouse Billy",  "GamerScore":  5, "Description": "Obtain a Shuffleboard score of 5 or more in a single round." },
+    { "Key": "hanger",           "Name": "Hanger!",          "GamerScore":  5, "Description": "Get a scored \"Hanger\" in Shuffleboard" },
+    { "Key": "payday",           "Name": "Payday!",          "GamerScore":  5, "Description": "Purchase an item from Pro Shop" },
+    { "Key": "shop_o_holic",     "Name": "Shop-o-holic",     "GamerScore":  5, "Description": "Purchase all items in Pro Shop" }
   ]
 }

@@ -2,15 +2,15 @@
   "Name": "Minesweeper",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "rank_ultimate",              "GamerScore": 0 },
-    { "Key": "happens_to_everybody",       "GamerScore": 0 },
-    { "Key": "use_what_now",               "GamerScore": 0 },
-    { "Key": "click_click_boom",           "GamerScore": 0 },
-    { "Key": "high_five",                  "GamerScore": 0 },
-    { "Key": "piece_of_cake",              "GamerScore": 0 },
-    { "Key": "serious_business",           "GamerScore": 0 },
-    { "Key": "the_world_is_safe_for_now",  "GamerScore": 0 },
-    { "Key": "i_dont_need_those",          "GamerScore": 0 },
-    { "Key": "training_wheels",            "GamerScore": 0 }
+    { "Key": "rank_ultimate",             "Name": "Ultimate",                     "GamerScore":  5, "Description": "Reach the Ultimate rank." },
+    { "Key": "happens_to_everybody",      "Name": "Happens to Everybody",         "GamerScore":  5, "Description": "Trigger your first mine." },
+    { "Key": "use_what_now",              "Name": "Use what now?",                "GamerScore":  5, "Description": "Completed a minefield without using any flags on a minefield that is 9x9 or larger." },
+    { "Key": "click_click_boom",          "Name": "Click click BOOM!",            "GamerScore":  5, "Description": "Trigger a mine on the second click." },
+    { "Key": "high_five",                 "Name": "High Five!",                   "GamerScore":  5, "Description": "Win a speed mode game with more than 10 seconds left on the clock." },
+    { "Key": "piece_of_cake",             "Name": "Piece of cake!",               "GamerScore":  5, "Description": "Complete a minefield with five digs or less." },
+    { "Key": "serious_business",          "Name": "Serious Business",             "GamerScore":  5, "Description": "Reveal a square with a 6 or higher." },
+    { "Key": "the_world_is_safe_for_now", "Name": "The world is safe... for now", "GamerScore":  5, "Description": "Win a game on each difficulty in both Classic and Speed modes." },
+    { "Key": "i_dont_need_those",         "Name": "I don't need those",           "GamerScore":  5, "Description": "Win a game without using any powerups ranked as Player or higher." },
+    { "Key": "training_wheels",           "Name": "Training wheels",              "GamerScore":  5, "Description": "Win a game on a minefield that is at least 12x12." }
   ]
 }

@@ -2,17 +2,17 @@
   "Name": "The Great Wobo Escape",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "Obeyed Orders",        "GamerScore": 0 },
-    { "Key": "Small Savior",         "GamerScore": 0 },
-    { "Key": "Dangerous Drillings",  "GamerScore": 0 },
-    { "Key": "Parted Pathways",      "GamerScore": 0 },
-    { "Key": "Abhorrent Abyss",      "GamerScore": 0 },
-    { "Key": "Tesla Trouble",        "GamerScore": 0 },
-    { "Key": "Tricky Tunnels",       "GamerScore": 0 },
-    { "Key": "Cruel Confrontation",  "GamerScore": 0 },
-    { "Key": "A Friend in Need",     "GamerScore": 0 },
-    { "Key": "The Great Escape",     "GamerScore": 0 },
-    { "Key": "Birdie",               "GamerScore": 0 },
-    { "Key": "Condor",               "GamerScore": 0 }
+    { "Key": "Obeyed Orders",       "Name": "Obeyed Orders",       "GamerScore": 15, "Description": "Complete the level \"Obeyed Orders\"" },
+    { "Key": "Small Savior",        "Name": "Small Savior",        "GamerScore": 15, "Description": "Complete the level \"Small Savior\"" },
+    { "Key": "Dangerous Drillings", "Name": "Dangerous Drillings", "GamerScore": 15, "Description": "Complete the level \"Dangerous Drillings\"" },
+    { "Key": "Parted Pathways",     "Name": "Parted Pathways",     "GamerScore": 15, "Description": "Complete the level \"Parted Pathways\"" },
+    { "Key": "Abhorrent Abyss",     "Name": "Abhorrent Abyss",     "GamerScore": 15, "Description": "Complete the level \"Abhorrent Abyss\"" },
+    { "Key": "Tesla Trouble",       "Name": "Tesla Trouble",       "GamerScore": 15, "Description": "Complete the level \"Tesla Trouble\"" },
+    { "Key": "Tricky Tunnels",      "Name": "Tricky Tunnels",      "GamerScore": 15, "Description": "Complete the level \"Tricky Tunnels\"" },
+    { "Key": "Cruel Confrontation", "Name": "Cruel Confrontation", "GamerScore": 15, "Description": "Complete the level \"Cruel Confrontation\"" },
+    { "Key": "A Friend in Need",    "Name": "A Friend in Need",    "GamerScore": 10, "Description": "Save one Wobling" },
+    { "Key": "The Great Escape",    "Name": "The Great Escape",    "GamerScore": 30, "Description": "Save all Woblings" },
+    { "Key": "Birdie",              "Name": "Birdie",              "GamerScore": 10, "Description": "Finish one level under par time" },
+    { "Key": "Condor",              "Name": "Condor",              "GamerScore": 30, "Description": "Finish all levels under par time" }
   ]
 }

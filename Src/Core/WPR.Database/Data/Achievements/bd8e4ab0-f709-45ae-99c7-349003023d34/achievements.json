@@ -2,15 +2,15 @@
   "Name": "Collapse!",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "Buster",         "GamerScore": 0 },
-    { "Key": "Big Buster",     "GamerScore": 0 },
-    { "Key": "Huge Buster",    "GamerScore": 0 },
-    { "Key": "Clean Sweep",    "GamerScore": 0 },
-    { "Key": "Fast Sweep",     "GamerScore": 0 },
-    { "Key": "Rainbow Sweep",  "GamerScore": 0 },
-    { "Key": "Sniper",         "GamerScore": 0 },
-    { "Key": "Close Call",     "GamerScore": 0 },
-    { "Key": "Single Handed",  "GamerScore": 0 },
-    { "Key": "Puzzle Genius",  "GamerScore": 0 }
+    { "Key": "Buster",        "Name": "Buster",        "GamerScore": 10, "Description": "Remove more than 20 blocks with one move." },
+    { "Key": "Big Buster",    "Name": "Big Buster",    "GamerScore": 20, "Description": "Remove more than 30 blocks with one move." },
+    { "Key": "Huge Buster",   "Name": "Huge Buster",   "GamerScore": 30, "Description": "Remove more than 40 blocks with one move." },
+    { "Key": "Clean Sweep",   "Name": "Clean Sweep",   "GamerScore": 30, "Description": "Remove all the blocks on the screen." },
+    { "Key": "Fast Sweep",    "Name": "Fast Sweep",    "GamerScore": 30, "Description": "Remove blocks 5 times within 4 seconds." },
+    { "Key": "Rainbow Sweep", "Name": "Rainbow Sweep", "GamerScore": 30, "Description": "Remove blocks of every color currently in the game in rapid succession." },
+    { "Key": "Sniper",        "Name": "Sniper",        "GamerScore": 10, "Description": "Every click removes blocks." },
+    { "Key": "Close Call",    "Name": "Close Call",    "GamerScore": 10, "Description": "Complete a level when blocks are at the topmost row." },
+    { "Key": "Single Handed", "Name": "Single Handed", "GamerScore": 10, "Description": "Complete a level without using any power-ups." },
+    { "Key": "Puzzle Genius", "Name": "Puzzle Genius", "GamerScore": 20, "Description": "Solve a puzzle with as few clicks as possible." }
   ]
 }

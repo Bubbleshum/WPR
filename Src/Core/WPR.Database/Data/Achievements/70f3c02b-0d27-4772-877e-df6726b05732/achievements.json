@@ -2,16 +2,16 @@
   "Name": "Roll in the Hole",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "15 lollipops",   "GamerScore": 0 },
-    { "Key": "40 lollipops",   "GamerScore": 0 },
-    { "Key": "80 lollipops",   "GamerScore": 0 },
-    { "Key": "160 lollipops",  "GamerScore": 0 },
-    { "Key": "240 lollipops",  "GamerScore": 0 },
-    { "Key": "World 1",        "GamerScore": 0 },
-    { "Key": "World 2",        "GamerScore": 0 },
-    { "Key": "World 3",        "GamerScore": 0 },
-    { "Key": "World 4",        "GamerScore": 0 },
-    { "Key": "World 5",        "GamerScore": 0 },
-    { "Key": "All lollipops",  "GamerScore": 0 }
+    { "Key": "15 lollipops",  "Name": "15 lollipops",  "GamerScore": 10, "Description": "Find and collect 15 lollipops." },
+    { "Key": "40 lollipops",  "Name": "40 lollipops",  "GamerScore": 10, "Description": "Find and collect 40 lollipops." },
+    { "Key": "80 lollipops",  "Name": "80 lollipops",  "GamerScore": 10, "Description": "Find and collect 80 lollipops." },
+    { "Key": "160 lollipops", "Name": "160 lollipops", "GamerScore": 20, "Description": "Find and collect 160 lollipops." },
+    { "Key": "240 lollipops", "Name": "240 lollipops", "GamerScore": 20, "Description": "Find and collect 240 lollipops." },
+    { "Key": "World 1",       "Name": "World 1",       "GamerScore": 20, "Description": "Complete all levels in World 1." },
+    { "Key": "World 2",       "Name": "World 2",       "GamerScore": 20, "Description": "Complete all levels in World 2." },
+    { "Key": "World 3",       "Name": "World 3",       "GamerScore": 20, "Description": "Complete all levels in World 3." },
+    { "Key": "World 4",       "Name": "World 4",       "GamerScore": 20, "Description": "Complete all levels in World 4." },
+    { "Key": "World 5",       "Name": "World 5",       "GamerScore": 20, "Description": "Complete all levels in World 5." },
+    { "Key": "All lollipops", "Name": "All lollipops", "GamerScore": 30, "Description": "Find and collect 363 lollipops." }
   ]
 }

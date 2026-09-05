@@ -2,17 +2,17 @@
   "Name": "Jet Set Go",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "achievement_01",  "GamerScore": 0 },
-    { "Key": "achievement_02",  "GamerScore": 0 },
-    { "Key": "achievement_03",  "GamerScore": 0 },
-    { "Key": "achievement_04",  "GamerScore": 0 },
-    { "Key": "achievement_05",  "GamerScore": 0 },
-    { "Key": "achievement_06",  "GamerScore": 0 },
-    { "Key": "achievement_07",  "GamerScore": 0 },
-    { "Key": "achievement_08",  "GamerScore": 0 },
-    { "Key": "achievement_09",  "GamerScore": 0 },
-    { "Key": "achievement_10",  "GamerScore": 0 },
-    { "Key": "achievement_11",  "GamerScore": 0 },
-    { "Key": "achievement_12",  "GamerScore": 0 }
+    { "Key": "achievement_01", "Name": "Do The Darwin",     "GamerScore": 15, "Description": "Hit 40 dance steps in a row in the Galapagos." },
+    { "Key": "achievement_02", "Name": "Montreal Sell Out", "GamerScore": 15, "Description": "Purchase all items from the shop in Montreal." },
+    { "Key": "achievement_03", "Name": "Montreal 5 Star",   "GamerScore": 20, "Description": "Achieve a 5 star rank in Montreal." },
+    { "Key": "achievement_04", "Name": "Pool Party",        "GamerScore": 15, "Description": "Fill up the pool with 3 customers in Hawaii." },
+    { "Key": "achievement_05", "Name": "Barista Blitz",     "GamerScore": 15, "Description": "Serve 5 coffees in a row in Italy." },
+    { "Key": "achievement_06", "Name": "London 5 Star",     "GamerScore": 20, "Description": "Achieve a 5 star rank in London." },
+    { "Key": "achievement_07", "Name": "Bigfoot",           "GamerScore": 15, "Description": "Find the hidden Bigfoot in the Rocky Mountains." },
+    { "Key": "achievement_08", "Name": "Extended Vacation", "GamerScore": 15, "Description": "Have all 4 planes full at the same time in Hong Kong." },
+    { "Key": "achievement_09", "Name": "Hong Kong 5 Star",  "GamerScore": 20, "Description": "Achieve a 5 star rank in Hong Kong." },
+    { "Key": "achievement_10", "Name": "Coastal Collector", "GamerScore": 15, "Description": "Deliver 1 of each sea shell in Barcelona." },
+    { "Key": "achievement_11", "Name": "Yeti",              "GamerScore": 15, "Description": "Find the hidden Yeti in Alaska." },
+    { "Key": "achievement_12", "Name": "Sydney 5 Star",     "GamerScore": 20, "Description": "Achieve a 5 star rank in Sydney." }
   ]
 }

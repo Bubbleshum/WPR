@@ -2,17 +2,17 @@
   "Name": "OMG - Our Manic Game",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "CloseCombat",     "GamerScore": 0 },
-    { "Key": "Points",          "GamerScore": 0 },
-    { "Key": "Marathon",        "GamerScore": 0 },
-    { "Key": "Nerves",          "GamerScore": 0 },
-    { "Key": "MrClear",         "GamerScore": 0 },
-    { "Key": "Hyperactive",     "GamerScore": 0 },
-    { "Key": "RainbowWarrior",  "GamerScore": 0 },
-    { "Key": "Fan",             "GamerScore": 0 },
-    { "Key": "Pts",             "GamerScore": 0 },
-    { "Key": "idle",            "GamerScore": 0 },
-    { "Key": "KillingSpree",    "GamerScore": 0 },
-    { "Key": "GodMode",         "GamerScore": 0 }
+    { "Key": "CloseCombat",    "Name": "Close Combat",                  "GamerScore": 15, "Description": "Get close to enemies to kill them." },
+    { "Key": "Points",         "Name": "OMFG(WTFBBQ)",                  "GamerScore": 30, "Description": "Play, play, play." },
+    { "Key": "Marathon",       "Name": "Staying Alive, Staying Alive.", "GamerScore": 15, "Description": "Try to survive for 8 minutes!" },
+    { "Key": "Nerves",         "Name": "Annoying",                      "GamerScore": 25, "Description": "Touch all bosses in a game." },
+    { "Key": "MrClear",        "Name": "Mr Clear",                      "GamerScore": 15, "Description": "Clean 5 waves in a row!" },
+    { "Key": "Hyperactive",    "Name": "Hyperactive",                   "GamerScore": 10, "Description": "Move a lot!" },
+    { "Key": "RainbowWarrior", "Name": "Rainbow Warrior",               "GamerScore": 10, "Description": "Improve your laser beam by defeating waves without dying." },
+    { "Key": "Fan",            "Name": "Fan",                           "GamerScore": 10, "Description": "Play a lot!" },
+    { "Key": "Pts",            "Name": "Jackpot",                       "GamerScore": 25, "Description": "Send enemies crazy then kill them as late as you can." },
+    { "Key": "idle",           "Name": "Cold Blood",                    "GamerScore": 15, "Description": "Find a safe spot and stay idle." },
+    { "Key": "KillingSpree",   "Name": "Killing Spree",                 "GamerScore": 15, "Description": "Shoot at enemies without killing them, then kill them all in a row." },
+    { "Key": "GodMode",        "Name": "God Mode",                      "GamerScore": 15, "Description": "Just don't get killed!" }
   ]
 }

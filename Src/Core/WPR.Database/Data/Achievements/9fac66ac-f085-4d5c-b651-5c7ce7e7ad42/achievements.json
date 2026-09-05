@@ -2,19 +2,19 @@
   "Name": "Super Monkey Ball 2 - Sakura Edition",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "0",   "GamerScore":  5 },
-    { "Key": "1",   "GamerScore":  5 },
-    { "Key": "2",   "GamerScore":  5 },
-    { "Key": "3",   "GamerScore":  5 },
-    { "Key": "4",   "GamerScore":  5 },
-    { "Key": "5",   "GamerScore":  5 },
-    { "Key": "6",   "GamerScore":  5 },
-    { "Key": "7",   "GamerScore":  5 },
-    { "Key": "8",   "GamerScore": 10 },
-    { "Key": "9",   "GamerScore": 20 },
-    { "Key": "10",  "GamerScore": 25 },
-    { "Key": "11",  "GamerScore": 30 },
-    { "Key": "12",  "GamerScore": 50 },
-    { "Key": "13",  "GamerScore": 25 }
+    { "Key": "0",  "Name": "Jumble Jungle Champion",  "GamerScore":  5, "Description": "Complete all levels in Jumble Jungle" },
+    { "Key": "1",  "Name": "Pirates Ocean Champion",  "GamerScore":  5, "Description": "Complete all levels in Pirates Ocean" },
+    { "Key": "2",  "Name": "Sinking Swamps Champion", "GamerScore":  5, "Description": "Complete all levels in Sinking Swamps" },
+    { "Key": "3",  "Name": "Cobalt Caverns Champion", "GamerScore":  5, "Description": "Complete all levels in Cobalt Caverns" },
+    { "Key": "4",  "Name": "Ultra Heaven Champion",   "GamerScore":  5, "Description": "Complete all levels in Ultra Heaven" },
+    { "Key": "5",  "Name": "Far East Champion",       "GamerScore":  5, "Description": "Complete all levels in Far East" },
+    { "Key": "6",  "Name": "Fore!",                   "GamerScore":  5, "Description": "Complete a full 18 course round of Monkey Golf" },
+    { "Key": "7",  "Name": "Strike!",                 "GamerScore":  5, "Description": "Complete a game of Monkey Bowling" },
+    { "Key": "8",  "Name": "Bullseye!",               "GamerScore": 10, "Description": "Complete a game of Monkey Target" },
+    { "Key": "9",  "Name": "Target Champion",         "GamerScore": 20, "Description": "Complete a game of 4 player Monkey Target" },
+    { "Key": "10", "Name": "Lucky Number",            "GamerScore": 25, "Description": "Finish a level with an end time of .07 seconds" },
+    { "Key": "11", "Name": "Monkey Prince",           "GamerScore": 30, "Description": "Obtain 10 crowns" },
+    { "Key": "12", "Name": "Monkey King",             "GamerScore": 50, "Description": "Unlock all 10 crown levels" },
+    { "Key": "13", "Name": "Stock up on Potassium",   "GamerScore": 25, "Description": "Collect bananas to earn a stock of 15 lives" }
   ]
 }

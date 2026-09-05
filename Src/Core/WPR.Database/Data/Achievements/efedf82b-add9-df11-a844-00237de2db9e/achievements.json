@@ -2,18 +2,18 @@
   "Name": "The Revenants - Corridor of Souls",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "Banish",                      "GamerScore": 0 },
-    { "Key": "Anura",                       "GamerScore": 0 },
-    { "Key": "Number_6",                    "GamerScore": 0 },
-    { "Key": "Its_a_Trap",                  "GamerScore": 0 },
-    { "Key": "Lucky_13",                    "GamerScore": 0 },
-    { "Key": "Synchronicity",               "GamerScore": 0 },
-    { "Key": "Exterminator",                "GamerScore": 0 },
-    { "Key": "Spiritus",                    "GamerScore": 0 },
-    { "Key": "Exorcist",                    "GamerScore": 0 },
-    { "Key": "Omnivore",                    "GamerScore": 0 },
-    { "Key": "Easy_Street_Millionaire",     "GamerScore": 0 },
-    { "Key": "Main_Street_Millionaire",     "GamerScore": 0 },
-    { "Key": "Extreme_Street_Millionaire",  "GamerScore": 0 }
+    { "Key": "Banish",                     "Name": "Banish",                     "GamerScore":  5, "Description": "Capture 5 or more enemies in a single vortex." },
+    { "Key": "Anura",                      "Name": "Anura",                      "GamerScore":  5, "Description": "Capture a frog with its tongue fully extended." },
+    { "Key": "Number_6",                   "Name": "Number 6",                   "GamerScore":  5, "Description": "Create 6 simultaneous vortexes." },
+    { "Key": "Its_a_Trap",                 "Name": "It's a Trap!",               "GamerScore":  5, "Description": "Create a vortex that encircles no enemies, but captures 5 or more." },
+    { "Key": "Lucky_13",                   "Name": "Lucky 13",                   "GamerScore": 10, "Description": "Capture 13 enemies, one at a time, with 13 sequential vortexes." },
+    { "Key": "Synchronicity",              "Name": "Synchronicity",              "GamerScore": 10, "Description": "Capture 3 or more enemies in each of 3 simultaneous vortexes." },
+    { "Key": "Exterminator",               "Name": "Exterminator",               "GamerScore": 10, "Description": "Capture 15 or more enemies in a single vortex." },
+    { "Key": "Spiritus",                   "Name": "Spiritus",                   "GamerScore": 15, "Description": "Survive an entire level without a single death." },
+    { "Key": "Exorcist",                   "Name": "Exorcist",                   "GamerScore": 20, "Description": "Capture 30 or more enemies in a single vortex." },
+    { "Key": "Omnivore",                   "Name": "Omnivore",                   "GamerScore": 25, "Description": "Capture 5 or more different enemy types in a single vortex." },
+    { "Key": "Easy_Street_Millionaire",    "Name": "Easy Street Millionaire",    "GamerScore": 15, "Description": "Score 1,000,000 or more points on Easy difficulty." },
+    { "Key": "Main_Street_Millionaire",    "Name": "Main Street Millionaire",    "GamerScore": 25, "Description": "Score 5,000,000 or more points on Normal difficulty." },
+    { "Key": "Extreme_Street_Millionaire", "Name": "Extreme Street Millionaire", "GamerScore": 50, "Description": "Score 10,000,000 or more points on Hard difficulty." }
   ]
 }

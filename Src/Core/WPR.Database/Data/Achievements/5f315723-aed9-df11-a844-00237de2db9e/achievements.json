@@ -2,17 +2,17 @@
   "Name": "CarneyVale Showtime",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "Star Dreamer",    "GamerScore": 0 },
-    { "Key": "Perfect Runner",  "GamerScore": 0 },
-    { "Key": "Over the Top",    "GamerScore": 0 },
-    { "Key": "Life Saver",      "GamerScore": 0 },
-    { "Key": "Up The Tempo",    "GamerScore": 0 },
-    { "Key": "Flawless Run",    "GamerScore": 0 },
-    { "Key": "Superstar",       "GamerScore": 0 },
-    { "Key": "Elite Mission",   "GamerScore": 0 },
-    { "Key": "Rocket Rodeo",    "GamerScore": 0 },
-    { "Key": "Top Performer",   "GamerScore": 0 },
-    { "Key": "Ace Performer",   "GamerScore": 0 },
-    { "Key": "Star Performer",  "GamerScore": 0 }
+    { "Key": "Star Dreamer",   "Name": "Star Dreamer",   "GamerScore": 15, "Description": "Collect the Secret Star on 10 different levels." },
+    { "Key": "Perfect Runner", "Name": "Perfect Runner", "GamerScore": 20, "Description": "Earn Perfect Run from 10 different levels." },
+    { "Key": "Over the Top",   "Name": "Over the Top",   "GamerScore": 10, "Description": "Enter the Ring of Fire from the top." },
+    { "Key": "Life Saver",     "Name": "Life Saver",     "GamerScore": 15, "Description": "Collect all Life-Ups in Adventure mode." },
+    { "Key": "Up The Tempo",   "Name": "Up the Tempo",   "GamerScore": 10, "Description": "Complete 5 objectives within 1 minute each on Level 1." },
+    { "Key": "Flawless Run",   "Name": "Flawless Run",   "GamerScore": 10, "Description": "Collect all Life-Ups without losing a life on Level 5." },
+    { "Key": "Superstar",      "Name": "Superstar",      "GamerScore": 15, "Description": "Collect the Secret Star without losing a life on Level 7." },
+    { "Key": "Elite Mission",  "Name": "Elite Mission",  "GamerScore": 20, "Description": "Collect all balloons without losing a life on Level 10." },
+    { "Key": "Rocket Rodeo",   "Name": "Rocket Rodeo",   "GamerScore": 10, "Description": "Complete level 12 with only 3 rockets." },
+    { "Key": "Top Performer",  "Name": "Top Performer",  "GamerScore": 20, "Description": "Complete 5 objectives in one try on Level 13." },
+    { "Key": "Ace Performer",  "Name": "Ace Performer",  "GamerScore": 25, "Description": "Complete 5 objectives in one try on Level 14." },
+    { "Key": "Star Performer", "Name": "Star Performer", "GamerScore": 30, "Description": "Complete 5 objectives in one try on Level 15." }
   ]
 }

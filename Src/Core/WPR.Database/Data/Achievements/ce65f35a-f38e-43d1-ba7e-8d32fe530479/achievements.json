@@ -2,18 +2,18 @@
   "Name": "BulletAsylum",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "pew_pew",                 "GamerScore": 0 },
-    { "Key": "blam_blam",               "GamerScore": 0 },
-    { "Key": "zap_zap",                 "GamerScore": 0 },
-    { "Key": "impenetrable_defense",    "GamerScore": 0 },
-    { "Key": "stick_it_to_em",          "GamerScore": 0 },
-    { "Key": "sharpshooter",            "GamerScore": 0 },
-    { "Key": "sniper",                  "GamerScore": 0 },
-    { "Key": "special_forces",          "GamerScore": 0 },
-    { "Key": "dont_cross_the_streams",  "GamerScore": 0 },
-    { "Key": "welcome_to_the_club",     "GamerScore": 0 },
-    { "Key": "maximum_awesome",         "GamerScore": 0 },
-    { "Key": "perfectly_efficient",     "GamerScore": 0 },
-    { "Key": "thankyou",                "GamerScore": 0 }
+    { "Key": "pew_pew",                "Name": "Pew Pew",                 "GamerScore": 20, "Description": "Shoot a total of 10,000 light gun bullets." },
+    { "Key": "blam_blam",              "Name": "Blam Blam",               "GamerScore": 20, "Description": "Shoot a total of 3,000 heavy gun shots." },
+    { "Key": "zap_zap",                "Name": "Zap Zap",                 "GamerScore": 20, "Description": "Shoot a total of 1,000 laser bolts." },
+    { "Key": "impenetrable_defense",   "Name": "Impenetrable Defense",    "GamerScore": 20, "Description": "Block over 1,500 enemies with shields." },
+    { "Key": "stick_it_to_em",         "Name": "Stick It To 'Em",         "GamerScore":  5, "Description": "Use a single finger to reach Wave 10 in Arcade mode." },
+    { "Key": "sharpshooter",           "Name": "Sharpshooter",            "GamerScore":  5, "Description": "Get to Wave 3 in Arcade mode with an accuracy above 25%." },
+    { "Key": "sniper",                 "Name": "Sniper",                  "GamerScore": 10, "Description": "Get to Wave 5 in Arcade mode with an accuracy about 40%." },
+    { "Key": "special_forces",         "Name": "Special Forces",          "GamerScore": 15, "Description": "Get to Wave 8 in Arcade mode with an accuracy above 50%." },
+    { "Key": "dont_cross_the_streams", "Name": "Don't Cross the Streams", "GamerScore": 25, "Description": "Build 4 lasers in Architect mode and fire them all at once." },
+    { "Key": "welcome_to_the_club",    "Name": "Welcome to the Club",     "GamerScore": 15, "Description": "Played 10 Arcade games." },
+    { "Key": "maximum_awesome",        "Name": "Maximum Awesome",         "GamerScore": 25, "Description": "Fully upgrade everything." },
+    { "Key": "perfectly_efficient",    "Name": "Perfectly Efficient",     "GamerScore": 15, "Description": "Destroy 50 enemies at once with a single Overdrive blast." },
+    { "Key": "thankyou",               "Name": "Thankyou!",               "GamerScore":  5, "Description": "Point out your heroes!" }
   ]
 }

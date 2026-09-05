@@ -2,16 +2,16 @@
   "Name": "Tetris",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "Tetriminator",  "GamerScore": 0 },
-    { "Key": "Millenium",     "GamerScore": 0 },
-    { "Key": "Waterfall",     "GamerScore": 0 },
-    { "Key": "Spinmaster",    "GamerScore": 0 },
-    { "Key": "Tenacious",     "GamerScore": 0 },
-    { "Key": "Master",        "GamerScore": 0 },
-    { "Key": "WayOver",       "GamerScore": 0 },
-    { "Key": "Expert",        "GamerScore": 0 },
-    { "Key": "Dodecadent",    "GamerScore": 0 },
-    { "Key": "OnARoll",       "GamerScore": 0 },
-    { "Key": "Frenzy",        "GamerScore": 0 }
+    { "Key": "Tetriminator", "Name": "Tetriminator", "GamerScore": 30, "Description": "Perform 100 TetrisesÂ®." },
+    { "Key": "Millenium",    "Name": "Millenium",    "GamerScore": 30, "Description": "Clear 1000 Lines." },
+    { "Key": "Waterfall",    "Name": "Waterfall",    "GamerScore": 30, "Description": "Perform 50 Cascade line clears." },
+    { "Key": "Spinmaster",   "Name": "Spinmaster",   "GamerScore": 10, "Description": "Perform 25 T-Spins." },
+    { "Key": "Tenacious",    "Name": "Tenacious",    "GamerScore": 30, "Description": "Accumulate 90 minutes of play time." },
+    { "Key": "Master",       "Name": "Master",       "GamerScore": 20, "Description": "Reach 100% Completion." },
+    { "Key": "WayOver",      "Name": "Way Over",     "GamerScore":  5, "Description": "Clear 44 or more lines in a variant." },
+    { "Key": "Expert",       "Name": "Expert",       "GamerScore": 30, "Description": "Complete the Radical variant." },
+    { "Key": "Dodecadent",   "Name": "Dodecadent",   "GamerScore":  5, "Description": "Clear 12 lines or more in one turn." },
+    { "Key": "OnARoll",      "Name": "On A Roll",    "GamerScore":  5, "Description": "Complete a variant with novelty moves only (Cascades, TetrisesÂ® or T-Spins)." },
+    { "Key": "Frenzy",       "Name": "Frenzy",       "GamerScore":  5, "Description": "Complete a game with an average TPM of 35 or more." }
   ]
 }

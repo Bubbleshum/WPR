@@ -2,17 +2,17 @@
   "Name": "Throne Together",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "Budding Builder",         "GamerScore": 0 },
-    { "Key": "Accredited Architect",    "GamerScore": 0 },
-    { "Key": "Certified Contractor",    "GamerScore": 0 },
-    { "Key": "Speedy Engineering",      "GamerScore": 0 },
-    { "Key": "Gargling",                "GamerScore": 0 },
-    { "Key": "By the Book",             "GamerScore": 0 },
-    { "Key": "Join the Circus",         "GamerScore": 0 },
-    { "Key": "Holey Cathedral",         "GamerScore": 0 },
-    { "Key": "Light My Fire",           "GamerScore": 0 },
-    { "Key": "A Helping Hand",          "GamerScore": 0 },
-    { "Key": "Positive Reinforcement",  "GamerScore": 0 },
-    { "Key": "Shoddy Foundation",       "GamerScore": 0 }
+    { "Key": "Budding Builder",        "Name": "Budding Builder",        "GamerScore": 10, "Description": "Get 10 Stars across all levels" },
+    { "Key": "Accredited Architect",   "Name": "Accredited Architect",   "GamerScore": 20, "Description": "Get 100 Stars across all levels" },
+    { "Key": "Certified Contractor",   "Name": "Certified Contractor",   "GamerScore": 30, "Description": "Get 195 Stars across all levels" },
+    { "Key": "Speedy Engineering",     "Name": "Speedy Engineering",     "GamerScore": 15, "Description": "Beat a timed level with more than 30 seconds left on the clock" },
+    { "Key": "Gargling",               "Name": "Gargling",               "GamerScore": 10, "Description": "Turn 25 gargoyles into fountains" },
+    { "Key": "By the Book",            "Name": "By the Book",            "GamerScore": 25, "Description": "Build 50 blueprints" },
+    { "Key": "Join the Circus",        "Name": "Join the Circus",        "GamerScore": 15, "Description": "Simultaneously juggle 7 blocks in play at the same time" },
+    { "Key": "Holey Cathedral",        "Name": "Holey Cathedral",        "GamerScore": 20, "Description": "Complete a level with at least 20 enclosed spaces" },
+    { "Key": "Light My Fire",          "Name": "Light My Fire",          "GamerScore": 10, "Description": "Light up 30 torches" },
+    { "Key": "A Helping Hand",         "Name": "A Helping Hand",         "GamerScore": 15, "Description": "Receive an extra life from 5 friends" },
+    { "Key": "Positive Reinforcement", "Name": "Positive Reinforcement", "GamerScore": 10, "Description": "Repair 100 cracked blocks with cement" },
+    { "Key": "Shoddy Foundation",      "Name": "Shoddy Foundation",      "GamerScore": 20, "Description": "Complete a level with at least 30 cracked blocks" }
   ]
 }

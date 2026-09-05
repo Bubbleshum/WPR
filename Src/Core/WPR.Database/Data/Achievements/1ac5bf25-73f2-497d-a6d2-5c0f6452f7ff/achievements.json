@@ -2,19 +2,19 @@
   "Name": "Burn the Rope",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "Starting Sparks",     "GamerScore": 0 },
-    { "Key": "Lumber Jack",         "GamerScore": 0 },
-    { "Key": "Tying it up",         "GamerScore": 0 },
-    { "Key": "Royal Flush",         "GamerScore": 0 },
-    { "Key": "WheelingAndDealing",  "GamerScore": 0 },
-    { "Key": "Shedarific",          "GamerScore": 0 },
-    { "Key": "Cabin Fever",         "GamerScore": 0 },
-    { "Key": "Rainbow",             "GamerScore": 0 },
-    { "Key": "Dead Ant",            "GamerScore": 0 },
-    { "Key": "Beetle Bopper",       "GamerScore": 0 },
-    { "Key": "Web Wizard",          "GamerScore": 0 },
-    { "Key": "Bomb Blaster",        "GamerScore": 0 },
-    { "Key": "Electrician",         "GamerScore": 0 },
-    { "Key": "Soaking Wet",         "GamerScore": 0 }
+    { "Key": "Starting Sparks",    "Name": "Starting Sparks",    "GamerScore": 10, "Description": "Get a gold on all the Fire Pit levels." },
+    { "Key": "Lumber Jack",        "Name": "Lumber Jack",        "GamerScore": 10, "Description": "Get a gold on all the Wood Pile levels." },
+    { "Key": "Tying it up",        "Name": "Tying it up",        "GamerScore": 10, "Description": "Get a gold on all the Dock levels." },
+    { "Key": "Royal Flush",        "Name": "Royal Flush",        "GamerScore": 10, "Description": "Get a gold on all the Outhouse levels." },
+    { "Key": "WheelingAndDealing", "Name": "Wheeling & Dealing", "GamerScore": 10, "Description": "Got a gold on all the Wagon Wheel levels." },
+    { "Key": "Shedarific",         "Name": "Shedarific",         "GamerScore": 10, "Description": "Get a gold on all the Shed levels." },
+    { "Key": "Cabin Fever",        "Name": "Cabin Fever",        "GamerScore": 10, "Description": "Get a gold on all the Cottage levels." },
+    { "Key": "Rainbow",            "Name": "Rainbow",            "GamerScore": 10, "Description": "4 or more flames all of different color at once" },
+    { "Key": "Dead Ant",           "Name": "Dead Ant",           "GamerScore": 20, "Description": "Eliminate 5 ants" },
+    { "Key": "Beetle Bopper",      "Name": "Beetle Bopper",      "GamerScore": 20, "Description": "Eliminate 10 beetles" },
+    { "Key": "Web Wizard",         "Name": "Web Wizard",         "GamerScore": 20, "Description": "Eliminate 20 spiders" },
+    { "Key": "Bomb Blaster",       "Name": "Bomb Blaster",       "GamerScore": 20, "Description": "Eliminate 20 fireflies" },
+    { "Key": "Electrician",        "Name": "Electrician",        "GamerScore": 20, "Description": "Eliminate 20 Electric Bugs" },
+    { "Key": "Soaking Wet",        "Name": "Soaking Wet",        "GamerScore": 20, "Description": "Eliminate 30 Water Bugs" }
   ]
 }

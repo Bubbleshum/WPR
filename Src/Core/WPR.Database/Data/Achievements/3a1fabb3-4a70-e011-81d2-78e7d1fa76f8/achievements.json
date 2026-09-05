@@ -2,18 +2,18 @@
   "Name": "Doodle Jump",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "DOJ_SPRING_SHOES_JUMPER",     "GamerScore": 0 },
-    { "Key": "DOJ_SERIAL_SPRINGER",         "GamerScore": 0 },
-    { "Key": "DOJ_SUPER_SERIAL_SPRINGER",   "GamerScore": 0 },
-    { "Key": "DOJ_MONSTER_BOUNCER",         "GamerScore": 0 },
-    { "Key": "DOJ_SUPER_MONSTER_BOUNCER",   "GamerScore": 0 },
-    { "Key": "DOJ_CONFLICT_AVOIDER",        "GamerScore": 0 },
-    { "Key": "DOJ_SUPER_CONFLICT_AVOIDER",  "GamerScore": 0 },
-    { "Key": "DOJ_SHARP_SHOOTER",           "GamerScore": 0 },
-    { "Key": "DOJ_SUPER_SHARP_SHOOTER",     "GamerScore": 0 },
-    { "Key": "DOJ_PROPELLERHEAD",           "GamerScore": 0 },
-    { "Key": "DOJ_JETPACK_RIDER",           "GamerScore": 0 },
-    { "Key": "DOJ_OLD_FASHIONED_JUMPER",    "GamerScore": 0 },
-    { "Key": "DOJ_UFO_ABDUCTION_SURVIVOR",  "GamerScore": 0 }
+    { "Key": "DOJ_SPRING_SHOES_JUMPER",    "Name": "Spring Shoes Jumper",    "GamerScore":  5, "Description": "Jumped with spring shoes without falling" },
+    { "Key": "DOJ_SERIAL_SPRINGER",        "Name": "Serial Springer",        "GamerScore":  5, "Description": "Jumped on 3 springs in a row" },
+    { "Key": "DOJ_SUPER_SERIAL_SPRINGER",  "Name": "Super Serial Springer",  "GamerScore": 10, "Description": "Jump on 5 springs in a row" },
+    { "Key": "DOJ_MONSTER_BOUNCER",        "Name": "Monster Bouncer",        "GamerScore": 10, "Description": "Jump on 10 monsters in a game" },
+    { "Key": "DOJ_SUPER_MONSTER_BOUNCER",  "Name": "Super Monster Bouncer",  "GamerScore": 20, "Description": "Jump on 30 monsters in one game" },
+    { "Key": "DOJ_CONFLICT_AVOIDER",       "Name": "Conflict Avoider",       "GamerScore": 10, "Description": "Jump past 10 monsters in one game" },
+    { "Key": "DOJ_SUPER_CONFLICT_AVOIDER", "Name": "Super Conflict Avoider", "GamerScore": 20, "Description": "Jump past 30 monsters in one game" },
+    { "Key": "DOJ_SHARP_SHOOTER",          "Name": "Sharp Shooter",          "GamerScore": 10, "Description": "Shoot 5 monsters in a row without missing" },
+    { "Key": "DOJ_SUPER_SHARP_SHOOTER",    "Name": "Super Sharp Shooter",    "GamerScore": 15, "Description": "Shoot 10 monsters in a row without missing" },
+    { "Key": "DOJ_PROPELLERHEAD",          "Name": "Propellerhead",          "GamerScore": 10, "Description": "Fly 3 propellerhats in one game" },
+    { "Key": "DOJ_JETPACK_RIDER",          "Name": "Jetpack Rider",          "GamerScore": 10, "Description": "Fly 3 jetpacks in one game" },
+    { "Key": "DOJ_OLD_FASHIONED_JUMPER",   "Name": "Old-fashioned Jumper",   "GamerScore": 15, "Description": "Jump past 3 jetpacks without picking them" },
+    { "Key": "DOJ_UFO_ABDUCTION_SURVIVOR", "Name": "UFO abduction survivor", "GamerScore": 60, "Description": "Survive UFO abduction" }
   ]
 }

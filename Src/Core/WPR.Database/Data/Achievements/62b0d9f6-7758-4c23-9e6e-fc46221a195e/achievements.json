@@ -2,15 +2,15 @@
   "Name": "Kinectimals Unleashed",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "Achievement_02_LotsOfPets",           "GamerScore": 0 },
-    { "Key": "Achievement_05_HappyPuppy",           "GamerScore": 0 },
-    { "Key": "Achievement_14_GoingForGold",         "GamerScore": 0 },
-    { "Key": "Achievement_17_DogsLife",             "GamerScore": 0 },
-    { "Key": "Achievement_18_PussyfootingAround",   "GamerScore": 0 },
-    { "Key": "Achievement_19_BearWithMe",           "GamerScore": 0 },
-    { "Key": "Achievement_20_AllKindsOfFun",        "GamerScore": 0 },
-    { "Key": "Achievement_29_ReigningCatsAndDogs",  "GamerScore": 0 },
-    { "Key": "Achievement_41_HuntingSuccess",       "GamerScore": 0 },
-    { "Key": "Achievement_48_ImpeccablePedigree",   "GamerScore": 0 }
+    { "Key": "Achievement_02_LotsOfPets",          "Name": "Lots of Pets",           "GamerScore": 20, "Description": "Collect 50% of pets" },
+    { "Key": "Achievement_05_HappyPuppy",          "Name": "Happy Puppy",            "GamerScore": 20, "Description": "Collect 50% of toys" },
+    { "Key": "Achievement_14_GoingForGold",        "Name": "Going for Gold",         "GamerScore": 20, "Description": "Earn a gold medal in 50% of Challenges" },
+    { "Key": "Achievement_17_DogsLife",            "Name": "Dog's Life",             "GamerScore": 20, "Description": "Play a challenge or free play on all locations on Villeria Island" },
+    { "Key": "Achievement_18_PussyfootingAround",  "Name": "Pussyfooting Around",    "GamerScore": 20, "Description": "Play a challenge or free play on all locations on Lemuria Island" },
+    { "Key": "Achievement_19_BearWithMe",          "Name": "Bear With Me",           "GamerScore": 20, "Description": "Play a challenge or free play on all locations on Mira Island" },
+    { "Key": "Achievement_20_AllKindsOfFun",       "Name": "All Kinds of Fun",       "GamerScore": 20, "Description": "Try each kind of Free Play session (all 6) at least once" },
+    { "Key": "Achievement_29_ReigningCatsAndDogs", "Name": "Reigning Cats and Dogs", "GamerScore": 20, "Description": "Complete a Daily Challenge with your friends using both cats and dogs" },
+    { "Key": "Achievement_41_HuntingSuccess",      "Name": "Hunting Success",        "GamerScore": 20, "Description": "Reach trainer Level 25" },
+    { "Key": "Achievement_48_ImpeccablePedigree",  "Name": "Impeccable Pedigree",    "GamerScore": 20, "Description": "Raise one of your pet's stats to their very maximum" }
   ]
 }

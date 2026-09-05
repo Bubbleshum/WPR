@@ -2,15 +2,15 @@
   "Name": "Galaga Legions DX",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "ACH_01",  "GamerScore": 0 },
-    { "Key": "ACH_02",  "GamerScore": 0 },
-    { "Key": "ACH_03",  "GamerScore": 0 },
-    { "Key": "ACH_04",  "GamerScore": 0 },
-    { "Key": "ACH_05",  "GamerScore": 0 },
-    { "Key": "ACH_06",  "GamerScore": 0 },
-    { "Key": "ACH_07",  "GamerScore": 0 },
-    { "Key": "ACH_08",  "GamerScore": 0 },
-    { "Key": "ACH_09",  "GamerScore": 0 },
-    { "Key": "ACH_10",  "GamerScore": 0 }
+    { "Key": "ACH_01", "Name": "Grand Champion",                  "GamerScore": 10, "Description": "Cleared Championship!" },
+    { "Key": "ACH_02", "Name": "Area 1 Clear",                    "GamerScore": 10, "Description": "Cleared Area 1!" },
+    { "Key": "ACH_03", "Name": "Area 2 Clear",                    "GamerScore": 10, "Description": "Cleared Area 2!" },
+    { "Key": "ACH_04", "Name": "Area 3 Clear",                    "GamerScore": 10, "Description": "Cleared Area 3!" },
+    { "Key": "ACH_05", "Name": "3,000,000 points (Area 1)",       "GamerScore": 20, "Description": "Scored 3,000,000 points in Area 1!" },
+    { "Key": "ACH_06", "Name": "2,500,000 points (Area 2)",       "GamerScore": 20, "Description": "Scored 2,500,000 points in Area 2!" },
+    { "Key": "ACH_07", "Name": "3,300,000 points (Area 3)",       "GamerScore": 20, "Description": "Scored 3,300,000 points in Area 3!" },
+    { "Key": "ACH_08", "Name": "5,500,000 points (Championship)", "GamerScore": 40, "Description": "Scored 5,500,000 points in Championship!" },
+    { "Key": "ACH_09", "Name": "Safety First!",                   "GamerScore": 20, "Description": "Area cleared without losing a single fighter!" },
+    { "Key": "ACH_10", "Name": "True Completionist",              "GamerScore": 40, "Description": "Cleared all areas on Expert difficulty!" }
   ]
 }

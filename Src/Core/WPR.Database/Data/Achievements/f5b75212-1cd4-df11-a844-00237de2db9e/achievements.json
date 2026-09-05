@@ -2,17 +2,17 @@
   "Name": "Rocket Riot",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "Achievement01",  "GamerScore": 15 },
-    { "Key": "Achievement02",  "GamerScore": 10 },
-    { "Key": "Achievement03",  "GamerScore": 10 },
-    { "Key": "Achievement04",  "GamerScore": 15 },
-    { "Key": "Achievement05",  "GamerScore": 15 },
-    { "Key": "Achievement06",  "GamerScore": 15 },
-    { "Key": "Achievement07",  "GamerScore": 30 },
-    { "Key": "Achievement08",  "GamerScore": 20 },
-    { "Key": "Achievement09",  "GamerScore": 20 },
-    { "Key": "Achievement10",  "GamerScore": 20 },
-    { "Key": "Achievement11",  "GamerScore":  5 },
-    { "Key": "Achievement12",  "GamerScore": 25 }
+    { "Key": "Achievement01", "Name": "Deathless Destruction",          "GamerScore": 15, "Description": "Finish a destroy the object level without killing an enemy." },
+    { "Key": "Achievement02", "Name": "Nice Beating You",               "GamerScore": 10, "Description": "Finish the first set of levels by beating the first Pirate boss." },
+    { "Key": "Achievement03", "Name": "One Meeeeeelion Blocks!",        "GamerScore": 10, "Description": "Destroy a total of 1.000.000 blocks. All blocks you destroyed from all levels are counted." },
+    { "Key": "Achievement04", "Name": "I'll Show You Fits Of Rage",     "GamerScore": 15, "Description": "Shoot 20 enemies in 60 seconds. All game modes are counted." },
+    { "Key": "Achievement05", "Name": "You're Like Some Kind Of Robot", "GamerScore": 15, "Description": "Shoot 50 enemies with a longshot." },
+    { "Key": "Achievement06", "Name": "Been There, Shot That",          "GamerScore": 15, "Description": "Use every power-up at least once." },
+    { "Key": "Achievement07", "Name": "Two Thumb Master",               "GamerScore": 30, "Description": "Defeat BlockBeard to finish the single player campaign." },
+    { "Key": "Achievement08", "Name": "On A Gamer's Diet",              "GamerScore": 20, "Description": "Shoot 50 zombies, 50 robots, 50 pirates and 50 soldiers, all levels are counted." },
+    { "Key": "Achievement09", "Name": "Natural Born Gamer",             "GamerScore": 20, "Description": "Shoot 5000 enemies in total, all levels are counted." },
+    { "Key": "Achievement10", "Name": "The Things I've Seen",           "GamerScore": 20, "Description": "Shoot every type of enemy at least once, all levels are counted." },
+    { "Key": "Achievement11", "Name": "A Wilhelm Scream",               "GamerScore":  5, "Description": "Die while fighting BlockBeard on the final level." },
+    { "Key": "Achievement12", "Name": "One Shot, Thrice The Score",     "GamerScore": 25, "Description": "Using the Triple Rocket power up, kill 3 enemies with one shot." }
   ]
 }
