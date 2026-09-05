@@ -84,8 +84,9 @@ beside it, and older changes are on the
 [Update History wiki page](https://github.com/Bubbleshum/WPR/wiki/Update-History).
 
 > 🚧 **Coming in 0.1.03** — games can vibrate your phone on Android, with a single
-> on/off switch in Settings covering every game. It is on `main` but **not yet
-> released**, so it is not on the Releases page and not in 0.1.02. See
+> on/off switch in Settings covering every game; and tilt now works in portrait
+> games like Doodle Jump that never responded to it at all. It is on `main` but
+> **not yet released**, so it is not on the Releases page and not in 0.1.02. See
 > [`Docs/ReleaseNotes/0.1.03.md`](Docs/ReleaseNotes/0.1.03.md) for what is queued.
 
 ## Features
