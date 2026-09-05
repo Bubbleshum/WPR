@@ -47,3 +47,6 @@ Research/Wp8Native/unicorn.dll
 *.jks
 *.p12
 /scratchpad/
+
+# The win-x64 dynarmic shim, cross-compiled per machine from WSL - see Plans/WP8-NATIVE-PROBE.md
+Research/Wp8Native/wprcpu.dll

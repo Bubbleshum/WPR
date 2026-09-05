@@ -16,6 +16,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>WPR.Wp8Native.Desktop</RootNamespace>
     <AssemblyName>WPR.Wp8Desktop</AssemblyName>
     <InvariantGlobalization>true</InvariantGlobalization>
@@ -38,6 +39,10 @@
 
   <ItemGroup>
     <PackageReference Include="UnicornEngine.Unicorn" Version="2.1.3" />
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\..\wprcpu.dll')">
+    <None Include="..\wprcpu.dll" Link="wprcpu.dll" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\..\unicorn.dll')">

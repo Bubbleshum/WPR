@@ -34,6 +34,13 @@ namespace WPR.Wp8Native.Desktop
             // initialisation, so this has to happen before anything touches the runtime.
             Environment.SetEnvironmentVariable("WPR_TAP", "0");
 
+            // The window is for playing, so it defaults to the engine that runs at game speed.
+            // WPR_CPU=unicorn from the shell still selects the reference engine for comparison.
+            if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WPR_CPU")))
+            {
+                Environment.SetEnvironmentVariable("WPR_CPU", "dynarmic");
+            }
+
             PeImage image = PeImage.Load(path);
             var emulator = new ArmEmulator(
                 image,
@@ -44,7 +51,8 @@ namespace WPR.Wp8Native.Desktop
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
-            using var window = new GameWindow(emulator, Path.GetFileNameWithoutExtension(path));
+            using var window = new GameWindow(
+                emulator, $"{Path.GetFileNameWithoutExtension(path)} [{emulator.Cpu.Capabilities.Name}]");
             Application.Run(window);
 
             Console.WriteLine($"stopped: {window.Outcome}");

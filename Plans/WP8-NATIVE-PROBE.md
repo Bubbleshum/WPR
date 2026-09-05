@@ -104,6 +104,37 @@ dynarmic's number is on its *slow* memory path (`UserCallbacks`, a virtual call 
 page table would be faster again. 31× turns the 128-second load into about four seconds —
 roughly what the phone did.
 
+### 4a. The shim exists and is proven (2026-09-04)
+
+`~/wprcpu/` in WSL holds `wprcpu.h` + `shim.cpp`: a C ABI over dynarmic's A32 JIT, built to
+`wprcpu.dll` (static mingw runtime, imports only `KERNEL32`/`msvcrt`), copied to
+`Research/Wp8Native/wprcpu.dll` (gitignored beside `unicorn.dll`) and wrapped by
+`DynarmicNative.cs` / `DynarmicCpu.cs`. `WPR_DYNPROBE=1` runs its proofs at the end of any
+probe run, in the same process as the Unicorn benchmarks:
+
+```
+dynarmic trap    PASS: fired 1x at pc 0xA0000002 (slot 0xA0000000), r0=7, r3=42
+trap page write  PASS: refused=True outcome=2
+lazy page        PASS: handler called 1x, r0=5, mapped=True
+mixed, dynarmic  40,000,000 instruction(s) in 0.02s = 2047 MIPS   (Unicorn, same process: 45-58)
+```
+
+What those settle, in order: **the trap mechanism** is `svc #0 ; bx r12` per slot with the
+handler running at the `svc` (registers exact, block ended) and the `bx r12` still doing the
+tail call - the exact shape Unicorn's MinGW build could not survive. **The trap page** is
+mapped read+execute, so a stray store into it is a fault delivered to C#, not a corrupted slot.
+**Lazy mapping** works as it does under Unicorn: the unmapped handler maps and returns true,
+the access retries transparently. Memory the JIT may touch alone is RWX and unwatched; the
+trap page, null page and unmapped space go through callbacks where C# decides. CP15 c13
+(TPIDRURO/TPIDRURW) is a real coprocessor, so the TEB pointer will actually work.
+
+What is **not** built yet is the other side: `ArmEmulator` still talks to Unicorn directly. The
+port is a seam (`IArmCpu`) with two implementations; the Unicorn-touchpoint inventory (41
+touchpoints, design workflow `wf_3f942e96-f8f`) is the map for that rewrite, and its hardest
+parts are known: no per-instruction hooks (WPR_TRACE, the block sampler and the heap-execution
+guard need substitutes or degrade to "unsupported"), stale registers inside memory callbacks,
+and byte-identical frame comparison as the regression yardstick between engines.
+
 ## 5. Licensing — this decides itself
 
 **Unicorn is GPLv2. WPR is MIT.** The probe cannot ship on its current CPU at all, whatever its
@@ -113,6 +144,30 @@ trade between legality and speed — it is the single change that delivers both.
 
 The prototype exists and is built: `~/dyn` (dynarmic) and `~/dynbench` (both benchmarks) under
 WSL.
+
+**Cross-compiled for Windows on 2026-09-04, and proven there.** This machine has no C++
+compiler of its own, so the route is WSL's `mingw-w64` (installed that day) building a Windows
+x64 static library and, later, the shim DLL. The recipe that works:
+
+```
+# toolchain file ~/mingw.cmake: CMAKE_SYSTEM_NAME Windows, x86_64-w64-mingw32-g++,
+# CMAKE_FIND_ROOT_PATH_MODE_INCLUDE BOTH
+cmake -S ~/dyn -B ~/dyn/build-win -DCMAKE_TOOLCHAIN_FILE=$HOME/mingw.cmake \
+      -DCMAKE_BUILD_TYPE=Release -DDYNARMIC_USE_BUNDLED_EXTERNALS=ON -DDYNARMIC_TESTS=OFF \
+      -DDYNARMIC_WARNINGS_AS_ERRORS=OFF -DDYNARMIC_USE_PRECOMPILED_HEADERS=OFF \
+      -DBoost_INCLUDE_DIR=$HOME/boost-include
+cmake --build ~/dyn/build-win -j 8 --target dynarmic
+```
+
+Two things that cost a build each: **`Boost_INCLUDE_DIR` must not be `/usr/include`** - that
+puts glibc's `stdint.h` ahead of mingw's and every file fails on
+`bits/libc-header-start.h`; `~/boost-include` holds a single symlink to `/usr/include/boost` so
+only Boost is visible. And WSL's `/tmp` is wiped when the VM idles out, so logs go under `~`.
+
+Link with `-static -static-libgcc -static-libstdc++` against `libdynarmic.a libmcl.a libfmt.a
+libZydis.a libZycore.a`; the result imports only `KERNEL32.dll` and `msvcrt.dll`, and .NET
+P/Invoke into it was verified. The mixed-loop benchmark built this way runs **on Windows** at
+**~1,700 MIPS**, against Unicorn's 46-57 on the same machine and loop.
 
 ## 6. Known graphics defects
 
@@ -132,6 +187,64 @@ WSL.
 - Further artefacts were reported but not captured before the window closed. **Get a screenshot
   of each before guessing** — this one was found from the report's per-draw dump (screen
   coordinates, UVs, texture size and *format* per draw), not by reasoning about the picture.
+
+## 6a. Converting the ARM at install time
+
+Asked 2026-09-03: could the translation happen once, at install, so a launch is cheap? That is
+static binary translation, and **this image is unusually well suited to it** — three facts, all
+already measured rather than assumed:
+
+| Fact | Why it matters | Evidence |
+|---|---|---|
+| The image carries a **complete function table** | Code discovery — finding where functions begin — is the usual thing that sinks static translation. An ARM PE ships `.pdata` for exception unwinding, so the file hands us the inventory. | **7,671 entries**, 3,554 packed + 4,117 xdata, printed every run |
+| It **never executes generated code** | Nothing invalidates a translation mid-run. Its Lua is 5.1, an interpreter, not LuaJIT. | The heap-execution guard has never fired in any run; `lazy pages 1` |
+| `.text` is **1.59 MB** | Small enough to translate whole, not just hot paths. | The IMAGE section of the report |
+
+**It would fix the right thing.** The measured bottleneck is guest stores at ~107ns, which is
+Unicorn's software MMU. A translator reserves a 4GB host region once and makes a guest store
+`base + offset` with no bounds check — one instruction. That is the whole gap.
+
+**What it would have to get right**, in rough order of how much each decides the outcome:
+
+- **Lazy flags.** Computing NZCV after every instruction costs more than everything else put
+  together. Flags must be computed only where something reads them, which means tracking the
+  pending operation through the block.
+- **Indirect branches.** A C++ game calls through vtables constantly, so a translated function
+  cannot be a closed graph. The standard answer works here: a dispatch table from guest address
+  to translated method, and `.pdata` bounds the set of legal targets.
+- **The memory model** — the 4GB reservation above, which is what buys the speed.
+- **IT blocks, conditional execution and VFP** — tedious rather than hard.
+- **C++ exceptions.** The probe's unwinder walks *guest* frames using the image's own `.pdata`,
+  so translated code has to keep guest SP and frame layout observable, not just the results.
+
+**Emit C#, not machine code.** Translating to IL and compiling with Roslyn at install time
+needs no native toolchain (this machine has neither MSVC nor cmake), keeps everything MIT, and
+fits the shape WPR already has — `ApplicationPatcher` rewrites IL per game at install and
+versions the result. The CLR's own JIT then does register allocation.
+
+**But do dynarmic first.** An AOT translator is a much larger project than wiring in a JIT that
+already exists, is already built here, and already measures **31x** on the realistic mix. Most
+of an AOT translator's advantage over a good JIT is compile time, not steady-state speed — and
+dynarmic already removes the store cost, which is the entire measured problem. If AOT is wanted
+afterwards, the block profiler already says where it would pay: **one function is 29.8% of guest
+time** (`0x0046C649`, 173 blocks).
+
+### The cheaper install-time idea, which targets the same complaint
+
+The load does **the same work every launch**: 10.7s of static initialisers, then 302 frames of
+decompressing and script compilation. Nothing about it depends on the user.
+
+So do it once — at install — and **snapshot the emulated machine** at the menu: guest memory,
+registers, and the trap tables. A launch then restores and runs.
+
+The hard part is not the guest, it is **our own side**: the D3D resources, open file handles,
+WinRT stand-ins, the HString heap and the allocator's bookkeeping all live in C# objects that a
+guest-memory dump knows nothing about. They would have to be serialised alongside, or rebuilt
+deterministically from a replay of the calls that made them.
+
+That is far less work than an ARM-to-IL compiler and it removes the two minutes entirely rather
+than making them 30x cheaper. **It is the first thing to try if the goal is "starts quickly"
+rather than "runs quickly"** — and the two are different problems with different answers.
 
 ## 7. Instruments already built
 

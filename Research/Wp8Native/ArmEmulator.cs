@@ -1,4 +1,3 @@
-using UnicornEngine;
 using UnicornEngine.Const;
 
 namespace WPR.Wp8Native
@@ -33,27 +32,17 @@ namespace WPR.Wp8Native
         private const long TebBase = 0xA1000000L;
         private const long TebSize = 64 * 1024;
 
-        /// <summary>
-        /// Thumb <c>bx r12</c>. Every trap slot holds this one instruction.
-        /// </summary>
-        /// <remarks>
-        /// It is <c>bx r12</c> rather than the more obvious <c>bx lr</c> so that a handler
-        /// can choose where the CPU goes next. <see cref="OnTrapEntered"/> presets r12 to lr,
-        /// which makes the default behaviour an ordinary return; a handler that wants to
-        /// call into emulated code instead overwrites r12 with its target and lr with a
-        /// return trap, turning the same instruction into a tail call. r12 is the AAPCS
-        /// intra-procedure scratch register, so clobbering it across a call is legal.
-        ///
-        /// This is what makes host-to-emulated calls possible at all: it never re-enters
-        /// the CPU, so it works from inside a hook, where a nested emulation would not.
-        /// </remarks>
-        private const ushort ThumbBxR12 = 0x4760;
+        /// <summary>The first halfword of a trap slot, for the integrity check - engine-specific.</summary>
+        private ushort TrapWord => BitConverter.ToUInt16(_cpu.TrapSlot);
 
         private const long PageSize = 0x1000;
 
-        private readonly Unicorn _uc;
+        private readonly IArmCpu _cpu;
         private readonly PeImage _image;
         private readonly HostStubs _stubs;
+
+        /// <summary>The host side of the boundary, for the report.</summary>
+        public HostStubs Stubs => _stubs;
         private readonly WinRtRuntime _winRt;
         private readonly HStringHeap _strings;
         private readonly Dictionary<long, TrapSlot> _traps = new();
@@ -90,14 +79,9 @@ namespace WPR.Wp8Native
         private readonly Dictionary<string, int> _callCounts = new(StringComparer.Ordinal);
         private long _trapNext = TrapBase;
 
-        // Unicorn keeps only native function pointers, so these delegates must be rooted
-        // here or the GC will collect them mid-run.
-        private readonly CodeHook _trapHook;
-        private readonly MemWriteHook _watchedWriteHook;
-        private readonly CodeHook _heapExecutionHook;
-        private readonly EventMemHook _unmappedHook;
-        private readonly BlockHook _blockHook;
-        private readonly MemWriteHook _trapWriteHook;
+        /// <summary>Set when the engine cannot hook heap execution and the heap is mapped
+        /// non-executable instead, with <see cref="AllocateCode"/> blocks granted execute.</summary>
+        private bool _heapExecuteProtected;
 
         private long _heapNext = HeapBase + PageSize;
 
@@ -116,7 +100,7 @@ namespace WPR.Wp8Native
             }
 
             _image = image;
-            _uc = new Unicorn(Common.UC_ARCH_ARM, Common.UC_MODE_THUMB);
+            _cpu = CreateCpu();
 
             MapImage();
             MapScratchRegions();
@@ -131,41 +115,76 @@ namespace WPR.Wp8Native
             _stubs = new HostStubs(this, _winRt, _strings, imageDirectory);
             EnableFloatingPoint();
 
-            _trapHook = OnTrapEntered;
-            _watchedWriteHook = OnWatchedWrite;
-            _heapExecutionHook = OnHeapExecution;
-            _traceHook = OnTracePoint;
-            _stopHook = OnStopPoint;
-            _unmappedHook = OnUnmappedAccess;
-            _blockHook = OnBlockEntered;
-            _trapWriteHook = OnTrapPageWritten;
-
-            _uc.AddCodeHook(_trapHook, null, TrapBase, TrapBase + TrapSize);
-            _uc.AddEventMemHook(_unmappedHook, Common.UC_HOOK_MEM_UNMAPPED | Common.UC_HOOK_MEM_PROT, null);
+            // Traps, faults, and the diagnostics this engine can offer. Each Try* is a
+            // capability: Unicorn has them all, a JIT has none of the per-instruction ones and
+            // the emulator degrades - the report already has the "not counted" branches.
+            _cpu.TrapEntered += EnterTrap;
+            _cpu.MemoryFault = OnUnmappedAccess;
+            _cpu.InstallTrapPage(TrapBase, TrapSize);
 
             // Nothing should ever write to the trap page. Watching it is cheap because
-            // legitimate traffic there is zero.
-            _uc.AddMemWriteHook(_trapWriteHook, null, TrapBase, TrapBase + TrapSize);
-            _uc.AddMemWriteHook(_watchedWriteHook, null, HeapBase, HeapBase + HeapSize);
-            _uc.AddMemWriteHook(_watchedWriteHook, null, StackBase, StackBase + StackSize);
+            // legitimate traffic there is zero; on an engine without write hooks the page's
+            // read+execute protection turns the same store into a fault instead.
+            _cpu.TryAddWriteHook(TrapBase, TrapBase + TrapSize, OnTrapPageWritten);
+
+            // Only when something is actually watching. These fire on **every** store the
+            // image makes into the heap or the stack - 210 million of them in two billion
+            // instructions - to walk a list that is empty in every ordinary run.
+            if (WatchesRequested)
+            {
+                GuestStoresCounted =
+                    _cpu.TryAddWriteHook(HeapBase, HeapBase + HeapSize, OnWatchedWrite) &&
+                    _cpu.TryAddWriteHook(StackBase, StackBase + StackSize, OnWatchedWrite);
+            }
 
             // Nothing this probe puts on the heap is code - only objects, vtables and
             // buffers - so executing from there means the image was handed something that
             // was not a function pointer and jumped to it. Left alone that spends the entire
-            // budget sliding through zeroed pages, which decode as Thumb no-ops: the block
-            // trace fills with addresses that mean nothing and the last real call, the one
-            // that explains it, scrolls out of the ring. This costs nothing until it fires,
-            // because the hook only runs on instructions actually executed in range.
-            _uc.AddCodeHook(_heapExecutionHook, null, HeapBase, HeapBase + HeapSize);
+            // budget sliding through zeroed pages, which decode as Thumb no-ops. Where the
+            // engine can hook execution the hook costs nothing until it fires; where it cannot,
+            // the heap is simply not executable and a jump into it is a protection fault, with
+            // AllocateCode granting execute to the few blocks that are code.
+            if (!_cpu.TryAddCodeHook(HeapBase, HeapBase + HeapSize, OnHeapExecution))
+            {
+                _heapExecuteProtected = true;
+                _cpu.MemProtect(HeapBase, HeapSize, Common.UC_PROT_READ | Common.UC_PROT_WRITE);
+
+                // Nothing executes from the stack either. On a JIT this is more than hygiene:
+                // a host write into a page that may hold code has to invalidate translations,
+                // and stubs write their out-parameters to the stack on nearly every call.
+                _cpu.MemProtect(StackBase, StackSize, Common.UC_PROT_READ | Common.UC_PROT_WRITE);
+                foreach ((long start, long end) in _executableHeap)
+                {
+                    GrantExecute(start, end - start);
+                }
+            }
 
             // WPR_SAMPLE needs the block hook whatever the budget, because a block histogram
             // is the only thing that can see code calling nothing at all.
             if (collectBlockStats || PcSampler.SamplingBlocks)
             {
-                _uc.AddBlockHook(_blockHook, null, 1, long.MaxValue);
-                BlockStatsCollected = true;
+                BlockStatsCollected = _cpu.TryAddBlockHook(OnBlockEntered);
             }
         }
+
+        /// <summary>The trap slot a code address falls in, by name, or null.</summary>
+        /// <summary>How many trap slots exist, imports and stand-ins together.</summary>
+        public int TrapSlotsAllocated => _traps.Count;
+
+        public string? TrapNameAt(long address)
+            => _traps.TryGetValue(address & ~3L, out TrapSlot? slot) ? slot.Name : null;
+
+        /// <summary>The engine underneath, for the report and for tests.</summary>
+        public IArmCpu Cpu => _cpu;
+
+        /// <summary>
+        /// <c>WPR_CPU=dynarmic</c> selects the JIT; anything else is Unicorn, the engine the
+        /// probe was written against and the reference every dynarmic run is compared to.
+        /// </summary>
+        private static IArmCpu CreateCpu() =>
+            string.Equals(Environment.GetEnvironmentVariable("WPR_CPU"), "dynarmic", StringComparison.OrdinalIgnoreCase)
+                ? new DynarmicArmCpu()
+                : new UnicornArmCpu();
 
         /// <summary>Imports called, in execution order, with duplicates preserved.</summary>
         /// <summary>
@@ -299,7 +318,7 @@ namespace WPR.Wp8Native
 
                 // The continuation reads r0 as the callback result. E_UNEXPECTED is the
                 // honest answer, and it shows up in the trace as such.
-                _uc.RegWrite(Arm.UC_ARM_REG_R0, unchecked((uint)0x8000FFFF));
+                _cpu.RegWrite(Arm.UC_ARM_REG_R0, unchecked((uint)0x8000FFFF));
 
                 // The budget is a runaway guard, not a measurement, so each resumed segment
                 // gets it afresh; MaxThreadDeaths is what bounds the total.
@@ -357,7 +376,7 @@ namespace WPR.Wp8Native
             long[] values = new long[CoreRegisters.Length];
             for (int i = 0; i < CoreRegisters.Length; i++)
             {
-                values[i] = _uc.RegRead(CoreRegisters[i]);
+                values[i] = _cpu.RegRead(CoreRegisters[i]);
             }
 
             return values;
@@ -367,7 +386,7 @@ namespace WPR.Wp8Native
         {
             for (int i = 0; i < CoreRegisters.Length; i++)
             {
-                _uc.RegWrite(CoreRegisters[i], values[i]);
+                _cpu.RegWrite(CoreRegisters[i], values[i]);
             }
         }
 
@@ -402,22 +421,21 @@ namespace WPR.Wp8Native
                 // A code hook at the stop address does the same job, costs nothing until the
                 // address is actually reached, and behaves identically on every build. The
                 // API keeps the `until` shape so no caller has to know any of this.
-                if (untilAddress != NeverReached)
+                if (untilAddress != NeverReached && !ArmStopAt(untilAddress))
                 {
-                    ArmStopAt(untilAddress);
+                    return $"stop-at addresses are unsupported on {_cpu.Capabilities.Name}";
                 }
 
-                _uc.EmuStart(startAddress, NeverReached, 0, instructionBudget);
-                return null;
+                RunResult result = _cpu.Run(startAddress, instructionBudget);
+                return result.Outcome == RunOutcome.Faulted ? result.Fault ?? "the CPU faulted" : null;
             }
-            catch (UnicornEngineException ex)
+            catch (CpuMemoryException ex)
             {
                 return ex.Message;
             }
         }
 
         private readonly HashSet<long> _stopHooks = new();
-        private readonly CodeHook _stopHook;
         private long _stopAt = NeverReached;
 
         /// <summary>
@@ -428,28 +446,31 @@ namespace WPR.Wp8Native
         /// remove one - so the handler checks the current target rather than assuming every
         /// hook that fires is the one being waited for.
         /// </remarks>
-        private void ArmStopAt(long address)
+        private bool ArmStopAt(long address)
         {
             long target = address & ~1L;
             _stopAt = target;
 
-            if (_stopHooks.Add(target))
+            if (_stopHooks.Add(target) && !_cpu.TryAddCodeHook(target, target, OnStopPoint))
             {
-                _uc.AddCodeHook(_stopHook, null, target, target);
+                _stopHooks.Remove(target);
+                return false;
             }
+
+            return true;
         }
 
-        private void OnStopPoint(Unicorn uc, long address, int size, object? userData)
+        private void OnStopPoint(long address)
         {
             if (address == _stopAt)
             {
-                _uc.EmuStop();
+                _cpu.Stop();
             }
         }
 
-        public long ReadRegister(int registerId) => _uc.RegRead(registerId);
+        public long ReadRegister(int registerId) => _cpu.RegRead(registerId);
 
-        public void WriteRegister(int registerId, long value) => _uc.RegWrite(registerId, value);
+        public void WriteRegister(int registerId, long value) => _cpu.RegWrite(registerId, value);
 
         /// <summary>
         /// Writes emulated memory on behalf of a host stub, refusing anything that would
@@ -481,7 +502,7 @@ namespace WPR.Wp8Native
                 return;
             }
 
-            _uc.MemWrite(address, data);
+            _cpu.MemWrite(address, data);
         }
 
         /// <summary>
@@ -507,9 +528,9 @@ namespace WPR.Wp8Native
             foreach ((long address, TrapSlot slot) in _traps.OrderBy(entry => entry.Key))
             {
                 ushort instruction = BitConverter.ToUInt16(ReadMemory(address, 2));
-                if (instruction != ThumbBxR12)
+                if (instruction != TrapWord)
                 {
-                    damaged.Add($"0x{address:X8} holds 0x{instruction:X4}, expected 0x{ThumbBxR12:X4} ({slot.Name})");
+                    damaged.Add($"0x{address:X8} holds 0x{instruction:X4}, expected 0x{TrapWord:X4} ({slot.Name})");
                 }
             }
 
@@ -519,7 +540,7 @@ namespace WPR.Wp8Native
         public byte[] ReadMemory(long address, int length)
         {
             byte[] buffer = new byte[length];
-            _uc.MemRead(address, buffer);
+            _cpu.MemRead(address, buffer);
             return buffer;
         }
 
@@ -539,7 +560,7 @@ namespace WPR.Wp8Native
             {
                 return ReadUInt32(address);
             }
-            catch (UnicornEngineException)
+            catch (CpuMemoryException)
             {
                 return fallback;
             }
@@ -615,7 +636,7 @@ namespace WPR.Wp8Native
                 // losing the diagnostics that explain why. Stop cleanly instead and let the
                 // caller report - malloc returning null is a legal answer in any case.
                 HeapExhausted = true;
-                _uc.EmuStop();
+                _cpu.Stop();
                 return 0;
             }
 
@@ -627,7 +648,7 @@ namespace WPR.Wp8Native
             // by inference. The caller is the emulated return address, which names the
             // code that asked; the source names the stub it asked through.
             RecordAllocation(pointer, aligned);
-            long caller = _uc.RegRead(Arm.UC_ARM_REG_LR) & ~1L;
+            long caller = _cpu.RegRead(Arm.UC_ARM_REG_LR) & ~1L;
 
             if (_watchAllocationsFrom.Contains(caller))
             {
@@ -668,7 +689,6 @@ namespace WPR.Wp8Native
 
         private readonly List<string> _traceLog = new();
         private readonly Dictionary<long, string> _tracePoints = new();
-        private readonly CodeHook _traceHook;
 
         /// <summary>Registers captured each time a traced instruction ran.</summary>
         public IReadOnlyList<string> TraceLog => _traceLog;
@@ -684,13 +704,68 @@ namespace WPR.Wp8Native
                 return;
             }
 
-            _uc.AddCodeHook(_traceHook, null, target, target);
+            if (!_cpu.TryAddCodeHook(target, target, OnTracePoint))
+            {
+                _traceLog.Add($"trace at 0x{target:X8}: per-instruction hooks are unsupported on {_cpu.Capabilities.Name}");
+            }
         }
 
         /// <summary>Few enough to read; a trace point inside a loop fills this instantly.</summary>
         private const int TraceLimit = 40;
 
-        private void OnTracePoint(Unicorn uc, long address, int size, object? userData)
+        private readonly List<string> _luaTracebacks = new();
+
+        /// <summary>
+        /// Lua call stacks captured at the address given to <see cref="LuaTraceAt"/>,
+        /// innermost frame first, each headed by the frame it happened on.
+        /// </summary>
+        public IReadOnlyList<string> LuaTracebacks => _luaTracebacks;
+
+        /// <summary>
+        /// Reads the Lua call stack every time the CPU reaches <paramref name="address"/>,
+        /// taking r0 as the <c>lua_State</c>. Point it at <c>luaL_argerror</c> or
+        /// <c>luaL_error</c> and a script error arrives with the script attached.
+        /// </summary>
+        /// <remarks>
+        /// <c>WPR_LUATRACE=0x00471CE4</c> is this title's <c>luaL_argerror</c>, found by the one
+        /// reference to its format string. The game's own error handler reports "(call stack
+        /// not available)", so this is the only way the calling script's name gets out.
+        /// A code hook, so it costs block chaining for the run - a diagnostic, not a default.
+        /// </remarks>
+        public void LuaTraceAt(long address)
+        {
+            Action<long> hook = _ =>
+            {
+                if (_luaTracebacks.Count >= 60)
+                {
+                    return;
+                }
+
+                long state = _cpu.RegRead(Arm.UC_ARM_REG_R0);
+                _luaTracebacks.Add($"frame {_winRt.ProcessEventsCalls}: lua_State 0x{state:X8}");
+
+                // Nothing may throw out of a hook - it kills the process, report and all -
+                // and this walks pointers the error itself says are suspect.
+                try
+                {
+                    foreach (string line in LuaStateReader.Traceback(this, state))
+                    {
+                        _luaTracebacks.Add("   " + line);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _luaTracebacks.Add($"   (traceback stopped: {ex.GetType().Name}: {ex.Message})");
+                }
+            };
+
+            if (!_cpu.TryAddCodeHook(address & ~1L, address & ~1L, hook))
+            {
+                _luaTracebacks.Add($"unsupported: per-instruction hooks do not exist on {_cpu.Capabilities.Name}");
+            }
+        }
+
+        private void OnTracePoint(long address)
         {
             if (_traceLog.Count >= TraceLimit || !_tracePoints.TryGetValue(address, out string? label))
             {
@@ -710,7 +785,7 @@ namespace WPR.Wp8Native
             var text = new System.Text.StringBuilder($"0x{address:X8} {label}: ");
             for (int i = 0; i < ids.Length; i++)
             {
-                text.Append($"{names[i]}=0x{_uc.RegRead(ids[i]):X8} ");
+                text.Append($"{names[i]}=0x{_cpu.RegRead(ids[i]):X8} ");
             }
 
             _traceLog.Add(text.ToString());
@@ -785,7 +860,7 @@ namespace WPR.Wp8Native
 
             // lr still holds the emulated return address, which names the code that asked -
             // the stub itself is never the culprit, only the messenger.
-            string entry = $"{_lastTrap ?? "host"} called from 0x{_uc.RegRead(Arm.UC_ARM_REG_LR) & ~1L:X8} " +
+            string entry = $"{_lastTrap ?? "host"} called from 0x{_cpu.RegRead(Arm.UC_ARM_REG_LR) & ~1L:X8} " +
                            $"wrote {length} bytes into {room} bytes of room at " +
                            $"0x{address:X8} ({DescribeAllocation(address)})" +
                            Newline + "      called from:" + Newline + ScanStack(64);
@@ -837,7 +912,28 @@ namespace WPR.Wp8Native
         /// </summary>
         public long GuestStores { get; private set; }
 
+        /// <summary>
+        /// Whether <see cref="GuestStores"/> means anything: the hook that counts them is only
+        /// installed when a watch was asked for, because it fires on every store.
+        /// </summary>
+        public bool GuestStoresCounted { get; private set; }
+
+        /// <summary>
+        /// Whether any of the watch knobs were set, which decides whether the per-store hooks
+        /// are worth their keep. Read once, before the run, because hooks cannot be added
+        /// afterwards.
+        /// </summary>
+        private static bool WatchesRequested =>
+            Environment.GetEnvironmentVariable("WPR_WATCH") is { Length: > 0 } ||
+            Environment.GetEnvironmentVariable("WPR_WATCH_ALLOC") is { Length: > 0 } ||
+            Environment.GetEnvironmentVariable("WPR_WATCH_ADDR") is { Length: > 0 } ||
+            Environment.GetEnvironmentVariable("WPR_STORES") is { Length: > 0 };
+
         private readonly Dictionary<string, long> _hostTime = new();
+
+        /// <summary>Whether each host stub is being timed - <c>WPR_HOSTTIME=1</c>.</summary>
+        public static readonly bool TimingStubs =
+            Environment.GetEnvironmentVariable("WPR_HOSTTIME") is { Length: > 0 };
 
         /// <summary>
         /// Wall time spent inside each host stub, most expensive first, as a share of the
@@ -858,7 +954,7 @@ namespace WPR.Wp8Native
             }
         }
 
-        private void OnWatchedWrite(Unicorn uc, long address, int size, long value, object? user)
+        private void OnWatchedWrite(long address, int size, long value)
         {
             GuestStores++;
 
@@ -872,7 +968,7 @@ namespace WPR.Wp8Native
                 if (_writeLog.Count < WriteLogLimit)
                 {
                     _writeLog.Add(
-                        $"0x{_uc.RegRead(Arm.UC_ARM_REG_PC) & ~1L:X8} wrote 0x{value:X8} ({size} bytes) " +
+                        $"0x{_cpu.RegRead(Arm.UC_ARM_REG_PC) & ~1L:X8} wrote 0x{value:X8} ({size} bytes) " +
                         $"to +0x{address - start:X2} of {label}");
                 }
 
@@ -928,7 +1024,7 @@ namespace WPR.Wp8Native
 
         private void RecordAllocation(long pointer, long size)
         {
-            var record = (pointer, size, _lastTrap ?? "host setup", _uc.RegRead(Arm.UC_ARM_REG_LR));
+            var record = (pointer, size, _lastTrap ?? "host setup", _cpu.RegRead(Arm.UC_ARM_REG_LR));
 
             // A reused block keeps its place in the list - the list is ordered by address and
             // the binary search below depends on that - and takes on its new requester.
@@ -1064,7 +1160,7 @@ namespace WPR.Wp8Native
         public void Stop(string reason)
         {
             StopReason ??= reason;
-            _uc.EmuStop();
+            _cpu.Stop();
         }
 
         /// <summary>Bytes handed out by <see cref="AllocateHeap"/> so far.</summary>
@@ -1078,8 +1174,8 @@ namespace WPR.Wp8Native
 
         private void MapImage()
         {
-            _uc.MemMap(_image.ImageBase, Align(_image.SizeOfImage, PageSize), Common.UC_PROT_ALL);
-            _uc.MemWrite(_image.ImageBase, _image.Raw[..(int)_image.SizeOfHeaders].ToArray());
+            _cpu.MemMap(_image.ImageBase, Align(_image.SizeOfImage, PageSize), Common.UC_PROT_ALL);
+            _cpu.MemWrite(_image.ImageBase, _image.Raw[..(int)_image.SizeOfHeaders].ToArray());
 
             foreach (PeSection section in _image.Sections)
             {
@@ -1089,14 +1185,14 @@ namespace WPR.Wp8Native
                 }
 
                 byte[] bytes = _image.Raw.Slice((int)section.RawPointer, (int)section.RawSize).ToArray();
-                _uc.MemWrite(_image.ImageBase + section.VirtualAddress, bytes);
+                _cpu.MemWrite(_image.ImageBase + section.VirtualAddress, bytes);
             }
         }
 
         private void MapScratchRegions()
         {
-            _uc.MemMap(StackBase, StackSize, Common.UC_PROT_ALL);
-            _uc.MemMap(HeapBase, HeapSize, Common.UC_PROT_ALL);
+            _cpu.MemMap(StackBase, StackSize, Common.UC_PROT_ALL);
+            _cpu.MemMap(HeapBase, HeapSize, Common.UC_PROT_ALL);
             // Read and execute, but NOT write. The trap page is the emulator's own machinery
             // - sixteen thousand `bx r12` instructions - and a single stray store into it
             // turns an import into a jump to wherever a register happens to point, thousands
@@ -1107,10 +1203,10 @@ namespace WPR.Wp8Native
             // being corrupted anyway. Taking the permission away is what actually refuses.
             // Our own writes are unaffected: uc_mem_write bypasses page protection, which is
             // exactly the asymmetry this needs.
-            _uc.MemMap(TrapBase, TrapSize, Common.UC_PROT_READ | Common.UC_PROT_EXEC);
-            _uc.MemMap(TebBase, TebSize, Common.UC_PROT_ALL);
+            _cpu.MemMap(TrapBase, TrapSize, Common.UC_PROT_READ | Common.UC_PROT_EXEC);
+            _cpu.MemMap(TebBase, TebSize, Common.UC_PROT_ALL);
 
-            _uc.RegWrite(Arm.UC_ARM_REG_SP, StackBase + (StackSize * 3 / 4));
+            _cpu.RegWrite(Arm.UC_ARM_REG_SP, StackBase + (StackSize * 3 / 4));
 
             // Windows on ARM reaches the thread environment block through CP15 TPIDRURW
             // (c13, c0, 2). Unicorn 2.1.3 accepts UC_ARM_REG_C13_C0_2 but treats it as a
@@ -1120,7 +1216,7 @@ namespace WPR.Wp8Native
             // first WinRT activation without dereferencing it, and any stray access lands
             // on a lazily mapped zero page. Once threads or SEH come into scope this has to
             // be done properly through UC_ARM_REG_CP_REG, the generic coprocessor accessor.
-            _uc.RegWrite(Arm.UC_ARM_REG_C13_C0_3, TebBase);
+            _cpu.RegWrite(Arm.UC_ARM_REG_C13_C0_3, TebBase);
         }
 
         /// <summary>What a trap slot stands in for, which decides how a hit is reported.</summary>
@@ -1177,9 +1273,9 @@ namespace WPR.Wp8Native
         public long CreateShapedObject(string name, int slotCount = 16)
         {
             long instance = AllocateHeap(ShapedObjectSize);
-            _uc.MemWrite(instance, new byte[ShapedObjectSize]);
-            _uc.MemWrite(instance, BitConverter.GetBytes((uint)CreateShapedVtable(name, slotCount)));
-            _uc.MemWrite(instance + 4, BitConverter.GetBytes(1u));
+            _cpu.MemWrite(instance, new byte[ShapedObjectSize]);
+            _cpu.MemWrite(instance, BitConverter.GetBytes((uint)CreateShapedVtable(name, slotCount)));
+            _cpu.MemWrite(instance + 4, BitConverter.GetBytes(1u));
             return instance;
         }
 
@@ -1202,13 +1298,13 @@ namespace WPR.Wp8Native
                 long trap = RegisterVtableMethod($"{name}::slot{captured}", () =>
                 {
                     ShapedObjectCalls.Add(
-                        $"{name}::slot{captured}  this=0x{_uc.RegRead(Arm.UC_ARM_REG_R0):X8} " +
-                        $"r1=0x{_uc.RegRead(Arm.UC_ARM_REG_R1):X8}");
+                        $"{name}::slot{captured}  this=0x{_cpu.RegRead(Arm.UC_ARM_REG_R0):X8} " +
+                        $"r1=0x{_cpu.RegRead(Arm.UC_ARM_REG_R1):X8}");
 
-                    _uc.RegWrite(Arm.UC_ARM_REG_R0, 0);
+                    _cpu.RegWrite(Arm.UC_ARM_REG_R0, 0);
                 });
 
-                _uc.MemWrite(vtable + (slot * 4), BitConverter.GetBytes((uint)ThumbEntry(trap)));
+                _cpu.MemWrite(vtable + (slot * 4), BitConverter.GetBytes((uint)ThumbEntry(trap)));
             }
 
             return vtable;
@@ -1249,18 +1345,18 @@ namespace WPR.Wp8Native
 
             for (int i = 0; i < arguments.Length; i++)
             {
-                _uc.RegWrite(argumentRegisters[i], arguments[i]);
+                _cpu.RegWrite(argumentRegisters[i], arguments[i]);
             }
 
             long returnTrap = AllocateTrapSlot($"{debugName}<-return", TrapKind.Return, onReturn);
 
-            _uc.RegWrite(Arm.UC_ARM_REG_LR, ThumbEntry(returnTrap));
-            _uc.RegWrite(Arm.UC_ARM_REG_R12, function);
+            _cpu.RegWrite(Arm.UC_ARM_REG_LR, ThumbEntry(returnTrap));
+            _cpu.RegWrite(Arm.UC_ARM_REG_R12, function);
             return returnTrap;
         }
 
         /// <summary>The return address the current trap would have gone back to.</summary>
-        public long ReturnAddress => _uc.RegRead(Arm.UC_ARM_REG_LR);
+        public long ReturnAddress => _cpu.RegRead(Arm.UC_ARM_REG_LR);
 
         private readonly Queue<(string Name, long Function, long[] Arguments)> _deferred = new();
         private readonly List<string> _deferredLog = new();
@@ -1327,7 +1423,7 @@ namespace WPR.Wp8Native
             {
                 _domain = null;
                 _deferredLog.Add(
-                    $"   {name} returned 0x{_uc.RegRead(Arm.UC_ARM_REG_R0):X8} " +
+                    $"   {name} returned 0x{_cpu.RegRead(Arm.UC_ARM_REG_R0):X8} " +
                     $"after {CallOrderTotal - importsBefore:N0} import call(s)" +
                     DescribeDeferredWork());
                 ContinueAt(resume);
@@ -1372,7 +1468,7 @@ namespace WPR.Wp8Native
                 // showing a hundred thousand is a loader that ran. Nothing else here can tell
                 // those apart, and they look identical in the log.
                 _deferredLog.Add(
-                    $"   {name} returned 0x{_uc.RegRead(Arm.UC_ARM_REG_R0):X8} " +
+                    $"   {name} returned 0x{_cpu.RegRead(Arm.UC_ARM_REG_R0):X8} " +
                     $"after {CallOrderTotal - importsBefore:N0} import call(s)" +
                     DescribeDeferredWork());
                 DrainDeferredCalls(onDrained);
@@ -1392,7 +1488,7 @@ namespace WPR.Wp8Native
         /// Sends the CPU to <paramref name="address"/> when the current trap finishes,
         /// instead of returning to its caller.
         /// </summary>
-        public void ContinueAt(long address) => _uc.RegWrite(Arm.UC_ARM_REG_R12, address);
+        public void ContinueAt(long address) => _cpu.RegWrite(Arm.UC_ARM_REG_R12, address);
 
         private long AllocateTrapSlot(string name, TrapKind kind, Action? handler)
         {
@@ -1404,7 +1500,7 @@ namespace WPR.Wp8Native
             long slot = _trapNext;
             _trapNext += 4;
 
-            _uc.MemWrite(slot, BitConverter.GetBytes(ThumbBxR12));
+            _cpu.MemWrite(slot, _cpu.TrapSlot.ToArray());
             _traps[slot] = new TrapSlot(name, kind, handler);
             return slot;
         }
@@ -1446,17 +1542,17 @@ namespace WPR.Wp8Native
                 if (DataImports.TryGetValue(import.Name, out byte[]? initial))
                 {
                     long cell = AllocateHeap(Math.Max(8, initial.Length));
-                    _uc.MemWrite(cell, initial);
+                    _cpu.MemWrite(cell, initial);
 
                     // _acmdln points at the command line, so it needs a string to point to.
                     if (import.Name == "_acmdln")
                     {
                         long commandLine = AllocateHeap(8);
-                        _uc.MemWrite(commandLine, [0, 0, 0, 0, 0, 0, 0, 0]);
-                        _uc.MemWrite(cell, BitConverter.GetBytes((uint)commandLine));
+                        _cpu.MemWrite(commandLine, [0, 0, 0, 0, 0, 0, 0, 0]);
+                        _cpu.MemWrite(cell, BitConverter.GetBytes((uint)commandLine));
                     }
 
-                    _uc.MemWrite(slotAddress, BitConverter.GetBytes((uint)cell));
+                    _cpu.MemWrite(slotAddress, BitConverter.GetBytes((uint)cell));
                     DataImportCells.Add($"{import.FullName} -> variable at 0x{cell:X8}");
                     continue;
                 }
@@ -1464,7 +1560,7 @@ namespace WPR.Wp8Native
                 long trap = AllocateTrapSlot(import.FullName, TrapKind.Import, handler: null);
 
                 // The low bit tells the CPU to enter Thumb state when it branches here.
-                _uc.MemWrite(slotAddress, BitConverter.GetBytes((uint)ThumbEntry(trap)));
+                _cpu.MemWrite(slotAddress, BitConverter.GetBytes((uint)ThumbEntry(trap)));
             }
         }
 
@@ -1472,12 +1568,12 @@ namespace WPR.Wp8Native
         {
             // Grant cp10/cp11 access, then set FPEXC.EN, or every VFP and NEON instruction
             // in the image faults as undefined.
-            long cpacr = _uc.RegRead(Arm.UC_ARM_REG_C1_C0_2);
-            _uc.RegWrite(Arm.UC_ARM_REG_C1_C0_2, cpacr | (0xFL << 20));
-            _uc.RegWrite(Arm.UC_ARM_REG_FPEXC, 0x40000000L);
+            long cpacr = _cpu.RegRead(Arm.UC_ARM_REG_C1_C0_2);
+            _cpu.RegWrite(Arm.UC_ARM_REG_C1_C0_2, cpacr | (0xFL << 20));
+            _cpu.RegWrite(Arm.UC_ARM_REG_FPEXC, 0x40000000L);
         }
 
-        private void OnTrapEntered(Unicorn uc, long address, int size, object? userData)
+        private void EnterTrap(long address)
         {
             if (!_traps.TryGetValue(address, out TrapSlot? slot))
             {
@@ -1486,7 +1582,7 @@ namespace WPR.Wp8Native
 
             // Default the tail-call register to the return address, so the bx r12 sitting
             // in this slot behaves as a plain return unless the handler says otherwise.
-            _uc.RegWrite(Arm.UC_ARM_REG_R12, _uc.RegRead(Arm.UC_ARM_REG_LR));
+            _cpu.RegWrite(Arm.UC_ARM_REG_R12, _cpu.RegRead(Arm.UC_ARM_REG_LR));
             _lastTrap = slot.Name;
             _lastTrapAddress = address;
             _blocksSinceTrap = 0;
@@ -1518,10 +1614,10 @@ namespace WPR.Wp8Native
 
                     // lr is the caller, and this is the one moment it is guaranteed to be.
                     // Free attribution: it turns a count of imports into a map of the image.
-                    Samples.RecordCallSite(_uc.RegRead(Arm.UC_ARM_REG_LR), slot.Name);
+                    Samples.RecordCallSite(_cpu.RegRead(Arm.UC_ARM_REG_LR), slot.Name);
 
                     if (PcSampler.ArgumentSite != 0 &&
-                        (_uc.RegRead(Arm.UC_ARM_REG_LR) & ~1L) == PcSampler.ArgumentSite)
+                        (_cpu.RegRead(Arm.UC_ARM_REG_LR) & ~1L) == PcSampler.ArgumentSite)
                     {
                         Samples.RecordArguments(DescribeArguments(slot.Name));
                     }
@@ -1550,10 +1646,12 @@ namespace WPR.Wp8Native
             // established and names the stub that failed.
             try
             {
-                // Timed per stub. The call counts alone cannot say where a run's seconds go:
-                // a stub called a million times that returns a constant is free, and one
-                // called a thousand times that decodes a texture is not.
-                long started = System.Diagnostics.Stopwatch.GetTimestamp();
+                // Timed per stub only when asked. The call counts alone cannot say where a
+                // run's seconds go - a stub called a million times that returns a constant is
+                // free, one called a thousand times that decodes a texture is not - but two
+                // clock reads on a path taken three million times is a diagnostic that
+                // changes what it measures, so it is off unless WPR_HOSTTIME is set.
+                long started = TimingStubs ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
 
                 if (slot.Handler is not null)
                 {
@@ -1564,16 +1662,19 @@ namespace WPR.Wp8Native
                     _stubs.Dispatch(slot.Name);
                 }
 
-                _hostTime[slot.Name] =
-                    _hostTime.GetValueOrDefault(slot.Name)
-                    + (System.Diagnostics.Stopwatch.GetTimestamp() - started);
+                if (TimingStubs)
+                {
+                    _hostTime[slot.Name] =
+                        _hostTime.GetValueOrDefault(slot.Name)
+                        + (System.Diagnostics.Stopwatch.GetTimestamp() - started);
+                }
             }
-            catch (Exception ex) when (ex is not UnicornEngineException)
+            catch (Exception ex) when (ex is not CpuMemoryException)
             {
                 HostFailure ??= $"{slot.Name} threw {ex.GetType().Name}: {ex.Message}{TopFrames(ex)}";
                 Stop($"the host stub for {slot.Name} failed: {ex.Message}");
             }
-            catch (UnicornEngineException ex)
+            catch (CpuMemoryException ex)
             {
                 HostFailure ??= $"{slot.Name} touched unmapped memory: {ex.Message}";
                 Stop($"the host stub for {slot.Name} touched unmapped memory");
@@ -1663,7 +1764,7 @@ namespace WPR.Wp8Native
                     text.Append(Newline + "                ");
                 }
 
-                text.Append($"{names[i]}=0x{_uc.RegRead(ids[i]):X8} ");
+                text.Append($"{names[i]}=0x{_cpu.RegRead(ids[i]):X8} ");
             }
 
             // Every register that lands in a known block, not a fixed few. Which register
@@ -1672,7 +1773,7 @@ namespace WPR.Wp8Native
             var described = new HashSet<long>();
             for (int i = 0; i < ids.Length; i++)
             {
-                long value = _uc.RegRead(ids[i]);
+                long value = _cpu.RegRead(ids[i]);
                 string where = DescribeAllocation(value);
                 if (where.StartsWith("not a block", StringComparison.Ordinal) || !described.Add(value))
                 {
@@ -1697,7 +1798,7 @@ namespace WPR.Wp8Native
                 {
                     text.Append($"+{i * 4:X2}={ReadUInt32(address + i * 4):X8} ");
                 }
-                catch (UnicornEngineException)
+                catch (CpuMemoryException)
                 {
                     text.Append($"+{i * 4:X2}=???????? ");
                 }
@@ -1759,7 +1860,7 @@ namespace WPR.Wp8Native
         /// </remarks>
         public string ScanStack(int words)
         {
-            long sp = _uc.RegRead(Arm.UC_ARM_REG_SP);
+            long sp = _cpu.RegRead(Arm.UC_ARM_REG_SP);
             var found = new List<string>();
 
             for (int i = 0; i < words && found.Count < 12; i++)
@@ -1770,7 +1871,7 @@ namespace WPR.Wp8Native
                 {
                     value = ReadUInt32(slot);
                 }
-                catch (UnicornEngineException)
+                catch (CpuMemoryException)
                 {
                     break;
                 }
@@ -1804,7 +1905,7 @@ namespace WPR.Wp8Native
             try
             {
                 List<UnwoundFrame> frames = Unwinder.Walk(
-                    pc: _uc.RegRead(Arm.UC_ARM_REG_PC) & ~1L,
+                    pc: _cpu.RegRead(Arm.UC_ARM_REG_PC) & ~1L,
                     liveRegisters: core.Select(ReadRegister).ToArray(),
                     maxFrames: 12);
 
@@ -1831,10 +1932,22 @@ namespace WPR.Wp8Native
         {
             long block = AllocateHeap(size);
             _executableHeap.Add((block, block + size));
+            if (_heapExecuteProtected)
+            {
+                GrantExecute(block, size);
+            }
+
             return block;
         }
 
-        private void OnHeapExecution(Unicorn uc, long address, int size, object? userData)
+        private void GrantExecute(long start, long size)
+        {
+            long first = start & ~(PageSize - 1);
+            long end = Align(start + size, PageSize);
+            _cpu.MemProtect(first, end - first, Common.UC_PROT_ALL);
+        }
+
+        private void OnHeapExecution(long address)
         {
             foreach ((long start, long end) in _executableHeap)
             {
@@ -1844,7 +1957,7 @@ namespace WPR.Wp8Native
                 }
             }
 
-            HeapExecution ??= $"jumped into the heap at 0x{address:X8} from 0x{_uc.RegRead(Arm.UC_ARM_REG_LR) & ~1L:X8}" +
+            HeapExecution ??= $"jumped into the heap at 0x{address:X8} from 0x{_cpu.RegRead(Arm.UC_ARM_REG_LR) & ~1L:X8}" +
                               Newline + "                " + DescribeAllocation(address) +
                               Newline + "                last trap entered: " + (_lastTrap ?? "(none)");
             Stop($"jumped into the heap at 0x{address:X8} - that is data, not code");
@@ -1889,7 +2002,7 @@ namespace WPR.Wp8Native
             return false;
         }
 
-        private bool OnUnmappedAccess(Unicorn uc, int eventType, long address, int size, long value, object? userData)
+        private bool OnUnmappedAccess(FaultKind kind, long address, int size, long value)
         {
             if (address >= 0 && address < NullPageLimit)
             {
@@ -1899,9 +2012,9 @@ namespace WPR.Wp8Native
                 // called through a null function pointer, and every instruction after it is
                 // noise. Stop there, while lr still names the caller.
                 // Not a pattern: the binding exposes these as properties, not constants.
-                if (eventType == Common.UC_MEM_FETCH_UNMAPPED || eventType == Common.UC_MEM_FETCH_PROT)
+                if (kind is FaultKind.FetchUnmapped or FaultKind.FetchProtected)
                 {
-                    long from = _uc.RegRead(Arm.UC_ARM_REG_LR);
+                    long from = _cpu.RegRead(Arm.UC_ARM_REG_LR);
                     string registers = DescribeNullCall();
 
                     NullCall ??= (address, from);
@@ -1931,7 +2044,7 @@ namespace WPR.Wp8Native
                         StopReason ??= $"called through a null pointer at 0x{from:X8}";
                     }
 
-                    _uc.EmuStop();
+                    _cpu.Stop();
                     return true;
                 }
 
@@ -1941,14 +2054,31 @@ namespace WPR.Wp8Native
             // A write into the trap page now faults rather than landing. Whatever pointer the
             // image is writing through is wrong, and everything after it would be noise.
             if (address >= TrapBase && address < TrapBase + TrapSize
-                && (eventType == Common.UC_MEM_WRITE_PROT || eventType == Common.UC_MEM_WRITE_UNMAPPED))
+                && kind is FaultKind.WriteProtected or FaultKind.WriteUnmapped)
             {
-                TrapPageWrite ??= $"emulated code at 0x{_uc.RegRead(Arm.UC_ARM_REG_PC) & ~1L:X8} tried to " +
+                TrapPageWrite ??= $"emulated code at 0x{_cpu.RegRead(Arm.UC_ARM_REG_PC) & ~1L:X8} tried to " +
                                   $"write {size} bytes to trap slot 0x{address:X8}" +
                                   Newline + "                " + DescribeNullCall();
                 Stop($"emulated code wrote to the trap page at 0x{address:X8} - a pointer it was given is wrong");
-                _uc.EmuStop();
+                _cpu.Stop();
                 return true;
+            }
+
+            // A jump into the heap on an engine that protects it instead of hooking it. The
+            // hook version of this check never sees these because the hook fires first.
+            if (_heapExecuteProtected && kind == FaultKind.FetchProtected
+                && address >= HeapBase && address < HeapBase + HeapSize)
+            {
+                OnHeapExecution(address);
+                return false;
+            }
+
+            // Any other protection fault is on a page that exists, so mapping it again cannot
+            // help - and retrying would fault again for ever. Fault the run and say so.
+            if (kind is FaultKind.ReadProtected or FaultKind.WriteProtected or FaultKind.FetchProtected)
+            {
+                StopReason ??= $"{kind} at 0x{address:X8} from 0x{_cpu.RegRead(Arm.UC_ARM_REG_PC) & ~1L:X8}";
+                return false;
             }
 
             long page = address & ~(PageSize - 1);
@@ -1963,10 +2093,10 @@ namespace WPR.Wp8Native
 
             try
             {
-                uc.MemMap(page, PageSize, protection);
+                _cpu.MemMap(page, PageSize, protection);
                 LazyPagesMapped++;
             }
-            catch (UnicornEngineException)
+            catch (CpuMemoryException)
             {
                 // Already mapped, or unmappable. Either way returning true lets the CPU
                 // retry rather than aborting the whole run.
@@ -2006,15 +2136,15 @@ namespace WPR.Wp8Native
         /// Fires when emulated code writes into the trap page - which it must never do,
         /// since that is where the emulator keeps its own instructions.
         /// </summary>
-        private void OnTrapPageWritten(Unicorn uc, long address, int size, long value, object? userData)
+        private void OnTrapPageWritten(long address, int size, long value)
         {
             RejectedWrites.Add(
-                $"emulated code at 0x{uc.RegRead(Arm.UC_ARM_REG_PC):X8} wrote {size} bytes " +
+                $"emulated code at 0x{_cpu.RegRead(Arm.UC_ARM_REG_PC):X8} wrote {size} bytes " +
                 $"(0x{value:X}) to trap slot 0x{address:X8}" +
                 (_lastTrap is null ? string.Empty : $" - last trap was {_lastTrap}"));
         }
 
-        private void OnBlockEntered(Unicorn uc, long address, int size, object? userData)
+        private void OnBlockEntered(long address, int size)
         {
             BlocksExecuted++;
             CodeBytesExecuted += size;
@@ -2049,7 +2179,7 @@ namespace WPR.Wp8Native
 
             for (int i = 0; i < registers.Length; i++)
             {
-                long value = _uc.RegRead(registers[i]);
+                long value = _cpu.RegRead(registers[i]);
                 string? text = TryReadText(value);
                 parts.Add(text is null ? $"r{i}=0x{value:X8}" : $"r{i}=\"{text}\"");
             }
@@ -2107,6 +2237,6 @@ namespace WPR.Wp8Native
 
         private static long Align(long value, long alignment) => (value + alignment - 1) & ~(alignment - 1);
 
-        public void Dispose() => _uc.Dispose();
+        public void Dispose() => _cpu.Dispose();
     }
 }

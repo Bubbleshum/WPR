@@ -18,6 +18,7 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>WPR.Wp8Native</RootNamespace>
     <AssemblyName>WPR.Wp8Probe</AssemblyName>
     <InvariantGlobalization>true</InvariantGlobalization>
@@ -43,6 +44,10 @@
     Windows and libunicorn.so on Linux. Nothing else about the probe is platform-specific,
     so that one file is the whole difference between WSL-only and native.
   -->
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\wprcpu.dll')">
+    <None Include="wprcpu.dll" Link="wprcpu.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\unicorn.dll')">
     <None Include="unicorn.dll" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

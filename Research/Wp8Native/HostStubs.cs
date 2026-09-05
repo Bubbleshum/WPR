@@ -715,6 +715,8 @@ namespace WPR.Wp8Native
             Thrown = model.ReadThrow(Arg(0), Arg(1));
             CatchCandidates = model.FindHandlers(ThrowStack, Thrown);
 
+            RecordThrow();
+
             if (CatchCandidates.Count == 0)
             {
                 _emulator.Stop(
@@ -724,6 +726,37 @@ namespace WPR.Wp8Native
             }
 
             TransferToHandler(CatchCandidates[0], Thrown);
+        }
+
+        /// <summary>
+        /// Every C++ throw the image made, with what it carried and whether anything caught
+        /// it.
+        /// </summary>
+        /// <remarks>
+        /// The fatal throw is rarely the first thing that went wrong. A caught one leaves no
+        /// trace at all - control transfers into the funclet and the run carries on - so a
+        /// game that swallows an error during setup and fails much later looks, from the
+        /// report, like it failed for no reason. This is the history that connects them.
+        /// </remarks>
+        public List<string> ThrowHistory { get; } = new();
+
+        private void RecordThrow()
+        {
+            if (ThrowHistory.Count >= 200)
+            {
+                return;
+            }
+
+            string caught = CatchCandidates.Count == 0
+                ? "UNCAUGHT"
+                : $"caught in 0x{CatchCandidates[0].Frame.FunctionRva:X8}";
+
+            string carried = ThrownText.Count == 0
+                ? string.Empty
+                : " " + string.Join(" | ", ThrownText.Take(3));
+
+            ThrowHistory.Add(
+                $"frame {_winRt.ProcessEventsCalls,5}  {Thrown.TypeName}  {caught}{carried}");
         }
 
         /// <summary>
