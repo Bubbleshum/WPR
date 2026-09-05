@@ -82,6 +82,12 @@ namespace WPR.Platform.Android
                 caps.Notifications(
                     new WPR.Notifications.AndroidChannel.AndroidNotificationManager(
                         _context, Resource.Drawable.ic_stat_wpr));
+
+                // The handset's vibration motor. Microsoft.Devices.VibrateController was an empty
+                // method body until this landed, so every WP7 title that buzzed did nothing at all.
+                // Windows declares no counterpart — a desktop PC has no motor, and the seam degrades
+                // to silence rather than throwing.
+                caps.Vibration(new WPR.Vibration.AndroidVibrator.AndroidVibratorProvider(_context));
             }
 
             caps.Achievements(new WPR.Database.Achievements.EfAchievementStore());

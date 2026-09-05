@@ -129,6 +129,7 @@ namespace WPR.Platform.Android
             // a lifecycle callback.
             base.OnPause();
             SuspendMusicSafely();
+            StopVibrationSafely();
         }
 
         /// <summary>
@@ -162,6 +163,32 @@ namespace WPR.Platform.Android
             {
                 Common.Log.Warn(Common.LogCategory.AppList,
                     $"[wpr-media] background suspend threw: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Silences the motor when the game leaves the foreground.
+        ///
+        /// <para>Same class of problem as the song above, and for the same reason: a buzz is issued
+        /// by us to the OS and nothing else cancels it, so a game backgrounded mid-vibration keeps
+        /// the phone shaking on the home screen for the rest of the duration. Bounded at 5 seconds
+        /// by the provider, but a phone that carries on buzzing after you have left the game reads
+        /// as a fault.</para>
+        ///
+        /// <para>There is no <c>OnResume</c> counterpart, deliberately. A vibration is a one-shot
+        /// event, not a stream with a position — resuming would replay a buzz whose moment has
+        /// passed. The game re-triggers if it still wants one.</para>
+        /// </summary>
+        private static void StopVibrationSafely()
+        {
+            try
+            {
+                WPR.Engine.Vibration.VibrationBackend.Device?.Stop();
+            }
+            catch (Exception ex)
+            {
+                Common.Log.Warn(Common.LogCategory.AppList,
+                    $"[wpr-vibrate] background stop threw: {ex.GetType().Name}: {ex.Message}");
             }
         }
 

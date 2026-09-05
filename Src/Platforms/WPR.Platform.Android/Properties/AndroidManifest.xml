@@ -18,6 +18,18 @@
            install-time and granted automatically.
       -->
       <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+      <!--
+           Microsoft.Devices.VibrateController -> WPR.Vibration.AndroidVibrator. Unlike
+           POST_NOTIFICATIONS this is a NORMAL permission at every API level, so it is granted at
+           install and there is nothing for MainActivity to request. Without it every
+           Vibrator.vibrate throws SecurityException, which the provider logs as [wpr-vibrate] and
+           swallows - so the symptom would be games that silently never buzz, not a crash.
+
+           Deliberately not <uses-feature android:name="android.hardware.VIBRATE">: vibration is
+           optional here (Vibrator.HasVibrator gates it at runtime) and declaring the feature would
+           let Play filter WPR off tablets that lack a motor.
+      -->
+      <uses-permission android:name="android.permission.VIBRATE"/>
 	<!--
 	     @mipmap/ic_launcher, not @drawable/icon: mipmap resources survive the density
 	     stripping applied to drawables, and the name resolves to the adaptive icon

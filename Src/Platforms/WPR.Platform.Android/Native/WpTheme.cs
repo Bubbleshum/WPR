@@ -172,6 +172,38 @@ namespace WPR.Platform.Android.Native
         }
 
         /// <summary>
+        /// Tint a switch with the live accent: accent thumb on a muted accent track when on,
+        /// white thumb on chrome when off. WP7 had no switch of this shape — its ToggleSwitch was
+        /// a rectangular slab — but the stock widget with the right two colours reads as part of
+        /// the same shell, and reimplementing the WP7 control would be a lot of drawing for one
+        /// setting.
+        /// </summary>
+        public static void ApplySwitch(Switch toggle)
+        {
+            // ThumbTintList/TrackTintList are API 23+, and this app's minimum is 21. On 21-22 the
+            // switch keeps the platform's own colours — it still reads and toggles correctly, it
+            // just is not accented, which is the right trade for two API levels rather than
+            // hand-drawing a StateListDrawable for them.
+            if (!OperatingSystem.IsAndroidVersionAtLeast(23)) return;
+
+            // A negated attribute is how a ColorStateList spells "not checked"; an empty int[]
+            // would match everything including checked, and being listed second would then never
+            // help, because the FIRST matching entry wins.
+            int[] on = { global::Android.Resource.Attribute.StateChecked };
+            int[] off = { -global::Android.Resource.Attribute.StateChecked };
+
+            Color accent = Accent;
+
+            toggle.ThumbTintList = new ColorStateList(
+                new[] { on, off },
+                new[] { accent.ToArgb(), Foreground.ToArgb() });
+
+            toggle.TrackTintList = new ColorStateList(
+                new[] { on, off },
+                new[] { Muted(accent).ToArgb(), Chrome.ToArgb() });
+        }
+
+        /// <summary>
         /// Paint the system bars to match the page. Without this the status bar keeps the
         /// platform's translucent grey and the black page reads as a floating panel.
         /// </summary>

@@ -78,6 +78,50 @@
         android:layout_marginTop="12dp"
         android:columnCount="5" />
 
+    <!-- Vibration. A row rather than a bare Switch because WP7's ToggleSwitch always showed
+         its state as a word underneath the header, and the shell copies that. -->
+    <TextView
+        style="@style/WpSectionHeader"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="28dp"
+        android:text="VIBRATION" />
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp">
+
+      <Switch
+          android:id="@+id/vibrationSwitch"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:layout_alignParentEnd="true"
+          android:layout_centerVertical="true" />
+
+      <TextView
+          android:id="@+id/vibrationStateText"
+          style="@style/WpBody"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:layout_alignParentStart="true"
+          android:layout_centerVertical="true"
+          android:layout_marginEnd="16dp"
+          android:text="on" />
+
+    </RelativeLayout>
+
+    <TextView
+        android:id="@+id/vibrationNote"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:fontFamily="sans-serif"
+        android:textColor="@color/wp_subtle"
+        android:textSize="13sp"
+        android:lineSpacingExtra="3dp"
+        android:text="applies to every game, and to any connected controller. a game already running keeps its current setting until you next launch it." />
+
     <TextView
         style="@style/WpSectionHeader"
         android:layout_width="wrap_content"

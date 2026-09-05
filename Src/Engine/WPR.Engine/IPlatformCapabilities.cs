@@ -3,6 +3,7 @@ using WPR.Engine.Audio;
 using WPR.Engine.Notifications;
 using WPR.Engine.Sensors;
 using WPR.Engine.Graphics;
+using WPR.Engine.Vibration;
 using WPR.Xna.Rhi;
 
 namespace WPR.Engine
@@ -35,6 +36,18 @@ namespace WPR.Engine
         /// passes the keyboard emulator that synthesises one.
         /// </summary>
         IPlatformCapabilities Accelerometer(IAccelerometerProvider provider);
+
+        /// <summary>
+        /// This platform can buzz. Android passes the handset's vibration motor; Windows declares
+        /// none, because a desktop PC has no motor - so <c>Microsoft.Devices.VibrateController</c>
+        /// stays the no-op it has always been there.
+        ///
+        /// <para>Controller rumble would arrive as a second provider on a second
+        /// <c>VibrationBackend</c> slot rather than as a second call here, since a pad is not a
+        /// fact about the platform - it is present or absent at runtime, on both heads. See the
+        /// remarks on <c>VibrationBackend.Device</c>.</para>
+        /// </summary>
+        IPlatformCapabilities Vibration(IVibrationProvider provider);
 
         /// <summary>
         /// This platform wants a specific FNA3D driver. Omit it (or pass

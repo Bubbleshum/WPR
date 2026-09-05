@@ -180,6 +180,10 @@
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Framework.Devices.Sensors\WPR.Framework.Devices.Sensors.csproj" />
     <ProjectReference Include="..\..\Core\WPR.Shell\WPR.Shell.csproj" />
     <ProjectReference Include="..\..\Modules\Input\WPR.Input.XamarinEssentials\WPR.Input.XamarinEssentials.csproj" />
+    <!-- The handset vibration motor, declared through caps.Vibration(...). Needs
+         android.permission.VIBRATE in AndroidManifest.xml — a normal, install-time permission, so
+         there is nothing to request at runtime. -->
+    <ProjectReference Include="..\..\Modules\Vibration\WPR.Vibration.AndroidVibrator\WPR.Vibration.AndroidVibrator.csproj" />
   </ItemGroup>
 </Project>
   

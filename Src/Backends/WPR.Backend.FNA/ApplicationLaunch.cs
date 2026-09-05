@@ -1261,6 +1261,14 @@ namespace WPR
             try { WPR.Engine.Sensors.SensorBackend.Accelerometer?.ResetForNewLaunch(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"Sensor provider reset threw: {ex.Message}"); }
 
+            // Silence the motor. A WP7 title that exits mid-buzz never gets to call
+            // VibrateController.Stop() itself, and the provider is launcher-lifetime — so without
+            // this the phone carries on vibrating with the game already gone. Just a Stop, not a
+            // ResetForNewLaunch: unlike the accelerometer this seam is push-only, so there is no
+            // per-game subscriber list to drop and no ALC to pin.
+            try { WPR.Engine.Vibration.VibrationBackend.Device?.Stop(); }
+            catch (Exception ex) { Log.Warn(LogCategory.AppList, $"Vibration provider stop threw: {ex.Message}"); }
+
             try { WPR.SilverlightCompability.CompositionTarget.ResetForNewLaunch(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"CompositionTarget reset threw: {ex.Message}"); }
 

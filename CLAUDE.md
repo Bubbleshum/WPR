@@ -283,6 +283,115 @@ Bindings are read in `PrepareForLaunch`, so an edit applies from the **next** la
 pipeline that never touches `TouchPanel`, so keyboard→touch is XNA-only and would need a second
 implementation there.
 
+### Vibration is its own subsystem, and it is NOT the XNA rumble API (2026-09-05)
+
+`Microsoft.Devices.VibrateController.Start`/`.Stop` were **empty method bodies** from the day the
+shim was written, so every WP7 title that buzzed on a collision, a wrong answer or a menu tap did
+nothing at all — silently, on both heads. They now go through a seam with the same three-part shape
+as sensors and achievements:
+
+* **Contract** — `WPR.Engine.Vibration.IVibrationProvider`: `IsSupported`,
+  `Vibrate(TimeSpan, float intensity)`, `Stop()`. It speaks `TimeSpan` and a float on purpose —
+  `VibrateController` lives in `Microsoft.Phone`, which *consumes* this, so naming it here would
+  invert the reference. Same rule as everywhere in the engine tier.
+* **Registry** — `WPR.Engine.Vibration.VibrationBackend`, slot `Device` / `SetDevice`. Not cleared
+  at teardown (the provider is launcher-lifetime); it is **stopped**, from
+  `ResetWprSingletons` — a game that exits mid-buzz never calls `VibrateController.Stop()` itself.
+  There is no `ResetForNewLaunch` counterpart to the sensor one because this seam is **push-only**:
+  no event, so no subscriber list and no ALC to pin.
+* **Implementation** — `Src/Modules/Vibration/WPR.Vibration.AndroidVibrator`, declared through
+  `caps.Vibration(...)`. **Windows declares none** and needs none: a desktop PC has no motor, so
+  the desktop behaviour is unchanged and absent means "this platform does not have it".
+
+**`intensity` exists for a device that does not exist yet, and that is deliberate.** WP7's API has
+no amplitude concept — `VibrateController` passes `1f` — but controller rumble is fundamentally
+amplitude-based, and a contract without it would have to be widened the day the second
+implementation landed. **Where controller rumble goes: a `Controller` slot beside `Device`, filled
+by a `WPR.Vibration.Gamepad` module implementing the same interface** — not a second project, not
+more members here, and *not* a second `IPlatformCapabilities` member (a pad is present or absent at
+runtime on both heads, so it is not a fact about the platform). `VibrateController` then picks
+between the slots; that policy is worth deciding with a real pad in hand.
+
+**Do not route `GamePad.SetVibration` through this.** XNA gamepad rumble already exists and already
+works — `WPR.Xna.Rhi.IInputBackend.SetGamePadVibration` → SDL, on both heads. It is per-pad,
+per-motor and *level-based* (runs until changed, no duration); this seam is one-shot with a
+duration. Different APIs, different lifetimes, and a game calling one is not asking for the other.
+What the new seam adds is letting a title that only knows the WP7 handset API reach whatever the
+player is actually holding.
+
+Three things about the Android implementation:
+
+- **Three API generations.** `VibrationEffect.CreateOneShot` from 26 (the only place amplitude
+  exists at all, and only when `HasAmplitudeControl` — asking a motor without it for a specific
+  amplitude is rejected, not rounded, hence `DefaultAmplitude`); the deprecated `Vibrate(long)`
+  below that; and `VibratorManager.DefaultVibrator` from 31, where `VIBRATOR_SERVICE` is deprecated.
+  Guards are `OperatingSystem.IsAndroidVersionAtLeast(n)`, **not** the
+  `Build.VERSION.SdkInt >= BuildVersionCodes.X` form used in `WPR.Notifications.AndroidChannel` —
+  equivalent at runtime, but only the former is understood by the platform-compat analyzer, so the
+  module carries no CA1416 suppressions. Deliberate divergence, noted in both files.
+- **`android.permission.VIBRATE` is required**, and it is a *normal* permission — granted at
+  install, nothing for `MainActivity` to request (unlike `POST_NOTIFICATIONS`). Without it every
+  call throws `SecurityException`, which the provider logs as `[wpr-vibrate]` and swallows, so the
+  symptom is games that silently never buzz rather than a crash. Deliberately **no**
+  `<uses-feature android:name="android.hardware.VIBRATE">`: it would let Play filter WPR off
+  tablets with no motor, and `Vibrator.HasVibrator` already gates it at runtime.
+- **`GameActivity.OnPause` stops it**, same reasoning as the song: the buzz is ours and nothing else
+  cancels it, so a game backgrounded mid-vibration keeps the phone shaking on the home screen.
+  There is deliberately **no `OnResume` counterpart** — a vibration is a one-shot event, not a
+  stream with a position.
+
+**Beware `Trace` in an Android module**: `Android.OS.Trace` collides with `System.Diagnostics.Trace`
+and CS0104s a bare `Trace`. This module aliases (`using Trace = System.Diagnostics.Trace;`); the
+accelerometer module never hit it only because it does not `using Android.OS`.
+
+**Read the platform line** — `vibration=` joined the `[wpr-platform]` summary, so one line still
+says how the device was set up:
+
+```
+[wpr-platform] Android: accelerometer=EssentialsAccelerometerProvider vibration=AndroidVibratorProvider driver=OpenGL …
+```
+
+`vibration=none` means composition, not hardware. `[wpr-vibrate] vibrator resolved — hasVibrator=…`
+in the per-game log is the hardware answer, and the two are otherwise indistinguishable from inside
+a game. **Emulators report `hasVibrator=false`** and exercise only the degradation path, so judge
+actual buzzing on real hardware.
+
+**The global on/off switch is `VibrationBackend.IsEnabled`, and it gates BOTH vibration paths.**
+Persisted as `Configuration.VibrationEnabled` (nullable, defaults true, so a config.json written
+before the setting existed reads as "on" — the `TiltSimulationEnabled` precedent), and surfaced on
+the **Android settings page** as a WP-styled switch with an on/off word beside it.
+
+The non-obvious part is the second consumer. `GamePad.SetVibration` / `SetTriggerVibrationEXT` in
+`WPR.Framework.Xna` honour the same flag, **even though gamepad rumble never touches this
+registry** — it goes to SDL through `IInputBackend`. Only the *preference* is shared, and it has to
+be: a switch labelled "vibration" that left a connected pad shaking is a bug. That is the one
+reason `WPR.Framework.Xna` references `WPR.Engine.Vibration`, and the one reason
+`WPR.Engine.Vibration` references `WPR.Common`. Three rules fall out:
+
+- **The motors are zeroed, the call is not skipped.** `SetVibration` returns "false when the pad has
+  no rumble motors"; short-circuiting would conflate a *muted* pad with a *motorless* one, and
+  would also strand a rumble a game started before the switch was read.
+- **Only calls that START a vibration consult it.** `IVibrationProvider.Stop` must run
+  unconditionally — teardown and `OnPause` silence the motor regardless, and a stop that honoured
+  the preference could strand a buzz that began while it was on.
+- **A future `Controller` slot needs no extra work**: anything reading `IsEnabled` is already
+  covered.
+
+**The setting is read live, and takes effect from the next game launch.** That is not a compromise:
+`GameActivity.OnDestroy` calls `Process.KillProcess(MyPid())`, so every launch gets a fresh
+`:game` process that re-reads config.json. Reading live rather than capturing at composition keeps
+it correct if that kill is ever removed.
+
+**There is no desktop UI for it yet** — a PC has no motor, so the only thing it would mute there is
+pad rumble. The setting itself is cross-platform, so adding a Windows checkbox is UI work only.
+
+`WpTheme.ApplySwitch` is the accent tint for a `Switch`, and it is the first toggle control in the
+Android shell. Note `ThumbTintList`/`TrackTintList` are **API 23+** while this app's minimum is 21,
+so it returns early below 23 and the switch keeps the platform's own colours.
+
+No `ApplicationPatcher.Version` bump and no reinstall — no patcher table changed and no IL is
+rewritten. Games pick this up on next launch.
+
 ### Touchscreen and hardware buttons are NOT sensors (2026-09-02)
 
 > **Partly superseded by the section above.** The conclusion that touch needs no *platform seam*
@@ -905,6 +1014,7 @@ WPR.<Subsystem>.<Technology>
 | --- | --- |
 | `WPR.Engine.Audio` | `WPR.Audio.FAudio`, `WPR.Audio.AndroidMediaPlayer` |
 | `WPR.Engine.Notifications` | `WPR.Notifications.WindowsToast`, `WPR.Notifications.AndroidChannel` |
+| `WPR.Engine.Vibration` | `WPR.Vibration.AndroidVibrator` |
 
 **Name the technology, not the platform.** `WPR.Audio.FAudio` runs on Windows *and* Android — a
 platform-shaped name would have been a lie the day it shipped twice. `WindowsToast` and

@@ -34,6 +34,11 @@
          being a WPR invention. Devices.Location carries a net8.0 leg specifically so this project's
          own net8.0 leg can resolve it. -->
     <ProjectReference Include="..\WPR.Framework.Devices.Location\WPR.Framework.Devices.Location.csproj" />
+    <!-- The IVibrationProvider seam Microsoft.Devices.VibrateController buzzes through. The
+         contract speaks TimeSpan and a float and names nothing from here, so the edge runs one
+         way: Microsoft.Phone -> WPR.Engine.Vibration. That project has no net8.0-windows leg and
+         needs none — this project's desktop leg resolves its plain net8.0 one. -->
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Vibration\WPR.Engine.Vibration.csproj" />
   </ItemGroup>
 
   <!-- The test project reaches PhoneApplicationFrameView.ConvertBrush (internal). -->

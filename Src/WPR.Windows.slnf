@@ -21,6 +21,7 @@
       "Engine\\WPR.Engine.Graphics\\WPR.Engine.Graphics.csproj",
       "Engine\\WPR.Engine.Notifications\\WPR.Engine.Notifications.csproj",
       "Engine\\WPR.Engine.Sensors\\WPR.Engine.Sensors.csproj",
+      "Engine\\WPR.Engine.Vibration\\WPR.Engine.Vibration.csproj",
       "Engine\\WPR.Engine\\WPR.Engine.csproj",
       "Modules\\Audio\\WPR.Audio.FAudio\\WPR.Audio.FAudio.csproj",
       "Modules\\Input\\WPR.Input.Keyboard\\WPR.Input.Keyboard.csproj",

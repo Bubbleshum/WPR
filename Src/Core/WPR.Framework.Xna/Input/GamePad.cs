@@ -80,6 +80,23 @@ namespace Microsoft.Xna.Framework.Input
 
 		public static bool SetVibration(PlayerIndex playerIndex, float leftMotor, float rightMotor)
 		{
+			/* The user's global vibration switch (Configuration.VibrationEnabled, set on the
+			 * Android settings page) covers rumble too — a toggle labelled "vibration" that left
+			 * a connected pad shaking would be a bug. Note this path does NOT go through
+			 * VibrationBackend's provider at all; it is SDL, via IInputBackend. Only the
+			 * preference is shared.
+			 *
+			 * Motors are zeroed rather than the call being skipped, so the return value keeps
+			 * meaning what XNA says it means — "false when the pad has no rumble motors" — rather
+			 * than conflating a muted pad with a motorless one. It also actively stops a rumble
+			 * that a game started before the switch was read.
+			 */
+			if (!WPR.Engine.Vibration.VibrationBackend.IsEnabled)
+			{
+				leftMotor = 0.0f;
+				rightMotor = 0.0f;
+			}
+
 			return XnaBackend.Input.SetGamePadVibration(
 				(int) playerIndex,
 				leftMotor,
@@ -103,6 +120,13 @@ namespace Microsoft.Xna.Framework.Input
 
 		public static bool SetTriggerVibrationEXT(PlayerIndex playerIndex, float leftTrigger, float rightTrigger)
 		{
+			/* Same global switch as SetVibration above — trigger rumble is still rumble. */
+			if (!WPR.Engine.Vibration.VibrationBackend.IsEnabled)
+			{
+				leftTrigger = 0.0f;
+				rightTrigger = 0.0f;
+			}
+
 			return XnaBackend.Input.SetGamePadTriggerVibration(
 				(int) playerIndex,
 				leftTrigger,

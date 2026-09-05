@@ -46,6 +46,15 @@ namespace WPR.Common
             // WprPhoneBackButton) is NOT configurable and never passes through here — that is a
             // hardware button, not a preference. This binding only names the desktop stand-in.
             public string? BackKey;
+
+            // Master switch for game vibration, across every game and every vibration path —
+            // the WP7 handset motor (Microsoft.Devices.VibrateController) and XNA gamepad
+            // rumble (GamePad.SetVibration). Default = true.
+            //
+            // Nullable so that a config.json written before this setting existed reads as "on"
+            // rather than as an explicit "off"; same reason TiltSimulationEnabled is nullable
+            // and TiltOverlayEnabled (which defaults off) is not.
+            public bool? VibrationEnabled;
         };
 
         private const string ConfigurationFilePath = "config.json";
@@ -156,6 +165,16 @@ namespace WPR.Common
         {
             get => _ConfPrivate!.BackKey ?? DefaultBackKey;
             set => _ConfPrivate!.BackKey = string.IsNullOrEmpty(value) ? null : value;
+        }
+        /// <summary>
+        /// Whether games may vibrate the device. Defaults to true. Read through
+        /// <c>WPR.Engine.Vibration.VibrationBackend.IsEnabled</c> rather than directly, so both
+        /// vibration paths share one answer — see that property.
+        /// </summary>
+        public bool VibrationEnabled
+        {
+            get => _ConfPrivate!.VibrationEnabled ?? true;
+            set => _ConfPrivate!.VibrationEnabled = value;
         }
 
         public static event EventHandler<string?>? GameLibraryPathChanged;

@@ -30,6 +30,7 @@
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Graphics\WPR.Engine.Graphics.csproj" />
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Audio\WPR.Engine.Audio.csproj" />
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Sensors\WPR.Engine.Sensors.csproj" />
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Vibration\WPR.Engine.Vibration.csproj" />
     <!-- Registries not yet pulled into a subsystem project: XnaBackend's launcher-lifetime slots
          (achievements, tilt emulation) and NativeUI.NotificationManager. -->
     <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Xna\WPR.Framework.Xna.csproj" />

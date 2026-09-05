@@ -19,6 +19,7 @@
       "Engine\\WPR.Engine.Graphics\\WPR.Engine.Graphics.csproj",
       "Engine\\WPR.Engine.Notifications\\WPR.Engine.Notifications.csproj",
       "Engine\\WPR.Engine.Sensors\\WPR.Engine.Sensors.csproj",
+      "Engine\\WPR.Engine.Vibration\\WPR.Engine.Vibration.csproj",
       "Engine\\WPR.Engine\\WPR.Engine.csproj",
       "JavaBindings\\com.arthenica.ffmpegkit\\com.arthenica.ffmpegkit.csproj",
       "JavaBindings\\com.arthenica.smartexception.java\\com.arthenica.smartexception.java.csproj",
@@ -28,6 +29,7 @@
       "Modules\\Audio\\WPR.Audio.FAudio\\WPR.Audio.FAudio.csproj",
       "Modules\\Input\\WPR.Input.XamarinEssentials\\WPR.Input.XamarinEssentials.csproj",
       "Modules\\Notifications\\WPR.Notifications.AndroidChannel\\WPR.Notifications.AndroidChannel.csproj",
+      "Modules\\Vibration\\WPR.Vibration.AndroidVibrator\\WPR.Vibration.AndroidVibrator.csproj",
       "Platforms\\WPR.Platform.Android\\WPR.Platform.Android.csproj",
       "ThirdParty\\assembly-store-reader\\assembly-store-reader.csproj"
     ]

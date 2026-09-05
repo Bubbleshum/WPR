@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Engine.Vibration - the haptics subsystem's contract and composition layer.
+
+    Holds IVibrationProvider and VibrationBackend, the registry a platform head fills through
+    caps.Vibration(...). Modelled on WPR.Engine.Sensors, which is the closest analogue: a device
+    the WP7 framework exposes through a shim games construct themselves, so the implementation has
+    to arrive through a registry rather than a constructor.
+
+    The contract speaks TimeSpan and a float, never Microsoft.Devices.VibrateController - that type
+    lives in WPR.Framework.Phone, which CONSUMES this, so naming it here would invert the reference.
+    Same rule as everywhere in the engine tier: a contract here must not name a game-facing identity.
+
+    WPR.Common is the only reference, and it is here for exactly one member: VibrationBackend.
+    IsEnabled reads the user's global on/off switch out of Configuration. That does not break the
+    rule above - Configuration is a launcher preference store, not a game-facing type - and it is
+    what lets the ONE gate cover both the handset motor and XNA gamepad rumble.
+
+    TFMs mirror WPR.Engine.Sensors. No net8.0-windows leg is needed: net8.0-windows resolves the
+    plain net8.0 one, which is how WPR.Framework.Phone's desktop leg reaches this.
+  -->
+
+  <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+  </PropertyGroup>
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net8.0-android</TargetFrameworks>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <AssemblyName>WPR.Engine.Vibration</AssemblyName>
+    <RootNamespace>WPR.Engine.Vibration</RootNamespace>
+    <Nullable>enable</Nullable>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net8.0-android'">21.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Configuration.VibrationEnabled, read by VibrationBackend.IsEnabled. -->
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Common\WPR.Common.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -65,6 +65,11 @@
     <ProjectReference Include="$(SolutionDir)Engine/WPR.Engine.Audio/WPR.Engine.Audio.csproj" />
     <!-- The achievement-unlock toast (SignedInGamer). Moved out of WPR.Common on 2026-09-01. -->
     <ProjectReference Include="$(SolutionDir)Engine/WPR.Engine.Notifications/WPR.Engine.Notifications.csproj" />
+    <!-- VibrationBackend.IsEnabled — the user's global vibration switch, which GamePad.SetVibration
+         honours so that muting vibration also mutes pad rumble. Nothing here touches the
+         IVibrationProvider seam itself: gamepad rumble goes to SDL through IInputBackend, and only
+         the preference is shared. -->
+    <ProjectReference Include="$(SolutionDir)Engine/WPR.Engine.Vibration/WPR.Engine.Vibration.csproj" />
   </ItemGroup>
 
   <!--

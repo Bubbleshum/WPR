@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Vibration.AndroidVibrator - IVibrationProvider over android.os.Vibrator.
+
+    A MODULE: it implements a contract owned by WPR.Engine.Vibration and is plugged in by a head
+    declaring caps.Vibration(...). One seam, one technology, one project reference - the shape
+    WPR.Input.XamarinEssentials has.
+
+    Named for the TECHNOLOGY, not the platform, per the naming note in CLAUDE.md. "AndroidVibrator"
+    is the API (android.os.Vibrator / VibratorManager), the same way AndroidChannel is the
+    notification-channel API; a future controller-rumble sibling filling the same seam would be
+    WPR.Vibration.Gamepad and would name no platform at all.
+
+    Android-only, so the TFM is singular <TargetFramework>: Src/Directory.Build.targets only strips
+    android legs from a plural <TargetFrameworks>, so the singular form is what keeps this intact on
+    a machine without the workload, and WPR.Windows.slnf is the mechanism that keeps it out of a
+    desktop build.
+
+    NOTE the head must declare android.permission.VIBRATE. It is a normal (install-time) permission,
+    so there is no runtime request to make - but without it every call throws SecurityException,
+    which this logs as [wpr-vibrate] and swallows.
+
+    No package reference: Vibrator, VibratorManager and VibrationEffect are all in Mono.Android.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>21.0</SupportedOSPlatformVersion>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <AssemblyName>WPR.Vibration.AndroidVibrator</AssemblyName>
+    <RootNamespace>WPR.Vibration.AndroidVibrator</RootNamespace>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Vibration\WPR.Engine.Vibration.csproj" />
+  </ItemGroup>
+
+</Project>
