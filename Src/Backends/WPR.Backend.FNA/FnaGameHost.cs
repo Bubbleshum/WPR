@@ -136,12 +136,45 @@ namespace WPR.Backend.FNA
             XnaBackend.SetGameThreadPost(Microsoft.Xna.Framework.WprGameThread.Post);
             XnaBackend.SetSuppressFocusActivation(
                 Microsoft.Xna.Framework.WprActivationGuard.SuppressFocusActivation);
-            XnaBackend.SetBackBufferSizeHook((w, h) =>
+            // TouchPanel's three Display* properties describe one thing — the WP7 display the game
+            // presents to — so they are set together, from one rule, in one place. On real XNA the
+            // framework maintained them; FNA leaves them to the game, and WP7 titles were written
+            // against the framework doing it.
+            //
+            // DisplayOrientation is NOT cosmetic: WP7's accelerometer axes are fixed to the device,
+            // never to the display, so a game that supports more than one orientation has to rotate
+            // every reading itself — and it reads TouchPanel.DisplayOrientation to know which way.
+            // Doodle Jump is the reference case: p_xna_AccelerometerReadingChanged stores the sample
+            // ONLY inside `if (DisplayOrientation == Portrait) … else if (LandscapeLeft) … else if
+            // (LandscapeRight)`, with no else. Left at Default(0) — which is what it was, because
+            // nothing in WPR ever assigned this property — every reading fell off the end of that
+            // chain and the game's acceleration stayed 0 for the whole session. Tilt did nothing,
+            // on either head, with a perfectly healthy sensor delivering samples behind it.
+            var lastPresentation = string.Empty;
+            XnaBackend.SetBackBufferSizeHook((w, h, orientation) =>
             {
                 Microsoft.Xna.Framework.Input.Mouse.INTERNAL_BackBufferWidth = w;
                 Microsoft.Xna.Framework.Input.Mouse.INTERNAL_BackBufferHeight = h;
                 Microsoft.Xna.Framework.Input.Touch.TouchPanel.DisplayWidth = w;
                 Microsoft.Xna.Framework.Input.Touch.TouchPanel.DisplayHeight = h;
+
+                Microsoft.Xna.Framework.DisplayOrientation resolved =
+                    ResolveDisplayOrientation(w, h, orientation);
+                Microsoft.Xna.Framework.Input.Touch.TouchPanel.DisplayOrientation = resolved;
+
+                // One line per actual change (device create, ApplyChanges, a phone rotating), not
+                // per Reset — a game that resets every frame would otherwise bury the log. This is
+                // what a tilt report gets checked against first: it says whether the game is being
+                // told an orientation it can act on at all, and which one.
+                string presentation = $"{w}x{h} orientation={resolved}"
+                    + (orientation == Microsoft.Xna.Framework.DisplayOrientation.Default
+                        ? " (inferred from backbuffer)"
+                        : " (reported)");
+                if (presentation != lastPresentation)
+                {
+                    lastPresentation = presentation;
+                    System.Diagnostics.Trace.WriteLine("[wpr-display] " + presentation);
+                }
             });
             try
             {
@@ -159,6 +192,43 @@ namespace WPR.Backend.FNA
                 XnaBackend.Clear();
                 _state = GameHostState.Stopped;
             }
+        }
+
+        /// <summary>
+        /// What orientation the game is presenting at, for
+        /// <c>TouchPanel.DisplayOrientation</c>.
+        ///
+        /// <para><paramref name="reported"/> — <c>PresentationParameters.DisplayOrientation</c> —
+        /// wins whenever it names a real orientation, because it is the only source that can tell
+        /// LandscapeLeft from LandscapeRight. It is set by
+        /// <c>SDL2_FNAPlatform.INTERNAL_HandleOrientationChange</c> from an SDL display-rotation
+        /// event, so in practice it is only ever populated on a phone, and only after the device
+        /// physically rotates: a desktop never rotates, and a phone whose activity locked its
+        /// orientation before the window existed produces no <em>change</em> to report.</para>
+        ///
+        /// <para>Otherwise infer from the backbuffer, using the same width-vs-height rule the rest
+        /// of the stack already agrees on — <c>Compat.GraphicsDeviceManager.RequestOrientationChange</c>
+        /// (which is what actually asks the Android activity to go portrait or landscape),
+        /// <c>FNAWindow.EndScreenDeviceChange</c> and <c>TiltInputXnaComponent.ResolveOrientation</c>.
+        /// Landscape resolves to LandscapeRight to stay consistent with all three.</para>
+        /// </summary>
+        private static Microsoft.Xna.Framework.DisplayOrientation ResolveDisplayOrientation(
+            int width,
+            int height,
+            Microsoft.Xna.Framework.DisplayOrientation reported)
+        {
+            if (reported == Microsoft.Xna.Framework.DisplayOrientation.Portrait
+             || reported == Microsoft.Xna.Framework.DisplayOrientation.LandscapeLeft
+             || reported == Microsoft.Xna.Framework.DisplayOrientation.LandscapeRight)
+            {
+                return reported;
+            }
+
+            // A zero-sized backbuffer should not be reachable here (this fires from device
+            // create/reset), but Portrait is the safer guess for a WP7 title if it ever is.
+            return width > height
+                ? Microsoft.Xna.Framework.DisplayOrientation.LandscapeRight
+                : Microsoft.Xna.Framework.DisplayOrientation.Portrait;
         }
 
         /// <summary><see cref="IGameHost.Run"/> — synchronous blocking conformance. Launchers use

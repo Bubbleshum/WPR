@@ -30,7 +30,7 @@ namespace WPR.Xna.Rhi
 		private static Func<string> _titleLocation;
 		private static Action<string> _logInfo;
 		private static Action<string> _logWarn;
-		private static Action<int, int> _backBufferSize;
+		private static Action<int, int, Microsoft.Xna.Framework.DisplayOrientation> _backBufferSize;
 		private static Action<Action> _gameThreadPost;
 		private static Action<TimeSpan> _suppressFocusActivation;
 
@@ -206,13 +206,30 @@ namespace WPR.Xna.Rhi
 		public static void SuppressFocusActivation(TimeSpan window) =>
 			_suppressFocusActivation?.Invoke(window);
 
-		/// <summary>Hook to push the backbuffer size to the platform input devices (mouse/touch
-		/// faux-backbuffer scaling). The concrete Mouse/TouchPanel devices live in the backend, so
-		/// GraphicsDevice notifies them through here instead of referencing them directly.</summary>
-		public static void SetBackBufferSizeHook(Action<int, int> hook) => _backBufferSize = hook;
+		/// <summary>Hook to push the current presentation — backbuffer size AND orientation — to the
+		/// platform input devices (mouse/touch faux-backbuffer scaling, plus the WP7 display
+		/// orientation that games rotate their accelerometer readings by). The concrete
+		/// Mouse/TouchPanel devices live in the backend, so GraphicsDevice notifies them through
+		/// here instead of referencing them directly.</summary>
+		public static void SetBackBufferSizeHook(
+			Action<int, int, Microsoft.Xna.Framework.DisplayOrientation> hook
+		) => _backBufferSize = hook;
 
-		/// <summary>Called by GraphicsDevice on device create/reset with the current backbuffer size.</summary>
-		public static void NotifyBackBufferSize(int width, int height) => _backBufferSize?.Invoke(width, height);
+		/// <summary>
+		/// Called by GraphicsDevice on device create/reset with the current backbuffer size and
+		/// whatever orientation the presentation parameters carry.
+		///
+		/// <para><paramref name="orientation"/> is usually
+		/// <see cref="Microsoft.Xna.Framework.DisplayOrientation.Default"/>: it is only ever
+		/// assigned from an SDL display-rotation event, which a desktop never emits and a phone
+		/// emits only if the device physically rotates after launch. The consumer must therefore
+		/// fall back to the size when it arrives unset — see the hook in <c>FnaGameHost</c>.</para>
+		/// </summary>
+		public static void NotifyBackBufferSize(
+			int width,
+			int height,
+			Microsoft.Xna.Framework.DisplayOrientation orientation
+		) => _backBufferSize?.Invoke(width, height, orientation);
 
 		/// <summary>
 		/// Called by the host on teardown. Clears the per-launch HOOKS but deliberately KEEPS the

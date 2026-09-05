@@ -419,7 +419,7 @@ namespace Microsoft.Xna.Framework.Graphics
 				);
 			}
 
-			XnaBackend.NotifyBackBufferSize(PresentationParameters.BackBufferWidth, PresentationParameters.BackBufferHeight);
+			XnaBackend.NotifyBackBufferSize(PresentationParameters.BackBufferWidth, PresentationParameters.BackBufferHeight, PresentationParameters.DisplayOrientation);
 
 
 			// Force set the default render states.
@@ -668,7 +668,7 @@ namespace Microsoft.Xna.Framework.Graphics
 				ref PresentationParameters.parameters
 			);
 
-			XnaBackend.NotifyBackBufferSize(PresentationParameters.BackBufferWidth, PresentationParameters.BackBufferHeight);
+			XnaBackend.NotifyBackBufferSize(PresentationParameters.BackBufferWidth, PresentationParameters.BackBufferHeight, PresentationParameters.DisplayOrientation);
 
 
 			// Now, update the viewport
