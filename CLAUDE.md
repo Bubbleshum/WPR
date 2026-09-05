@@ -129,7 +129,7 @@ controller, a gamepad-to-touch mapper) is a new project rather than an edit to a
 | module | TFM | fills |
 | --- | --- | --- |
 | `WPR.Input.Keyboard` | `net8.0` | `IAccelerometerProvider`, `IKeyboardEmulationHost` — tilt, Back key and synthetic touch |
-| `WPR.Input.XamarinEssentials` | `net8.0-android` | `IAccelerometerProvider` — the device's real sensor |
+| `WPR.Input.AndroidSensor` | `net8.0-android` | `IAccelerometerProvider` — the device's real sensor, straight off `SensorManager` |
 
 **`WPR.Input.Keyboard` fills two seams on purpose.** Both describe the same 60 Hz emulator
 from two directions — one is how the WP7 `Accelerometer` shim reads it, the other is how the FNA
@@ -148,17 +148,43 @@ What stays in the Windows head is `Input/TiltOverlay.cs` alone: it is an Avaloni
 genuinely cannot move.
 
 **Splitting an Android module out of a head splits its NuGet graph, and that can break dex.**
-`Xamarin.Essentials` 1.7.3 wants the 2021-era AndroidX set including
+`Xamarin.Essentials` 1.7.3 wanted the 2021-era AndroidX set including
 `Xamarin.Google.Guava.ListenableFuture` **1.0.0.2**; the head unifies to **1.0.0.16** (via
 `AndroidX.Core 1.12.0.2`). While Essentials was a direct head reference there was one graph and
-NuGet unified it. As a module it restores independently, so the head got both — the old jar
+NuGet unified it. As a module it restored independently, so the head got both — the old jar
 embedded in the module's output and the new package from its own restore — and R8 failed with
 `Type com.google.common.util.concurrent.ListenableFuture is defined multiple times`. The module
-therefore carries an explicit pin to 1.0.0.16. **Do not reach for
+carried an explicit pin to 1.0.0.16 to collapse that back to one copy. **Do not reach for
 `XamarinGoogleGuavaListenableFutureOptOut` instead** — see the long comment in
 `WPR.Platform.Android.csproj`; those opt-outs SIGSEGV the launcher seconds after start. Expect this
 class of failure whenever an android binding package moves out of the head, and expect it at dex
 time rather than as a restore warning.
+
+**Both the package and the pin are gone as of 2026-09-05** — `WPR.Input.AndroidSensor` now has no
+package references at all — so the worked example above is history rather than live configuration.
+It is kept because the failure mode is not: it is what the *next* android binding to leave the head
+will do.
+
+**Xamarin.Essentials was removed because its accelerometer is broken, not to tidy the graph.**
+`Android.Hardware.SensorEvent.Values` compiles to
+`JavaArray<float>.FromJniHandle(…, TransferLocalRef)` — every read mints a wrapper that **owns a JNI
+reference and must be disposed**. Essentials' `OnSensorChanged` reads it three times (once per axis)
+and disposes none, so at 50 Hz it leaks 150 JNI references a second; about a thousand samples in,
+every reading collapses to a frozen `(-0.001, 0.000, 0.000)` and stays there for the life of the
+process. Events keep arriving at full rate, the listener stays registered, `IsMonitoring` stays
+true, nothing throws — the only symptom is that **tilt works for twenty seconds and then stops**
+(reported against Doodle Jump, 2026-09-05). The rule this leaves behind: **anything reading a
+`SensorEvent` calls `Values` ONCE per event, copies the floats out, and disposes it.** Indexing it
+per-axis is not merely wasteful, it is the bug.
+
+Two traps when diagnosing a repeat of this. The reader count and the start/stop lines cannot show
+it, because none of them change — which is why `[wpr-accel]` reports the *edges* of an implausible
+magnitude (`READINGS WENT FLAT` / `readings recovered`) and carries `|a|`; a real accelerometer
+always measures gravity, so a sustained `|a| ≈ 0` means the sensor has stopped reporting physics
+while still delivering events. And the per-game `wpr_game_debug.log` is **per Android user**: on a
+device with a Samsung `DUAL_APP` clone (user 95) or Secure Folder (150), `run-as` reads user 0's
+copy and will happily serve a stale log from a different run. Read logcat instead, or check
+`pm list users` first.
 
 `Start`/`Stop` are **counted, not idempotent**. One provider is shared by every
 `Accelerometer` a game holds, so it refcounts its readers and powers the sensor down on the

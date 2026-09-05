@@ -28,11 +28,11 @@ namespace WPR.Platform.Android
 
         public override void Describe(IPlatformCapabilities caps)
         {
-            // The device's real accelerometer. The WP7 Accelerometer shim sees only
-            // IAccelerometerProvider, so the hardware code (and its Xamarin.Essentials dependency) stays
-            // in this head. No KeyboardEmulation counterpart — a phone does not need one, and the game
-            // host therefore attaches no tilt components here.
-            caps.Accelerometer(new WPR.Input.XamarinEssentials.AndroidAccelerometerProvider());
+            // The device's real accelerometer, read from SensorManager by the WPR.Input.AndroidSensor
+            // module. The WP7 Accelerometer shim sees only IAccelerometerProvider and never learns
+            // which implementation it got. No KeyboardEmulation counterpart — a phone does not need
+            // one, and the game host therefore attaches no tilt components here.
+            caps.Accelerometer(new WPR.Input.AndroidSensor.AndroidAccelerometerProvider());
 
             // THE graphics decision, declared as an answer rather than a policy.
             //

@@ -6,7 +6,7 @@ using System.Threading;
 using Android.Hardware;
 using WPR.Engine.Sensors;
 
-namespace WPR.Input.XamarinEssentials
+namespace WPR.Input.AndroidSensor
 {
     /// <summary>
     /// This head's <see cref="IAccelerometerProvider"/>: the device's real accelerometer, read

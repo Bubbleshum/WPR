@@ -26,8 +26,10 @@
     <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
     <!-- No Xamarin.Essentials. It was here until 2026-08-30 with no C# in this project using it,
          which put an Android sensor package in the dependency closure of nearly every assembly
-         in the repo, desktop legs included. The one real consumer is
-         WPR.Platform.Android/Input/AndroidAccelerometerProvider. -->
+         in the repo, desktop legs included. It moved to the accelerometer module and was deleted
+         outright on 2026-09-05 (a JNI leak in its sensor path killed tilt after ~20s); the
+         accelerometer now reads SensorManager directly in WPR.Input.AndroidSensor, which has no
+         package references at all. -->
   </ItemGroup>
 
   <!-- Default gamer-picture choices (the 9 stock WP7 avatars). Lives at the

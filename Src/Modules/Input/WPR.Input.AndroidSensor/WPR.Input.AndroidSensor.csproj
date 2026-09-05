@@ -1,0 +1,53 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Input.AndroidSensor - the device's real accelerometer, read from android.hardware.SensorManager.
+
+    Fills WPR.Engine.Sensors.IAccelerometerProvider and nothing else. This is the shape a module is
+    supposed to have: one seam, one technology, one project reference - and since 2026-09-05, no
+    package references at all.
+
+    Named for the platform API it drives, per the module convention. That convention says "name the
+    technology, not the platform", and Android's sensor framework IS the technology here - the same
+    reading that makes WPR.Notifications.AndroidChannel legitimate. It was WPR.Input.XamarinEssentials
+    until 2026-09-05, which was an accurate name right up until the library came out.
+
+    Xamarin.Essentials is GONE, and that is a fix rather than a tidy-up. Its OnSensorChanged read
+    Android.Hardware.SensorEvent.Values three times per event - once per axis - and that property
+    compiles to JavaArray<float>.FromJniHandle(..., TransferLocalRef), i.e. every call mints a
+    wrapper that owns a JNI reference and must be disposed. Essentials disposed none of them, so at
+    50Hz it leaked 150 JNI references a second and reads started returning a frozen zero vector
+    about a thousand samples in: tilt worked for twenty seconds and then silently stopped. See
+    AndroidAccelerometerProvider for the full account.
+
+    Dropping that package also drops the reason the Xamarin.Google.Guava.ListenableFuture 1.0.0.16
+    pin used to be here. Essentials 1.7.3 dragged in the 2021-era AndroidX set including Guava
+    ListenableFuture 1.0.0.2; because a module restores as its own graph, the head ended up with
+    both that jar and the 1.0.0.16 the head resolves, and R8 failed with "Type
+    com.google.common.util.concurrent.ListenableFuture is defined multiple times". With no packages
+    here there is one copy again and nothing to pin. (Do NOT reach for
+    XamarinGoogleGuavaListenableFutureOptOut if a duplicate ever reappears - see the long comment in
+    WPR.Platform.Android.csproj; those opt-outs SIGSEGV the launcher seconds after start.)
+
+    net8.0-android only. Spelled as a singular <TargetFramework> deliberately -
+    Src/Directory.Build.targets only strips android legs from a plural <TargetFrameworks>, so the
+    singular form is what keeps an android-only project intact on a machine without the workload,
+    and WPR.Windows.slnf is the mechanism that keeps it out of a desktop build.
+
+    Lived in WPR.Platform.Android/Input/ until 2026-09-02.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>21.0</SupportedOSPlatformVersion>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <AssemblyName>WPR.Input.AndroidSensor</AssemblyName>
+    <RootNamespace>WPR.Input.AndroidSensor</RootNamespace>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Sensors\WPR.Engine.Sensors.csproj" />
+  </ItemGroup>
+
+</Project>

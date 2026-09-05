@@ -93,7 +93,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WPR.Shell", "Core\WPR.Shell
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WPR.Input.Keyboard", "Modules\Input\WPR.Input.Keyboard\WPR.Input.Keyboard.csproj", "{FE24471C-4CEF-4F60-8926-D12ECADA1169}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WPR.Input.XamarinEssentials", "Modules\Input\WPR.Input.XamarinEssentials\WPR.Input.XamarinEssentials.csproj", "{85A32CE5-DDEB-4821-B550-61816D43FF63}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WPR.Input.AndroidSensor", "Modules\Input\WPR.Input.AndroidSensor\WPR.Input.AndroidSensor.csproj", "{85A32CE5-DDEB-4821-B550-61816D43FF63}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WPR.Engine.Vibration", "Engine\WPR.Engine.Vibration\WPR.Engine.Vibration.csproj", "{3B7C9E41-6A5D-4F82-9C13-0E7A2D6B4188}"
 EndProject
