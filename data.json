@@ -65,7 +65,7 @@
   {"name":"DoDonPachi Maximum","dev":"EVAC Industry","status":"Untested","android":"Broken","achv":false,"notes":"","type":"XNA","dagger":false,"img":"dodonpachimaximum.jpg"},
   {"name":"Doodle God","dev":"JoyBits","status":"Untested","android":"Broken","achv":false,"notes":"","type":"XNA","dagger":false,"img":"doodlegod.jpg"},
   {"name":"Doodle God Blitz","dev":"JoyBits","status":"Broken","android":"Broken","achv":false,"notes":"Silverlight title; not yet running on this fork.","type":"Silverlight","dagger":false,"img":"doodlegodblitz.jpg"},
-  {"name":"Doodle Jump","dev":"Lima Sky","status":"Untested","achv":false,"notes":"","type":"XNA","dagger":false,"img":"doodlejump.jpg"},
+  {"name":"Doodle Jump","dev":"Lima Sky","status":"Untested","android":"Partial","achv":false,"notes":"","type":"XNA","dagger":false,"img":"doodlejump.jpg"},
   {"name":"Dragon Mania Legends","dev":"Gameloft","status":"Untested","achv":false,"notes":"","type":"XNA","dagger":false,"img":"dragonmanialegends.jpg"},
   {"name":"Dream Track Nation","dev":"Pow Pow Games","status":"Playable","achv":true,"notes":"Promoted legacy → Playable; 12-achievement / 200G catalogue.","type":"XNA","dagger":false,"img":"dreamtracknation.jpg"},
   {"name":"Droplitz Delight","dev":"Blitz Games","status":"Untested","achv":false,"notes":"","type":"XNA","dagger":false,"img":"droplitzdelight.jpg"},
