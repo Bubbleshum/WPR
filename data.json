@@ -93,7 +93,7 @@
   {"name":"Flowerz","dev":"Carbonated Games","status":"Broken","android":"Broken","achv":false,"notes":"Silverlight title; not yet running on this fork.","type":"Silverlight","dagger":false,"img":"flowerz.jpg"},
   {"name":"Fragger","dev":"Miniclip","status":"Untested","achv":false,"notes":"","type":"XNA","dagger":false,"img":"fragger.jpg"},
   {"name":"Free Slots Fun Factory","dev":"Rocks Pro","status":"Broken","android":"Broken","achv":false,"notes":"Silverlight title; not yet running on this fork.","type":"Silverlight","dagger":false,"img":"freeslotsfunfactory.jpg"},
-  {"name":"Frogger","dev":"Konami Digital Entertainment","status":"Untested","achv":false,"notes":"","type":"XNA","dagger":false,"img":"frogger.jpg"},
+  {"name":"Frogger","dev":"Konami Digital Entertainment","status":"Untested","android":"Playable","achv":false,"notes":"","type":"XNA","dagger":false,"img":"frogger.jpg"},
   {"name":"Fruit Ninja","dev":"Halfbrick Studios","status":"Playable","android":"Playable","achv":true,"notes":"No longer blocked on GamerProfile.GetGamerPicture. (Both the original and the 2013 re-release run.)","type":"XNA","dagger":false,"img":"fruitninja.jpg"},
   {"name":"Full House Poker","dev":"Krome Studios","status":"Untested","achv":false,"notes":"","type":"XNA","dagger":false,"img":"fullhousepoker.jpg"},
   {"name":"Fusion Dots","dev":"BumBliss","status":"Broken","android":"Broken","achv":false,"notes":"Silverlight title; not yet running on this fork.","type":"Silverlight","dagger":false,"img":"fusiondots.jpg"},
