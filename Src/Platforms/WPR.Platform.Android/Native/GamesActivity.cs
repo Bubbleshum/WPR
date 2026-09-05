@@ -138,18 +138,28 @@ namespace WPR.Platform.Android.Native
         }
 
         /// <summary>
-        /// WP7's long-press context menu. Kept to the four things that are actually
-        /// destructive-or-slow enough to deserve confirmation of intent; a plain tap still
-        /// just plays the game.
+        /// WP7's long-press context menu. Kept to the things that are actually
+        /// destructive-or-slow enough to deserve confirmation of intent, plus the ones that
+        /// belong on a per-game menu and nowhere else; a plain tap still just plays the game.
         /// </summary>
         private async Task ShowContextSheetAsync(GameEntry entry)
         {
-            string[] actions = { "play", "achievements", "info", "re-patch", "uninstall" };
-            int choice = await WpDialogs.ChooseAsync(this, entry.Name, actions);
+            var actions = new List<string> { "play", "achievements", "info" };
+
+            // WP7's own wording, and the same gesture: long-press a game, pin it to Start.
+            // Offered only when the home screen will take it — a few third-party launchers
+            // decline, and below API 26 pinning needs a launcher that answers the legacy
+            // install broadcast.
+            if (GameShortcuts.IsSupported(this)) actions.Add("pin to start");
+
+            actions.Add("re-patch");
+            actions.Add("uninstall");
+
+            int choice = await WpDialogs.ChooseAsync(this, entry.Name, actions.ToArray());
 
             // Dismissal returns -1. Dispatching on the label rather than the index keeps
             // this switch correct when an action is inserted into the list above.
-            if (choice < 0 || choice >= actions.Length) return;
+            if (choice < 0 || choice >= actions.Count) return;
 
             switch (actions[choice])
             {
@@ -169,6 +179,10 @@ namespace WPR.Platform.Android.Native
                     info.PutExtra(GameInfoActivity.ExtraProductId, entry.ProductId);
                     info.PutExtra(GameInfoActivity.ExtraGameName, entry.Name);
                     StartActivity(info);
+                    break;
+
+                case "pin to start":
+                    GameShortcuts.Pin(this, entry);
                     break;
 
                 case "re-patch":
@@ -233,6 +247,11 @@ namespace WPR.Platform.Android.Native
             try
             {
                 await ApplicationInstaller.UninstallAsync(entry.Model);
+
+                // A pinned shortcut outlives the game it points at — the home screen owns it and
+                // this app cannot delete it — so retire it here rather than leaving a live tile
+                // for a product id with no row behind it.
+                GameShortcuts.Retire(this, entry.ProductId, $"{entry.Name} is no longer installed.");
             }
             catch (Exception ex)
             {

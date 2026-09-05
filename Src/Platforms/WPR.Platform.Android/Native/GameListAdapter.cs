@@ -1,14 +1,11 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 
 using Android.Content;
 using Android.Graphics;
 using Android.Views;
 using Android.Widget;
-
-using WPR.Common;
 
 using WprApplication = WPR.Models.Application;
 
@@ -90,29 +87,19 @@ namespace WPR.Platform.Android.Native
         }
 
         /// <summary>
-        /// Decode the tile art the installer extracted from the XAP. Cached per product
-        /// because <see cref="GetView"/> runs on every fling frame; a null cache entry is a
-        /// remembered failure, so a game with a broken icon is not re-decoded forever.
+        /// The tile art the installer extracted from the XAP. Cached per product because
+        /// <see cref="GetView"/> runs on every fling frame; a null cache entry is a remembered
+        /// failure, so a game with a broken icon is not re-decoded forever.
+        ///
+        /// <para>The decode itself is <see cref="GameTileArt"/>, shared with
+        /// <see cref="GameShortcuts"/> — only the caching is this adapter's own concern.</para>
         /// </summary>
         private Bitmap? ResolveIcon(GameEntry entry)
         {
             string key = entry.ProductId ?? entry.Name;
             if (_IconCache.TryGetValue(key, out Bitmap? cached)) return cached;
 
-            Bitmap? bitmap = null;
-            try
-            {
-                string relative = entry.Model.IconPath;
-                if (!string.IsNullOrWhiteSpace(relative))
-                {
-                    string full = Configuration.Current!.DataPath(relative);
-                    if (File.Exists(full)) bitmap = BitmapFactory.DecodeFile(full);
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Warn(LogCategory.AppList, $"Could not decode icon for {entry.Name}: {ex.Message}");
-            }
+            Bitmap? bitmap = GameTileArt.Decode(entry.Model);
 
             _IconCache[key] = bitmap;
             return bitmap;

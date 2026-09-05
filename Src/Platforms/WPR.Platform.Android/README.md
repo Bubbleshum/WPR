@@ -25,6 +25,7 @@ changing the accent in Settings is one config write plus a repaint.
 | `Native/AchievementsActivity` | roll-up per game, or one game's achievement list |
 | `Native/SettingsActivity` | gamertag, accent colour |
 | `Native/AboutActivity` | version and credits |
+| `Native/GameShortcutActivity` | what a pinned home-screen game shortcut starts; resolves a ProductId and hands off to `GameLauncher`, in its own task |
 | `GameActivity` | hosts one game run under SDL in its own `:game` process |
 
 `GameActivity` owns the hardware Back button. WP7 treats Back as a game input, so a

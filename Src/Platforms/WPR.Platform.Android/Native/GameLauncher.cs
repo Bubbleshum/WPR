@@ -113,7 +113,12 @@ namespace WPR.Platform.Android.Native
         /// intent extra, and is also written to the external files dir so it survives the
         /// dialog being dismissed.
         /// </summary>
-        public static void HandleGameResult(Activity host, Result resultCode, Intent? data)
+        /// <param name="onErrorAcknowledged">Invoked once the error dialog has gone, however it
+        /// went. For a host with a page behind it there is nothing to do and this stays null;
+        /// <see cref="GameShortcutActivity"/> passes its own <c>Finish</c>, because it has
+        /// nothing to show once the dialog is dismissed.</param>
+        public static void HandleGameResult(Activity host, Result resultCode, Intent? data,
+            Action? onErrorAcknowledged = null)
         {
             // Patching runs relative to the process current directory; GameActivity is a
             // different process, but the launcher's CWD can still have been moved by a
@@ -144,7 +149,7 @@ namespace WPR.Platform.Android.Native
                 ? errorText.Substring(0, 3500) + "\n…(truncated)"
                 : errorText;
 
-            ShowError(host, dialogMessage);
+            ShowError(host, dialogMessage, onErrorAcknowledged);
         }
 
         /// <summary>
@@ -220,17 +225,24 @@ namespace WPR.Platform.Android.Native
             ShowError(host, message);
         }
 
-        private static void ShowError(Activity host, string message)
+        private static void ShowError(Activity host, string message, Action? onDismissed = null)
         {
             host.RunOnUiThread(() =>
             {
                 if (host.IsFinishing || host.IsDestroyed) return;
 
-                new AlertDialog.Builder(host)!
+                AlertDialog dialog = new AlertDialog.Builder(host)!
                     .SetTitle(WPR.Shell.Resources.AppRunError)!
                     .SetMessage(message)!
                     .SetPositiveButton("OK", (IDialogInterfaceOnClickListener?)null)!
-                    .Show();
+                    .Create()!;
+
+                // Dismissal rather than the OK button: Back and a tap outside close this dialog
+                // without the button ever firing, and a caller that finishes itself from here
+                // would be stranded on a blank screen by either.
+                if (onDismissed != null) dialog.DismissEvent += (_, _) => onDismissed();
+
+                dialog.Show();
             });
         }
     }

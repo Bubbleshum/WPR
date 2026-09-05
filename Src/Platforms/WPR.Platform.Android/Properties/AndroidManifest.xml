@@ -30,6 +30,16 @@
            let Play filter WPR off tablets that lack a motor.
       -->
       <uses-permission android:name="android.permission.VIBRATE"/>
+      <!--
+           "pin to start" (GameShortcuts -> ShortcutManagerCompat). From API 26 pinning is a
+           first-class framework call and needs no permission at all; below that the compat
+           library falls back to broadcasting com.android.launcher.action.INSTALL_SHORTCUT, and
+           ShortcutManagerCompat.isRequestPinShortcutSupported returns FALSE unless this is
+           granted - so without it the action simply never appears on API 21-25.
+
+           A normal, install-time permission, so there is nothing for MainActivity to request.
+      -->
+      <uses-permission android:name="com.android.launcher.permission.INSTALL_SHORTCUT"/>
 	<!--
 	     @mipmap/ic_launcher, not @drawable/icon: mipmap resources survive the density
 	     stripping applied to drawables, and the name resolves to the adaptive icon

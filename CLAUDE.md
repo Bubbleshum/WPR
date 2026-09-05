@@ -418,6 +418,87 @@ so it returns early below 23 and the switch keeps the platform's own colours.
 No `ApplicationPatcher.Version` bump and no reinstall — no patcher table changed and no IL is
 rewritten. Games pick this up on next launch.
 
+### Home-screen game shortcuts go through a trampoline, not GameActivity (2026-09-05)
+
+WP7's "pin to start" for the Android home screen: long-press a game in the games list →
+`pin to start` → one launcher icon carrying that game's tile art and name, which starts it
+without the WPR shell appearing on the way. Android only.
+
+**The shortcut carries a ProductId and nothing else, and it points at
+`Native/GameShortcutActivity`, never at `GameActivity`.** Pointing it straight at the game
+activity is the obvious shape and it is wrong three times over — a shortcut lives on someone's
+home screen for months, so every one of these is a real failure:
+
+- **A serialised `Application` goes stale.** `GameLauncher.Launch` re-patches an install whose
+  `PatchedVersion` is behind `ApplicationPatcher.Version` *before* launching. A snapshot in the
+  intent would skip that and TypeLoadException the next time the patcher table changes.
+- **Native ports never reach `GameActivity` at all** — `LaunchUnityPort` starts a different
+  activity or package.
+- **A dead game process reports its reason through `onActivityResult`**, which needs a caller.
+
+So the trampoline resolves the id against `ApplicationContext` and calls the same
+`GameLauncher.Launch` the games list calls. It is the *only* launch path a shortcut may take.
+
+**Its own `TaskAffinity` (`com.wpr.android.shortcut`), plus `AutoRemoveFromRecents`.** Without the
+affinity the tap brings the launcher's task forward — Start screen first, then the game, and back
+to the games list afterwards. With it, the shortcut task holds only the trampoline and the game, so
+finishing returns to the home screen. `GameActivity` is started **without** `NEW_TASK` and
+therefore joins that task, which is what keeps `startActivityForResult` working across the process
+boundary. The shortcut intent itself carries `NewTask | ClearTask`: without `ClearTask`, tapping a
+shortcut while another game is still up resumes that task as it stands and hands back the *running*
+game instead of the one asked for.
+
+**`Exported = true` is required, and it is not redundant.** From API 26 the system starts a pinned
+shortcut on the publisher's behalf, so exporting would not be needed — but this app's minimum is
+21, `ShortcutManagerCompat` falls back to the legacy
+`com.android.launcher.action.INSTALL_SHORTCUT` broadcast below 26, and the launcher then starts the
+intent *as itself*. That fallback is also why the manifest declares that permission: without it
+`isRequestPinShortcutSupported` returns false on 21–25 and the menu entry simply never appears.
+
+**When the trampoline finishes is a two-flag rule, and the naive versions are all broken.**
+`OnStop` latches `_HandedOver`; `OnResume` finishes if it is set. That covers a game exit, a native
+port closing, and anything else that ever gave the screen back — with no need for `Launch` to
+report what it did. The exception is the failure dialog, which `HandleGameResult` shows **on this
+activity**: `onActivityResult` runs just *before* `OnResume`, so it latches `_ShowingError` and the
+dialog survives. Finishing from `OnActivityResult` instead would kill that dialog on the way up.
+
+That is the one thing this feature changed outside itself: `GameLauncher.HandleGameResult` and
+`ShowError` gained an optional `onErrorAcknowledged` / `onDismissed` callback. It hangs off
+`Dialog.DismissEvent`, **not** the OK button — Back and a tap outside close an `AlertDialog`
+without the button ever firing, and either one would stranded the trampoline on a blank screen.
+
+**The icon is composed, not the raw tile.** `GameShortcuts.Frame` draws the tile scaled to fit the
+adaptive-icon **72-of-108 safe zone** on the live accent. Full-bleed is the tempting alternative
+and it crops: a WP tile is square and the launcher's mask is not. At 72/108 the art is exactly the
+size of a normal app icon's, with the accent filling the mask around it; a circle mask still clips
+the tile's own corners, which WP art tolerates because its content is inset. Bitmap size is the
+launcher's own icon size × 108/72, clamped by `ShortcutManagerCompat.GetIconMaxWidth/Height`
+because it crosses to the launcher over IPC. `CreateWithAdaptiveBitmap` unconditionally —
+`IconCompat` does its own rounding below 26, so there is one code path.
+
+**A pinned shortcut cannot be deleted by the app that published it, only disabled.** So
+uninstalling calls `GameShortcuts.Retire`, which `DisableShortcuts` it with a message; the
+trampoline does the same for a row that vanished some other way. Skipping this leaves a live tile
+that launches a product id with nothing behind it.
+
+**Two things deliberately not built.** Dynamic shortcuts (long-press the WPR icon for recent
+games) — different feature, and this one was asked for. And repainting pinned icons when the accent
+changes: `ShortcutManagerCompat.UpdateShortcuts` would do it, at the cost of the Settings page
+reaching into the shortcut store on every write, so a shortcut keeps the accent it was pinned with.
+
+`GameTileArt.Decode` came out of `GameListAdapter` so the list and the shortcut resolve a game's
+art the same way — through `GameIconStore.Resolve`, which is the shared rule and is **not** just
+`Application.IconPath` (that names a file inside the install folder). Named for the art rather than
+the file so it does not read as a second icon store beside that one; the adapter keeps its
+per-product cache, which is its own concern (it runs on every fling frame).
+
+No `ApplicationPatcher.Version` bump and no reinstall — no patcher table changed and no IL is
+rewritten. **A manifest change, though**, so this one needs a reinstall of the APK rather than just
+a rebuild.
+
+**Not built for Windows.** The desktop head could pin a Start Menu / desktop shortcut with the same
+`ProductId`-to-launch shape, and nothing here blocks it, but this is Android-only today.
+
 ### Touchscreen and hardware buttons are NOT sensors (2026-09-02)
 
 > **Partly superseded by the section above.** The conclusion that touch needs no *platform seam*
