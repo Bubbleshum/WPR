@@ -1,7 +1,7 @@
 {
   "Name": "Connect 4",
   "KeySource": "xlast",
-  "Description": "The classic Hasbro two-player disc-dropping game. Line up four of your colour in a row Ã¢â‚¬â€ horizontally, vertically or diagonally Ã¢â‚¬â€ before your opponent does.",
+  "Description": "The classic Hasbro two-player disc-dropping game. Line up four of your colour in a row — horizontally, vertically or diagonally — before your opponent does.",
   "Achievements": [
     { "Key": "THE_JOURNEY_BEGINS",       "Name": "The Journey Begins",       "GamerScore":  5, "Description": "Win your first match." },
     { "Key": "AMATEUR_CONNECTOR",        "Name": "Amateur Connector",        "GamerScore":  5, "Description": "Win 10 matches." },

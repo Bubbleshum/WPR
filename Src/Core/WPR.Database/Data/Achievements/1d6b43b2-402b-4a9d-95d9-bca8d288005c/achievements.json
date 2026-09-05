@@ -20,6 +20,6 @@
     { "Key": "Addict",       "Name": "Addict",         "GamerScore": 10, "Description": "Achieve 2,500,000 total points" },
     { "Key": "SimulSnap",    "Name": "Simul-Snap",     "GamerScore": 10, "Description": "By moving a single tile, create multiple independent snaps" },
     { "Key": "SwapSnap",     "Name": "Swap Snap",      "GamerScore": 10, "Description": "Tap 2 tiles to swap them and make a new snap" },
-    { "Key": "WorldChamp",   "Name": "World Champ",    "GamerScore": 20, "Description": "Place in the top 250 players in any of the Ã¢â‚¬Å“Top PlayerÃ¢â‚¬Â leaderboards" }
+    { "Key": "WorldChamp",   "Name": "World Champ",    "GamerScore": 20, "Description": "Place in the top 250 players in any of the “Top Player” leaderboards" }
   ]
 }

@@ -3,7 +3,7 @@
   "Description": "The falling-block puzzle: rotate and place tetrominoes so they complete lines and clear.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "Tetriminator", "Name": "Tetriminator", "GamerScore": 30, "Description": "Perform 100 TetrisesÃ‚Â®." },
+    { "Key": "Tetriminator", "Name": "Tetriminator", "GamerScore": 30, "Description": "Perform 100 Tetrises®." },
     { "Key": "Millenium",    "Name": "Millenium",    "GamerScore": 30, "Description": "Clear 1000 Lines." },
     { "Key": "Waterfall",    "Name": "Waterfall",    "GamerScore": 30, "Description": "Perform 50 Cascade line clears." },
     { "Key": "Spinmaster",   "Name": "Spinmaster",   "GamerScore": 10, "Description": "Perform 25 T-Spins." },
@@ -12,7 +12,7 @@
     { "Key": "WayOver",      "Name": "Way Over",     "GamerScore":  5, "Description": "Clear 44 or more lines in a variant." },
     { "Key": "Expert",       "Name": "Expert",       "GamerScore": 30, "Description": "Complete the Radical variant." },
     { "Key": "Dodecadent",   "Name": "Dodecadent",   "GamerScore":  5, "Description": "Clear 12 lines or more in one turn." },
-    { "Key": "OnARoll",      "Name": "On A Roll",    "GamerScore":  5, "Description": "Complete a variant with novelty moves only (Cascades, TetrisesÃ‚Â® or T-Spins)." },
+    { "Key": "OnARoll",      "Name": "On A Roll",    "GamerScore":  5, "Description": "Complete a variant with novelty moves only (Cascades, Tetrises® or T-Spins)." },
     { "Key": "Frenzy",       "Name": "Frenzy",       "GamerScore":  5, "Description": "Complete a game with an average TPM of 35 or more." }
   ]
 }

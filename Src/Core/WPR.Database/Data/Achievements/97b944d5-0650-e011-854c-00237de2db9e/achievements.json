@@ -3,7 +3,7 @@
   "Description": "The television quiz show, played through fifteen questions with three lifelines. German edition.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "ACHIEVEMENT_01", "Name": "AnfÃƒÂ¤nger",                        "GamerScore":  5, "Description": "Spiele ein komplettes Spiel \"Wer Wird MillionÃƒÂ¤r?\"." },
+    { "Key": "ACHIEVEMENT_01", "Name": "Anfänger",                        "GamerScore":  5, "Description": "Spiele ein komplettes Spiel \"Wer Wird Millionär?\"." },
     { "Key": "ACHIEVEMENT_02", "Name": "Auswahlrunde",                     "GamerScore":  5, "Description": "Errate die richtige Reihenfolge der 4 Antworten in einer Auswahlrunde." },
     { "Key": "ACHIEVEMENT_03", "Name": "Machst du weiter?",                "GamerScore":  5, "Description": "Erreiche die erste Sicherheitsstufe." },
     { "Key": "ACHIEVEMENT_04", "Name": "Willst du dir die Million holen?", "GamerScore":  5, "Description": "Erreiche die zweite Sicherheitsstufe." },
@@ -17,7 +17,7 @@
     { "Key": "ACHIEVEMENT_12", "Name": "Hilfe war zur Stelle!",            "GamerScore": 15, "Description": "Beantworte die letzte Frage richtig und behalte einen unbenutzten Joker." },
     { "Key": "ACHIEVEMENT_13", "Name": "Mit Hilfe von meinen Freunden!",   "GamerScore": 25, "Description": "Beantworte die letzte Frage richtig und behalte zwei unbenutzte Joker." },
     { "Key": "ACHIEVEMENT_14", "Name": "Wer braucht Hilfe!?",              "GamerScore": 35, "Description": "Beantworte die letzte Frage richtig, ohne einen Joker zu benutzen." },
-    { "Key": "ACHIEVEMENT_15", "Name": "0 zum MillionÃƒÂ¤r in 90 Sekunden!", "GamerScore": 20, "Description": "Beantworte in weniger als 90 Sekunden die 15 Fragen richtig." },
+    { "Key": "ACHIEVEMENT_15", "Name": "0 zum Millionär in 90 Sekunden!", "GamerScore": 20, "Description": "Beantworte in weniger als 90 Sekunden die 15 Fragen richtig." },
     { "Key": "ACHIEVEMENT_16", "Name": "Sieg in 60 Sekunden!",             "GamerScore": 30, "Description": "Beantworte in weniger als 60 Sekunden die 15 Fragen richtig." }
   ]
 }

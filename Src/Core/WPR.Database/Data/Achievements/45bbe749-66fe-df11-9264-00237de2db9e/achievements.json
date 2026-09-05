@@ -11,7 +11,7 @@
     { "Key": "HURRICANEZAP_GOD",       "Name": "Hurricane Zapping God",     "GamerScore": 15, "Description": "Drag the lightning from the storm clouds to a pygmy." },
     { "Key": "COCONUTBOUNCING_MINION", "Name": "Coconut Bouncing Minion",   "GamerScore":  5, "Description": "Drag a coconut off the tree and bounce it on the head of a pygmy." },
     { "Key": "COCONUTBOUNCING_GOD",    "Name": "Coconut Bouncing God",      "GamerScore": 15, "Description": "Keep the coconut bouncing until you reach a score of 100." },
-    { "Key": "BIRDBOMB_MINION",        "Name": "Bird Bomb - Minion",        "GamerScore":  5, "Description": "Drop 1 Bird Bomb on a PygmyÃ¢â‚¬â„¢s head" },
+    { "Key": "BIRDBOMB_MINION",        "Name": "Bird Bomb - Minion",        "GamerScore":  5, "Description": "Drop 1 Bird Bomb on a Pygmy’s head" },
     { "Key": "BIRDBOMB_GOD",           "Name": "Bird Bomb - God",           "GamerScore": 15, "Description": "Keep a bird dropping bombs until 100 pygmys have been hit." },
     { "Key": "SHARKSNAP_MINION",       "Name": "Shark Snap - Minion",       "GamerScore":  5, "Description": "Have a single shark snap at a pygmy without getting him." },
     { "Key": "SHARKSNAP_GOD",          "Name": "Shark Snap - God",          "GamerScore": 15, "Description": "Score over 100 shark snaps." },

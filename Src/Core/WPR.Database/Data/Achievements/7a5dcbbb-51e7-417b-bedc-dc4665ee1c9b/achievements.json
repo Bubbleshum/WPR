@@ -12,7 +12,7 @@
     { "Key": "Year3FullClear", "Name": "Year Three - Done Properly", "GamerScore": 10, "Description": "Year 3, Full Clear" },
     { "Key": "Year4FullClear", "Name": "Year Four - Done Properly",  "GamerScore": 10, "Description": "Year 4, Full Clear" },
     { "Key": "Perfectionist",  "Name": "Perfectionist",              "GamerScore": 10, "Description": "Full clear of the entire game" },
-    { "Key": "HourPlayed",     "Name": "Stay a whileÃ¢â‚¬Â¦",            "GamerScore": 10, "Description": "Ã¢â‚¬Â¦Stay forever!" },
+    { "Key": "HourPlayed",     "Name": "Stay a while…",            "GamerScore": 10, "Description": "…Stay forever!" },
     { "Key": "JollyJumper",    "Name": "Jolly Jumper",               "GamerScore": 10, "Description": "Jump around!" },
     { "Key": "GrappleCombo",   "Name": "Grapple Combo",              "GamerScore": 10, "Description": "Who needs platforms?" },
     { "Key": "GrappleMaster",  "Name": "Grapple Master",             "GamerScore": 10, "Description": "It's fun to swing!" },

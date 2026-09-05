@@ -12,7 +12,7 @@
     { "Key": "Baby_Boomers",         "Name": "Baby Boomers",         "GamerScore": 10, "Description": "Have 3 babies." },
     { "Key": "Deep_Pockets",         "Name": "Deep Pockets",         "GamerScore": 10, "Description": "Save 50,000 simoleons." },
     { "Key": "100_Miles",            "Name": "100 Miles",            "GamerScore": 10, "Description": "Drive a total of 100 miles." },
-    { "Key": "Life_of_Excess",       "Name": "Life of Excess",       "GamerScore": 10, "Description": "Buy the Pro SkaterÃ¢â‚¬â„¢s Dream Pad." },
+    { "Key": "Life_of_Excess",       "Name": "Life of Excess",       "GamerScore": 10, "Description": "Buy the Pro Skater’s Dream Pad." },
     { "Key": "KA_BOOM",              "Name": "KA-BOOM!",             "GamerScore": 10, "Description": "Get 5 Sims promoted to Mad Scientist at the Lab." },
     { "Key": "Top_of_the_Class",     "Name": "Top of the Class!",    "GamerScore": 15, "Description": "Have 3 preteen Sims with a grade average of A+++" },
     { "Key": "Sim_Town_90210",       "Name": "Sim Town 90210",       "GamerScore": 15, "Description": "Have a town worth 12,000,000 simoleons." },
@@ -22,6 +22,6 @@
     { "Key": "Wax_Off",              "Name": "Wax Off",              "GamerScore": 15, "Description": "Have a pre-teen Sim get a Black Belt in Karate." },
     { "Key": "Pro_Dancer",           "Name": "Pro Dancer",           "GamerScore": 15, "Description": "Have a pre-teen Sim become a Professional Ballet Dancer." },
     { "Key": "Ghost_Hunter",         "Name": "Ghost Hunter",         "GamerScore": 10, "Description": "Catch All 12 Ghost Types." },
-    { "Key": "Sim_Negotiator",       "Name": "Sim Negotiator",       "GamerScore":  5, "Description": "Ã¢â‚¬Å“NegotiateÃ¢â‚¬Â with 3 Man-Eating Plants." }
+    { "Key": "Sim_Negotiator",       "Name": "Sim Negotiator",       "GamerScore":  5, "Description": "“Negotiate” with 3 Man-Eating Plants." }
   ]
 }

@@ -18,8 +18,8 @@
     { "Key": "Buccaneer",             "Name": "Buccaneer",             "GamerScore": 10, "Description": "Reach Level 10" },
     { "Key": "Brother of the Coast",  "Name": "Brother of the Coast",  "GamerScore": 10, "Description": "Reach Level 20" },
     { "Key": "The Navigator",         "Name": "The Navigator",         "GamerScore": 10, "Description": "Reach 100% sync on Scorpion Reef" },
-    { "Key": "The Explorer",          "Name": "The Explorer",          "GamerScore": 10, "Description": "Reach 100% sync on BahÃƒÂ­a de Guadiana" },
-    { "Key": "The Adventurer",        "Name": "The Adventurer",        "GamerScore": 10, "Description": "Reach 100% sync on Los MÃƒÂ¡rtires" },
+    { "Key": "The Explorer",          "Name": "The Explorer",          "GamerScore": 10, "Description": "Reach 100% sync on Bahía de Guadiana" },
+    { "Key": "The Adventurer",        "Name": "The Adventurer",        "GamerScore": 10, "Description": "Reach 100% sync on Los Mártires" },
     { "Key": "The Discoverer",        "Name": "The Discoverer",        "GamerScore": 10, "Description": "Reach 100% sync on La Habana" },
     { "Key": "The Seeker",            "Name": "The Seeker",            "GamerScore": 10, "Description": "Reach 100% sync on Grand Bahama" }
   ]
