@@ -49,11 +49,16 @@ namespace WPR.Platform.Windows.ViewModels
             get
             {
                 if (_Icon != null) return _Icon;
-                if (_App == null || string.IsNullOrEmpty(_App.IconPath)) return null;
+
+                // Not _App.IconPath directly: that names a file inside the install folder, which
+                // an uninstall deletes along with the row it came from, while this list
+                // deliberately keeps showing the game. GameIconStore holds the fallback.
+                string? relative = GameIconStore.Resolve(_ProductId, _App?.IconPath);
+                if (string.IsNullOrEmpty(relative)) return null;
 
                 try
                 {
-                    var iconPath = Configuration.Current!.DataPath(_App.IconPath);
+                    var iconPath = Configuration.Current!.DataPath(relative!);
                     using var fs = new FileStream(iconPath, FileMode.Open, FileAccess.Read, FileShare.Read);
                     _Icon = Bitmap.DecodeToWidth(fs, 64);
                 }

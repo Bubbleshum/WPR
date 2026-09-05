@@ -459,6 +459,12 @@ namespace WPR
                     return ApplicationInstallError.Canceled;
                 }
 
+                // Keep a copy of the tile icon in the app's own data store: the achievements page
+                // outlives the install folder the original lives in. See GameIconStore. Done here
+                // rather than beside the DB insert so a cancelled install — which deletes the
+                // folder and the row again above — leaves nothing cached behind.
+                GameIconStore.Capture(app);
+
                 progressSet(100);
             } catch (Exception ex)
             {
@@ -485,6 +491,11 @@ namespace WPR
             string installFolder = Path.Combine(
                 Configuration.Current!.DataPath(Application.DataStoreFolder),
                 productTrimmed);
+
+            // Last chance to keep the tile icon: it lives inside the folder about to go, and the
+            // achievements list still shows this game afterwards. Also the backfill for anything
+            // installed before GameIconStore existed — a no-op once the install path has captured.
+            GameIconStore.Capture(app);
 
             bool folderGone = true;
             if (Directory.Exists(installFolder))
@@ -624,6 +635,11 @@ namespace WPR
                     installFolder, app.Assembly, app.Version, app.Name);
                 ApplicationContext.Current.Applications!.Update(app);
                 await ApplicationContext.Current.SaveChangesAsync();
+
+                //    And cache the tile icon, for the same reason the transcode re-runs here:
+                //    it backfills every game installed before GameIconStore existed, in bulk via
+                //    --repatch-installed, rather than waiting for each one to be uninstalled.
+                GameIconStore.Capture(app);
 
                 progressSet(100);
                 return ApplicationInstallError.None;

@@ -90,7 +90,11 @@ namespace WPR.Platform.Android.Native
                         string name = HardcodedAchievementCatalogue.GameName(group.Key)
                                       ?? app?.Name
                                       ?? group.Key;
-                        return new AchievementGameEntry(group.Key, name, app?.IconPath, group.ToList());
+                        // Not app?.IconPath: that names a file inside the install folder, which
+                        // an uninstall deletes along with the row it came from, while this list
+                        // deliberately keeps showing the game. GameIconStore holds the fallback.
+                        string? icon = GameIconStore.Resolve(group.Key, app?.IconPath);
+                        return new AchievementGameEntry(group.Key, name, icon, group.ToList());
                     })
                     .OrderByDescending(entry => entry.Earned)
                     .ThenBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
