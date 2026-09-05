@@ -63,7 +63,13 @@ namespace WPR.Common
         {
             using (Stream assetStream = assets.Open(sourceFile))
             {
-                using (FileStream destStream = File.Open(destFile, FileMode.OpenOrCreate, FileAccess.Write))
+                // FileMode.Create, not OpenOrCreate: OpenOrCreate does not truncate, so a
+                // shorter replacement leaves the tail of the old file behind. This copy
+                // re-runs on every launch to deploy updated achievement catalogues, and a
+                // catalogue that loses a few bytes between releases would arrive as invalid
+                // JSON -- which HardcodedAchievementCatalogue.Load swallows, so the game
+                // simply shows no achievements rather than reporting anything.
+                using (FileStream destStream = File.Open(destFile, FileMode.Create, FileAccess.Write))
                 {
                     assetStream.CopyTo(destStream);
                 }

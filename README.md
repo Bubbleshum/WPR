@@ -60,36 +60,32 @@ will be familiar if you ever owned one:
   <img src="Images/screenshot-android-achievements.png" width="30%" alt="Achievements on Android" />
 </p>
 
-## What's new in 0.1.02
+## What's new in 0.1.03
 
-- **Play touch games with the keyboard.** Bind a key to a tap or a swipe, drawn on
-  a to-scale phone outline rather than typed as coordinates. Per game, from the
-  Controls button on a game's page. The Back key is rebindable too.
-- **Games save again.** Progress, settings and high scores could silently fail to
-  persist while the game looked perfectly healthy. Worth retrying anything you'd
-  written off as "loses progress".
-- **Three games that hung or went blank now work** — Game Room: Pitfall! freezing
-  on its second splash, Guitar Hero 5's black screen on Android, and Angry Birds'
-  credits page becoming impossible to leave.
-- **Installing a second game in one session no longer hangs on Android.**
-- **Achievement unlock toasts appear on Android,** and secret achievements no
-  longer spoil themselves on Windows.
+- **200 more games have an achievement list.** 254 games now ship one, covering
+  4,350 achievements with their proper names, descriptions, gamerscores and
+  artwork. Most games showed an empty achievements page before, even though the
+  unlocks were being recorded correctly all along.
+- **Games can vibrate your phone on Android** — collisions, wrong answers, menu
+  taps. None of it did anything before. One on/off switch in Settings covers
+  every game and any connected controller.
+- **Tilt works in games that ignored it completely,** Doodle Jump among them, on
+  Windows as well as Android. Anything you'd written off as unplayable because it
+  wouldn't steer is worth another go.
+- **Pin a game to your Android home screen,** with its own box art and name, and
+  launch it in one tap without passing through WPR.
+- **Uninstalled games keep their icon** on the achievements list instead of
+  dropping to a grey placeholder.
+- **The Android download is 20 MB smaller** than 0.1.02 — 137 MB against 158 MB —
+  despite carrying all that new artwork.
 
-> **Repatch your games after updating** — there's a button on each game's page.
-> Games patched by an older version won't launch until you do.
+> **Nothing to do after updating** — no repatch, no reinstall. Installed games
+> pick this up the next time you launch them, achievements included.
 
 Full notes for this release are in
-[`Docs/ReleaseNotes/0.1.02.md`](Docs/ReleaseNotes/0.1.02.md); earlier ones sit
+[`Docs/ReleaseNotes/0.1.03.md`](Docs/ReleaseNotes/0.1.03.md); earlier ones sit
 beside it, and older changes are on the
 [Update History wiki page](https://github.com/Bubbleshum/WPR/wiki/Update-History).
-
-> 🚧 **Coming in 0.1.03** — games can vibrate your phone on Android, with a single
-> on/off switch in Settings covering every game; tilt now works in portrait games
-> like Doodle Jump that never responded to it at all; and you can pin a game to
-> your Android home screen, with its own box art and name, and launch it in one
-> tap. It is on `main` but **not yet released**, so it is not on the Releases page
-> and not in 0.1.02. See
-> [`Docs/ReleaseNotes/0.1.03.md`](Docs/ReleaseNotes/0.1.03.md) for what is queued.
 
 ## Features
 
