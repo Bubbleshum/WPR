@@ -3,15 +3,16 @@
   "Description": "Rovio's contraption puzzler: arrange everyday objects into a Rube Goldberg machine that gets the ball to the target.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "CONTRAPTIONIST",       "Name": "Contraptionist",            "GamerScore": 20, "Description": "Create your own level" },
-    { "Key": "WORLDOFCONTRAPTIONS",  "Name": "World of Contraptions",     "GamerScore": 20, "Description": "Complete a downloaded level" },
-    { "Key": "SCHOOLSOUT",           "Name": "School's Out",              "GamerScore": 20, "Description": "Complete all levels in The Classroom" },
-    { "Key": "LAWNMOWER",            "Name": "Lawn Mower",                "GamerScore": 20, "Description": "Complete all levels in The Backyard" },
-    { "Key": "BEDTIME",              "Name": "Bedtime",                   "GamerScore": 20, "Description": "Complete all levels in Alex's Bedroom" },
-    { "Key": "KINGOFTHETREEHOUSE",   "Name": "King of the TreeHouse",     "GamerScore": 20, "Description": "Complete all levels in The Treehouse" },
-    { "Key": "BOOKSMART",            "Name": "Book Smart",                "GamerScore": 20, "Description": "Collect all stars in The Classroom" },
-    { "Key": "KNOCKOUT",             "Name": "Knockout",                  "GamerScore": 20, "Description": "Collect all stars in The Backyard" },
-    { "Key": "ITSNOTEASYBEINGGREEN", "Name": "It's Not Easy Being Green", "GamerScore": 20, "Description": "Collect all stars in Alex's Bedroom" },
-    { "Key": "CHOPPERPILOT",         "Name": "Chopper Pilot",             "GamerScore": 20, "Description": "Collect all stars in The Treehouse" }
+    { "Key": "CONTRAPTIONIST",       "Name": "Contraptionist",            "GamerScore": 20, "Icon": "contraptionist.png", "Description": "Create your own level" },
+    { "Key": "WORLDOFCONTRAPTIONS",  "Name": "World of Contraptions",     "GamerScore": 20, "Icon": "worldofcontraptions.png", "Description": "Complete a downloaded level" },
+    { "Key": "SCHOOLSOUT",           "Name": "School's Out",              "GamerScore": 20, "Icon": "schoolsout.png", "Description": "Complete all levels in The Classroom" },
+    { "Key": "LAWNMOWER",            "Name": "Lawn Mower",                "GamerScore": 20, "Icon": "lawnmower.png", "Description": "Complete all levels in The Backyard" },
+    { "Key": "BEDTIME",              "Name": "Bedtime",                   "GamerScore": 20, "Icon": "bedtime.png", "Description": "Complete all levels in Alex's Bedroom" },
+    { "Key": "KINGOFTHETREEHOUSE",   "Name": "King of the TreeHouse",     "GamerScore": 20, "Icon": "kingofthetreehouse.png", "Description": "Complete all levels in The Treehouse" },
+    { "Key": "BOOKSMART",            "Name": "Book Smart",                "GamerScore": 20, "Icon": "booksmart.png", "Description": "Collect all stars in The Classroom" },
+    { "Key": "KNOCKOUT",             "Name": "Knockout",                  "GamerScore": 20, "Icon": "knockout.png", "Description": "Collect all stars in The Backyard" },
+    { "Key": "ITSNOTEASYBEINGGREEN", "Name": "It's Not Easy Being Green", "GamerScore": 20, "Icon": "itsnoteasybeinggreen.png", "Description": "Collect all stars in Alex's Bedroom" },
+    { "Key": "CHOPPERPILOT",         "Name": "Chopper Pilot",             "GamerScore": 20, "Icon": "chopperpilot.png", "Description": "Collect all stars in The Treehouse" }
   ]
 }
+

@@ -3,15 +3,16 @@
   "Description": "The 1981 Atari original, brought to Game Room: shoot the centipede as it winds down through the mushroom field.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "VelocityGamer",          "Name": "Velocity Gamer",             "GamerScore": 20, "Description": "Travel at over 35 mph (55 km/h) while playing a game" },
-    { "Key": "KeepItMoving",           "Name": "Keep It Moving",             "GamerScore": 10, "Description": "Travel 2/3 mile (1 km) while playing a single play session of the game" },
-    { "Key": "RetroRoadie",            "Name": "Retro Roadie",               "GamerScore": 30, "Description": "Travel an accumulated distance of 6 miles (10 km) while playing the game" },
-    { "Key": "TryTryAgain",            "Name": "TryTryAgain",                "GamerScore": 10, "Description": "Surpass your own leaderboard score 3 times" },
-    { "Key": "GetTheBallRolling",      "Name": "Get The Ball Rolling",       "GamerScore": 10, "Description": "Win your first medal" },
-    { "Key": "AcrossTheBoard",         "Name": "Across The Board",           "GamerScore": 20, "Description": "Win a medal of each type" },
-    { "Key": "GoldRush",               "Name": "Gold Rush",                  "GamerScore": 30, "Description": "Win 3 gold medals" },
-    { "Key": "ShakingThingsUp",        "Name": "Shaking Things Up",          "GamerScore": 20, "Description": "Play using tilt controls" },
-    { "Key": "CreditWhereCreditIsDue", "Name": "Credit Where Credit Is Due", "GamerScore": 20, "Description": "Watch the credits in full" },
-    { "Key": "Exterminator",           "Name": "Exterminator",               "GamerScore": 30, "Description": "Defeat 10 spiders, fleas or scorpions in a single Ranked game" }
+    { "Key": "VelocityGamer",          "Name": "Velocity Gamer",             "GamerScore": 20, "Icon": "velocitygamer.png", "Description": "Travel at over 35 mph (55 km/h) while playing a game" },
+    { "Key": "KeepItMoving",           "Name": "Keep It Moving",             "GamerScore": 10, "Icon": "keepitmoving.png", "Description": "Travel 2/3 mile (1 km) while playing a single play session of the game" },
+    { "Key": "RetroRoadie",            "Name": "Retro Roadie",               "GamerScore": 30, "Icon": "retroroadie.png", "Description": "Travel an accumulated distance of 6 miles (10 km) while playing the game" },
+    { "Key": "TryTryAgain",            "Name": "TryTryAgain",                "GamerScore": 10, "Icon": "trytryagain.png", "Description": "Surpass your own leaderboard score 3 times" },
+    { "Key": "GetTheBallRolling",      "Name": "Get The Ball Rolling",       "GamerScore": 10, "Icon": "gettheballrolling.png", "Description": "Win your first medal" },
+    { "Key": "AcrossTheBoard",         "Name": "Across The Board",           "GamerScore": 20, "Icon": "acrosstheboard.png", "Description": "Win a medal of each type" },
+    { "Key": "GoldRush",               "Name": "Gold Rush",                  "GamerScore": 30, "Icon": "goldrush.png", "Description": "Win 3 gold medals" },
+    { "Key": "ShakingThingsUp",        "Name": "Shaking Things Up",          "GamerScore": 20, "Icon": "shakingthingsup.png", "Description": "Play using tilt controls" },
+    { "Key": "CreditWhereCreditIsDue", "Name": "Credit Where Credit Is Due", "GamerScore": 20, "Icon": "creditwherecreditisdue.png", "Description": "Watch the credits in full" },
+    { "Key": "Exterminator",           "Name": "Exterminator",               "GamerScore": 30, "Icon": "exterminator.png", "Description": "Defeat 10 spiders, fleas or scorpions in a single Ranked game" }
   ]
 }
+

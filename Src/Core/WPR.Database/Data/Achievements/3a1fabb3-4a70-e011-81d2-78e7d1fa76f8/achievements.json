@@ -3,18 +3,19 @@
   "Description": "An endless vertical jumper: tilt the phone to bounce the Doodler from platform to platform, ever higher.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "DOJ_SPRING_SHOES_JUMPER",    "Name": "Spring Shoes Jumper",    "GamerScore":  5, "Description": "Jumped with spring shoes without falling" },
-    { "Key": "DOJ_SERIAL_SPRINGER",        "Name": "Serial Springer",        "GamerScore":  5, "Description": "Jumped on 3 springs in a row" },
-    { "Key": "DOJ_SUPER_SERIAL_SPRINGER",  "Name": "Super Serial Springer",  "GamerScore": 10, "Description": "Jump on 5 springs in a row" },
-    { "Key": "DOJ_MONSTER_BOUNCER",        "Name": "Monster Bouncer",        "GamerScore": 10, "Description": "Jump on 10 monsters in a game" },
-    { "Key": "DOJ_SUPER_MONSTER_BOUNCER",  "Name": "Super Monster Bouncer",  "GamerScore": 20, "Description": "Jump on 30 monsters in one game" },
-    { "Key": "DOJ_CONFLICT_AVOIDER",       "Name": "Conflict Avoider",       "GamerScore": 10, "Description": "Jump past 10 monsters in one game" },
-    { "Key": "DOJ_SUPER_CONFLICT_AVOIDER", "Name": "Super Conflict Avoider", "GamerScore": 20, "Description": "Jump past 30 monsters in one game" },
-    { "Key": "DOJ_SHARP_SHOOTER",          "Name": "Sharp Shooter",          "GamerScore": 10, "Description": "Shoot 5 monsters in a row without missing" },
-    { "Key": "DOJ_SUPER_SHARP_SHOOTER",    "Name": "Super Sharp Shooter",    "GamerScore": 15, "Description": "Shoot 10 monsters in a row without missing" },
-    { "Key": "DOJ_PROPELLERHEAD",          "Name": "Propellerhead",          "GamerScore": 10, "Description": "Fly 3 propellerhats in one game" },
-    { "Key": "DOJ_JETPACK_RIDER",          "Name": "Jetpack Rider",          "GamerScore": 10, "Description": "Fly 3 jetpacks in one game" },
-    { "Key": "DOJ_OLD_FASHIONED_JUMPER",   "Name": "Old-fashioned Jumper",   "GamerScore": 15, "Description": "Jump past 3 jetpacks without picking them" },
-    { "Key": "DOJ_UFO_ABDUCTION_SURVIVOR", "Name": "UFO abduction survivor", "GamerScore": 60, "Description": "Survive UFO abduction" }
+    { "Key": "DOJ_SPRING_SHOES_JUMPER",    "Name": "Spring Shoes Jumper",    "GamerScore":  5, "Icon": "springshoesjumper.png", "Description": "Jumped with spring shoes without falling" },
+    { "Key": "DOJ_SERIAL_SPRINGER",        "Name": "Serial Springer",        "GamerScore":  5, "Icon": "serialspringer.png", "Description": "Jumped on 3 springs in a row" },
+    { "Key": "DOJ_SUPER_SERIAL_SPRINGER",  "Name": "Super Serial Springer",  "GamerScore": 10, "Icon": "superserialspringer.png", "Description": "Jump on 5 springs in a row" },
+    { "Key": "DOJ_MONSTER_BOUNCER",        "Name": "Monster Bouncer",        "GamerScore": 10, "Icon": "monsterbouncer.png", "Description": "Jump on 10 monsters in a game" },
+    { "Key": "DOJ_SUPER_MONSTER_BOUNCER",  "Name": "Super Monster Bouncer",  "GamerScore": 20, "Icon": "supermonsterbouncer.png", "Description": "Jump on 30 monsters in one game" },
+    { "Key": "DOJ_CONFLICT_AVOIDER",       "Name": "Conflict Avoider",       "GamerScore": 10, "Icon": "conflictavoider.png", "Description": "Jump past 10 monsters in one game" },
+    { "Key": "DOJ_SUPER_CONFLICT_AVOIDER", "Name": "Super Conflict Avoider", "GamerScore": 20, "Icon": "superconflictavoider.png", "Description": "Jump past 30 monsters in one game" },
+    { "Key": "DOJ_SHARP_SHOOTER",          "Name": "Sharp Shooter",          "GamerScore": 10, "Icon": "sharpshooter.png", "Description": "Shoot 5 monsters in a row without missing" },
+    { "Key": "DOJ_SUPER_SHARP_SHOOTER",    "Name": "Super Sharp Shooter",    "GamerScore": 15, "Icon": "supersharpshooter.png", "Description": "Shoot 10 monsters in a row without missing" },
+    { "Key": "DOJ_PROPELLERHEAD",          "Name": "Propellerhead",          "GamerScore": 10, "Icon": "propellerhead.png", "Description": "Fly 3 propellerhats in one game" },
+    { "Key": "DOJ_JETPACK_RIDER",          "Name": "Jetpack Rider",          "GamerScore": 10, "Icon": "jetpackrider.png", "Description": "Fly 3 jetpacks in one game" },
+    { "Key": "DOJ_OLD_FASHIONED_JUMPER",   "Name": "Old-fashioned Jumper",   "GamerScore": 15, "Icon": "oldfashionedjumper.png", "Description": "Jump past 3 jetpacks without picking them" },
+    { "Key": "DOJ_UFO_ABDUCTION_SURVIVOR", "Name": "UFO abduction survivor", "GamerScore": 60, "Icon": "ufoabductionsurvivor.png", "Description": "Survive UFO abduction" }
   ]
 }
+

@@ -3,15 +3,16 @@
   "Description": "The 1979 Atari original, brought to Game Room: land the module gently, on limited fuel, against the moon's gravity.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "VelocityGamer",          "Name": "Velocity Gamer",             "GamerScore": 20, "Description": "Travel at over 35 mph (55 km/h) while playing a game" },
-    { "Key": "KeepItMoving",           "Name": "Keep It Moving",             "GamerScore": 10, "Description": "Travel 2/3 mile (1 km) while playing a single play session of the game" },
-    { "Key": "RetroRoadie",            "Name": "Retro Roadie",               "GamerScore": 30, "Description": "Travel an accumulated distance of 6 miles (10 km) while playing the game" },
-    { "Key": "TryTryAgain",            "Name": "Try Try Again",              "GamerScore": 10, "Description": "Surpass your own leaderboard score 3 times" },
-    { "Key": "GetTheBallRolling",      "Name": "Get The Ball Rolling",       "GamerScore": 10, "Description": "Win your first medal" },
-    { "Key": "AcrossTheBoard",         "Name": "Across The Board",           "GamerScore": 20, "Description": "Win a medal of each type" },
-    { "Key": "GoldRush",               "Name": "Gold Rush",                  "GamerScore": 30, "Description": "Win 3 gold medals" },
-    { "Key": "ShakingThingsUp",        "Name": "Shaking Things Up",          "GamerScore": 20, "Description": "Play using tilt controls" },
-    { "Key": "CreditWhereCreditIsDue", "Name": "Credit Where Credit Is Due", "GamerScore": 20, "Description": "Watch the credits in full" },
-    { "Key": "FullMoon",               "Name": "Full Moon",                  "GamerScore": 30, "Description": "Play a game during a full moon" }
+    { "Key": "VelocityGamer",          "Name": "Velocity Gamer",             "GamerScore": 20, "Icon": "velocitygamer.png", "Description": "Travel at over 35 mph (55 km/h) while playing a game" },
+    { "Key": "KeepItMoving",           "Name": "Keep It Moving",             "GamerScore": 10, "Icon": "keepitmoving.png", "Description": "Travel 2/3 mile (1 km) while playing a single play session of the game" },
+    { "Key": "RetroRoadie",            "Name": "Retro Roadie",               "GamerScore": 30, "Icon": "retroroadie.png", "Description": "Travel an accumulated distance of 6 miles (10 km) while playing the game" },
+    { "Key": "TryTryAgain",            "Name": "Try Try Again",              "GamerScore": 10, "Icon": "trytryagain.png", "Description": "Surpass your own leaderboard score 3 times" },
+    { "Key": "GetTheBallRolling",      "Name": "Get The Ball Rolling",       "GamerScore": 10, "Icon": "gettheballrolling.png", "Description": "Win your first medal" },
+    { "Key": "AcrossTheBoard",         "Name": "Across The Board",           "GamerScore": 20, "Icon": "acrosstheboard.png", "Description": "Win a medal of each type" },
+    { "Key": "GoldRush",               "Name": "Gold Rush",                  "GamerScore": 30, "Icon": "goldrush.png", "Description": "Win 3 gold medals" },
+    { "Key": "ShakingThingsUp",        "Name": "Shaking Things Up",          "GamerScore": 20, "Icon": "shakingthingsup.png", "Description": "Play using tilt controls" },
+    { "Key": "CreditWhereCreditIsDue", "Name": "Credit Where Credit Is Due", "GamerScore": 20, "Icon": "creditwherecreditisdue.png", "Description": "Watch the credits in full" },
+    { "Key": "FullMoon",               "Name": "Full Moon",                  "GamerScore": 30, "Icon": "fullmoon.png", "Description": "Play a game during a full moon" }
   ]
 }
+

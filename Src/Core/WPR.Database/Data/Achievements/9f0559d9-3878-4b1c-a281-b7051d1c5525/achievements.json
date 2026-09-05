@@ -3,14 +3,15 @@
   "Description": "A hidden-object game set among lost cities, finding what the scene has buried in it.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "achieve_000", "Name": "'X' Marks the Spot!",             "GamerScore":  5, "Description": "Discover your 1st Map Piece." },
-    { "Key": "achieve_001", "Name": "Lost and Found",                  "GamerScore": 10, "Description": "Complete your 2nd Map!" },
-    { "Key": "achieve_002", "Name": "Pyramid Schemes",                 "GamerScore": 20, "Description": "Complete your 4th Map!" },
-    { "Key": "achieve_003", "Name": "We Call This \"Archaeology\"...", "GamerScore": 10, "Description": "Collect 50 Keys!" },
-    { "Key": "achieve_004", "Name": "Medals for Everyone!",            "GamerScore":  5, "Description": "Upgrade a crew member for the first time." },
-    { "Key": "achieve_005", "Name": "City in the sands!",              "GamerScore": 20, "Description": "Discover the Lost City in Location 2." },
-    { "Key": "achieve_006", "Name": "Frequent Flier",                  "GamerScore": 10, "Description": "Enter a Daily Bonus with 5 shots saved up." },
-    { "Key": "achieve_007", "Name": "All in a days work",              "GamerScore": 10, "Description": "Collect 4 or more prizes in a single Daily Bonus." },
-    { "Key": "achieve_008", "Name": "Secrets of the snowy mountain!",  "GamerScore": 30, "Description": "Complete the artefact in location 3." }
+    { "Key": "achieve_000", "Name": "'X' Marks the Spot!",             "GamerScore":  5, "Icon": "xmarksthespot.png", "Description": "Discover your 1st Map Piece." },
+    { "Key": "achieve_001", "Name": "Lost and Found",                  "GamerScore": 10, "Icon": "lostandfound.png", "Description": "Complete your 2nd Map!" },
+    { "Key": "achieve_002", "Name": "Pyramid Schemes",                 "GamerScore": 20, "Icon": "pyramidschemes.png", "Description": "Complete your 4th Map!" },
+    { "Key": "achieve_003", "Name": "We Call This \"Archaeology\"...", "GamerScore": 10, "Icon": "wecallthisarchaeology.png", "Description": "Collect 50 Keys!" },
+    { "Key": "achieve_004", "Name": "Medals for Everyone!",            "GamerScore":  5, "Icon": "medalsforeveryone.png", "Description": "Upgrade a crew member for the first time." },
+    { "Key": "achieve_005", "Name": "City in the sands!",              "GamerScore": 20, "Icon": "cityinthesands.png", "Description": "Discover the Lost City in Location 2." },
+    { "Key": "achieve_006", "Name": "Frequent Flier",                  "GamerScore": 10, "Icon": "frequentflier.png", "Description": "Enter a Daily Bonus with 5 shots saved up." },
+    { "Key": "achieve_007", "Name": "All in a days work",              "GamerScore": 10, "Icon": "allinadayswork.png", "Description": "Collect 4 or more prizes in a single Daily Bonus." },
+    { "Key": "achieve_008", "Name": "Secrets of the snowy mountain!",  "GamerScore": 30, "Icon": "secretsofthesnowymountain.png", "Description": "Complete the artefact in location 3." }
   ]
 }
+

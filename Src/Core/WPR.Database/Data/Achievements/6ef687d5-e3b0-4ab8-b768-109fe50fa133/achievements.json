@@ -3,21 +3,22 @@
   "Description": "Sail the Caribbean as a privateer: raid ports, duel captains, hunt treasure and shift allegiance between four empires.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "Freshman",       "Name": "Freshman",       "GamerScore":  5, "Description": "Capture the First Ship" },
-    { "Key": "Brotherhood",    "Name": "Brotherhood",    "GamerScore":  5, "Description": "First Time Divide Plunder" },
-    { "Key": "Cannoneer",      "Name": "Cannoneer",      "GamerScore":  5, "Description": "First Time Succeed in Bombarding" },
-    { "Key": "Dancer",         "Name": "Dancer",         "GamerScore":  5, "Description": "First Time Succeed in Dancing" },
-    { "Key": "Ceremony",       "Name": "Ceremony",       "GamerScore": 10, "Description": "Get Married" },
-    { "Key": "Family Reunion", "Name": "Family Reunion", "GamerScore": 10, "Description": "Rescue All Relatives" },
-    { "Key": "Love Cheater",   "Name": "Love Cheater",   "GamerScore": 10, "Description": "Attract Girls from All 4 Nations at the Same Time" },
-    { "Key": "Pirate Hunter",  "Name": "Pirate Hunter",  "GamerScore": 15, "Description": "Defeat all Top 10 Pirates" },
-    { "Key": "Explorer",       "Name": "Explorer",       "GamerScore": 15, "Description": "Find All Buried Treasures" },
-    { "Key": "Avenger",        "Name": "Avenger",        "GamerScore": 15, "Description": "Finish the Path of Revenge" },
-    { "Key": "Sword Master",   "Name": "Sword Master",   "GamerScore": 15, "Description": "Defeat Marquis de la Montalban in Rogue or Swash Buckler Mode" },
-    { "Key": "Strategist",     "Name": "Strategist",     "GamerScore": 15, "Description": "Defeat 1 Big City in Bombarding with Less Than 16 Cannons" },
-    { "Key": "Archaeologist",  "Name": "Archaeologist",  "GamerScore": 15, "Description": "Find All Lost Cities" },
-    { "Key": "Money Grubber",  "Name": "Money Grubber",  "GamerScore": 20, "Description": "Collect More Than 200,000 Gold" },
-    { "Key": "Patriot",        "Name": "Patriot",        "GamerScore": 20, "Description": "Help 1 Nation to Occupy More Than 32 Cities" },
-    { "Key": "Musician",       "Name": "Musician",       "GamerScore": 20, "Description": "Reach 150x Combo in Dancing" }
+    { "Key": "Freshman",       "Name": "Freshman",       "GamerScore":  5, "Icon": "freshman.png", "Description": "Capture the First Ship" },
+    { "Key": "Brotherhood",    "Name": "Brotherhood",    "GamerScore":  5, "Icon": "brotherhood.png", "Description": "First Time Divide Plunder" },
+    { "Key": "Cannoneer",      "Name": "Cannoneer",      "GamerScore":  5, "Icon": "cannoneer.png", "Description": "First Time Succeed in Bombarding" },
+    { "Key": "Dancer",         "Name": "Dancer",         "GamerScore":  5, "Icon": "dancer.png", "Description": "First Time Succeed in Dancing" },
+    { "Key": "Ceremony",       "Name": "Ceremony",       "GamerScore": 10, "Icon": "ceremony.png", "Description": "Get Married" },
+    { "Key": "Family Reunion", "Name": "Family Reunion", "GamerScore": 10, "Icon": "familyreunion.png", "Description": "Rescue All Relatives" },
+    { "Key": "Love Cheater",   "Name": "Love Cheater",   "GamerScore": 10, "Icon": "lovecheater.png", "Description": "Attract Girls from All 4 Nations at the Same Time" },
+    { "Key": "Pirate Hunter",  "Name": "Pirate Hunter",  "GamerScore": 15, "Icon": "piratehunter.png", "Description": "Defeat all Top 10 Pirates" },
+    { "Key": "Explorer",       "Name": "Explorer",       "GamerScore": 15, "Icon": "explorer.png", "Description": "Find All Buried Treasures" },
+    { "Key": "Avenger",        "Name": "Avenger",        "GamerScore": 15, "Icon": "avenger.png", "Description": "Finish the Path of Revenge" },
+    { "Key": "Sword Master",   "Name": "Sword Master",   "GamerScore": 15, "Icon": "swordmaster.png", "Description": "Defeat Marquis de la Montalban in Rogue or Swash Buckler Mode" },
+    { "Key": "Strategist",     "Name": "Strategist",     "GamerScore": 15, "Icon": "strategist.png", "Description": "Defeat 1 Big City in Bombarding with Less Than 16 Cannons" },
+    { "Key": "Archaeologist",  "Name": "Archaeologist",  "GamerScore": 15, "Icon": "archaeologist.png", "Description": "Find All Lost Cities" },
+    { "Key": "Money Grubber",  "Name": "Money Grubber",  "GamerScore": 20, "Icon": "moneygrubber.png", "Description": "Collect More Than 200,000 Gold" },
+    { "Key": "Patriot",        "Name": "Patriot",        "GamerScore": 20, "Icon": "patriot.png", "Description": "Help 1 Nation to Occupy More Than 32 Cities" },
+    { "Key": "Musician",       "Name": "Musician",       "GamerScore": 20, "Icon": "musician.png", "Description": "Reach 150x Combo in Dancing" }
   ]
 }
+

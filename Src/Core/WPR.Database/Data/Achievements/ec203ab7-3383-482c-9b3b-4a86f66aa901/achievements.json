@@ -3,12 +3,12 @@
   "Description": "A demolition puzzle: place charges so the building comes down entirely, and within budget.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "4 zones unlocked",     "Name": "4 Zones Unlocked",  "GamerScore": 10, "Description": "Unlock 4 zones in the game." },
-    { "Key": "6 zones unlocked",     "Name": "6 Zones Unlocked",  "GamerScore": 10, "Description": "Unlock 6 zones in the game." },
-    { "Key": "8 zones unlocked",     "Name": "8 Zones Unlocked",  "GamerScore": 10, "Description": "Unlock 8 zones in the game." },
-    { "Key": "12 zones unlocked",    "Name": "12 Zones Unlocked", "GamerScore": 10, "Description": "Unlock 12 zones in the game." },
-    { "Key": "10 zones unlocked",    "Name": "10 Zones Unlocked", "GamerScore": 10, "Description": "Unlock 10 zones in the game." },
-    { "Key": "15 zones unlocked",    "Name": "15 Zones Unlocked", "GamerScore": 10, "Description": "Unlock 15 zones in the game." },
+    { "Key": "4 zones unlocked",     "Name": "4 Zones Unlocked",  "GamerScore": 10, "Icon": "4zonesunlocked.png", "Description": "Unlock 4 zones in the game." },
+    { "Key": "6 zones unlocked",     "Name": "6 Zones Unlocked",  "GamerScore": 10, "Icon": "6zonesunlocked.png", "Description": "Unlock 6 zones in the game." },
+    { "Key": "8 zones unlocked",     "Name": "8 Zones Unlocked",  "GamerScore": 10, "Icon": "8zonesunlocked.png", "Description": "Unlock 8 zones in the game." },
+    { "Key": "12 zones unlocked",    "Name": "12 Zones Unlocked", "GamerScore": 10, "Icon": "12zonesunlocked.png", "Description": "Unlock 12 zones in the game." },
+    { "Key": "10 zones unlocked",    "Name": "10 Zones Unlocked", "GamerScore": 10, "Icon": "10zonesunlocked.png", "Description": "Unlock 10 zones in the game." },
+    { "Key": "15 zones unlocked",    "Name": "15 Zones Unlocked", "GamerScore": 10, "Icon": "15zonesunlocked.png", "Description": "Unlock 15 zones in the game." },
     { "Key": "4 zones a plus",       "GamerScore":  0 },
     { "Key": "6 zones a plus",       "GamerScore":  0 },
     { "Key": "8 zones a plus",       "GamerScore":  0 },
@@ -21,3 +21,7 @@
     { "Key": "first a plus",         "GamerScore":  0 }
   ]
 }
+
+
+
+

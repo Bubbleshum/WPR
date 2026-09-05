@@ -3,17 +3,19 @@
   "Description": "Time-attack Pac-Man, built around waking sleeping ghosts and chaining them into ever-longer trains.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "ACH_01", "Name": "Sparkster",                  "GamerScore":  5, "Description": "Emit sparks for 1 second!" },
-    { "Key": "ACH_02", "Name": "Big eater",                  "GamerScore": 15, "Description": "Eat 100 ghosts!" },
-    { "Key": "ACH_03", "Name": "SCORE ATK (3 m) completed!", "GamerScore": 10, "Description": "Finish SCORE ATK (3 m)!" },
-    { "Key": "ACH_04", "Name": "SCORE ATK (5 m) completed!", "GamerScore": 15, "Description": "Finish SCORE ATK (5 m)!" },
-    { "Key": "ACH_05", "Name": "Time Trial Cleared",         "GamerScore": 15, "Description": "Beat the Time Trial mode!" },
-    { "Key": "ACH_06", "Name": "No Mistakes",                "GamerScore": 15, "Description": "SCORE ATK (5 m) No mistake!" },
-    { "Key": "ACH_07", "Name": "No Bombs",                   "GamerScore": 15, "Description": "SCORE ATK (5 m) No bomb!" },
-    { "Key": "ACH_08", "Name": "Maximum speed",              "GamerScore": 10, "Description": "Set the game speed to 50!" },
-    { "Key": "ACH_09", "Name": "150,000 Points",             "GamerScore": 20, "Description": "SCORE ATK (3 m) 150,000 Points!" },
-    { "Key": "ACH_10", "Name": "300,000 Points",             "GamerScore": 30, "Description": "SCORE ATK (3 m) 300,000 Points!" },
-    { "Key": "ACH_11", "Name": "500,000 Points",             "GamerScore": 20, "Description": "SCORE ATK (5 m) 500,000 Points!" },
-    { "Key": "ACH_12", "Name": "750,000 Points",             "GamerScore": 30, "Description": "SCORE ATK (5 m) 750,000 Points!" }
+    { "Key": "ACH_01", "Name": "Sparkster",                  "GamerScore":  5, "Icon": "sparkster.png", "Description": "Emit sparks for 1 second!" },
+    { "Key": "ACH_02", "Name": "Big eater",                  "GamerScore": 15, "Icon": "bigeater.png", "Description": "Eat 100 ghosts!" },
+    { "Key": "ACH_03", "Name": "SCORE ATK (3 m) completed!", "GamerScore": 10, "Icon": "scoreatk3mcompleted.png", "Description": "Finish SCORE ATK (3 m)!" },
+    { "Key": "ACH_04", "Name": "SCORE ATK (5 m) completed!", "GamerScore": 15, "Icon": "scoreatk5mcompleted.png", "Description": "Finish SCORE ATK (5 m)!" },
+    { "Key": "ACH_05", "Name": "Time Trial Cleared",         "GamerScore": 15, "Icon": "timetrialcleared.png", "Description": "Beat the Time Trial mode!" },
+    { "Key": "ACH_06", "Name": "No Mistakes",                "GamerScore": 15, "Icon": "nomistakes.png", "Description": "SCORE ATK (5 m) No mistake!" },
+    { "Key": "ACH_07", "Name": "No Bombs",                   "GamerScore": 15, "Icon": "nobombs.png", "Description": "SCORE ATK (5 m) No bomb!" },
+    { "Key": "ACH_08", "Name": "Maximum speed",              "GamerScore": 10, "Icon": "maximumspeed.png", "Description": "Set the game speed to 50!" },
+    { "Key": "ACH_09", "Name": "150,000 Points",             "GamerScore": 20, "Icon": "150000points.png", "Description": "SCORE ATK (3 m) 150,000 Points!" },
+    { "Key": "ACH_10", "Name": "300,000 Points",             "GamerScore": 30, "Icon": "300000points.png", "Description": "SCORE ATK (3 m) 300,000 Points!" },
+    { "Key": "ACH_11", "Name": "500,000 Points",             "GamerScore": 20, "Icon": "500000points.png", "Description": "SCORE ATK (5 m) 500,000 Points!" },
+    { "Key": "ACH_12", "Name": "750,000 Points",             "GamerScore": 30, "Icon": "750000points.png", "Description": "SCORE ATK (5 m) 750,000 Points!" }
   ]
 }
+
+

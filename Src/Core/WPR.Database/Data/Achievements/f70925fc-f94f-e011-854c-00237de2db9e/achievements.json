@@ -3,21 +3,22 @@
   "Description": "The television quiz show, played through fifteen questions with three lifelines. French edition.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "ACHIEVEMENT_01", "Name": "Débutant",                     "GamerScore":  5, "Description": "Jouez une partie complète de \"Qui Veut Gagner Des Millions ?\"." },
-    { "Key": "ACHIEVEMENT_02", "Name": "Les plus rapides",              "GamerScore":  5, "Description": "Devinez le bon ordre des 4 réponses dans un round de Priorité aux plus rapides." },
-    { "Key": "ACHIEVEMENT_03", "Name": "Pas de mains vides",            "GamerScore":  5, "Description": "Atteignez le premier palier." },
-    { "Key": "ACHIEVEMENT_04", "Name": "Je me sens plus en sécurité", "GamerScore":  5, "Description": "Atteignez le deuxième palier." },
-    { "Key": "ACHIEVEMENT_05", "Name": "Je-sais-tout",                  "GamerScore":  5, "Description": "Répondez aux questions 1 à 7 correctement sans utiliser de Jokers." },
-    { "Key": "ACHIEVEMENT_06", "Name": "Etape finale",                  "GamerScore": 10, "Description": "Répondez aux questions 8 à 12 correctement sans utiliser de Jokers." },
-    { "Key": "ACHIEVEMENT_07", "Name": "Petit futé",                   "GamerScore":  5, "Description": "Répondez aux questions 1 à 2 correctement sans utiliser de Jokers." },
-    { "Key": "ACHIEVEMENT_08", "Name": "Brillant",                      "GamerScore":  5, "Description": "Répondez aux questions 3 à 7 correctement sans utiliser de Jokers." },
-    { "Key": "ACHIEVEMENT_09", "Name": "Dans le mille",                 "GamerScore": 10, "Description": "Répondez correctement à une question entre 3 et 7 en moins de 2 secondes." },
-    { "Key": "ACHIEVEMENT_10", "Name": "Mémoire instantanée",         "GamerScore": 10, "Description": "Répondez correctement à une question entre 8 et 12 en moins de 4 secondes." },
-    { "Key": "ACHIEVEMENT_11", "Name": "Millionnaire!",                 "GamerScore": 10, "Description": "Répondez correctement à la dernière question." },
-    { "Key": "ACHIEVEMENT_12", "Name": "Je n'en ai pas besoin de tant", "GamerScore": 15, "Description": "Répondez correctement à la dernière question en gardant un Joker non utilisé." },
-    { "Key": "ACHIEVEMENT_13", "Name": "Expérimenté",                 "GamerScore": 25, "Description": "Vous avez répondu correctement à la dernière question et il vous reste deux Jokers non utilisé." },
-    { "Key": "ACHIEVEMENT_14", "Name": "Maîtrise",                     "GamerScore": 35, "Description": "Répondez correctement à la dernière question sans avoir utilisé de Joker." },
-    { "Key": "ACHIEVEMENT_15", "Name": "Millionnaire pressé",          "GamerScore": 20, "Description": "Répondez correctement aux 15 questions en moins de 90 secondes." },
-    { "Key": "ACHIEVEMENT_16", "Name": "Millionnaire fulgurant",        "GamerScore": 30, "Description": "Répondez correctement aux 15 questions en moins de 60 secondes." }
+    { "Key": "ACHIEVEMENT_01", "Name": "Débutant",                     "GamerScore":  5, "Icon": "debutant.png", "Description": "Jouez une partie complète de \"Qui Veut Gagner Des Millions ?\"." },
+    { "Key": "ACHIEVEMENT_02", "Name": "Les plus rapides",              "GamerScore":  5, "Icon": "lesplusrapides.png", "Description": "Devinez le bon ordre des 4 réponses dans un round de Priorité aux plus rapides." },
+    { "Key": "ACHIEVEMENT_03", "Name": "Pas de mains vides",            "GamerScore":  5, "Icon": "pasdemainsvides.png", "Description": "Atteignez le premier palier." },
+    { "Key": "ACHIEVEMENT_04", "Name": "Je me sens plus en sécurité", "GamerScore":  5, "Icon": "jemesensplusensecurite.png", "Description": "Atteignez le deuxième palier." },
+    { "Key": "ACHIEVEMENT_05", "Name": "Je-sais-tout",                  "GamerScore":  5, "Icon": "jesaistout.png", "Description": "Répondez aux questions 1 à 7 correctement sans utiliser de Jokers." },
+    { "Key": "ACHIEVEMENT_06", "Name": "Etape finale",                  "GamerScore": 10, "Icon": "etapefinale.png", "Description": "Répondez aux questions 8 à 12 correctement sans utiliser de Jokers." },
+    { "Key": "ACHIEVEMENT_07", "Name": "Petit futé",                   "GamerScore":  5, "Icon": "petitfute.png", "Description": "Répondez aux questions 1 à 2 correctement sans utiliser de Jokers." },
+    { "Key": "ACHIEVEMENT_08", "Name": "Brillant",                      "GamerScore":  5, "Icon": "brillant.png", "Description": "Répondez aux questions 3 à 7 correctement sans utiliser de Jokers." },
+    { "Key": "ACHIEVEMENT_09", "Name": "Dans le mille",                 "GamerScore": 10, "Icon": "danslemille.png", "Description": "Répondez correctement à une question entre 3 et 7 en moins de 2 secondes." },
+    { "Key": "ACHIEVEMENT_10", "Name": "Mémoire instantanée",         "GamerScore": 10, "Icon": "memoireinstantanee.png", "Description": "Répondez correctement à une question entre 8 et 12 en moins de 4 secondes." },
+    { "Key": "ACHIEVEMENT_11", "Name": "Millionnaire!",                 "GamerScore": 10, "Icon": "millionnaire.png", "Description": "Répondez correctement à la dernière question." },
+    { "Key": "ACHIEVEMENT_12", "Name": "Je n'en ai pas besoin de tant", "GamerScore": 15, "Icon": "jenenaipasbesoindetant.png", "Description": "Répondez correctement à la dernière question en gardant un Joker non utilisé." },
+    { "Key": "ACHIEVEMENT_13", "Name": "Expérimenté",                 "GamerScore": 25, "Icon": "experimente.png", "Description": "Vous avez répondu correctement à la dernière question et il vous reste deux Jokers non utilisé." },
+    { "Key": "ACHIEVEMENT_14", "Name": "Maîtrise",                     "GamerScore": 35, "Icon": "maitrise.png", "Description": "Répondez correctement à la dernière question sans avoir utilisé de Joker." },
+    { "Key": "ACHIEVEMENT_15", "Name": "Millionnaire pressé",          "GamerScore": 20, "Icon": "millionnairepresse.png", "Description": "Répondez correctement aux 15 questions en moins de 90 secondes." },
+    { "Key": "ACHIEVEMENT_16", "Name": "Millionnaire fulgurant",        "GamerScore": 30, "Icon": "millionnairefulgurant.png", "Description": "Répondez correctement aux 15 questions en moins de 60 secondes." }
   ]
 }
+

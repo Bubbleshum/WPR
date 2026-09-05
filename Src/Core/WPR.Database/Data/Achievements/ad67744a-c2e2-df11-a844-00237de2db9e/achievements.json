@@ -3,17 +3,18 @@
   "Description": "A street-racing game drawn from the films: race city, valley and harbour circuits, and spend the winnings filling the garage.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "The Rookie",         "GamerScore": 0 },
-    { "Key": "Valley Girl",        "GamerScore": 0 },
-    { "Key": "City Boy",           "GamerScore": 0 },
-    { "Key": "Harbor Master",      "GamerScore": 0 },
-    { "Key": "Coast Guard",        "GamerScore": 0 },
-    { "Key": "Dominator",          "GamerScore": 0 },
-    { "Key": "Full Garage",        "GamerScore": 0 },
-    { "Key": "Maximum Overdrive",  "GamerScore": 0 },
-    { "Key": "Clean Run",          "GamerScore": 0 },
-    { "Key": "Cop Out",            "GamerScore": 0 },
-    { "Key": "Gear Head",          "GamerScore": 0 },
-    { "Key": "Nitrous Burnout",    "GamerScore": 0 }
+    { "Key": "The Rookie", "Name": "The Rookie",         "GamerScore": 5, "Icon": "therookie.png", "Description": "Complete first race in Story Mode." },
+    { "Key": "Valley Girl", "Name": "Valley Girl",        "GamerScore": 20, "Icon": "valleygirl.png", "Description": "Own the Suburbs district." },
+    { "Key": "City Boy", "Name": "City Boy",           "GamerScore": 20, "Icon": "cityboy.png", "Description": "Own the Downtown district." },
+    { "Key": "Harbor Master", "Name": "Harbor Master",      "GamerScore": 20, "Icon": "harbormaster.png", "Description": "Own the Docks district." },
+    { "Key": "Coast Guard", "Name": "Coast Guard",        "GamerScore": 20, "Icon": "coastguard.png", "Description": "Own the Beachfront district." },
+    { "Key": "Dominator", "Name": "Dominator",          "GamerScore": 20, "Icon": "dominator.png", "Description": "Complete Story Mode, owning entire L.A." },
+    { "Key": "Full Garage", "Name": "Full Garage",        "GamerScore": 15, "Icon": "fullgarage.png", "Description": "Unlock all cars." },
+    { "Key": "Maximum Overdrive", "Name": "Maximum Overdrive",  "GamerScore": 20, "Icon": "maximumoverdrive.png", "Description": "Reach level 20." },
+    { "Key": "Clean Run", "Name": "Clean Run",          "GamerScore": 15, "Icon": "cleanrun.png", "Description": "Avoid all traffic cars in a Time Trial." },
+    { "Key": "Cop Out", "Name": "Cop Out",            "GamerScore": 15, "Icon": "copout.png", "Description": "Win a Cop Chase wihout using nitro." },
+    { "Key": "Gear Head", "Name": "Gear Head",          "GamerScore": 15, "Icon": "gearhead.png", "Description": "Win a Drag Race having perfect shifts only." },
+    { "Key": "Nitrous Burnout", "Name": "Nitrous Burnout",    "GamerScore": 15, "Icon": "nitrousburnout.png", "Description": "Cross the finish line by using nitro." }
   ]
 }
+

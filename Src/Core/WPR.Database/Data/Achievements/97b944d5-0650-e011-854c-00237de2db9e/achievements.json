@@ -3,21 +3,22 @@
   "Description": "The television quiz show, played through fifteen questions with three lifelines. German edition.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "ACHIEVEMENT_01", "Name": "Anfänger",                        "GamerScore":  5, "Description": "Spiele ein komplettes Spiel \"Wer Wird Millionär?\"." },
-    { "Key": "ACHIEVEMENT_02", "Name": "Auswahlrunde",                     "GamerScore":  5, "Description": "Errate die richtige Reihenfolge der 4 Antworten in einer Auswahlrunde." },
-    { "Key": "ACHIEVEMENT_03", "Name": "Machst du weiter?",                "GamerScore":  5, "Description": "Erreiche die erste Sicherheitsstufe." },
-    { "Key": "ACHIEVEMENT_04", "Name": "Willst du dir die Million holen?", "GamerScore":  5, "Description": "Erreiche die zweite Sicherheitsstufe." },
-    { "Key": "ACHIEVEMENT_05", "Name": "Superhirn!",                       "GamerScore":  5, "Description": "Beantworte die Fragen 1 bis 10 richtig, ohne einen Joker zu benutzen." },
-    { "Key": "ACHIEVEMENT_06", "Name": "Du hast es geschafft!",            "GamerScore": 10, "Description": "Beantworte die Fragen 11 bis 15 richtig, ohne einen Joker zu benutzen." },
-    { "Key": "ACHIEVEMENT_07", "Name": "Alleswisser!",                     "GamerScore":  5, "Description": "Beantworte die Fragen 1 bis 5 richtig, ohne einen Joker zu benutzen." },
-    { "Key": "ACHIEVEMENT_08", "Name": "Supergescheit!",                   "GamerScore":  5, "Description": "Beantworte die Fragen 6 bis 10 richtig, ohne einen Joker zu benutzen." },
-    { "Key": "ACHIEVEMENT_09", "Name": "Schnell geschaltet!",              "GamerScore": 10, "Description": "Beantworte in weniger als 2 Sekunden eine Frage zwischen 6 und 10 richtig." },
-    { "Key": "ACHIEVEMENT_10", "Name": "Blitzgescheit!",                   "GamerScore": 10, "Description": "Beantworte in weniger als 4 Sekunden eine Frage zwischen 11 und 15 richtig." },
-    { "Key": "ACHIEVEMENT_11", "Name": "DU BIST REICH!",                   "GamerScore": 10, "Description": "Beantworte die letzte Frage richtig." },
-    { "Key": "ACHIEVEMENT_12", "Name": "Hilfe war zur Stelle!",            "GamerScore": 15, "Description": "Beantworte die letzte Frage richtig und behalte einen unbenutzten Joker." },
-    { "Key": "ACHIEVEMENT_13", "Name": "Mit Hilfe von meinen Freunden!",   "GamerScore": 25, "Description": "Beantworte die letzte Frage richtig und behalte zwei unbenutzte Joker." },
-    { "Key": "ACHIEVEMENT_14", "Name": "Wer braucht Hilfe!?",              "GamerScore": 35, "Description": "Beantworte die letzte Frage richtig, ohne einen Joker zu benutzen." },
-    { "Key": "ACHIEVEMENT_15", "Name": "0 zum Millionär in 90 Sekunden!", "GamerScore": 20, "Description": "Beantworte in weniger als 90 Sekunden die 15 Fragen richtig." },
-    { "Key": "ACHIEVEMENT_16", "Name": "Sieg in 60 Sekunden!",             "GamerScore": 30, "Description": "Beantworte in weniger als 60 Sekunden die 15 Fragen richtig." }
+    { "Key": "ACHIEVEMENT_01", "Name": "Anfänger",                        "GamerScore":  5, "Icon": "anfanger.png", "Description": "Spiele ein komplettes Spiel \"Wer Wird Millionär?\"." },
+    { "Key": "ACHIEVEMENT_02", "Name": "Auswahlrunde",                     "GamerScore":  5, "Icon": "auswahlrunde.png", "Description": "Errate die richtige Reihenfolge der 4 Antworten in einer Auswahlrunde." },
+    { "Key": "ACHIEVEMENT_03", "Name": "Machst du weiter?",                "GamerScore":  5, "Icon": "machstduweiter.png", "Description": "Erreiche die erste Sicherheitsstufe." },
+    { "Key": "ACHIEVEMENT_04", "Name": "Willst du dir die Million holen?", "GamerScore":  5, "Icon": "willstdudirdiemillionholen.png", "Description": "Erreiche die zweite Sicherheitsstufe." },
+    { "Key": "ACHIEVEMENT_05", "Name": "Superhirn!",                       "GamerScore":  5, "Icon": "superhirn.png", "Description": "Beantworte die Fragen 1 bis 10 richtig, ohne einen Joker zu benutzen." },
+    { "Key": "ACHIEVEMENT_06", "Name": "Du hast es geschafft!",            "GamerScore": 10, "Icon": "duhastesgeschafft.png", "Description": "Beantworte die Fragen 11 bis 15 richtig, ohne einen Joker zu benutzen." },
+    { "Key": "ACHIEVEMENT_07", "Name": "Alleswisser!",                     "GamerScore":  5, "Icon": "alleswisser.png", "Description": "Beantworte die Fragen 1 bis 5 richtig, ohne einen Joker zu benutzen." },
+    { "Key": "ACHIEVEMENT_08", "Name": "Supergescheit!",                   "GamerScore":  5, "Icon": "supergescheit.png", "Description": "Beantworte die Fragen 6 bis 10 richtig, ohne einen Joker zu benutzen." },
+    { "Key": "ACHIEVEMENT_09", "Name": "Schnell geschaltet!",              "GamerScore": 10, "Icon": "schnellgeschaltet.png", "Description": "Beantworte in weniger als 2 Sekunden eine Frage zwischen 6 und 10 richtig." },
+    { "Key": "ACHIEVEMENT_10", "Name": "Blitzgescheit!",                   "GamerScore": 10, "Icon": "blitzgescheit.png", "Description": "Beantworte in weniger als 4 Sekunden eine Frage zwischen 11 und 15 richtig." },
+    { "Key": "ACHIEVEMENT_11", "Name": "DU BIST REICH!",                   "GamerScore": 10, "Icon": "dubistreich.png", "Description": "Beantworte die letzte Frage richtig." },
+    { "Key": "ACHIEVEMENT_12", "Name": "Hilfe war zur Stelle!",            "GamerScore": 15, "Icon": "hilfewarzurstelle.png", "Description": "Beantworte die letzte Frage richtig und behalte einen unbenutzten Joker." },
+    { "Key": "ACHIEVEMENT_13", "Name": "Mit Hilfe von meinen Freunden!",   "GamerScore": 25, "Icon": "mithilfevonmeinenfreunden.png", "Description": "Beantworte die letzte Frage richtig und behalte zwei unbenutzte Joker." },
+    { "Key": "ACHIEVEMENT_14", "Name": "Wer braucht Hilfe!?",              "GamerScore": 35, "Icon": "werbrauchthilfe.png", "Description": "Beantworte die letzte Frage richtig, ohne einen Joker zu benutzen." },
+    { "Key": "ACHIEVEMENT_15", "Name": "0 zum Millionär in 90 Sekunden!", "GamerScore": 20, "Icon": "0zummillionarin90sekunden.png", "Description": "Beantworte in weniger als 90 Sekunden die 15 Fragen richtig." },
+    { "Key": "ACHIEVEMENT_16", "Name": "Sieg in 60 Sekunden!",             "GamerScore": 30, "Icon": "siegin60sekunden.png", "Description": "Beantworte in weniger als 60 Sekunden die 15 Fragen richtig." }
   ]
 }
+

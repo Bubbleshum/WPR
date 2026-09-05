@@ -3,21 +3,22 @@
   "Description": "The television quiz show, played through fifteen questions with three lifelines. English edition.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "ACHIEVEMENT_01", "Name": "Beginner",                         "GamerScore":  5, "Description": "Play a complete game of \"Who Wants To Be A Millionaire?\"." },
-    { "Key": "ACHIEVEMENT_02", "Name": "Fastest Finger First",             "GamerScore":  5, "Description": "Guess the correct order of the 4 answers in a round of Fastest Finger First." },
-    { "Key": "ACHIEVEMENT_03", "Name": "Will you go on?",                  "GamerScore":  5, "Description": "Reach the first safe haven." },
-    { "Key": "ACHIEVEMENT_04", "Name": "Will you go for the Million?",     "GamerScore":  5, "Description": "Reach the second safe haven." },
-    { "Key": "ACHIEVEMENT_05", "Name": "Brain-box!",                       "GamerScore":  5, "Description": "Answer questions 1 to 7 correctly without using any Lifelines." },
-    { "Key": "ACHIEVEMENT_06", "Name": "You've made it!",                  "GamerScore": 10, "Description": "Answer questions 8 to 12 correctly without using any Lifelines." },
-    { "Key": "ACHIEVEMENT_07", "Name": "Clever clogs!",                    "GamerScore":  5, "Description": "Answer questions 1 to 2 correctly without using any Lifelines." },
-    { "Key": "ACHIEVEMENT_08", "Name": "Super smart!",                     "GamerScore":  5, "Description": "Answer questions 3 to 7 correctly without using any Lifelines." },
-    { "Key": "ACHIEVEMENT_09", "Name": "Quick on the draw!",               "GamerScore": 10, "Description": "Correctly answer a question between 3 and 7 in less than 2 seconds." },
-    { "Key": "ACHIEVEMENT_10", "Name": "Lightning Legend!",                "GamerScore": 10, "Description": "Correctly answer a question between 11 and 15 in less than 4 seconds." },
-    { "Key": "ACHIEVEMENT_11", "Name": "YOU ARE A RICH!",                  "GamerScore": 10, "Description": "Answer the last question correctly." },
-    { "Key": "ACHIEVEMENT_12", "Name": "Help was at hand!",                "GamerScore": 15, "Description": "Answer the last question correctly keeping one unused Lifeline." },
-    { "Key": "ACHIEVEMENT_13", "Name": "A little help from your friends!", "GamerScore": 25, "Description": "You have answered the last question correctly and have two Lifelines left to use." },
-    { "Key": "ACHIEVEMENT_14", "Name": "Who needs help!",                  "GamerScore": 35, "Description": "Answer the last question correctly without using any Lifeline." },
-    { "Key": "ACHIEVEMENT_15", "Name": "0 to Millionaire in 90 seconds!",  "GamerScore": 20, "Description": "Answer the 15 questions correctly in less than 90 seconds." },
-    { "Key": "ACHIEVEMENT_16", "Name": "Won in 60 Seconds!",               "GamerScore": 30, "Description": "Answer the 15 questions correctly in less than 60 seconds." }
+    { "Key": "ACHIEVEMENT_01", "Name": "Beginner",                         "GamerScore":  5, "Icon": "beginner.png", "Description": "Play a complete game of \"Who Wants To Be A Millionaire?\"." },
+    { "Key": "ACHIEVEMENT_02", "Name": "Fastest Finger First",             "GamerScore":  5, "Icon": "fastestfingerfirst.png", "Description": "Guess the correct order of the 4 answers in a round of Fastest Finger First." },
+    { "Key": "ACHIEVEMENT_03", "Name": "Will you go on?",                  "GamerScore":  5, "Icon": "willyougoon.png", "Description": "Reach the first safe haven." },
+    { "Key": "ACHIEVEMENT_04", "Name": "Will you go for the Million?",     "GamerScore":  5, "Icon": "willyougoforthemillion.png", "Description": "Reach the second safe haven." },
+    { "Key": "ACHIEVEMENT_05", "Name": "Brain-box!",                       "GamerScore":  5, "Icon": "brainbox.png", "Description": "Answer questions 1 to 7 correctly without using any Lifelines." },
+    { "Key": "ACHIEVEMENT_06", "Name": "You've made it!",                  "GamerScore": 10, "Icon": "youvemadeit.png", "Description": "Answer questions 8 to 12 correctly without using any Lifelines." },
+    { "Key": "ACHIEVEMENT_07", "Name": "Clever clogs!",                    "GamerScore":  5, "Icon": "cleverclogs.png", "Description": "Answer questions 1 to 2 correctly without using any Lifelines." },
+    { "Key": "ACHIEVEMENT_08", "Name": "Super smart!",                     "GamerScore":  5, "Icon": "supersmart.png", "Description": "Answer questions 3 to 7 correctly without using any Lifelines." },
+    { "Key": "ACHIEVEMENT_09", "Name": "Quick on the draw!",               "GamerScore": 10, "Icon": "quickonthedraw.png", "Description": "Correctly answer a question between 3 and 7 in less than 2 seconds." },
+    { "Key": "ACHIEVEMENT_10", "Name": "Lightning Legend!",                "GamerScore": 10, "Icon": "lightninglegend.png", "Description": "Correctly answer a question between 11 and 15 in less than 4 seconds." },
+    { "Key": "ACHIEVEMENT_11", "Name": "YOU ARE A RICH!",                  "GamerScore": 10, "Icon": "youarearich.png", "Description": "Answer the last question correctly." },
+    { "Key": "ACHIEVEMENT_12", "Name": "Help was at hand!",                "GamerScore": 15, "Icon": "helpwasathand.png", "Description": "Answer the last question correctly keeping one unused Lifeline." },
+    { "Key": "ACHIEVEMENT_13", "Name": "A little help from your friends!", "GamerScore": 25, "Icon": "alittlehelpfromyourfriends.png", "Description": "You have answered the last question correctly and have two Lifelines left to use." },
+    { "Key": "ACHIEVEMENT_14", "Name": "Who needs help!",                  "GamerScore": 35, "Icon": "whoneedshelp.png", "Description": "Answer the last question correctly without using any Lifeline." },
+    { "Key": "ACHIEVEMENT_15", "Name": "0 to Millionaire in 90 seconds!",  "GamerScore": 20, "Icon": "0tomillionairein90seconds.png", "Description": "Answer the 15 questions correctly in less than 90 seconds." },
+    { "Key": "ACHIEVEMENT_16", "Name": "Won in 60 Seconds!",               "GamerScore": 30, "Icon": "wonin60seconds.png", "Description": "Answer the 15 questions correctly in less than 60 seconds." }
   ]
 }
+

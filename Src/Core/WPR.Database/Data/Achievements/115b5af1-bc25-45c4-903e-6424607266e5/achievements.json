@@ -3,20 +3,21 @@
   "Description": "The wedge-collecting trivia board game, played across its six question categories.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "FIRST_WEDGE",                    "Name": "First Wedge",                    "GamerScore":  5, "Description": "Win your first wedge (Classic)" },
-    { "Key": "FAST_WORKER_ENTERTAINMENT",      "Name": "Fast Worker Entertainment",      "GamerScore": 10, "Description": "Acquire an Entertainment wedge on your first attempt (Classic)" },
-    { "Key": "FAST_WORKER_GEOGRAPHY",          "Name": "Fast Worker Geography",          "GamerScore": 10, "Description": "Acquire a Geography wedge on your first attempt (Classic)" },
-    { "Key": "FAST_WORKER_SCIENCE_AND_NATURE", "Name": "Fast Worker Science and Nature", "GamerScore": 10, "Description": "Acquire a Science & Nature wedge on your first attempt (Classic)" },
-    { "Key": "FAST_WORKER_HISTORY",            "Name": "Fast Worker History",            "GamerScore": 10, "Description": "Acquire a History wedge on your first attempt (Classic)" },
-    { "Key": "FAST_WORKER_SPORT_AND_LEISURE",  "Name": "Fast Worker Sport and Leisure",  "GamerScore": 10, "Description": "Acquire a Sport & Leisure wedge on your first attempt (Classic)" },
-    { "Key": "FAST_WORKER_ART_AND_LITERATURE", "Name": "Fast Worker Art and Literature", "GamerScore": 10, "Description": "Acquire an Art & Literature wedge on your first attempt (Classic)" },
-    { "Key": "YOU_WERE_A_BLUR",                "Name": "You Were A Blur",                "GamerScore": 20, "Description": "Clear the board in under 10 minutes (Classic)" },
-    { "Key": "YOU_KNOW_TOO_MUCH",              "Name": "You Know Too Much",              "GamerScore": 25, "Description": "Clear the board without getting a question wrong" },
-    { "Key": "YOU_DONT_KNOW_EVERYTHING",       "Name": "You don't know everything",      "GamerScore":  5, "Description": "Get a question wrong (Classic)" },
-    { "Key": "SKILLED",                        "Name": "Skilled!",                       "GamerScore": 10, "Description": "Answer 5 questions right in a row (all modes)" },
-    { "Key": "TRIVIAL_PURSUIT_MASTER",         "Name": "TRIVIAL PURSUIT Master",         "GamerScore": 15, "Description": "Answer 10 questions right in a row (all modes)" },
-    { "Key": "ABSOLUTE_GENIUS_OR_CHEATER",     "Name": "Absolute Genius or Cheater",     "GamerScore": 25, "Description": "Answer 15 questions right in a row (all modes)" },
-    { "Key": "GOLD_MEDAL",                     "Name": "Gold Medal",                     "GamerScore": 10, "Description": "Get a Gold Medal (Pursuit Mode)" },
-    { "Key": "ARE_YOU_MIDAS",                  "Name": "Are you Midas?",                 "GamerScore": 25, "Description": "Get a Gold Medal on all the levels (Pursuit Mode)" }
+    { "Key": "FIRST_WEDGE",                    "Name": "First Wedge",                    "GamerScore":  5, "Icon": "firstwedge.png", "Description": "Win your first wedge (Classic)" },
+    { "Key": "FAST_WORKER_ENTERTAINMENT",      "Name": "Fast Worker Entertainment",      "GamerScore": 10, "Icon": "fastworkerentertainment.png", "Description": "Acquire an Entertainment wedge on your first attempt (Classic)" },
+    { "Key": "FAST_WORKER_GEOGRAPHY",          "Name": "Fast Worker Geography",          "GamerScore": 10, "Icon": "fastworkergeography.png", "Description": "Acquire a Geography wedge on your first attempt (Classic)" },
+    { "Key": "FAST_WORKER_SCIENCE_AND_NATURE", "Name": "Fast Worker Science and Nature", "GamerScore": 10, "Icon": "fastworkerscienceandnature.png", "Description": "Acquire a Science & Nature wedge on your first attempt (Classic)" },
+    { "Key": "FAST_WORKER_HISTORY",            "Name": "Fast Worker History",            "GamerScore": 10, "Icon": "fastworkerhistory.png", "Description": "Acquire a History wedge on your first attempt (Classic)" },
+    { "Key": "FAST_WORKER_SPORT_AND_LEISURE",  "Name": "Fast Worker Sport and Leisure",  "GamerScore": 10, "Icon": "fastworkersportandleisure.png", "Description": "Acquire a Sport & Leisure wedge on your first attempt (Classic)" },
+    { "Key": "FAST_WORKER_ART_AND_LITERATURE", "Name": "Fast Worker Art and Literature", "GamerScore": 10, "Icon": "fastworkerartandliterature.png", "Description": "Acquire an Art & Literature wedge on your first attempt (Classic)" },
+    { "Key": "YOU_WERE_A_BLUR",                "Name": "You Were A Blur",                "GamerScore": 20, "Icon": "youwereablur.png", "Description": "Clear the board in under 10 minutes (Classic)" },
+    { "Key": "YOU_KNOW_TOO_MUCH",              "Name": "You Know Too Much",              "GamerScore": 25, "Icon": "youknowtoomuch.png", "Description": "Clear the board without getting a question wrong" },
+    { "Key": "YOU_DONT_KNOW_EVERYTHING",       "Name": "You don't know everything",      "GamerScore":  5, "Icon": "youdontknoweverything.png", "Description": "Get a question wrong (Classic)" },
+    { "Key": "SKILLED",                        "Name": "Skilled!",                       "GamerScore": 10, "Icon": "skilled.png", "Description": "Answer 5 questions right in a row (all modes)" },
+    { "Key": "TRIVIAL_PURSUIT_MASTER",         "Name": "TRIVIAL PURSUIT Master",         "GamerScore": 15, "Icon": "trivialpursuitmaster.png", "Description": "Answer 10 questions right in a row (all modes)" },
+    { "Key": "ABSOLUTE_GENIUS_OR_CHEATER",     "Name": "Absolute Genius or Cheater",     "GamerScore": 25, "Icon": "absolutegeniusorcheater.png", "Description": "Answer 15 questions right in a row (all modes)" },
+    { "Key": "GOLD_MEDAL",                     "Name": "Gold Medal",                     "GamerScore": 10, "Icon": "goldmedal.png", "Description": "Get a Gold Medal (Pursuit Mode)" },
+    { "Key": "ARE_YOU_MIDAS",                  "Name": "Are you Midas?",                 "GamerScore": 25, "Icon": "areyoumidas.png", "Description": "Get a Gold Medal on all the levels (Pursuit Mode)" }
   ]
 }
+

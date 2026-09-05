@@ -3,17 +3,19 @@
   "Description": "A rocket-propelled shooter in a fully destructible pixel arena, where cover lasts only as long as it is not shot.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "Achievement01", "Name": "Deathless Destruction",          "GamerScore": 15, "Description": "Finish a destroy the object level without killing an enemy." },
-    { "Key": "Achievement02", "Name": "Nice Beating You",               "GamerScore": 10, "Description": "Finish the first set of levels by beating the first Pirate boss." },
-    { "Key": "Achievement03", "Name": "One Meeeeeelion Blocks!",        "GamerScore": 10, "Description": "Destroy a total of 1.000.000 blocks. All blocks you destroyed from all levels are counted." },
-    { "Key": "Achievement04", "Name": "I'll Show You Fits Of Rage",     "GamerScore": 15, "Description": "Shoot 20 enemies in 60 seconds. All game modes are counted." },
-    { "Key": "Achievement05", "Name": "You're Like Some Kind Of Robot", "GamerScore": 15, "Description": "Shoot 50 enemies with a longshot." },
-    { "Key": "Achievement06", "Name": "Been There, Shot That",          "GamerScore": 15, "Description": "Use every power-up at least once." },
-    { "Key": "Achievement07", "Name": "Two Thumb Master",               "GamerScore": 30, "Description": "Defeat BlockBeard to finish the single player campaign." },
-    { "Key": "Achievement08", "Name": "On A Gamer's Diet",              "GamerScore": 20, "Description": "Shoot 50 zombies, 50 robots, 50 pirates and 50 soldiers, all levels are counted." },
-    { "Key": "Achievement09", "Name": "Natural Born Gamer",             "GamerScore": 20, "Description": "Shoot 5000 enemies in total, all levels are counted." },
-    { "Key": "Achievement10", "Name": "The Things I've Seen",           "GamerScore": 20, "Description": "Shoot every type of enemy at least once, all levels are counted." },
-    { "Key": "Achievement11", "Name": "A Wilhelm Scream",               "GamerScore":  5, "Description": "Die while fighting BlockBeard on the final level." },
-    { "Key": "Achievement12", "Name": "One Shot, Thrice The Score",     "GamerScore": 25, "Description": "Using the Triple Rocket power up, kill 3 enemies with one shot." }
+    { "Key": "Achievement01", "Name": "Deathless Destruction",          "GamerScore": 15, "Icon": "deathlessdestruction.png", "Description": "Finish a destroy the object level without killing an enemy." },
+    { "Key": "Achievement02", "Name": "Nice Beating You",               "GamerScore": 10, "Icon": "nicebeatingyou.png", "Description": "Finish the first set of levels by beating the first Pirate boss." },
+    { "Key": "Achievement03", "Name": "One Meeeeeelion Blocks!",        "GamerScore": 10, "Icon": "onemeeeeeelionblocks.png", "Description": "Destroy a total of 1.000.000 blocks. All blocks you destroyed from all levels are counted." },
+    { "Key": "Achievement04", "Name": "I'll Show You Fits Of Rage",     "GamerScore": 15, "Icon": "illshowyoufitsofrage.png", "Description": "Shoot 20 enemies in 60 seconds. All game modes are counted." },
+    { "Key": "Achievement05", "Name": "You're Like Some Kind Of Robot", "GamerScore": 15, "Icon": "yourelikesomekindofrobot.png", "Description": "Shoot 50 enemies with a longshot." },
+    { "Key": "Achievement06", "Name": "Been There, Shot That",          "GamerScore": 15, "Icon": "beenthereshotthat.png", "Description": "Use every power-up at least once." },
+    { "Key": "Achievement07", "Name": "Two Thumb Master",               "GamerScore": 30, "Icon": "twothumbmaster.png", "Description": "Defeat BlockBeard to finish the single player campaign." },
+    { "Key": "Achievement08", "Name": "On A Gamer's Diet",              "GamerScore": 20, "Icon": "onagamersdiet.png", "Description": "Shoot 50 zombies, 50 robots, 50 pirates and 50 soldiers, all levels are counted." },
+    { "Key": "Achievement09", "Name": "Natural Born Gamer",             "GamerScore": 20, "Icon": "naturalborngamer.png", "Description": "Shoot 5000 enemies in total, all levels are counted." },
+    { "Key": "Achievement10", "Name": "The Things I've Seen",           "GamerScore": 20, "Icon": "thethingsiveseen.png", "Description": "Shoot every type of enemy at least once, all levels are counted." },
+    { "Key": "Achievement11", "Name": "A Wilhelm Scream",               "GamerScore":  5, "Icon": "awilhelmscream.png", "Description": "Die while fighting BlockBeard on the final level." },
+    { "Key": "Achievement12", "Name": "One Shot, Thrice The Score",     "GamerScore": 25, "Icon": "oneshotthricethescore.png", "Description": "Using the Triple Rocket power up, kill 3 enemies with one shot." }
   ]
 }
+
+

@@ -2,17 +2,18 @@
   "Name": "Monopoly",
   "Description": "The property trading board game: buy streets, build houses and bankrupt everyone else.",
   "Achievements": [
-    { "Key": "Everybody Starts Somewhere", "Name": "Everybody Starts Somewhere", "GamerScore": 10, "Description": "Buy a property." },
-    { "Key": "Now Youre On Your Way",      "Name": "Now You're On Your Way",     "GamerScore": 10, "Description": "Own a monopoly." },
-    { "Key": "Moving On Up",               "Name": "Moving On Up",               "GamerScore": 15, "Description": "Build your first set of houses." },
-    { "Key": "The View From The Top",      "Name": "View from the Top",          "GamerScore": 25, "Description": "Build your first set of hotels." },
-    { "Key": "Rolled To Jail",             "Name": "Rolled to Jail",             "GamerScore": 10, "Description": "Roll three doubles in a row and get sent to jail." },
-    { "Key": "Rolled To Freedom",          "Name": "Rolled to Freedom",          "GamerScore": 10, "Description": "Rolled a double to get out of jail." },
-    { "Key": "Globe Trotter",              "Name": "Globe Trotter",              "GamerScore": 20, "Description": "Land on every property on the board." },
-    { "Key": "Taking Sides",               "Name": "Taking Sides",               "GamerScore": 40, "Description": "Own every property, including any ports and utilities, down one whole side of the board." },
-    { "Key": "Transport King",             "Name": "Transport King",             "GamerScore": 10, "Description": "Own the monopoly on the transport properties." },
-    { "Key": "Youve Got The Power",        "Name": "You've Got the Power",       "GamerScore": 10, "Description": "Own the monopoly on the utilities." },
-    { "Key": "Deal Of The Century",        "Name": "Deal of the Century",        "GamerScore": 20, "Description": "Form a monopoly as a result of trading." },
-    { "Key": "No Mercy",                   "Name": "No Mercy",                   "GamerScore": 20, "Description": "Be responsible for the bankruptcy of another player." }
+    { "Key": "Everybody Starts Somewhere", "Name": "Everybody Starts Somewhere", "GamerScore": 10, "Icon": "everybodystartssomewhere.png", "Description": "Buy a property." },
+    { "Key": "Now Youre On Your Way",      "Name": "Now You're On Your Way",     "GamerScore": 10, "Icon": "nowyoureonyourway.png", "Description": "Own a monopoly." },
+    { "Key": "Moving On Up",               "Name": "Moving On Up",               "GamerScore": 15, "Icon": "movingonup.png", "Description": "Build your first set of houses." },
+    { "Key": "The View From The Top",      "Name": "View from the Top",          "GamerScore": 25, "Icon": "viewfromthetop.png", "Description": "Build your first set of hotels." },
+    { "Key": "Rolled To Jail",             "Name": "Rolled to Jail",             "GamerScore": 10, "Icon": "rolledtojail.png", "Description": "Roll three doubles in a row and get sent to jail." },
+    { "Key": "Rolled To Freedom",          "Name": "Rolled to Freedom",          "GamerScore": 10, "Icon": "rolledtofreedom.png", "Description": "Rolled a double to get out of jail." },
+    { "Key": "Globe Trotter",              "Name": "Globe Trotter",              "GamerScore": 20, "Icon": "globetrotter.png", "Description": "Land on every property on the board." },
+    { "Key": "Taking Sides",               "Name": "Taking Sides",               "GamerScore": 40, "Icon": "takingsides.png", "Description": "Own every property, including any ports and utilities, down one whole side of the board." },
+    { "Key": "Transport King",             "Name": "Transport King",             "GamerScore": 10, "Icon": "transportking.png", "Description": "Own the monopoly on the transport properties." },
+    { "Key": "Youve Got The Power",        "Name": "You've Got the Power",       "GamerScore": 10, "Icon": "youvegotthepower.png", "Description": "Own the monopoly on the utilities." },
+    { "Key": "Deal Of The Century",        "Name": "Deal of the Century",        "GamerScore": 20, "Icon": "dealofthecentury.png", "Description": "Form a monopoly as a result of trading." },
+    { "Key": "No Mercy",                   "Name": "No Mercy",                   "GamerScore": 20, "Icon": "nomercy.png", "Description": "Be responsible for the bankruptcy of another player." }
   ]
 }
+

@@ -3,20 +3,21 @@
   "KeySource": "xlast",
   "Description": "The classic Hasbro two-player disc-dropping game. Line up four of your colour in a row — horizontally, vertically or diagonally — before your opponent does.",
   "Achievements": [
-    { "Key": "THE_JOURNEY_BEGINS",       "Name": "The Journey Begins",       "GamerScore":  5, "Description": "Win your first match." },
-    { "Key": "AMATEUR_CONNECTOR",        "Name": "Amateur Connector",        "GamerScore":  5, "Description": "Win 10 matches." },
-    { "Key": "JOURNEYMAN_CONNECTOR",     "Name": "Journeyman Connector",     "GamerScore": 10, "Description": "Win 25 matches." },
-    { "Key": "ADVANCED_CONNECTOR",       "Name": "Advanced Connector",       "GamerScore": 20, "Description": "Win 50 matches." },
-    { "Key": "EPIC_CONNECTOR",           "Name": "Epic Connector",           "GamerScore": 10, "Description": "Play 500 matches." },
-    { "Key": "LEGENDARY_CONNECTOR",      "Name": "Legendary Connector",      "GamerScore": 15, "Description": "Play 1000 matches." },
-    { "Key": "EVERYTHING_IN_MODERATION", "Name": "Everything in Moderation", "GamerScore": 15, "Description": "Defeat 10 NORMAL difficulty AI opponents." },
-    { "Key": "LEARN_FROM_THE_BEST",      "Name": "Learn from the Best",      "GamerScore": 20, "Description": "Defeat 10 EXPERT difficulty AI opponents." },
-    { "Key": "ECONOMIST",                "Name": "Economist",                "GamerScore":  5, "Description": "Beat the AI within ten moves in a quick game." },
-    { "Key": "GENIUS",                   "Name": "Genius",                   "GamerScore":  5, "Description": "Win a quick game in under 45 seconds." },
-    { "Key": "CROSSROADS",               "Name": "Crossroads",               "GamerScore": 15, "Description": "Form two 'Connect 4' winning lines in a single drop." },
-    { "Key": "SPICE_OF_LIFE",            "Name": "Spice of Life",            "GamerScore": 10, "Description": "Win each game mode at least once." },
-    { "Key": "SHAKE_RATTLE_AND_ROLL",    "Name": "Shake, Rattle and Roll",   "GamerScore": 10, "Description": "Shake the device to cause an earthquake in the game." },
-    { "Key": "ON_A_ROLL",                "Name": "On a Roll",                "GamerScore": 25, "Description": "Win 5 matches in a row against NORMAL or EXPERT AI." },
-    { "Key": "META_PLAYER",              "Name": "Meta-Player",              "GamerScore": 30, "Description": "Complete the Challenge Mode." }
+    { "Key": "THE_JOURNEY_BEGINS",       "Name": "The Journey Begins",       "GamerScore":  5, "Icon": "thejourneybegins.png", "Description": "Win your first match." },
+    { "Key": "AMATEUR_CONNECTOR",        "Name": "Amateur Connector",        "GamerScore":  5, "Icon": "amateurconnector.png", "Description": "Win 10 matches." },
+    { "Key": "JOURNEYMAN_CONNECTOR",     "Name": "Journeyman Connector",     "GamerScore": 10, "Icon": "journeymanconnector.png", "Description": "Win 25 matches." },
+    { "Key": "ADVANCED_CONNECTOR",       "Name": "Advanced Connector",       "GamerScore": 20, "Icon": "advancedconnector.png", "Description": "Win 50 matches." },
+    { "Key": "EPIC_CONNECTOR",           "Name": "Epic Connector",           "GamerScore": 10, "Icon": "epicconnector.png", "Description": "Play 500 matches." },
+    { "Key": "LEGENDARY_CONNECTOR",      "Name": "Legendary Connector",      "GamerScore": 15, "Icon": "legendaryconnector.png", "Description": "Play 1000 matches." },
+    { "Key": "EVERYTHING_IN_MODERATION", "Name": "Everything in Moderation", "GamerScore": 15, "Icon": "everythinginmoderation.png", "Description": "Defeat 10 NORMAL difficulty AI opponents." },
+    { "Key": "LEARN_FROM_THE_BEST",      "Name": "Learn from the Best",      "GamerScore": 20, "Icon": "learnfromthebest.png", "Description": "Defeat 10 EXPERT difficulty AI opponents." },
+    { "Key": "ECONOMIST",                "Name": "Economist",                "GamerScore":  5, "Icon": "economist.png", "Description": "Beat the AI within ten moves in a quick game." },
+    { "Key": "GENIUS",                   "Name": "Genius",                   "GamerScore":  5, "Icon": "genius.png", "Description": "Win a quick game in under 45 seconds." },
+    { "Key": "CROSSROADS",               "Name": "Crossroads",               "GamerScore": 15, "Icon": "crossroads.png", "Description": "Form two 'Connect 4' winning lines in a single drop." },
+    { "Key": "SPICE_OF_LIFE",            "Name": "Spice of Life",            "GamerScore": 10, "Icon": "spiceoflife.png", "Description": "Win each game mode at least once." },
+    { "Key": "SHAKE_RATTLE_AND_ROLL",    "Name": "Shake, Rattle and Roll",   "GamerScore": 10, "Icon": "shakerattleandroll.png", "Description": "Shake the device to cause an earthquake in the game." },
+    { "Key": "ON_A_ROLL",                "Name": "On a Roll",                "GamerScore": 25, "Icon": "onaroll.png", "Description": "Win 5 matches in a row against NORMAL or EXPERT AI." },
+    { "Key": "META_PLAYER",              "Name": "Meta-Player",              "GamerScore": 30, "Icon": "metaplayer.png", "Description": "Complete the Challenge Mode." }
   ]
 }
+

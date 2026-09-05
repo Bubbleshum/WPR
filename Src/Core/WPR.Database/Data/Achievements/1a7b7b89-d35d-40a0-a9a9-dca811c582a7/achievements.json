@@ -3,15 +3,16 @@
   "Description": "A side-scrolling dogfighter with a large roster of unlockable aircraft, each handling differently.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "Bang",           "Name": "Bang",           "GamerScore":  5, "Description": "Shoot down your first enemy plane." },
-    { "Key": "Boiiing",        "Name": "Boiiing",        "GamerScore":  5, "Description": "Bounce off the edge of the screen 3 times in a level." },
-    { "Key": "Peashooter",     "Name": "Peashooter",     "GamerScore": 10, "Description": "Shoot 3 enemy planes in a row without getting hit." },
-    { "Key": "My First Plane", "Name": "My First Plane", "GamerScore": 10, "Description": "Unlock your first shiny new plane." },
-    { "Key": "The Survivor",   "Name": "The Survivor",   "GamerScore": 20, "Description": "Play a single wave in Survival Mode without getting hit." },
-    { "Key": "Big Guns",       "Name": "Big Guns",       "GamerScore": 20, "Description": "Shoot 20 enemy planes in a row without getting hit." },
-    { "Key": "Easy Peasy",     "Name": "Easy Peasy",     "GamerScore": 20, "Description": "Complete any level in Classic Mode without losing a life" },
-    { "Key": "Mmmm Planes",    "Name": "Mmmm Planes",    "GamerScore": 30, "Description": "Unlock every plane in the game." },
-    { "Key": "Globetrotter",   "Name": "Globetrotter",   "GamerScore": 30, "Description": "Complete every level in Classic Mode." },
-    { "Key": "Indestructible", "Name": "Indestructible", "GamerScore": 50, "Description": "Complete every level in Classic Mode with 3 or more lives left." }
+    { "Key": "Bang",           "Name": "Bang",           "GamerScore":  5, "Icon": "bang.png", "Description": "Shoot down your first enemy plane." },
+    { "Key": "Boiiing",        "Name": "Boiiing",        "GamerScore":  5, "Icon": "boiiing.png", "Description": "Bounce off the edge of the screen 3 times in a level." },
+    { "Key": "Peashooter",     "Name": "Peashooter",     "GamerScore": 10, "Icon": "peashooter.png", "Description": "Shoot 3 enemy planes in a row without getting hit." },
+    { "Key": "My First Plane", "Name": "My First Plane", "GamerScore": 10, "Icon": "myfirstplane.png", "Description": "Unlock your first shiny new plane." },
+    { "Key": "The Survivor",   "Name": "The Survivor",   "GamerScore": 20, "Icon": "thesurvivor.png", "Description": "Play a single wave in Survival Mode without getting hit." },
+    { "Key": "Big Guns",       "Name": "Big Guns",       "GamerScore": 20, "Icon": "bigguns.png", "Description": "Shoot 20 enemy planes in a row without getting hit." },
+    { "Key": "Easy Peasy",     "Name": "Easy Peasy",     "GamerScore": 20, "Icon": "easypeasy.png", "Description": "Complete any level in Classic Mode without losing a life" },
+    { "Key": "Mmmm Planes",    "Name": "Mmmm Planes",    "GamerScore": 30, "Icon": "mmmmplanes.png", "Description": "Unlock every plane in the game." },
+    { "Key": "Globetrotter",   "Name": "Globetrotter",   "GamerScore": 30, "Icon": "globetrotter.png", "Description": "Complete every level in Classic Mode." },
+    { "Key": "Indestructible", "Name": "Indestructible", "GamerScore": 50, "Icon": "indestructible.png", "Description": "Complete every level in Classic Mode with 3 or more lives left." }
   ]
 }
+

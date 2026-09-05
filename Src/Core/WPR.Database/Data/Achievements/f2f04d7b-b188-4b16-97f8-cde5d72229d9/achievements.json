@@ -3,15 +3,16 @@
   "Description": "A football game played in short passes, in the possession style it is named after.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "Training Complete",            "Name": "Training master",    "GamerScore":  5, "Description": "Complete training" },
-    { "Key": "Score Hatrick",                "Name": "Hattrick hero",      "GamerScore":  5, "Description": "Score a hat-trick" },
-    { "Key": "Score 100 Goals Is In Season", "Name": "Goal machine",       "GamerScore": 25, "Description": "Score 100 goals in a season" },
-    { "Key": "Win Game 10 In Row",           "Name": "Consistency is key", "GamerScore": 10, "Description": "Win 10 games in a row" },
-    { "Key": "Win Game All In Season",       "Name": "Invincibles",        "GamerScore": 50, "Description": "Don't lose all season" },
-    { "Key": "Win Cup",                      "Name": "Cup champions",      "GamerScore": 20, "Description": "Win a cup competition" },
-    { "Key": "Win League",                   "Name": "League Champions",   "GamerScore": 25, "Description": "Win a league competition" },
-    { "Key": "Get Into Top League",          "Name": "Top dog",            "GamerScore": 30, "Description": "Gain promotion into the top league" },
-    { "Key": "Earn 10M",                     "Name": "Level up",           "GamerScore": 20, "Description": "Reach manager level 25" },
-    { "Key": "Manager Level 25",             "Name": "Money man",          "GamerScore": 10, "Description": "Earn 10M in cash" }
+    { "Key": "Training Complete",            "Name": "Training master",    "GamerScore":  5, "Icon": "trainingmaster.png", "Description": "Complete training" },
+    { "Key": "Score Hatrick",                "Name": "Hattrick hero",      "GamerScore":  5, "Icon": "hattrickhero.png", "Description": "Score a hat-trick" },
+    { "Key": "Score 100 Goals Is In Season", "Name": "Goal machine",       "GamerScore": 25, "Icon": "goalmachine.png", "Description": "Score 100 goals in a season" },
+    { "Key": "Win Game 10 In Row",           "Name": "Consistency is key", "GamerScore": 10, "Icon": "consistencyiskey.png", "Description": "Win 10 games in a row" },
+    { "Key": "Win Game All In Season",       "Name": "Invincibles",        "GamerScore": 50, "Icon": "invincibles.png", "Description": "Don't lose all season" },
+    { "Key": "Win Cup",                      "Name": "Cup champions",      "GamerScore": 20, "Icon": "cupchampions.png", "Description": "Win a cup competition" },
+    { "Key": "Win League",                   "Name": "League Champions",   "GamerScore": 25, "Icon": "leaguechampions.png", "Description": "Win a league competition" },
+    { "Key": "Get Into Top League",          "Name": "Top dog",            "GamerScore": 30, "Icon": "topdog.png", "Description": "Gain promotion into the top league" },
+    { "Key": "Earn 10M",                     "Name": "Level up",           "GamerScore": 20, "Icon": "levelup.png", "Description": "Reach manager level 25" },
+    { "Key": "Manager Level 25",             "Name": "Money man",          "GamerScore": 10, "Icon": "moneyman.png", "Description": "Earn 10M in cash" }
   ]
 }
+

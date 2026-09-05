@@ -3,17 +3,18 @@
   "Description": "A tank combat game.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "Driving straight ahead",           "Name": "Driving straight ahead...",   "GamerScore":  5, "Description": "Complete the first level" },
-    { "Key": "Sixpack",                          "Name": "Sixpack!",                    "GamerScore":  5, "Description": "Complete level 6" },
-    { "Key": "Halfway there",                    "Name": "Halfway there...",            "GamerScore": 15, "Description": "Complete level 27" },
-    { "Key": "3 4 of the way",                   "Name": "3/4 of the way...",           "GamerScore": 30, "Description": "Complete level 40" },
-    { "Key": "10 stars on your shoulder",        "Name": "10 stars on your shoulder",   "GamerScore":  5, "Description": "Achieve 10 stars from completing levels" },
-    { "Key": "100 stars on your shoulder",       "Name": "100 stars on your shoulder",  "GamerScore": 15, "Description": "Achieve 100 stars from completing levels" },
-    { "Key": "It s full of stars",               "Name": "IT'S FULL OF STARS!",         "GamerScore": 30, "Description": "Achieve TOP STAR SCORE on all levels" },
-    { "Key": "27 down 27 to go",                 "Name": "27 down - 27 to go",          "GamerScore": 15, "Description": "Collect half of all babushkas in all levels" },
-    { "Key": "Down with the Axis of Evil",       "Name": "Down with the Axis of Evil!", "GamerScore": 30, "Description": "Collect ALL BABUSHKAS in all levels" },
-    { "Key": "Mind Bending",                     "Name": "Mind Bending",                "GamerScore": 15, "Description": "Defy gravity and complete level 52" },
-    { "Key": "1000 percent Willpower and focus", "Name": "1000% Willpower and focus!",  "GamerScore": 20, "Description": "Do the impossible - complete level 54" },
-    { "Key": "We hear you",                      "Name": "We hear you!",                "GamerScore": 15, "Description": "Raise your voice and rate the game" }
+    { "Key": "Driving straight ahead",           "Name": "Driving straight ahead...",   "GamerScore":  5, "Icon": "drivingstraightahead.png", "Description": "Complete the first level" },
+    { "Key": "Sixpack",                          "Name": "Sixpack!",                    "GamerScore":  5, "Icon": "sixpack.png", "Description": "Complete level 6" },
+    { "Key": "Halfway there",                    "Name": "Halfway there...",            "GamerScore": 15, "Icon": "halfwaythere.png", "Description": "Complete level 27" },
+    { "Key": "3 4 of the way",                   "Name": "3/4 of the way...",           "GamerScore": 30, "Icon": "34oftheway.png", "Description": "Complete level 40" },
+    { "Key": "10 stars on your shoulder",        "Name": "10 stars on your shoulder",   "GamerScore":  5, "Icon": "10starsonyourshoulder.png", "Description": "Achieve 10 stars from completing levels" },
+    { "Key": "100 stars on your shoulder",       "Name": "100 stars on your shoulder",  "GamerScore": 15, "Icon": "100starsonyourshoulder.png", "Description": "Achieve 100 stars from completing levels" },
+    { "Key": "It s full of stars",               "Name": "IT'S FULL OF STARS!",         "GamerScore": 30, "Icon": "itsfullofstars.png", "Description": "Achieve TOP STAR SCORE on all levels" },
+    { "Key": "27 down 27 to go",                 "Name": "27 down - 27 to go",          "GamerScore": 15, "Icon": "27down27togo.png", "Description": "Collect half of all babushkas in all levels" },
+    { "Key": "Down with the Axis of Evil",       "Name": "Down with the Axis of Evil!", "GamerScore": 30, "Icon": "downwiththeaxisofevil.png", "Description": "Collect ALL BABUSHKAS in all levels" },
+    { "Key": "Mind Bending",                     "Name": "Mind Bending",                "GamerScore": 15, "Icon": "mindbending.png", "Description": "Defy gravity and complete level 52" },
+    { "Key": "1000 percent Willpower and focus", "Name": "1000% Willpower and focus!",  "GamerScore": 20, "Icon": "1000willpowerandfocus.png", "Description": "Do the impossible - complete level 54" },
+    { "Key": "We hear you",                      "Name": "We hear you!",                "GamerScore": 15, "Icon": "wehearyou.png", "Description": "Raise your voice and rate the game" }
   ]
 }
+

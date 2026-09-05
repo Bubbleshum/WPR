@@ -3,11 +3,12 @@
   "Description": "Swim as a shark and eat whatever fits, growing into progressively larger species.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "Reef Shark",        "Name": "Reef Shark",        "GamerScore": 20, "Description": "Complete Super Mission 1 using Reef shark." },
-    { "Key": "Mako Shark",        "Name": "Mako Shark",        "GamerScore": 20, "Description": "Complete Super Mission 2 using Mako Shark." },
-    { "Key": "Hammerhead Shark",  "Name": "Hammerhead Shark",  "GamerScore": 30, "Description": "Complete Super Mission 3 using Hammerhead Shark." },
-    { "Key": "Tiger Shark",       "Name": "Tiger Shark",       "GamerScore": 40, "Description": "Complete Super Mission 4 using Tiger Shark." },
-    { "Key": "Great White Shark", "Name": "Great White Shark", "GamerScore": 40, "Description": "Complete Super Mission 5 using Great White Shark." },
-    { "Key": "Megalodon",         "Name": "Megaladon",         "GamerScore": 50, "Description": "Complete Super Mission 6 using Megaladon Shark." }
+    { "Key": "Reef Shark",        "Name": "Reef Shark",        "GamerScore": 20, "Icon": "reefshark.png", "Description": "Complete Super Mission 1 using Reef shark." },
+    { "Key": "Mako Shark",        "Name": "Mako Shark",        "GamerScore": 20, "Icon": "makoshark.png", "Description": "Complete Super Mission 2 using Mako Shark." },
+    { "Key": "Hammerhead Shark",  "Name": "Hammerhead Shark",  "GamerScore": 30, "Icon": "hammerheadshark.png", "Description": "Complete Super Mission 3 using Hammerhead Shark." },
+    { "Key": "Tiger Shark",       "Name": "Tiger Shark",       "GamerScore": 40, "Icon": "tigershark.png", "Description": "Complete Super Mission 4 using Tiger Shark." },
+    { "Key": "Great White Shark", "Name": "Great White Shark", "GamerScore": 40, "Icon": "greatwhiteshark.png", "Description": "Complete Super Mission 5 using Great White Shark." },
+    { "Key": "Megalodon",         "Name": "Megaladon",         "GamerScore": 50, "Icon": "megaladon.png", "Description": "Complete Super Mission 6 using Megaladon Shark." }
   ]
 }
+

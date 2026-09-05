@@ -3,19 +3,20 @@
   "Description": "Tilt the world, not the monkey: roll a monkey in a ball to the goal without falling off the edge.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "0",  "Name": "Jumble Jungle Champion",  "GamerScore":  5, "Description": "Complete all levels in Jumble Jungle" },
-    { "Key": "1",  "Name": "Pirates Ocean Champion",  "GamerScore":  5, "Description": "Complete all levels in Pirates Ocean" },
-    { "Key": "2",  "Name": "Sinking Swamps Champion", "GamerScore":  5, "Description": "Complete all levels in Sinking Swamps" },
-    { "Key": "3",  "Name": "Cobalt Caverns Champion", "GamerScore":  5, "Description": "Complete all levels in Cobalt Caverns" },
-    { "Key": "4",  "Name": "Ultra Heaven Champion",   "GamerScore":  5, "Description": "Complete all levels in Ultra Heaven" },
-    { "Key": "5",  "Name": "Far East Champion",       "GamerScore":  5, "Description": "Complete all levels in Far East" },
-    { "Key": "6",  "Name": "Fore!",                   "GamerScore":  5, "Description": "Complete a full 18 course round of Monkey Golf" },
-    { "Key": "7",  "Name": "Strike!",                 "GamerScore":  5, "Description": "Complete a game of Monkey Bowling" },
-    { "Key": "8",  "Name": "Bullseye!",               "GamerScore": 10, "Description": "Complete a game of Monkey Target" },
-    { "Key": "9",  "Name": "Target Champion",         "GamerScore": 20, "Description": "Complete a game of 4 player Monkey Target" },
-    { "Key": "10", "Name": "Lucky Number",            "GamerScore": 25, "Description": "Finish a level with an end time of .07 seconds" },
-    { "Key": "11", "Name": "Monkey Prince",           "GamerScore": 30, "Description": "Obtain 10 crowns" },
-    { "Key": "12", "Name": "Monkey King",             "GamerScore": 50, "Description": "Unlock all 10 crown levels" },
-    { "Key": "13", "Name": "Stock up on Potassium",   "GamerScore": 25, "Description": "Collect bananas to earn a stock of 15 lives" }
+    { "Key": "0",  "Name": "Jumble Jungle Champion",  "GamerScore":  5, "Icon": "jumblejunglechampion.png", "Description": "Complete all levels in Jumble Jungle" },
+    { "Key": "1",  "Name": "Pirates Ocean Champion",  "GamerScore":  5, "Icon": "piratesoceanchampion.png", "Description": "Complete all levels in Pirates Ocean" },
+    { "Key": "2",  "Name": "Sinking Swamps Champion", "GamerScore":  5, "Icon": "sinkingswampschampion.png", "Description": "Complete all levels in Sinking Swamps" },
+    { "Key": "3",  "Name": "Cobalt Caverns Champion", "GamerScore":  5, "Icon": "cobaltcavernschampion.png", "Description": "Complete all levels in Cobalt Caverns" },
+    { "Key": "4",  "Name": "Ultra Heaven Champion",   "GamerScore":  5, "Icon": "ultraheavenchampion.png", "Description": "Complete all levels in Ultra Heaven" },
+    { "Key": "5",  "Name": "Far East Champion",       "GamerScore":  5, "Icon": "fareastchampion.png", "Description": "Complete all levels in Far East" },
+    { "Key": "6",  "Name": "Fore!",                   "GamerScore":  5, "Icon": "fore.png", "Description": "Complete a full 18 course round of Monkey Golf" },
+    { "Key": "7",  "Name": "Strike!",                 "GamerScore":  5, "Icon": "strike.png", "Description": "Complete a game of Monkey Bowling" },
+    { "Key": "8",  "Name": "Bullseye!",               "GamerScore": 10, "Icon": "bullseye.png", "Description": "Complete a game of Monkey Target" },
+    { "Key": "9",  "Name": "Target Champion",         "GamerScore": 20, "Icon": "targetchampion.png", "Description": "Complete a game of 4 player Monkey Target" },
+    { "Key": "10", "Name": "Lucky Number",            "GamerScore": 25, "Icon": "luckynumber.png", "Description": "Finish a level with an end time of .07 seconds" },
+    { "Key": "11", "Name": "Monkey Prince",           "GamerScore": 30, "Icon": "monkeyprince.png", "Description": "Obtain 10 crowns" },
+    { "Key": "12", "Name": "Monkey King",             "GamerScore": 50, "Icon": "monkeyking.png", "Description": "Unlock all 10 crown levels" },
+    { "Key": "13", "Name": "Stock up on Potassium",   "GamerScore": 25, "Icon": "stockuponpotassium.png", "Description": "Collect bananas to earn a stock of 15 lives" }
   ]
 }
+

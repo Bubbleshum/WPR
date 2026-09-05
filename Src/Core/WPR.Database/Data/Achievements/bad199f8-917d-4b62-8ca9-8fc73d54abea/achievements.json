@@ -3,13 +3,14 @@
   "Description": "A puzzle game about merging coloured dots into larger ones.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "Adventurer",         "Name": "Adventurer",         "GamerScore": 25, "Description": "Unlock first 20 stages" },
-    { "Key": "Explorer",           "Name": "Explorer",           "GamerScore": 40, "Description": "Unlock first 60 stages" },
-    { "Key": "World Conqueror",    "Name": "World Conqueror",    "GamerScore": 40, "Description": "Unlock first 100 stages" },
-    { "Key": "Black Silver",       "Name": "Black Silver",       "GamerScore": 25, "Description": "Unlock 11 AM dot" },
-    { "Key": "Golden Golden",      "Name": "Golden Golden",      "GamerScore": 40, "Description": "Unlock 12 AM dot" },
-    { "Key": "Smash Them All",     "Name": "Smash Them All",     "GamerScore": 10, "Description": "Smash the dot 3 times" },
-    { "Key": "Fly Me To The Moon", "Name": "Fly Me To The Moon", "GamerScore": 10, "Description": "Fly the dot 2 times" },
-    { "Key": "Master Of Swap",     "Name": "Master Of Swap",     "GamerScore": 10, "Description": "Swap the dot 1 times" }
+    { "Key": "Adventurer",         "Name": "Adventurer",         "GamerScore": 25, "Icon": "adventurer.png", "Description": "Unlock first 20 stages" },
+    { "Key": "Explorer",           "Name": "Explorer",           "GamerScore": 40, "Icon": "explorer.png", "Description": "Unlock first 60 stages" },
+    { "Key": "World Conqueror",    "Name": "World Conqueror",    "GamerScore": 40, "Icon": "worldconqueror.png", "Description": "Unlock first 100 stages" },
+    { "Key": "Black Silver",       "Name": "Black Silver",       "GamerScore": 25, "Icon": "blacksilver.png", "Description": "Unlock 11 AM dot" },
+    { "Key": "Golden Golden",      "Name": "Golden Golden",      "GamerScore": 40, "Icon": "goldengolden.png", "Description": "Unlock 12 AM dot" },
+    { "Key": "Smash Them All",     "Name": "Smash Them All",     "GamerScore": 10, "Icon": "smashthemall.png", "Description": "Smash the dot 3 times" },
+    { "Key": "Fly Me To The Moon", "Name": "Fly Me To The Moon", "GamerScore": 10, "Icon": "flymetothemoon.png", "Description": "Fly the dot 2 times" },
+    { "Key": "Master Of Swap",     "Name": "Master Of Swap",     "GamerScore": 10, "Icon": "masterofswap.png", "Description": "Swap the dot 1 times" }
   ]
 }
+

@@ -3,19 +3,20 @@
   "Description": "Namco's rolling game: push a sticky ball around a scene, picking up everything smaller than itself until it is enormous.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "Katamari_1",  "Name": "Milk Bottle",                     "GamerScore":  1, "Description": "Roll up Milk Bottle" },
-    { "Key": "Katamari_2",  "Name": "Glue",                            "GamerScore":  2, "Description": "Roll up Glue" },
-    { "Key": "Katamari_3",  "Name": "Strawberry Shortcake",            "GamerScore":  5, "Description": "Roll up Strawberry Shortcake" },
-    { "Key": "Katamari_4",  "Name": "Seat Cushion",                    "GamerScore": 15, "Description": "Roll up Seat Cushion" },
-    { "Key": "Katamari_5",  "Name": "Champion's Belt",                 "GamerScore":  1, "Description": "Roll up Champion's Belt" },
-    { "Key": "Katamari_6",  "Name": "Base",                            "GamerScore":  5, "Description": "Roll up Base" },
-    { "Key": "Katamari_7",  "Name": "Broadcast Van",                   "GamerScore":  1, "Description": "Roll up Broadcast Van" },
-    { "Key": "Katamari_8",  "Name": "Astro Jet",                       "GamerScore":  5, "Description": "Roll up Astro Jet" },
-    { "Key": "Katamari_9",  "Name": "Big Pyramid",                     "GamerScore": 20, "Description": "Roll up Big Pyramid" },
-    { "Key": "Katamari_10", "Name": "Pink Bull",                       "GamerScore":  5, "Description": "Roll up Pink Bull" },
-    { "Key": "Katamari_11", "Name": "Yellow Sub",                      "GamerScore":  5, "Description": "Roll up Yellow Sub" },
-    { "Key": "Katamari_12", "Name": "Blue Truck",                      "GamerScore": 10, "Description": "Roll up blue Truck" },
-    { "Key": "Katamari_13", "Name": "Completed exquisite collection!", "GamerScore": 110, "Description": "Completed exquisite collection!" },
-    { "Key": "Katamari_14", "Name": "Squash",                          "GamerScore": 15, "Description": "Roll up Squash" }
+    { "Key": "Katamari_1",  "Name": "Milk Bottle",                     "GamerScore":  1, "Icon": "milkbottle.png", "Description": "Roll up Milk Bottle" },
+    { "Key": "Katamari_2",  "Name": "Glue",                            "GamerScore":  2, "Icon": "glue.png", "Description": "Roll up Glue" },
+    { "Key": "Katamari_3",  "Name": "Strawberry Shortcake",            "GamerScore":  5, "Icon": "strawberryshortcake.png", "Description": "Roll up Strawberry Shortcake" },
+    { "Key": "Katamari_4",  "Name": "Seat Cushion",                    "GamerScore": 15, "Icon": "seatcushion.png", "Description": "Roll up Seat Cushion" },
+    { "Key": "Katamari_5",  "Name": "Champion's Belt",                 "GamerScore":  1, "Icon": "championsbelt.png", "Description": "Roll up Champion's Belt" },
+    { "Key": "Katamari_6",  "Name": "Base",                            "GamerScore":  5, "Icon": "base.png", "Description": "Roll up Base" },
+    { "Key": "Katamari_7",  "Name": "Broadcast Van",                   "GamerScore":  1, "Icon": "broadcastvan.png", "Description": "Roll up Broadcast Van" },
+    { "Key": "Katamari_8",  "Name": "Astro Jet",                       "GamerScore":  5, "Icon": "astrojet.png", "Description": "Roll up Astro Jet" },
+    { "Key": "Katamari_9",  "Name": "Big Pyramid",                     "GamerScore": 20, "Icon": "bigpyramid.png", "Description": "Roll up Big Pyramid" },
+    { "Key": "Katamari_10", "Name": "Pink Bull",                       "GamerScore":  5, "Icon": "pinkbull.png", "Description": "Roll up Pink Bull" },
+    { "Key": "Katamari_11", "Name": "Yellow Sub",                      "GamerScore":  5, "Icon": "yellowsub.png", "Description": "Roll up Yellow Sub" },
+    { "Key": "Katamari_12", "Name": "Blue Truck",                      "GamerScore": 10, "Icon": "bluetruck.png", "Description": "Roll up blue Truck" },
+    { "Key": "Katamari_13", "Name": "Completed exquisite collection!", "GamerScore": 110, "Icon": "completedexquisitecollection.png", "Description": "Completed exquisite collection!" },
+    { "Key": "Katamari_14", "Name": "Squash",                          "GamerScore": 15, "Icon": "squash.png", "Description": "Roll up Squash" }
   ]
 }
+

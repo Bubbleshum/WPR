@@ -3,19 +3,20 @@
   "Description": "A brick-breaking game with power-ups, boss fights and a science-fiction setting.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "iamspartacus",    "Name": "I Am Spartacus",   "GamerScore":  5, "Description": "Defeat the Centurion" },
-    { "Key": "seriousskills",   "Name": "Serious Skills",   "GamerScore": 15, "Description": "Play for 2 minutes without dying" },
-    { "Key": "handsfree",       "Name": "Hands Free",       "GamerScore": 10, "Description": "IonBall is in play for more than 30 seconds without touching the bat" },
-    { "Key": "doubletime",      "Name": "Double Time",      "GamerScore": 10, "Description": "Hold Fastball and Multiball mutators at the same time" },
-    { "Key": "triplethreat",    "Name": "Triple Threat",    "GamerScore": 10, "Description": "Have three balls in play at the same time" },
-    { "Key": "pointbreak",      "Name": "Point Break",      "GamerScore": 10, "Description": "Get x5 score multiplier" },
-    { "Key": "eightball",       "Name": "Eight Ball",       "GamerScore": 10, "Description": "Destroy 8 bricks in a row without the ball touching the platform" },
-    { "Key": "wipeout",         "Name": "Wipeout",          "GamerScore":  5, "Description": "Destroy all remaining bricks with bomb mutator" },
-    { "Key": "brassballs",      "Name": "Brass Balls",      "GamerScore": 10, "Description": "Max out the ball power upgrade" },
-    { "Key": "ionball",         "Name": "IONBALL",          "GamerScore": 10, "Description": "Max out the IonBall upgrade" },
-    { "Key": "sizematters",     "Name": "Size Matters",     "GamerScore": 10, "Description": "Max out bat growth upgrade" },
-    { "Key": "spreaditout",     "Name": "Spread it out",    "GamerScore": 15, "Description": "Apply every upgrade at least once in a game" },
-    { "Key": "recordbreaker",   "Name": "Record Breaker",   "GamerScore": 50, "Description": "Score 1000000 points" },
-    { "Key": "defeatleviathan", "Name": "Defeat Leviathan", "GamerScore": 30, "Description": "Defeat the final boss" }
+    { "Key": "iamspartacus",    "Name": "I Am Spartacus",   "GamerScore":  5, "Icon": "iamspartacus.png", "Description": "Defeat the Centurion" },
+    { "Key": "seriousskills",   "Name": "Serious Skills",   "GamerScore": 15, "Icon": "seriousskills.png", "Description": "Play for 2 minutes without dying" },
+    { "Key": "handsfree",       "Name": "Hands Free",       "GamerScore": 10, "Icon": "handsfree.png", "Description": "IonBall is in play for more than 30 seconds without touching the bat" },
+    { "Key": "doubletime",      "Name": "Double Time",      "GamerScore": 10, "Icon": "doubletime.png", "Description": "Hold Fastball and Multiball mutators at the same time" },
+    { "Key": "triplethreat",    "Name": "Triple Threat",    "GamerScore": 10, "Icon": "triplethreat.png", "Description": "Have three balls in play at the same time" },
+    { "Key": "pointbreak",      "Name": "Point Break",      "GamerScore": 10, "Icon": "pointbreak.png", "Description": "Get x5 score multiplier" },
+    { "Key": "eightball",       "Name": "Eight Ball",       "GamerScore": 10, "Icon": "eightball.png", "Description": "Destroy 8 bricks in a row without the ball touching the platform" },
+    { "Key": "wipeout",         "Name": "Wipeout",          "GamerScore":  5, "Icon": "wipeout.png", "Description": "Destroy all remaining bricks with bomb mutator" },
+    { "Key": "brassballs",      "Name": "Brass Balls",      "GamerScore": 10, "Icon": "brassballs.png", "Description": "Max out the ball power upgrade" },
+    { "Key": "ionball",         "Name": "IONBALL",          "GamerScore": 10, "Icon": "ionball.png", "Description": "Max out the IonBall upgrade" },
+    { "Key": "sizematters",     "Name": "Size Matters",     "GamerScore": 10, "Icon": "sizematters.png", "Description": "Max out bat growth upgrade" },
+    { "Key": "spreaditout",     "Name": "Spread it out",    "GamerScore": 15, "Icon": "spreaditout.png", "Description": "Apply every upgrade at least once in a game" },
+    { "Key": "recordbreaker",   "Name": "Record Breaker",   "GamerScore": 50, "Icon": "recordbreaker.png", "Description": "Score 1000000 points" },
+    { "Key": "defeatleviathan", "Name": "Defeat Leviathan", "GamerScore": 30, "Icon": "defeatleviathan.png", "Description": "Defeat the final boss" }
   ]
 }
+

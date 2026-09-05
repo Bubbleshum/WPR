@@ -3,17 +3,20 @@
   "Description": "Fly a butterfly through flower-filled stages, dodging the carnivorous plants, frogs and carp that would rather it did not pass.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "Chrysalis",     "Name": "Chrysalis",         "GamerScore":  5, "Description": "Clear the tutorial stage." },
-    { "Key": "Poppies",       "GamerScore":  0 },
+    { "Key": "Chrysalis",     "Name": "Chrysalis",         "GamerScore":  5, "Icon": "chrysalis.png", "Description": "Clear the tutorial stage." },
+    { "Key": "Poppies",       "GamerScore":  0, "Icon": "poppies.png" },
     { "Key": "Daisies",       "GamerScore":  0 },
     { "Key": "Nenuphars",     "GamerScore":  0 },
-    { "Key": "FeedMeSeymour", "Name": "Feed me, Seymour!", "GamerScore": 10, "Description": "Dodge more than 100 carnivorous plants." },
-    { "Key": "FrogKiss",      "Name": "Frog Kiss",         "GamerScore": 10, "Description": "Dodge more than 100 frogs." },
-    { "Key": "Jaws",          "Name": "Jaws",              "GamerScore": 10, "Description": "Dodge more than 100 Koi carps." },
-    { "Key": "GreenThumb",    "Name": "Green Thumb",       "GamerScore": 20, "Description": "Dodge more than 20 carnivorous plants without getting hit." },
+    { "Key": "FeedMeSeymour", "Name": "Feed me, Seymour!", "GamerScore": 10, "Icon": "feedmeseymour.png", "Description": "Dodge more than 100 carnivorous plants." },
+    { "Key": "FrogKiss",      "Name": "Frog Kiss",         "GamerScore": 10, "Icon": "frogkiss.png", "Description": "Dodge more than 100 frogs." },
+    { "Key": "Jaws",          "Name": "Jaws",              "GamerScore": 10, "Icon": "jaws.png", "Description": "Dodge more than 100 Koi carps." },
+    { "Key": "GreenThumb",    "Name": "Green Thumb",       "GamerScore": 20, "Icon": "greenthumb.png", "Description": "Dodge more than 20 carnivorous plants without getting hit." },
     { "Key": "DontLickFrogs", "GamerScore":  0 },
-    { "Key": "LifeAquatic",   "GamerScore":  0 },
-    { "Key": "MarcoPollen",   "Name": "Marco Pollen",      "GamerScore": 30, "Description": "Clear all stages." },
-    { "Key": "Monarch",       "GamerScore":  0 }
+    { "Key": "LifeAquatic",   "GamerScore":  0, "Icon": "lifeaquatic.png" },
+    { "Key": "MarcoPollen",   "Name": "Marco Pollen",      "GamerScore": 30, "Icon": "marcopollen.png", "Description": "Clear all stages." },
+    { "Key": "Monarch",       "GamerScore":  0, "Icon": "monarch.png" }
   ]
 }
+
+
+

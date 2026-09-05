@@ -3,17 +3,18 @@
   "KeySource": "xlast",
   "Description": "Rather than a straight port or an emulated title, this version of the 1993 Sonic CD is a completely redone edition for modern platforms, based on a fan-made Retro engine.",
   "Achievements": [
-    { "Key": "88 Miles Per Hour",      "Name": "88 Miles Per Hour",      "GamerScore":  5, "Description": "Travel through time." },
-    { "Key": "Just One Hug is Enough", "Name": "Just One Hug is Enough", "GamerScore":  5, "Description": "Get a hug from Amy." },
-    { "Key": "Paradise Found",         "Name": "Paradise Found",         "GamerScore":  5, "Description": "Complete a Zone in the Good Future." },
-    { "Key": "Take the High Road",     "Name": "Take the High Road",     "GamerScore": 10, "Description": "Pass the upper signpost in Collision Chaos Zone 2." },
-    { "Key": "King of the Rings",      "Name": "King of the Rings",      "GamerScore": 10, "Description": "Collect 200 Rings." },
-    { "Key": "Statue Saviour",         "Name": "Statue Saviour",         "GamerScore": 10, "Description": "Find the angel statue in Wacky Workbench." },
-    { "Key": "Heavy Metal",            "Name": "Heavy Metal",            "GamerScore": 15, "Description": "Defeat Metal Sonic without getting hurt." },
-    { "Key": "All Stages Clear",       "Name": "All Stages Clear!",      "GamerScore": 15, "Description": "Finish the game." },
-    { "Key": "Treasure Hunter",        "Name": "Treasure Hunter",        "GamerScore": 30, "Description": "Collect all the Time Stones." },
-    { "Key": "Dr Eggman Got Served",   "Name": "Dr. Eggman Got Served",  "GamerScore": 20, "Description": "Destroy Dr. Eggman's final machine." },
-    { "Key": "Just In Time",           "Name": "Just In Time!",          "GamerScore": 35, "Description": "Complete the Time Attack mode in under 25 minutes." },
-    { "Key": "Saviour of the Planet",  "Name": "Saviour of the Planet",  "GamerScore": 40, "Description": "Destroy all the robot transporters and Metal Sonic holograms in the past." }
+    { "Key": "88 Miles Per Hour",      "Name": "88 Miles Per Hour",      "GamerScore":  5, "Icon": "88milesperhour.png", "Description": "Travel through time." },
+    { "Key": "Just One Hug is Enough", "Name": "Just One Hug is Enough", "GamerScore":  5, "Icon": "justonehugisenough.png", "Description": "Get a hug from Amy." },
+    { "Key": "Paradise Found",         "Name": "Paradise Found",         "GamerScore":  5, "Icon": "paradisefound.png", "Description": "Complete a Zone in the Good Future." },
+    { "Key": "Take the High Road",     "Name": "Take the High Road",     "GamerScore": 10, "Icon": "takethehighroad.png", "Description": "Pass the upper signpost in Collision Chaos Zone 2." },
+    { "Key": "King of the Rings",      "Name": "King of the Rings",      "GamerScore": 10, "Icon": "kingoftherings.png", "Description": "Collect 200 Rings." },
+    { "Key": "Statue Saviour",         "Name": "Statue Saviour",         "GamerScore": 10, "Icon": "statuesaviour.png", "Description": "Find the angel statue in Wacky Workbench." },
+    { "Key": "Heavy Metal",            "Name": "Heavy Metal",            "GamerScore": 15, "Icon": "heavymetal.png", "Description": "Defeat Metal Sonic without getting hurt." },
+    { "Key": "All Stages Clear",       "Name": "All Stages Clear!",      "GamerScore": 15, "Icon": "allstagesclear.png", "Description": "Finish the game." },
+    { "Key": "Treasure Hunter",        "Name": "Treasure Hunter",        "GamerScore": 30, "Icon": "treasurehunter.png", "Description": "Collect all the Time Stones." },
+    { "Key": "Dr Eggman Got Served",   "Name": "Dr. Eggman Got Served",  "GamerScore": 20, "Icon": "dreggmangotserved.png", "Description": "Destroy Dr. Eggman's final machine." },
+    { "Key": "Just In Time",           "Name": "Just In Time!",          "GamerScore": 35, "Icon": "justintime.png", "Description": "Complete the Time Attack mode in under 25 minutes." },
+    { "Key": "Saviour of the Planet",  "Name": "Saviour of the Planet",  "GamerScore": 40, "Icon": "saviouroftheplanet.png", "Description": "Destroy all the robot transporters and Metal Sonic holograms in the past." }
   ]
 }
+

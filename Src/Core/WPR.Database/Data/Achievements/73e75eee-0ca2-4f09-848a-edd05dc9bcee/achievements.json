@@ -3,19 +3,20 @@
   "Description": "A stealth puzzle game: draw a path to steal the cheese without walking into a cat's line of sight.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "Credit Reading",          "Name": "Behind the Scenes",       "GamerScore":  5, "Description": "Read the Credits" },
-    { "Key": "Explorer Mouse",          "Name": "Explorer Mouse",          "GamerScore": 10, "Description": "Find a secret level" },
-    { "Key": "Easy Way Out",            "Name": "Easy Way Out",            "GamerScore": 10, "Description": "Find a Hidden level" },
-    { "Key": "What Mouse",              "Name": "What Mouse?",             "GamerScore": 20, "Description": "Complete 20 levels without being seen by Cats" },
-    { "Key": "Philantropist",           "Name": "Philantropist",           "GamerScore": 15, "Description": "Have 25 pieces of cheese stolen" },
-    { "Key": "Boss 1 Crumbs and Traps", "Name": "Boss 1 Crumbs and Traps", "GamerScore": 10, "Description": "Complete 1-Boss With All Cheese Crumbs Collected and Traps Disarmed" },
-    { "Key": "Boss 2 Crumbs and Traps", "Name": "Boss 2 Crumbs and Traps", "GamerScore": 10, "Description": "Complete 2-Boss With All Cheese Crumbs Collected and Traps Disarmed" },
-    { "Key": "Boss 3 Crumbs and Traps", "Name": "Boss 3 Crumbs and Traps", "GamerScore": 10, "Description": "Complete 3-Boss With All Cheese Crumbs Collected and Traps Disarmed" },
-    { "Key": "Boss 4 Crumbs and Traps", "Name": "Boss 4 Crumbs and Traps", "GamerScore": 15, "Description": "Complete 4-Boss With All Cheese Crumbs Collected and Traps Disarmed" },
-    { "Key": "Boss 5 Crumbs and Traps", "Name": "Boss 5 Crumbs and Traps", "GamerScore": 15, "Description": "Complete 5-Boss With All Cheese Crumbs Collected and Traps Disarmed" },
-    { "Key": "Boss 6 Crumbs and Traps", "Name": "Boss 6 Crumbs and Traps", "GamerScore": 20, "Description": "Complete 1-Boss With All Cheese Crumbs Collected and Traps Disarmed" },
-    { "Key": "Pretty Good",             "Name": "Pretty Good",             "GamerScore": 15, "Description": "Achieve one Goal in every Level" },
-    { "Key": "Top Work",                "Name": "Top Work",                "GamerScore": 20, "Description": "Achieve two Goals in every Level" },
-    { "Key": "Super Achiever",          "Name": "Super Achiever",          "GamerScore": 25, "Description": "Achieve all three Goals in every Level" }
+    { "Key": "Credit Reading",          "Name": "Behind the Scenes",       "GamerScore":  5, "Icon": "behindthescenes.png", "Description": "Read the Credits" },
+    { "Key": "Explorer Mouse",          "Name": "Explorer Mouse",          "GamerScore": 10, "Icon": "explorermouse.png", "Description": "Find a secret level" },
+    { "Key": "Easy Way Out",            "Name": "Easy Way Out",            "GamerScore": 10, "Icon": "easywayout.png", "Description": "Find a Hidden level" },
+    { "Key": "What Mouse",              "Name": "What Mouse?",             "GamerScore": 20, "Icon": "whatmouse.png", "Description": "Complete 20 levels without being seen by Cats" },
+    { "Key": "Philantropist",           "Name": "Philantropist",           "GamerScore": 15, "Icon": "philantropist.png", "Description": "Have 25 pieces of cheese stolen" },
+    { "Key": "Boss 1 Crumbs and Traps", "Name": "Boss 1 Crumbs and Traps", "GamerScore": 10, "Icon": "boss1crumbsandtraps.png", "Description": "Complete 1-Boss With All Cheese Crumbs Collected and Traps Disarmed" },
+    { "Key": "Boss 2 Crumbs and Traps", "Name": "Boss 2 Crumbs and Traps", "GamerScore": 10, "Icon": "boss2crumbsandtraps.png", "Description": "Complete 2-Boss With All Cheese Crumbs Collected and Traps Disarmed" },
+    { "Key": "Boss 3 Crumbs and Traps", "Name": "Boss 3 Crumbs and Traps", "GamerScore": 10, "Icon": "boss3crumbsandtraps.png", "Description": "Complete 3-Boss With All Cheese Crumbs Collected and Traps Disarmed" },
+    { "Key": "Boss 4 Crumbs and Traps", "Name": "Boss 4 Crumbs and Traps", "GamerScore": 15, "Icon": "boss4crumbsandtraps.png", "Description": "Complete 4-Boss With All Cheese Crumbs Collected and Traps Disarmed" },
+    { "Key": "Boss 5 Crumbs and Traps", "Name": "Boss 5 Crumbs and Traps", "GamerScore": 15, "Icon": "boss5crumbsandtraps.png", "Description": "Complete 5-Boss With All Cheese Crumbs Collected and Traps Disarmed" },
+    { "Key": "Boss 6 Crumbs and Traps", "Name": "Boss 6 Crumbs and Traps", "GamerScore": 20, "Icon": "boss6crumbsandtraps.png", "Description": "Complete 1-Boss With All Cheese Crumbs Collected and Traps Disarmed" },
+    { "Key": "Pretty Good",             "Name": "Pretty Good",             "GamerScore": 15, "Icon": "prettygood.png", "Description": "Achieve one Goal in every Level" },
+    { "Key": "Top Work",                "Name": "Top Work",                "GamerScore": 20, "Icon": "topwork.png", "Description": "Achieve two Goals in every Level" },
+    { "Key": "Super Achiever",          "Name": "Super Achiever",          "GamerScore": 25, "Icon": "superachiever.png", "Description": "Achieve all three Goals in every Level" }
   ]
 }
+

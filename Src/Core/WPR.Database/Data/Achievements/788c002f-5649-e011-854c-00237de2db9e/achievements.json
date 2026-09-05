@@ -2,16 +2,17 @@
   "Name": "Fable: Coin Golf",
   "Description": "Ideaworks' pinball-golf spin-off of Fable III. Putt a coin through 45 courses across Albion, felling trees, squashing enemies and building bridges with three power-ups, then send the gold you win over to your Fable III save.",
   "Achievements": [
-    { "Key": "complete_chap1",  "Name": "Ben's Burden",           "GamerScore":  5, "Description": "Complete chapter 1 of Coin Golf" },
-    { "Key": "complete_chap2",  "Name": "Jim's Journey",          "GamerScore":  5, "Description": "Complete chapter 2 of Coin Golf" },
-    { "Key": "complete_chap3",  "Name": "Mark's Reign of Malice", "GamerScore": 10, "Description": "Complete chapter 3 of Coin Golf" },
-    { "Key": "master_powerups", "Name": "Super Mini Hero",        "GamerScore":  5, "Description": "Use all three power-ups" },
-    { "Key": "power_trees",     "Name": "Woodchuck",              "GamerScore": 15, "Description": "Chop 7 trees in a single shot" },
-    { "Key": "power_kill",      "Name": "Efficiency",             "GamerScore": 15, "Description": "Kill 6 enemies in a single shot" },
-    { "Key": "power_build",     "Name": "Brunel's Apprentice",    "GamerScore": 10, "Description": "Build 3 bridges in a single shot" },
-    { "Key": "all_silver",      "Name": "Silver Medallist",       "GamerScore": 40, "Description": "Unlock Silver medals on all 45 levels" },
-    { "Key": "all_gold",        "Name": "Gold Medallist",         "GamerScore": 75, "Description": "Unlock Gold medals on all 45 levels" },
-    { "Key": "sent_gold",       "Name": "Show Me the Money",      "GamerScore":  5, "Description": "Send gold from Coin Golf to Fable III" },
-    { "Key": "hole_in_one",     "Name": "Ace!",                   "GamerScore": 15, "Description": "Complete a level with a Hole-in-One" }
+    { "Key": "complete_chap1",  "Name": "Ben's Burden",           "GamerScore":  5, "Icon": "bensburden.png", "Description": "Complete chapter 1 of Coin Golf" },
+    { "Key": "complete_chap2",  "Name": "Jim's Journey",          "GamerScore":  5, "Icon": "jimsjourney.png", "Description": "Complete chapter 2 of Coin Golf" },
+    { "Key": "complete_chap3",  "Name": "Mark's Reign of Malice", "GamerScore": 10, "Icon": "marksreignofmalice.png", "Description": "Complete chapter 3 of Coin Golf" },
+    { "Key": "master_powerups", "Name": "Super Mini Hero",        "GamerScore":  5, "Icon": "superminihero.png", "Description": "Use all three power-ups" },
+    { "Key": "power_trees",     "Name": "Woodchuck",              "GamerScore": 15, "Icon": "woodchuck.png", "Description": "Chop 7 trees in a single shot" },
+    { "Key": "power_kill",      "Name": "Efficiency",             "GamerScore": 15, "Icon": "efficiency.png", "Description": "Kill 6 enemies in a single shot" },
+    { "Key": "power_build",     "Name": "Brunel's Apprentice",    "GamerScore": 10, "Icon": "brunelsapprentice.png", "Description": "Build 3 bridges in a single shot" },
+    { "Key": "all_silver",      "Name": "Silver Medallist",       "GamerScore": 40, "Icon": "silvermedallist.png", "Description": "Unlock Silver medals on all 45 levels" },
+    { "Key": "all_gold",        "Name": "Gold Medallist",         "GamerScore": 75, "Icon": "goldmedallist.png", "Description": "Unlock Gold medals on all 45 levels" },
+    { "Key": "sent_gold",       "Name": "Show Me the Money",      "GamerScore":  5, "Icon": "showmethemoney.png", "Description": "Send gold from Coin Golf to Fable III" },
+    { "Key": "hole_in_one",     "Name": "Ace!",                   "GamerScore": 15, "Icon": "ace.png", "Description": "Complete a level with a Hole-in-One" }
   ]
 }
+

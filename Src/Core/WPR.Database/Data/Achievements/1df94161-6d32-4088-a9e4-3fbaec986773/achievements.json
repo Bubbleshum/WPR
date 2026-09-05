@@ -3,20 +3,21 @@
   "Description": "A running puzzle played on a block world you can rotate: swipe to turn, jump the gaps and drop through portals, in either the flat or the three-dimensional view.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "viewer_3D",                 "Name": "3D viewer",                 "GamerScore":  5, "Description": "Tap 3D view button" },
-    { "Key": "seeker_3D",                 "Name": "3D seeker",                 "GamerScore":  5, "Description": "Slide your finger down the screen while in 2D view" },
-    { "Key": "Curious_3D_viewer",         "Name": "Curious 3D viewer",         "GamerScore": 10, "Description": "Look underneath the blocks" },
-    { "Key": "Turns_specialist",          "Name": "Turns specialist",          "GamerScore": 10, "Description": "Make 500 turns by swiping" },
-    { "Key": "Turns_master",              "Name": "Turns master",              "GamerScore": 15, "Description": "Make 1000 turns by swiping" },
-    { "Key": "Skilled_jumper",            "Name": "Skilled jumper",            "GamerScore": 10, "Description": "Make the character to jump 100 times" },
-    { "Key": "Master_jumper",             "Name": "Master jumper",             "GamerScore": 15, "Description": "Make the character to jump 200 times" },
-    { "Key": "Skilled_teleporter",        "Name": "Skilled teleporter",        "GamerScore": 10, "Description": "Pass through 50 portals" },
-    { "Key": "Master_teleporter",         "Name": "Master teleporter",         "GamerScore": 15, "Description": "Pass through 100 portals" },
-    { "Key": "Good_hunter",               "Name": "Good crystals hunter",      "GamerScore":  5, "Description": "Collect 50 crystals" },
-    { "Key": "Excellent_hunter",          "Name": "Excellent crystals hunter", "GamerScore": 10, "Description": "Collect 100 crystals" },
-    { "Key": "Master_hunter",             "Name": "Master crystals hunter",    "GamerScore": 15, "Description": "Collect 200 crystals" },
-    { "Key": "Flowers_planet_explorer",   "Name": "Flowers planet explorer",   "GamerScore": 25, "Description": "Complete all Flowers planet levels" },
-    { "Key": "Desert_planet_explorer",    "Name": "Desert planet explorer",    "GamerScore": 25, "Description": "Complete all Desert planet levels" },
-    { "Key": "Mushrooms_planet_explorer", "Name": "Mushroom planet explorer",  "GamerScore": 25, "Description": "Complete all Mushrooms planet levels" }
+    { "Key": "viewer_3D",                 "Name": "3D viewer",                 "GamerScore":  5, "Icon": "3dviewer.png", "Description": "Tap 3D view button" },
+    { "Key": "seeker_3D",                 "Name": "3D seeker",                 "GamerScore":  5, "Icon": "3dseeker.png", "Description": "Slide your finger down the screen while in 2D view" },
+    { "Key": "Curious_3D_viewer",         "Name": "Curious 3D viewer",         "GamerScore": 10, "Icon": "curious3dviewer.png", "Description": "Look underneath the blocks" },
+    { "Key": "Turns_specialist",          "Name": "Turns specialist",          "GamerScore": 10, "Icon": "turnsspecialist.png", "Description": "Make 500 turns by swiping" },
+    { "Key": "Turns_master",              "Name": "Turns master",              "GamerScore": 15, "Icon": "turnsmaster.png", "Description": "Make 1000 turns by swiping" },
+    { "Key": "Skilled_jumper",            "Name": "Skilled jumper",            "GamerScore": 10, "Icon": "skilledjumper.png", "Description": "Make the character to jump 100 times" },
+    { "Key": "Master_jumper",             "Name": "Master jumper",             "GamerScore": 15, "Icon": "masterjumper.png", "Description": "Make the character to jump 200 times" },
+    { "Key": "Skilled_teleporter",        "Name": "Skilled teleporter",        "GamerScore": 10, "Icon": "skilledteleporter.png", "Description": "Pass through 50 portals" },
+    { "Key": "Master_teleporter",         "Name": "Master teleporter",         "GamerScore": 15, "Icon": "masterteleporter.png", "Description": "Pass through 100 portals" },
+    { "Key": "Good_hunter",               "Name": "Good crystals hunter",      "GamerScore":  5, "Icon": "goodcrystalshunter.png", "Description": "Collect 50 crystals" },
+    { "Key": "Excellent_hunter",          "Name": "Excellent crystals hunter", "GamerScore": 10, "Icon": "excellentcrystalshunter.png", "Description": "Collect 100 crystals" },
+    { "Key": "Master_hunter",             "Name": "Master crystals hunter",    "GamerScore": 15, "Icon": "mastercrystalshunter.png", "Description": "Collect 200 crystals" },
+    { "Key": "Flowers_planet_explorer",   "Name": "Flowers planet explorer",   "GamerScore": 25, "Icon": "flowersplanetexplorer.png", "Description": "Complete all Flowers planet levels" },
+    { "Key": "Desert_planet_explorer",    "Name": "Desert planet explorer",    "GamerScore": 25, "Icon": "desertplanetexplorer.png", "Description": "Complete all Desert planet levels" },
+    { "Key": "Mushrooms_planet_explorer", "Name": "Mushroom planet explorer",  "GamerScore": 25, "Icon": "mushroomplanetexplorer.png", "Description": "Complete all Mushrooms planet levels" }
   ]
 }
+

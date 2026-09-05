@@ -11,16 +11,20 @@
     { "Key": "Frenzy30SGold",    "GamerScore":  0 },
     { "Key": "Frenzy60SGold",    "GamerScore":  0 },
     { "Key": "Frenzy90SGold",    "GamerScore":  0 },
-    { "Key": "FrenzyGod",        "Name": "Frenzy God",         "GamerScore": 30, "Description": "Earn 40 gold medals in Frenzy mode" },
-    { "Key": "FrenzySpeedDemon", "Name": "Frenzy Speed Demon", "GamerScore": 10, "Description": "Remove 30 balls within 30 second period in Frenzy mode" },
+    { "Key": "FrenzyGod",        "Name": "Frenzy God",         "GamerScore": 30, "Icon": "frenzygod.png", "Description": "Earn 40 gold medals in Frenzy mode" },
+    { "Key": "FrenzySpeedDemon", "Name": "Frenzy Speed Demon", "GamerScore": 10, "Icon": "frenzyspeeddemon.png", "Description": "Remove 30 balls within 30 second period in Frenzy mode" },
     { "Key": "Arcade200",        "GamerScore":  0 },
     { "Key": "Arcade1000",       "GamerScore":  0 },
     { "Key": "Arcade5000",       "GamerScore":  0 },
     { "Key": "Arcade20000",      "GamerScore":  0 },
     { "Key": "Arcade50000",      "GamerScore":  0 },
-    { "Key": "CHAIN_REACTION",   "Name": "Chain Reaction",     "GamerScore":  5, "Description": "Fling a furball into a line of multiple furballs" },
-    { "Key": "Grinder",          "Name": "Grinder",            "GamerScore":  5, "Description": "Solve a puzzle despite first doing many wrong moves" },
-    { "Key": "OnARoll",          "Name": "On a Roll",          "GamerScore":  5, "Description": "Solve 5 puzzles in a row without making any wrong moves" },
-    { "Key": "Perfectionist",    "Name": "Perfectionist",      "GamerScore": 10, "Description": "Solve 15 puzzles in a row without making any wrong moves" }
+    { "Key": "CHAIN_REACTION",   "Name": "Chain Reaction",     "GamerScore":  5, "Icon": "chainreaction.png", "Description": "Fling a furball into a line of multiple furballs" },
+    { "Key": "Grinder",          "Name": "Grinder",            "GamerScore":  5, "Icon": "grinder.png", "Description": "Solve a puzzle despite first doing many wrong moves" },
+    { "Key": "OnARoll",          "Name": "On a Roll",          "GamerScore":  5, "Icon": "onaroll.png", "Description": "Solve 5 puzzles in a row without making any wrong moves" },
+    { "Key": "Perfectionist",    "Name": "Perfectionist",      "GamerScore": 10, "Icon": "perfectionist.png", "Description": "Solve 15 puzzles in a row without making any wrong moves" }
   ]
 }
+
+
+
+

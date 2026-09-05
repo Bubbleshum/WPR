@@ -2,15 +2,16 @@
   "Name": "Toy Soldiers - Boot Camp",
   "Description": "Tower defence fought with toy soldiers across a tabletop battlefield, with turrets that can be taken over and fired by hand.",
   "Achievements": [
-    { "Key": "TourOfDuty",      "Name": "Tour of Duty",        "GamerScore": 10, "Description": "Play all 3 minigames." },
-    { "Key": "Persistence",     "Name": "Persistence",         "GamerScore": 15, "Description": "Play a minigame 5 times in a row." },
-    { "Key": "Perseverance",    "Name": "Perseverance",        "GamerScore": 20, "Description": "Complete level 2 challenges for all minigames." },
-    { "Key": "DDT",             "Name": "DDT",                 "GamerScore": 30, "Description": "Get a 15x wave combo in Flyswatter." },
-    { "Key": "DropAndGiveMe20", "Name": "Drop and Give Me 20", "GamerScore": 20, "Description": "Shoot down the bugzapper in Flyswatter." },
-    { "Key": "RocketStar",      "Name": "Rocket Star",         "GamerScore": 20, "Description": "Get 4 stars in a row in Thread the Needle." },
-    { "Key": "InTheZone",       "Name": "In The Zone",         "GamerScore": 30, "Description": "Get through 20 rings in one go in Thread the Needle." },
-    { "Key": "ThrillSeeker",    "Name": "Thrill Seeker",       "GamerScore": 15, "Description": "Get a thrill ride in Cardboard Theater." },
-    { "Key": "Firestarter",     "Name": "Firestarter",         "GamerScore": 30, "Description": "Hit the fireplace in Cardboard Theater." },
-    { "Key": "RollCall",        "Name": "Roll Call",           "GamerScore": 10, "Description": "Watch the credits." }
+    { "Key": "TourOfDuty",      "Name": "Tour of Duty",        "GamerScore": 10, "Icon": "tourofduty.png", "Description": "Play all 3 minigames." },
+    { "Key": "Persistence",     "Name": "Persistence",         "GamerScore": 15, "Icon": "persistence.png", "Description": "Play a minigame 5 times in a row." },
+    { "Key": "Perseverance",    "Name": "Perseverance",        "GamerScore": 20, "Icon": "perseverance.png", "Description": "Complete level 2 challenges for all minigames." },
+    { "Key": "DDT",             "Name": "DDT",                 "GamerScore": 30, "Icon": "ddt.png", "Description": "Get a 15x wave combo in Flyswatter." },
+    { "Key": "DropAndGiveMe20", "Name": "Drop and Give Me 20", "GamerScore": 20, "Icon": "dropandgiveme20.png", "Description": "Shoot down the bugzapper in Flyswatter." },
+    { "Key": "RocketStar",      "Name": "Rocket Star",         "GamerScore": 20, "Icon": "rocketstar.png", "Description": "Get 4 stars in a row in Thread the Needle." },
+    { "Key": "InTheZone",       "Name": "In The Zone",         "GamerScore": 30, "Icon": "inthezone.png", "Description": "Get through 20 rings in one go in Thread the Needle." },
+    { "Key": "ThrillSeeker",    "Name": "Thrill Seeker",       "GamerScore": 15, "Icon": "thrillseeker.png", "Description": "Get a thrill ride in Cardboard Theater." },
+    { "Key": "Firestarter",     "Name": "Firestarter",         "GamerScore": 30, "Icon": "firestarter.png", "Description": "Hit the fireplace in Cardboard Theater." },
+    { "Key": "RollCall",        "Name": "Roll Call",           "GamerScore": 10, "Icon": "rollcall.png", "Description": "Watch the credits." }
   ]
 }
+

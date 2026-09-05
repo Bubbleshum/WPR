@@ -7,7 +7,7 @@
     { "Key": "ACHIEVEMENT_COMPLETE_VEGGIES_STAGE2",       "Name": "Fruit Salad Chopped",   "GamerScore": 10, "Icon": "fruit_salad_chopped.png",  "Description": "Completed all levels in Stage 2 Veggie mode" },
     { "Key": "ACHIEVEMENT_COMPLETE_VEGGIES_STAGE3",       "Name": "Wasabi Mashed",         "GamerScore": 10, "Icon": "wasabi_mashed.png",        "Description": "Completed all levels in Stage 3 Veggie mode" },
     { "Key": "ACHIEVEMENT_COMPLETE_VEGGIES_STAGE4",       "Name": "Slice 'em Up Diced",    "GamerScore": 10, "Icon": "slice_em_up_diced.png",    "Description": "Completed all levels in Stage 4 Veggie mode" },
-    { "Key": "ACHIEVEMENT_COMPLETE_FRUITS_STAGE1",        "Name": "Fruit Dice Sliced",     "GamerScore": 10,                                     "Description": "Completed all levels in Stage 1 Fruit mode" },
+    { "Key": "ACHIEVEMENT_COMPLETE_FRUITS_STAGE1",        "Name": "Fruit Dice Sliced",     "GamerScore": 10, "Icon": "fruitdicesliced.png",                                     "Description": "Completed all levels in Stage 1 Fruit mode" },
     { "Key": "ACHIEVEMENT_COMPLETE_FRUITS_STAGE2",        "Name": "Coleslaw Shredded",     "GamerScore": 10, "Icon": "coleslaw_shredded.png",    "Description": "Completed all levels in Stage 2 Fruit mode" },
     { "Key": "ACHIEVEMENT_COMPLETE_FRUITS_STAGE3",        "Name": "Banzai Mashed",         "GamerScore": 10, "Icon": "banzai_mashed.png",        "Description": "Completed all levels in Stage 3 Fruit mode" },
     { "Key": "ACHIEVEMENT_COMPLETE_FRUITS_STAGE4",        "Name": "Peel 'em Down Slammed", "GamerScore": 10, "Icon": "peel_em_down_slammed.png", "Description": "Completed all levels in Stage 4 Fruit mode" },
@@ -24,3 +24,4 @@
     { "Key": "ACHIEVEMENT_DESTRUCTION_80",                "Name": "The Destroyer",         "GamerScore": 20, "Icon": "the_destroyer.png",        "Description": "Destroyed 80% of the level scene" }
   ]
 }
+

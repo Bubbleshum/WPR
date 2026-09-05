@@ -3,20 +3,21 @@
   "Description": "A time-management farm game: feed animals, gather produce, process it and get it to market before it spoils.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "AwardsFastProduct",   "Name": "Elbow Grease",      "GamerScore": 10, "Description": "For expedient production." },
-    { "Key": "AwardsBestTime",      "Name": "Front Runner",      "GamerScore": 10, "Description": "For completing the level in record time." },
-    { "Key": "Awards300Products",   "Name": "Eager Beaver",      "GamerScore": 10, "Description": "For collecting 300 products." },
-    { "Key": "AwardsWithoutClick",  "Name": "Make or Break",     "GamerScore": 10, "Description": "For completing a level without tapping any products or bears." },
-    { "Key": "AwardsAllUpgrades",   "Name": "Ace of Base",       "GamerScore": 20, "Description": "For purchasing every upgrade." },
-    { "Key": "AwardsAllBears",      "Name": "Top Dog",           "GamerScore": 10, "Description": "For catching every bear on a level using dogs." },
-    { "Key": "AwardsMillione",      "Name": "Wealthy and Sound", "GamerScore": 10, "Description": "For saving one million coins!" },
-    { "Key": "AwardsAllAwards",     "Name": "Moment of Truth",   "GamerScore": 30, "Description": "For collecting every award." },
-    { "Key": "AwardsAllDepot",      "Name": "Place in the Sun",  "GamerScore": 10, "Description": "For filling every slot in the warehouse." },
-    { "Key": "AwardsFlyingProduct", "Name": "Stroke of Luck",    "GamerScore": 10, "Description": "For catching falling products." },
-    { "Key": "AwardsWithoutHint",   "Name": "Sink or Swim",      "GamerScore": 10, "Description": "For completing a level without using any tips." },
-    { "Key": "Awards10Levels",      "Name": "Pig`s Back",        "GamerScore": 10, "Description": "For beating 10 levels without losing a single animal." },
-    { "Key": "AwardsAllLevels",     "Name": "Win-Win",           "GamerScore": 10, "Description": "For beating every level." },
-    { "Key": "AwardsSlowly",        "Name": "Murphy's Law",      "GamerScore": 10, "Description": "For deliberation." },
-    { "Key": "AwardsAllLevelsGold", "Name": "Golden Goose",      "GamerScore": 30, "Description": "For earning a Gold ranking on every level." }
+    { "Key": "AwardsFastProduct",   "Name": "Elbow Grease",      "GamerScore": 10, "Icon": "elbowgrease.png", "Description": "For expedient production." },
+    { "Key": "AwardsBestTime",      "Name": "Front Runner",      "GamerScore": 10, "Icon": "frontrunner.png", "Description": "For completing the level in record time." },
+    { "Key": "Awards300Products",   "Name": "Eager Beaver",      "GamerScore": 10, "Icon": "eagerbeaver.png", "Description": "For collecting 300 products." },
+    { "Key": "AwardsWithoutClick",  "Name": "Make or Break",     "GamerScore": 10, "Icon": "makeorbreak.png", "Description": "For completing a level without tapping any products or bears." },
+    { "Key": "AwardsAllUpgrades",   "Name": "Ace of Base",       "GamerScore": 20, "Icon": "aceofbase.png", "Description": "For purchasing every upgrade." },
+    { "Key": "AwardsAllBears",      "Name": "Top Dog",           "GamerScore": 10, "Icon": "topdog.png", "Description": "For catching every bear on a level using dogs." },
+    { "Key": "AwardsMillione",      "Name": "Wealthy and Sound", "GamerScore": 10, "Icon": "wealthyandsound.png", "Description": "For saving one million coins!" },
+    { "Key": "AwardsAllAwards",     "Name": "Moment of Truth",   "GamerScore": 30, "Icon": "momentoftruth.png", "Description": "For collecting every award." },
+    { "Key": "AwardsAllDepot",      "Name": "Place in the Sun",  "GamerScore": 10, "Icon": "placeinthesun.png", "Description": "For filling every slot in the warehouse." },
+    { "Key": "AwardsFlyingProduct", "Name": "Stroke of Luck",    "GamerScore": 10, "Icon": "strokeofluck.png", "Description": "For catching falling products." },
+    { "Key": "AwardsWithoutHint",   "Name": "Sink or Swim",      "GamerScore": 10, "Icon": "sinkorswim.png", "Description": "For completing a level without using any tips." },
+    { "Key": "Awards10Levels",      "Name": "Pig`s Back",        "GamerScore": 10, "Icon": "pigsback.png", "Description": "For beating 10 levels without losing a single animal." },
+    { "Key": "AwardsAllLevels",     "Name": "Win-Win",           "GamerScore": 10, "Icon": "winwin.png", "Description": "For beating every level." },
+    { "Key": "AwardsSlowly",        "Name": "Murphy's Law",      "GamerScore": 10, "Icon": "murphyslaw.png", "Description": "For deliberation." },
+    { "Key": "AwardsAllLevelsGold", "Name": "Golden Goose",      "GamerScore": 30, "Icon": "goldengoose.png", "Description": "For earning a Gold ranking on every level." }
   ]
 }
+

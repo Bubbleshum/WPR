@@ -3,21 +3,22 @@
   "Description": "A Day-of-the-Dead action game about freeing lost souls, ranked level by level and broken up by boss fights.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "Ach1Exp",  "Name": "First steps",                 "GamerScore":  5, "Description": "Got A or S Rank" },
-    { "Key": "Ach2Exp",  "Name": "Those dear delicious ravens", "GamerScore": 20, "Description": "Got all the ravens" },
-    { "Key": "Ach3Exp",  "Name": "A scrawny harvest",           "GamerScore":  5, "Description": "10 freed Souls" },
-    { "Key": "Ach4Exp",  "Name": "Crab cage",                   "GamerScore":  5, "Description": "Me-Crab beaten" },
-    { "Key": "Ach5Exp",  "Name": "Leave in peace",              "GamerScore":  5, "Description": "1 freed Lost Soul" },
-    { "Key": "Ach6Exp",  "Name": "My name is Nobody",           "GamerScore": 10, "Description": "Cyclops beaten" },
-    { "Key": "Ach7Exp",  "Name": "Never Again.",                "GamerScore": 10, "Description": "Mech-Ange beaten" },
-    { "Key": "Ach8Exp",  "Name": "An acceptable harvest",       "GamerScore": 10, "Description": "50 freed souls" },
-    { "Key": "Ach9Exp",  "Name": "Emissary wannabe",            "GamerScore": 10, "Description": "Got 20 A or S Ranks" },
-    { "Key": "Ach10Exp", "Name": "Collateral damage",           "GamerScore": 10, "Description": "20 corrupted Souls" },
-    { "Key": "Ach11Exp", "Name": "First collect the weeds",     "GamerScore": 10, "Description": "30 freed Lost Souls" },
-    { "Key": "Ach12Exp", "Name": "Deus Ex Machina",             "GamerScore": 20, "Description": "You let the Scientist escape…" },
-    { "Key": "Ach13Exp", "Name": "Combine harvester",           "GamerScore": 20, "Description": "300 freed Souls" },
-    { "Key": "Ach14Exp", "Name": "Almost perfect",              "GamerScore": 20, "Description": "Got 25 S Ranks" },
-    { "Key": "Ach15Exp", "Name": "Monkshood",                   "GamerScore": 20, "Description": "100 freed Lost Souls" },
-    { "Key": "Ach16Exp", "Name": "United we stand",             "GamerScore": 20, "Description": "Got all the Soulpets" }
+    { "Key": "Ach1Exp",  "Name": "First steps",                 "GamerScore":  5, "Icon": "firststeps.png", "Description": "Got A or S Rank" },
+    { "Key": "Ach2Exp",  "Name": "Those dear delicious ravens", "GamerScore": 20, "Icon": "thosedeardeliciousravens.png", "Description": "Got all the ravens" },
+    { "Key": "Ach3Exp",  "Name": "A scrawny harvest",           "GamerScore":  5, "Icon": "ascrawnyharvest.png", "Description": "10 freed Souls" },
+    { "Key": "Ach4Exp",  "Name": "Crab cage",                   "GamerScore":  5, "Icon": "crabcage.png", "Description": "Me-Crab beaten" },
+    { "Key": "Ach5Exp",  "Name": "Leave in peace",              "GamerScore":  5, "Icon": "leaveinpeace.png", "Description": "1 freed Lost Soul" },
+    { "Key": "Ach6Exp",  "Name": "My name is Nobody",           "GamerScore": 10, "Icon": "mynameisnobody.png", "Description": "Cyclops beaten" },
+    { "Key": "Ach7Exp",  "Name": "Never Again.",                "GamerScore": 10, "Icon": "neveragain.png", "Description": "Mech-Ange beaten" },
+    { "Key": "Ach8Exp",  "Name": "An acceptable harvest",       "GamerScore": 10, "Icon": "anacceptableharvest.png", "Description": "50 freed souls" },
+    { "Key": "Ach9Exp",  "Name": "Emissary wannabe",            "GamerScore": 10, "Icon": "emissarywannabe.png", "Description": "Got 20 A or S Ranks" },
+    { "Key": "Ach10Exp", "Name": "Collateral damage",           "GamerScore": 10, "Icon": "collateraldamage.png", "Description": "20 corrupted Souls" },
+    { "Key": "Ach11Exp", "Name": "First collect the weeds",     "GamerScore": 10, "Icon": "firstcollecttheweeds.png", "Description": "30 freed Lost Souls" },
+    { "Key": "Ach12Exp", "Name": "Deus Ex Machina",             "GamerScore": 20, "Icon": "deusexmachina.png", "Description": "You let the Scientist escape…" },
+    { "Key": "Ach13Exp", "Name": "Combine harvester",           "GamerScore": 20, "Icon": "combineharvester.png", "Description": "300 freed Souls" },
+    { "Key": "Ach14Exp", "Name": "Almost perfect",              "GamerScore": 20, "Icon": "almostperfect.png", "Description": "Got 25 S Ranks" },
+    { "Key": "Ach15Exp", "Name": "Monkshood",                   "GamerScore": 20, "Icon": "monkshood.png", "Description": "100 freed Lost Souls" },
+    { "Key": "Ach16Exp", "Name": "United we stand",             "GamerScore": 20, "Icon": "unitedwestand.png", "Description": "Got all the Soulpets" }
   ]
 }
+

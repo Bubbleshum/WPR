@@ -3,13 +3,14 @@
   "Description": "Tilt the world, not the monkey: roll a monkey in a ball to the goal without falling off the edge.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "Monkey Island",    "Name": "Conquer Monkey Island World",   "GamerScore": 25, "Description": "Complete all of the stages of the Monkey Island World" },
-    { "Key": "Smooth Sherbet",   "Name": "Conquer Smooth Sherbet World",  "GamerScore": 25, "Description": "Complete all of the stages of the Smooth Sherbet World" },
-    { "Key": "Detritus Desert",  "Name": "Conquer Detritus Desert World", "GamerScore": 25, "Description": "Complete all of the stages of the Detritus Desert World" },
-    { "Key": "Volcanic Pools",   "Name": "Conquer Volcanic Pools World",  "GamerScore": 25, "Description": "Complete all of the stages of the Volcanic Pools World" },
-    { "Key": "Space Case",       "Name": "Conquer Space Case World",      "GamerScore": 25, "Description": "Complete all of the stages of the Space Case World" },
-    { "Key": "Bananas",          "Name": "Gone Bananas!",                 "GamerScore": 25, "Description": "Collect all of the bananas before finishing a level" },
-    { "Key": "Crowned Champion", "Name": "Crowned Champion",              "GamerScore": 25, "Description": "Get a crown on every stage of a world" },
-    { "Key": "Perfect Bonus",    "Name": "Perfect Bonus",                 "GamerScore": 25, "Description": "Collect all of the bananas on a bonus level" }
+    { "Key": "Monkey Island",    "Name": "Conquer Monkey Island World",   "GamerScore": 25, "Icon": "conquermonkeyislandworld.png", "Description": "Complete all of the stages of the Monkey Island World" },
+    { "Key": "Smooth Sherbet",   "Name": "Conquer Smooth Sherbet World",  "GamerScore": 25, "Icon": "conquersmoothsherbetworld.png", "Description": "Complete all of the stages of the Smooth Sherbet World" },
+    { "Key": "Detritus Desert",  "Name": "Conquer Detritus Desert World", "GamerScore": 25, "Icon": "conquerdetritusdesertworld.png", "Description": "Complete all of the stages of the Detritus Desert World" },
+    { "Key": "Volcanic Pools",   "Name": "Conquer Volcanic Pools World",  "GamerScore": 25, "Icon": "conquervolcanicpoolsworld.png", "Description": "Complete all of the stages of the Volcanic Pools World" },
+    { "Key": "Space Case",       "Name": "Conquer Space Case World",      "GamerScore": 25, "Icon": "conquerspacecaseworld.png", "Description": "Complete all of the stages of the Space Case World" },
+    { "Key": "Bananas",          "Name": "Gone Bananas!",                 "GamerScore": 25, "Icon": "gonebananas.png", "Description": "Collect all of the bananas before finishing a level" },
+    { "Key": "Crowned Champion", "Name": "Crowned Champion",              "GamerScore": 25, "Icon": "crownedchampion.png", "Description": "Get a crown on every stage of a world" },
+    { "Key": "Perfect Bonus",    "Name": "Perfect Bonus",                 "GamerScore": 25, "Icon": "perfectbonus.png", "Description": "Collect all of the bananas on a bonus level" }
   ]
 }
+

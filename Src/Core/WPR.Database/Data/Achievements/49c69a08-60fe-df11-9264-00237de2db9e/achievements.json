@@ -2,25 +2,28 @@
   "Name": "Fruit Ninja",
   "Description": "Halfbrick's smash-hit slicing game. Swipe to slash waves of flying fruit into juicy pieces while dodging bombs, across the Classic, Arcade, and Zen modes.",
   "Achievements": [
-    { "Key": "Great Fruit Ninja",    "Name": "Great Fruit Ninja",    "GamerScore": 20,  "Icon": "", "Description": "Got a score of 100 in Classic Mode" },
-    { "Key": "Ultimate Fruit Ninja", "Name": "Ultimate Fruit Ninja", "GamerScore": 40,  "Icon": "", "Description": "Got a score of 200 in Classic Mode" },
-    { "Key": "Fruit Fight",          "Name": "Fruit Fight",          "GamerScore": 20,  "Icon": "", "Description": "Killed 150 Fruit Total" },
-    { "Key": "Fruit Blitz",          "Name": "Fruit Blitz",          "GamerScore": 40,  "Icon": "", "Description": "Killed 500 Total Fruit" },
-    { "Key": "Fruit Frenzy",         "Name": "Fruit Frenzy",         "GamerScore": 60,  "Icon": "", "Description": "Killed 1000 Fruit Total" },
-    { "Key": "Fruit Rampage",        "Name": "Fruit Rampage",        "GamerScore": 80,  "Icon": "", "Description": "Killed 5000 Fruit Total" },
-    { "Key": "Fruit Annihilation",   "Name": "Fruit Annihilation",   "GamerScore": 120, "Icon": "", "Description": "Killed 10000 Fruit Total" },
-    { "Key": "Lucky Ninja",          "Name": "Lucky Ninja",          "GamerScore": 60,  "Icon": "", "Description": "Got 6 criticals in one round in Classic Mode" },
-    { "Key": "Almost A Century",     "Name": "Almost A Century",     "GamerScore": 20,  "Icon": "", "Description": "Got a score of 99" },
-    { "Key": "Mango Magic",          "Name": "Mango Magic",          "GamerScore": 20,  "Icon": "", "Description": "Got a critical hit with a Mango" },
-    { "Key": "Deja Vu",              "Name": "Deja Vu",              "GamerScore": 60,  "Icon": "", "Description": "Killed 4 of the same type of fruit in a row in Classic Mode" },
-    { "Key": "Combo Mambo",          "Name": "Combo Mambo",          "GamerScore": 30,  "Icon": "", "Description": "Sliced 6 fruit in one combo" },
-    { "Key": "Moment Of Zen",        "Name": "Moment Of Zen",        "GamerScore": 30,  "Icon": "", "Description": "Achieved a score of 200 in Zen Mode" },
-    { "Key": "Year Of The Dragon",   "Name": "Year Of The Dragon",   "GamerScore": 40,  "Icon": "", "Description": "Sliced the secret fruit!" },
-    { "Key": "The Lovely Bunch",     "Name": "The Lovely Bunch",     "GamerScore": 20,  "Icon": "", "Description": "Got the Lovely Bunch star in Zen Mode" },
-    { "Key": "Its All Pear Shaped",  "Name": "Its All Pear Shaped",  "GamerScore": 40,  "Icon": "", "Description": "Killed 3 Pears in a row in Classic Mode" },
-    { "Key": "Wake Up",              "Name": "Wake Up",              "GamerScore": 20,  "Icon": "", "Description": "Got a score of 0" },
-    { "Key": "Underachiever",        "Name": "Underachiever",        "GamerScore": 0,   "Icon": "", "Description": "Got a score of less than 20 after all bonuses had been awarded" },
-    { "Key": "Overachiever",         "Name": "Overachiever",         "GamerScore": 0,   "Icon": "", "Description": "Got a score of over 400 after bonuses" },
-    { "Key": "Bomb Magnet",          "Name": "Bomb Magnet",          "GamerScore": 0,   "Icon": "", "Description": "Hit three bombs and score over 250 points after bonuses" }
+    { "Key": "Great Fruit Ninja",    "Name": "Great Fruit Ninja",    "GamerScore": 20,  "Icon": "greatfruitninja.png", "Description": "Got a score of 100 in Classic Mode" },
+    { "Key": "Ultimate Fruit Ninja", "Name": "Ultimate Fruit Ninja", "GamerScore": 40,  "Icon": "ultimatefruitninja.png", "Description": "Got a score of 200 in Classic Mode" },
+    { "Key": "Fruit Fight",          "Name": "Fruit Fight",          "GamerScore": 20,  "Icon": "fruitfight.png", "Description": "Killed 150 Fruit Total" },
+    { "Key": "Fruit Blitz",          "Name": "Fruit Blitz",          "GamerScore": 40,  "Icon": "fruitblitz.png", "Description": "Killed 500 Total Fruit" },
+    { "Key": "Fruit Frenzy",         "Name": "Fruit Frenzy",         "GamerScore": 60,  "Icon": "fruitfrenzy.png", "Description": "Killed 1000 Fruit Total" },
+    { "Key": "Fruit Rampage",        "Name": "Fruit Rampage",        "GamerScore": 80,  "Icon": "fruitrampage.png", "Description": "Killed 5000 Fruit Total" },
+    { "Key": "Fruit Annihilation",   "Name": "Fruit Annihilation",   "GamerScore": 120, "Icon": "fruitannihilation.png", "Description": "Killed 10000 Fruit Total" },
+    { "Key": "Lucky Ninja",          "Name": "Lucky Ninja",          "GamerScore": 60,  "Icon": "luckyninja.png", "Description": "Got 6 criticals in one round in Classic Mode" },
+    { "Key": "Almost A Century",     "Name": "Almost A Century",     "GamerScore": 20,  "Icon": "almostacentury.png", "Description": "Got a score of 99" },
+    { "Key": "Mango Magic",          "Name": "Mango Magic",          "GamerScore": 20,  "Icon": "mangomagic.png", "Description": "Got a critical hit with a Mango" },
+    { "Key": "Deja Vu",              "Name": "Deja Vu",              "GamerScore": 60,  "Icon": "dejavu.png", "Description": "Killed 4 of the same type of fruit in a row in Classic Mode" },
+    { "Key": "Combo Mambo",          "Name": "Combo Mambo",          "GamerScore": 30,  "Icon": "combomambo.png", "Description": "Sliced 6 fruit in one combo" },
+    { "Key": "Moment Of Zen",        "Name": "Moment Of Zen",        "GamerScore": 30,  "Icon": "momentofzen.png", "Description": "Achieved a score of 200 in Zen Mode" },
+    { "Key": "Year Of The Dragon",   "Name": "Year Of The Dragon",   "GamerScore": 40,  "Icon": "yearofthedragon.png", "Description": "Sliced the secret fruit!" },
+    { "Key": "The Lovely Bunch",     "Name": "The Lovely Bunch",     "GamerScore": 20,  "Icon": "thelovelybunch.png", "Description": "Got the Lovely Bunch star in Zen Mode" },
+    { "Key": "Its All Pear Shaped",  "Name": "Its All Pear Shaped",  "GamerScore": 40,  "Icon": "itsallpearshaped.png", "Description": "Killed 3 Pears in a row in Classic Mode" },
+    { "Key": "Wake Up",              "Name": "Wake Up",              "GamerScore": 20,  "Icon": "wakeup.png", "Description": "Got a score of 0" },
+    { "Key": "Underachiever",        "Name": "Underachiever",        "GamerScore": 0,   "Icon": "underachiever.png", "Description": "Got a score of less than 20 after all bonuses had been awarded" },
+    { "Key": "Overachiever",         "Name": "Overachiever",         "GamerScore": 0,   "Icon": "overachiever.png", "Description": "Got a score of over 400 after bonuses" },
+    { "Key": "Bomb Magnet",          "Name": "Bomb Magnet",          "GamerScore": 0,   "Icon": "bombmagnet.png", "Description": "Hit three bombs and score over 250 points after bonuses" }
   ]
 }
+
+
+

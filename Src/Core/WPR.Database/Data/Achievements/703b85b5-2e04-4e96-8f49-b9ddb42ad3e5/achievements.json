@@ -3,21 +3,22 @@
   "Description": "A pinball table themed on Leonardo da Vinci's machines, played for its tasks and a running score.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "Experimenter",    "Name": "Experimenter",    "GamerScore": 10, "Description": "Lose 100 or more balls." },
-    { "Key": "Renaissance Man", "Name": "Renaissance Man", "GamerScore": 10, "Description": "Complete 3 or more tasks." },
-    { "Key": "1 Million",       "Name": "1 Million",       "GamerScore":  5, "Description": "Score 1 million in a single game." },
-    { "Key": "3 Million",       "Name": "3 Million",       "GamerScore": 10, "Description": "Score 3 million in a single game." },
-    { "Key": "5 Million",       "Name": "5 Million",       "GamerScore": 15, "Description": "Score 5 million in a single game." },
-    { "Key": "10 Million",      "Name": "10 Million",      "GamerScore":  5, "Description": "Rack up a cumulative 10 million." },
-    { "Key": "20 Million",      "Name": "20 Million",      "GamerScore": 10, "Description": "Rack up a cumulative 20 million." },
-    { "Key": "50 Million",      "Name": "50 Million",      "GamerScore": 15, "Description": "Rack up a cumulative 50 million." },
-    { "Key": "Naturalist",      "Name": "Naturalist",      "GamerScore": 15, "Description": "Accomplish all missions." },
-    { "Key": "Alchemist",       "Name": "Alchemist",       "GamerScore": 15, "Description": "Get multiball 2 times in a single game." },
-    { "Key": "Gun Master",      "Name": "Gun Master",      "GamerScore": 15, "Description": "Fire guns 3 times." },
-    { "Key": "War Machine",     "Name": "War Machine",     "GamerScore": 15, "Description": "Hit the tank 5 times." },
-    { "Key": "Sharpshooter",    "Name": "Sharpshooter",    "GamerScore": 15, "Description": "Enter the arbalest zone 10 times." },
-    { "Key": "Scientist",       "Name": "Scientist",       "GamerScore": 10, "Description": "Decipher 2 codes." },
-    { "Key": "Aerodynamicist",  "Name": "Aerodynamicist",  "GamerScore": 15, "Description": "Launch the Helicopter 10 times." },
-    { "Key": "Sky Conqueror",   "Name": "Sky Conqueror",   "GamerScore": 20, "Description": "Release the flying machine 5 times." }
+    { "Key": "Experimenter",    "Name": "Experimenter",    "GamerScore": 10, "Icon": "experimenter.png", "Description": "Lose 100 or more balls." },
+    { "Key": "Renaissance Man", "Name": "Renaissance Man", "GamerScore": 10, "Icon": "renaissanceman.png", "Description": "Complete 3 or more tasks." },
+    { "Key": "1 Million",       "Name": "1 Million",       "GamerScore":  5, "Icon": "1million.png", "Description": "Score 1 million in a single game." },
+    { "Key": "3 Million",       "Name": "3 Million",       "GamerScore": 10, "Icon": "3million.png", "Description": "Score 3 million in a single game." },
+    { "Key": "5 Million",       "Name": "5 Million",       "GamerScore": 15, "Icon": "5million.png", "Description": "Score 5 million in a single game." },
+    { "Key": "10 Million",      "Name": "10 Million",      "GamerScore":  5, "Icon": "10million.png", "Description": "Rack up a cumulative 10 million." },
+    { "Key": "20 Million",      "Name": "20 Million",      "GamerScore": 10, "Icon": "20million.png", "Description": "Rack up a cumulative 20 million." },
+    { "Key": "50 Million",      "Name": "50 Million",      "GamerScore": 15, "Icon": "50million.png", "Description": "Rack up a cumulative 50 million." },
+    { "Key": "Naturalist",      "Name": "Naturalist",      "GamerScore": 15, "Icon": "naturalist.png", "Description": "Accomplish all missions." },
+    { "Key": "Alchemist",       "Name": "Alchemist",       "GamerScore": 15, "Icon": "alchemist.png", "Description": "Get multiball 2 times in a single game." },
+    { "Key": "Gun Master",      "Name": "Gun Master",      "GamerScore": 15, "Icon": "gunmaster.png", "Description": "Fire guns 3 times." },
+    { "Key": "War Machine",     "Name": "War Machine",     "GamerScore": 15, "Icon": "warmachine.png", "Description": "Hit the tank 5 times." },
+    { "Key": "Sharpshooter",    "Name": "Sharpshooter",    "GamerScore": 15, "Icon": "sharpshooter.png", "Description": "Enter the arbalest zone 10 times." },
+    { "Key": "Scientist",       "Name": "Scientist",       "GamerScore": 10, "Icon": "scientist.png", "Description": "Decipher 2 codes." },
+    { "Key": "Aerodynamicist",  "Name": "Aerodynamicist",  "GamerScore": 15, "Icon": "aerodynamicist.png", "Description": "Launch the Helicopter 10 times." },
+    { "Key": "Sky Conqueror",   "Name": "Sky Conqueror",   "GamerScore": 20, "Icon": "skyconqueror.png", "Description": "Release the flying machine 5 times." }
   ]
 }
+

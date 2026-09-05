@@ -3,20 +3,21 @@
   "Description": "A time-management game behind the bar of a Star Wars cantina, serving Jawas, stormtroopers, smugglers and bounty hunters before their patience runs out.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "ACHIEVEMENT_X_HAPPY_CUSTOMERS_SERVED",         "Name": "Best Cantina on the Outer Rim",  "GamerScore": 20, "Description": "Serve 1000 customers and make them happy." },
-    { "Key": "ACHIEVEMENT_X_HAPPY_TYPE_1_CUSTOMERS_SERVED",  "Name": "Better than used R2 units!",     "GamerScore": 10, "Description": "Serve 300 JAWAS and make them happy." },
-    { "Key": "ACHIEVEMENT_X_HAPPY_TYPE_2_CUSTOMERS_SERVED",  "Name": "Flavor Syrup is my bounty",      "GamerScore": 10, "Description": "Serve 300 BOUNTY HUNTERS and make them happy." },
-    { "Key": "ACHIEVEMENT_X_HAPPY_TYPE_3_CUSTOMERS_SERVED",  "Name": "Boars! Another round!",          "GamerScore": 15, "Description": "Serve 300 GAMORREANS and make them happy." },
-    { "Key": "ACHIEVEMENT_X_HAPPY_TYPE_4_CUSTOMERS_SERVED",  "Name": "Imperial Consumption",           "GamerScore": 15, "Description": "Serve 300 STORMTROOPERS and make them happy." },
-    { "Key": "ACHIEVEMENT_X_HAPPY_TYPE_5_CUSTOMERS_SERVED",  "Name": "Beats moisture farming",         "GamerScore": 15, "Description": "300 happy FARMERS served." },
-    { "Key": "ACHIEVEMENT_X_HAPPY_TYPE_6_CUSTOMERS_SERVED",  "Name": "All juiced up for a Kessel Run", "GamerScore": 15, "Description": "Serve 300 SMUGGLERS and make them happy." },
-    { "Key": "ACHIEVEMENT_X_HAPPY_CUSTOMERS_IN_A_ROW",       "Name": "Happy Hour",                     "GamerScore":  5, "Description": "Serve 10 customers in a row and make them happy." },
-    { "Key": "ACHIEVEMENT_Y_HAPPY_CUSTOMERS_IN_A_ROW",       "Name": "Great Noon",                     "GamerScore": 10, "Description": "Serve 30 customers in a row and make them happy." },
-    { "Key": "ACHIEVEMENT_Z_HAPPY_CUSTOMERS_IN_A_ROW",       "Name": "Amazing Day",                    "GamerScore": 15, "Description": "Serve 50 customers in a row and make them happy." },
-    { "Key": "ACHIEVEMENT_U_HAPPY_CUSTOMERS_IN_A_ROW",       "Name": "Best of Days",                   "GamerScore": 20, "Description": "Serve 100 customers in a row and make them happy." },
-    { "Key": "ACHIEVEMENT_V_HAPPY_CUSTOMERS_IN_A_ROW",       "Name": "Wonderful Week",                 "GamerScore": 30, "Description": "Serve 150 customers in a row and make them happy." },
-    { "Key": "ACHIEVEMENT_X_CORRECT_DRINKS_SERVED",          "Name": "Nia Strikes Back",               "GamerScore":  5, "Description": "Serve 300 correct drinks." },
-    { "Key": "ACHIEVEMENT_X_CORRECT_DRINKS_SERVED_IN_A_ROW", "Name": "Homing Pints",                   "GamerScore": 10, "Description": "Serve 40 correct drinks in a row." },
-    { "Key": "ACHIEVEMENT_X_DRINKS_SERVED",                  "Name": "Revenge of the Thirsty Bantha",  "GamerScore":  5, "Description": "Serve 800 drinks." }
+    { "Key": "ACHIEVEMENT_X_HAPPY_CUSTOMERS_SERVED",         "Name": "Best Cantina on the Outer Rim",  "GamerScore": 20, "Icon": "bestcantinaontheouterrim.png", "Description": "Serve 1000 customers and make them happy." },
+    { "Key": "ACHIEVEMENT_X_HAPPY_TYPE_1_CUSTOMERS_SERVED",  "Name": "Better than used R2 units!",     "GamerScore": 10, "Icon": "betterthanusedr2units.png", "Description": "Serve 300 JAWAS and make them happy." },
+    { "Key": "ACHIEVEMENT_X_HAPPY_TYPE_2_CUSTOMERS_SERVED",  "Name": "Flavor Syrup is my bounty",      "GamerScore": 10, "Icon": "flavorsyrupismybounty.png", "Description": "Serve 300 BOUNTY HUNTERS and make them happy." },
+    { "Key": "ACHIEVEMENT_X_HAPPY_TYPE_3_CUSTOMERS_SERVED",  "Name": "Boars! Another round!",          "GamerScore": 15, "Icon": "boarsanotherround.png", "Description": "Serve 300 GAMORREANS and make them happy." },
+    { "Key": "ACHIEVEMENT_X_HAPPY_TYPE_4_CUSTOMERS_SERVED",  "Name": "Imperial Consumption",           "GamerScore": 15, "Icon": "imperialconsumption.png", "Description": "Serve 300 STORMTROOPERS and make them happy." },
+    { "Key": "ACHIEVEMENT_X_HAPPY_TYPE_5_CUSTOMERS_SERVED",  "Name": "Beats moisture farming",         "GamerScore": 15, "Icon": "beatsmoisturefarming.png", "Description": "300 happy FARMERS served." },
+    { "Key": "ACHIEVEMENT_X_HAPPY_TYPE_6_CUSTOMERS_SERVED",  "Name": "All juiced up for a Kessel Run", "GamerScore": 15, "Icon": "alljuicedupforakesselrun.png", "Description": "Serve 300 SMUGGLERS and make them happy." },
+    { "Key": "ACHIEVEMENT_X_HAPPY_CUSTOMERS_IN_A_ROW",       "Name": "Happy Hour",                     "GamerScore":  5, "Icon": "happyhour.png", "Description": "Serve 10 customers in a row and make them happy." },
+    { "Key": "ACHIEVEMENT_Y_HAPPY_CUSTOMERS_IN_A_ROW",       "Name": "Great Noon",                     "GamerScore": 10, "Icon": "greatnoon.png", "Description": "Serve 30 customers in a row and make them happy." },
+    { "Key": "ACHIEVEMENT_Z_HAPPY_CUSTOMERS_IN_A_ROW",       "Name": "Amazing Day",                    "GamerScore": 15, "Icon": "amazingday.png", "Description": "Serve 50 customers in a row and make them happy." },
+    { "Key": "ACHIEVEMENT_U_HAPPY_CUSTOMERS_IN_A_ROW",       "Name": "Best of Days",                   "GamerScore": 20, "Icon": "bestofdays.png", "Description": "Serve 100 customers in a row and make them happy." },
+    { "Key": "ACHIEVEMENT_V_HAPPY_CUSTOMERS_IN_A_ROW",       "Name": "Wonderful Week",                 "GamerScore": 30, "Icon": "wonderfulweek.png", "Description": "Serve 150 customers in a row and make them happy." },
+    { "Key": "ACHIEVEMENT_X_CORRECT_DRINKS_SERVED",          "Name": "Nia Strikes Back",               "GamerScore":  5, "Icon": "niastrikesback.png", "Description": "Serve 300 correct drinks." },
+    { "Key": "ACHIEVEMENT_X_CORRECT_DRINKS_SERVED_IN_A_ROW", "Name": "Homing Pints",                   "GamerScore": 10, "Icon": "homingpints.png", "Description": "Serve 40 correct drinks in a row." },
+    { "Key": "ACHIEVEMENT_X_DRINKS_SERVED",                  "Name": "Revenge of the Thirsty Bantha",  "GamerScore":  5, "Icon": "revengeofthethirstybantha.png", "Description": "Serve 800 drinks." }
   ]
 }
+

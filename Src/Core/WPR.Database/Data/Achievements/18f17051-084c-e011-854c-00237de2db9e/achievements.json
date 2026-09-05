@@ -3,21 +3,22 @@
   "Description": "The television quiz show, played through fifteen questions with three lifelines. Spanish edition.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "ACHIEVEMENT_01", "Name": "Debutante",                         "GamerScore":  5, "Description": "Juega una partida completa de \"¿Quién Quiere Ser Millonario?\"." },
-    { "Key": "ACHIEVEMENT_02", "Name": "Los dedos más rápidos",           "GamerScore":  5, "Description": "Acierta correctamente el orden de las 4 respuestas de una ronda de Dedos Rápidos." },
-    { "Key": "ACHIEVEMENT_03", "Name": "No volveré con las manos vacías", "GamerScore":  5, "Description": "Alcanza la primera zona segura." },
-    { "Key": "ACHIEVEMENT_04", "Name": "Me siento seguro",                  "GamerScore":  5, "Description": "Alcanza la segunda zona segura." },
-    { "Key": "ACHIEVEMENT_05", "Name": "Sabelotodo",                        "GamerScore":  5, "Description": "Responde correctamente desde la pregunta 1 hasta la 10 sin utilizar comodines." },
-    { "Key": "ACHIEVEMENT_06", "Name": "Recta final",                       "GamerScore": 10, "Description": "Responde correctamente desde la pregunta 11 hasta la 15 sin utilizar comodines." },
-    { "Key": "ACHIEVEMENT_07", "Name": "Listitllo",                         "GamerScore":  5, "Description": "Responde correctamente desde la pregunta 1 hasta la 5 sin utilizar comodines." },
-    { "Key": "ACHIEVEMENT_08", "Name": "Brillante",                         "GamerScore":  5, "Description": "Responde correctamente desde la pregunta 6 hasta la 10 sin utilizar comodines." },
-    { "Key": "ACHIEVEMENT_09", "Name": "Apunta y dispara",                  "GamerScore": 10, "Description": "Responde correctamente a una pregunta entre la 6 y la 10, en menos de 2 segundos." },
-    { "Key": "ACHIEVEMENT_10", "Name": "Memoria Flash",                     "GamerScore": 10, "Description": "Responde correctamente a una pregunta entre la 11 y la 15, en menos de 4 segundos." },
-    { "Key": "ACHIEVEMENT_11", "Name": "¡Millonario!",                     "GamerScore": 10, "Description": "Responde correctamente a la última pregunta." },
-    { "Key": "ACHIEVEMENT_12", "Name": "Voy sobrado",                       "GamerScore": 15, "Description": "Responde correctamente la última pregunta, con un comodín aún sin utilizar." },
-    { "Key": "ACHIEVEMENT_13", "Name": "Erudito",                           "GamerScore": 25, "Description": "Has respondido correctamente la última pregunta, con dos comodín aún sin utilizar." },
-    { "Key": "ACHIEVEMENT_14", "Name": "Maestría",                         "GamerScore": 35, "Description": "Responde correctamente la última pregunta, sin haber utilizado ningún comodín." },
-    { "Key": "ACHIEVEMENT_15", "Name": "Millonario sobre ruedas",           "GamerScore": 20, "Description": "Responde correctamente las 15 preguntas en menos de 90 segundos." },
-    { "Key": "ACHIEVEMENT_16", "Name": "Millonario cohete",                 "GamerScore": 30, "Description": "Responde correctamente las 15 preguntas en menos de 60 segundos." }
+    { "Key": "ACHIEVEMENT_01", "Name": "Debutante",                         "GamerScore":  5, "Icon": "debutante.png", "Description": "Juega una partida completa de \"¿Quién Quiere Ser Millonario?\"." },
+    { "Key": "ACHIEVEMENT_02", "Name": "Los dedos más rápidos",           "GamerScore":  5, "Icon": "losdedosmasrapidos.png", "Description": "Acierta correctamente el orden de las 4 respuestas de una ronda de Dedos Rápidos." },
+    { "Key": "ACHIEVEMENT_03", "Name": "No volveré con las manos vacías", "GamerScore":  5, "Icon": "novolvereconlasmanosvacias.png", "Description": "Alcanza la primera zona segura." },
+    { "Key": "ACHIEVEMENT_04", "Name": "Me siento seguro",                  "GamerScore":  5, "Icon": "mesientoseguro.png", "Description": "Alcanza la segunda zona segura." },
+    { "Key": "ACHIEVEMENT_05", "Name": "Sabelotodo",                        "GamerScore":  5, "Icon": "sabelotodo.png", "Description": "Responde correctamente desde la pregunta 1 hasta la 10 sin utilizar comodines." },
+    { "Key": "ACHIEVEMENT_06", "Name": "Recta final",                       "GamerScore": 10, "Icon": "rectafinal.png", "Description": "Responde correctamente desde la pregunta 11 hasta la 15 sin utilizar comodines." },
+    { "Key": "ACHIEVEMENT_07", "Name": "Listitllo",                         "GamerScore":  5, "Icon": "listitllo.png", "Description": "Responde correctamente desde la pregunta 1 hasta la 5 sin utilizar comodines." },
+    { "Key": "ACHIEVEMENT_08", "Name": "Brillante",                         "GamerScore":  5, "Icon": "brillante.png", "Description": "Responde correctamente desde la pregunta 6 hasta la 10 sin utilizar comodines." },
+    { "Key": "ACHIEVEMENT_09", "Name": "Apunta y dispara",                  "GamerScore": 10, "Icon": "apuntaydispara.png", "Description": "Responde correctamente a una pregunta entre la 6 y la 10, en menos de 2 segundos." },
+    { "Key": "ACHIEVEMENT_10", "Name": "Memoria Flash",                     "GamerScore": 10, "Icon": "memoriaflash.png", "Description": "Responde correctamente a una pregunta entre la 11 y la 15, en menos de 4 segundos." },
+    { "Key": "ACHIEVEMENT_11", "Name": "¡Millonario!",                     "GamerScore": 10, "Icon": "millonario.png", "Description": "Responde correctamente a la última pregunta." },
+    { "Key": "ACHIEVEMENT_12", "Name": "Voy sobrado",                       "GamerScore": 15, "Icon": "voysobrado.png", "Description": "Responde correctamente la última pregunta, con un comodín aún sin utilizar." },
+    { "Key": "ACHIEVEMENT_13", "Name": "Erudito",                           "GamerScore": 25, "Icon": "erudito.png", "Description": "Has respondido correctamente la última pregunta, con dos comodín aún sin utilizar." },
+    { "Key": "ACHIEVEMENT_14", "Name": "Maestría",                         "GamerScore": 35, "Icon": "maestria.png", "Description": "Responde correctamente la última pregunta, sin haber utilizado ningún comodín." },
+    { "Key": "ACHIEVEMENT_15", "Name": "Millonario sobre ruedas",           "GamerScore": 20, "Icon": "millonariosobreruedas.png", "Description": "Responde correctamente las 15 preguntas en menos de 90 segundos." },
+    { "Key": "ACHIEVEMENT_16", "Name": "Millonario cohete",                 "GamerScore": 30, "Icon": "millonariocohete.png", "Description": "Responde correctamente las 15 preguntas en menos de 60 segundos." }
   ]
 }
+

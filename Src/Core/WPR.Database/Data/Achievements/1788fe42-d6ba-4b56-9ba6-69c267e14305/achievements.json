@@ -3,15 +3,16 @@
   "Description": "Table shuffleboard, sliding weighted pucks down the lane for points without sliding them off the end.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "challenger",       "Name": "Challenger",       "GamerScore":  5, "Description": "Complete a Challenge Mode Level with 3 stars." },
-    { "Key": "conqueror",        "Name": "Conqueror",        "GamerScore":  5, "Description": "Complete all Challenge Levels." },
-    { "Key": "challenge_master", "Name": "Challenge Master", "GamerScore":  5, "Description": "Earn 3 stars on all Challenge Levels." },
-    { "Key": "x_marks_the_spot", "Name": "X marks the spot", "GamerScore":  5, "Description": "Perform a strike in Bowling." },
-    { "Key": "gobble_gobble",    "Name": "Gobble Gobble!!!", "GamerScore":  5, "Description": "Perform 3 strikes in a row in Bowling." },
-    { "Key": "over_175_club",    "Name": "Over 175 Club",    "GamerScore":  5, "Description": "Obtain a Bowling score of 175+" },
-    { "Key": "roadhouse_billy",  "Name": "Roadhouse Billy",  "GamerScore":  5, "Description": "Obtain a Shuffleboard score of 5 or more in a single round." },
-    { "Key": "hanger",           "Name": "Hanger!",          "GamerScore":  5, "Description": "Get a scored \"Hanger\" in Shuffleboard" },
-    { "Key": "payday",           "Name": "Payday!",          "GamerScore":  5, "Description": "Purchase an item from Pro Shop" },
-    { "Key": "shop_o_holic",     "Name": "Shop-o-holic",     "GamerScore":  5, "Description": "Purchase all items in Pro Shop" }
+    { "Key": "challenger",       "Name": "Challenger",       "GamerScore":  5, "Icon": "challenger.png", "Description": "Complete a Challenge Mode Level with 3 stars." },
+    { "Key": "conqueror",        "Name": "Conqueror",        "GamerScore":  5, "Icon": "conqueror.png", "Description": "Complete all Challenge Levels." },
+    { "Key": "challenge_master", "Name": "Challenge Master", "GamerScore":  5, "Icon": "challengemaster.png", "Description": "Earn 3 stars on all Challenge Levels." },
+    { "Key": "x_marks_the_spot", "Name": "X marks the spot", "GamerScore":  5, "Icon": "xmarksthespot.png", "Description": "Perform a strike in Bowling." },
+    { "Key": "gobble_gobble",    "Name": "Gobble Gobble!!!", "GamerScore":  5, "Icon": "gobblegobble.png", "Description": "Perform 3 strikes in a row in Bowling." },
+    { "Key": "over_175_club",    "Name": "Over 175 Club",    "GamerScore":  5, "Icon": "over175club.png", "Description": "Obtain a Bowling score of 175+" },
+    { "Key": "roadhouse_billy",  "Name": "Roadhouse Billy",  "GamerScore":  5, "Icon": "roadhousebilly.png", "Description": "Obtain a Shuffleboard score of 5 or more in a single round." },
+    { "Key": "hanger",           "Name": "Hanger!",          "GamerScore":  5, "Icon": "hanger.png", "Description": "Get a scored \"Hanger\" in Shuffleboard" },
+    { "Key": "payday",           "Name": "Payday!",          "GamerScore":  5, "Icon": "payday.png", "Description": "Purchase an item from Pro Shop" },
+    { "Key": "shop_o_holic",     "Name": "Shop-o-holic",     "GamerScore":  5, "Icon": "shopoholic.png", "Description": "Purchase all items in Pro Shop" }
   ]
 }
+

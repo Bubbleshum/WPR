@@ -3,12 +3,13 @@
   "Description": "An endless platformer about a pair of twins: spawn the second and switch between them in mid-air to keep going.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "Conjoined",    "Name": "Conjoined",    "GamerScore": 35, "Description": "Get 800 points in Twins mode in one session" },
-    { "Key": "Bipolar",      "Name": "Bipolar",      "GamerScore": 35, "Description": "Change side more than 50 times in one session" },
-    { "Key": "Pointer",      "Name": "Pointer",      "GamerScore": 25, "Description": "Collect 500 coins" },
-    { "Key": "Pairing",      "Name": "Pairing",      "GamerScore": 25, "Description": "Get twins mode 75 times" },
-    { "Key": "Far away",     "Name": "Far away",     "GamerScore": 50, "Description": "Get 2000 points in one session" },
-    { "Key": "Last fortune", "Name": "Last fortune", "GamerScore": 15, "Description": "Make a jump that leads to a certain death, but get some coins in your way!" },
-    { "Key": "No love",      "Name": "No love",      "GamerScore": 15, "Description": "Let the twin crash right after spawning it 5 consecutives times in a game." }
+    { "Key": "Conjoined",    "Name": "Conjoined",    "GamerScore": 35, "Icon": "conjoined.png", "Description": "Get 800 points in Twins mode in one session" },
+    { "Key": "Bipolar",      "Name": "Bipolar",      "GamerScore": 35, "Icon": "bipolar.png", "Description": "Change side more than 50 times in one session" },
+    { "Key": "Pointer",      "Name": "Pointer",      "GamerScore": 25, "Icon": "pointer.png", "Description": "Collect 500 coins" },
+    { "Key": "Pairing",      "Name": "Pairing",      "GamerScore": 25, "Icon": "pairing.png", "Description": "Get twins mode 75 times" },
+    { "Key": "Far away",     "Name": "Far away",     "GamerScore": 50, "Icon": "faraway.png", "Description": "Get 2000 points in one session" },
+    { "Key": "Last fortune", "Name": "Last fortune", "GamerScore": 15, "Icon": "lastfortune.png", "Description": "Make a jump that leads to a certain death, but get some coins in your way!" },
+    { "Key": "No love",      "Name": "No love",      "GamerScore": 15, "Icon": "nolove.png", "Description": "Let the twin crash right after spawning it 5 consecutives times in a game." }
   ]
 }
+

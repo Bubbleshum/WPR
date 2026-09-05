@@ -3,17 +3,18 @@
   "Description": "A kart racer set in the Pac-Man world, with power pellets to collect and ghosts loose on the track.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "One Step Ahead",       "Name": "One Step Ahead",       "GamerScore": 20, "Description": "Finish 3 races 1 lap before at least 1 opponent." },
-    { "Key": "Dotted Line",          "Name": "Dotted Line",          "GamerScore": 10, "Description": "Finish an Expert Tournament Race with 10 Pac-Dots." },
-    { "Key": "Gear Head",            "Name": "Gear Head",            "GamerScore": 10, "Description": "Unlock all karts and all kart upgrades." },
-    { "Key": "Drift Away",           "Name": "Drift Away",           "GamerScore": 10, "Description": "Perform 8 drift boosts in a single race." },
-    { "Key": "Champion",             "Name": "Champion",             "GamerScore": 20, "Description": "Win all the cups on 1st place." },
-    { "Key": "Hardcore",             "Name": "Hardcore",             "GamerScore": 10, "Description": "Finish 3 races without using any power-ups." },
-    { "Key": "Mission Accomplished", "Name": "Mission Accomplished", "GamerScore": 30, "Description": "Complete all the missions in Challenge Mode." },
-    { "Key": "I Will Survive",       "Name": "I Will Survive",       "GamerScore": 20, "Description": "Place 1st in each lap in a Survival Race." },
-    { "Key": "Unbeatable",           "Name": "Unbeatable",           "GamerScore": 20, "Description": "Win 50 Multiplayer Races." },
-    { "Key": "Karting King",         "Name": "Karting King",         "GamerScore": 30, "Description": "Complete the Tournament on Expert difficulty." },
-    { "Key": "Record Breaker",       "Name": "Record Breaker",       "GamerScore": 10, "Description": "Beat your own record 3 times on any track." },
-    { "Key": "Classic PacMan",       "Name": "Classic Pac-Man",      "GamerScore": 10, "Description": "Eat all the ghosts in a Chase Race." }
+    { "Key": "One Step Ahead",       "Name": "One Step Ahead",       "GamerScore": 20, "Icon": "onestepahead.png", "Description": "Finish 3 races 1 lap before at least 1 opponent." },
+    { "Key": "Dotted Line",          "Name": "Dotted Line",          "GamerScore": 10, "Icon": "dottedline.png", "Description": "Finish an Expert Tournament Race with 10 Pac-Dots." },
+    { "Key": "Gear Head",            "Name": "Gear Head",            "GamerScore": 10, "Icon": "gearhead.png", "Description": "Unlock all karts and all kart upgrades." },
+    { "Key": "Drift Away",           "Name": "Drift Away",           "GamerScore": 10, "Icon": "driftaway.png", "Description": "Perform 8 drift boosts in a single race." },
+    { "Key": "Champion",             "Name": "Champion",             "GamerScore": 20, "Icon": "champion.png", "Description": "Win all the cups on 1st place." },
+    { "Key": "Hardcore",             "Name": "Hardcore",             "GamerScore": 10, "Icon": "hardcore.png", "Description": "Finish 3 races without using any power-ups." },
+    { "Key": "Mission Accomplished", "Name": "Mission Accomplished", "GamerScore": 30, "Icon": "missionaccomplished.png", "Description": "Complete all the missions in Challenge Mode." },
+    { "Key": "I Will Survive",       "Name": "I Will Survive",       "GamerScore": 20, "Icon": "iwillsurvive.png", "Description": "Place 1st in each lap in a Survival Race." },
+    { "Key": "Unbeatable",           "Name": "Unbeatable",           "GamerScore": 20, "Icon": "unbeatable.png", "Description": "Win 50 Multiplayer Races." },
+    { "Key": "Karting King",         "Name": "Karting King",         "GamerScore": 30, "Icon": "kartingking.png", "Description": "Complete the Tournament on Expert difficulty." },
+    { "Key": "Record Breaker",       "Name": "Record Breaker",       "GamerScore": 10, "Icon": "recordbreaker.png", "Description": "Beat your own record 3 times on any track." },
+    { "Key": "Classic PacMan",       "Name": "Classic Pac-Man",      "GamerScore": 10, "Icon": "classicpacman.png", "Description": "Eat all the ghosts in a Chase Race." }
   ]
 }
+

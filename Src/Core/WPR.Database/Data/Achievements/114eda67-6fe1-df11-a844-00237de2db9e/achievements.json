@@ -2,19 +2,20 @@
   "Name": "More Brain Exercise by Namco",
   "Description": "Namco's brain-training sequel. Work through frontal, temporal and parietal lobe minigames to lower your Brain Age, keep a daily training streak going, and unlock a full Sudoku mode.",
   "Achievements": [
-    { "Key": "I Am Everything",      "Name": "I Am Everything",      "GamerScore": 50, "Description": "Be awarded at least \"Solar System\" rank in all games on Hard mode." },
-    { "Key": "Coming Back For More", "Name": "Coming Back For More", "GamerScore":  5, "Description": "Complete Brain Training 3 days in a row." },
-    { "Key": "A Week Of Hard Work",  "Name": "A Week Of Hard Work",  "GamerScore": 10, "Description": "Complete Brain Training 7 days in a row." },
-    { "Key": "Scrupulous",           "Name": "Scrupulous",           "GamerScore": 40, "Description": "Complete Brain Training 30 days in a row." },
-    { "Key": "Frontman",             "Name": "Frontman",             "GamerScore":  5, "Description": "Be awarded 100 points for Frontal lobe exercises." },
-    { "Key": "It is Not Temporary",  "Name": "It's Not Temporary",   "GamerScore":  5, "Description": "Be awarded 100 points for Temporal lobe exercises." },
-    { "Key": "Party Time",           "Name": "Party Time",           "GamerScore":  5, "Description": "Be awarded 100 points for Parietal lobe exercises." },
-    { "Key": "Mindblowing",          "Name": "Mindblowing",          "GamerScore": 10, "Description": "Be awarded 100 points for each lobe area." },
-    { "Key": "Forever Young",        "Name": "Forever Young",        "GamerScore": 10, "Description": "Be awarded a maximum Brain Age of 25 for three consecutive days." },
-    { "Key": "You Have A Choice",    "Name": "You Have A Choice",    "GamerScore": 20, "Description": "All minigames unlocked." },
-    { "Key": "A Little Bonus",       "Name": "A Little Bonus",       "GamerScore": 10, "Description": "Unlock Sudoku." },
-    { "Key": "Sudoku Rookie",        "Name": "Sudoku Rookie",        "GamerScore":  5, "Description": "Solve a Sudoku puzzle on Easy." },
-    { "Key": "Sudoku Apprentice",    "Name": "Sudoku Apprentice",    "GamerScore": 10, "Description": "Solve a Sudoku puzzle on Medium." },
-    { "Key": "Sudoku Master",        "Name": "Sudoku Master",        "GamerScore": 15, "Description": "Solve a Sudoku puzzle on Hard." }
+    { "Key": "I Am Everything",      "Name": "I Am Everything",      "GamerScore": 50, "Icon": "iameverything.png", "Description": "Be awarded at least \"Solar System\" rank in all games on Hard mode." },
+    { "Key": "Coming Back For More", "Name": "Coming Back For More", "GamerScore":  5, "Icon": "comingbackformore.png", "Description": "Complete Brain Training 3 days in a row." },
+    { "Key": "A Week Of Hard Work",  "Name": "A Week Of Hard Work",  "GamerScore": 10, "Icon": "aweekofhardwork.png", "Description": "Complete Brain Training 7 days in a row." },
+    { "Key": "Scrupulous",           "Name": "Scrupulous",           "GamerScore": 40, "Icon": "scrupulous.png", "Description": "Complete Brain Training 30 days in a row." },
+    { "Key": "Frontman",             "Name": "Frontman",             "GamerScore":  5, "Icon": "frontman.png", "Description": "Be awarded 100 points for Frontal lobe exercises." },
+    { "Key": "It is Not Temporary",  "Name": "It's Not Temporary",   "GamerScore":  5, "Icon": "itsnottemporary.png", "Description": "Be awarded 100 points for Temporal lobe exercises." },
+    { "Key": "Party Time",           "Name": "Party Time",           "GamerScore":  5, "Icon": "partytime.png", "Description": "Be awarded 100 points for Parietal lobe exercises." },
+    { "Key": "Mindblowing",          "Name": "Mindblowing",          "GamerScore": 10, "Icon": "mindblowing.png", "Description": "Be awarded 100 points for each lobe area." },
+    { "Key": "Forever Young",        "Name": "Forever Young",        "GamerScore": 10, "Icon": "foreveryoung.png", "Description": "Be awarded a maximum Brain Age of 25 for three consecutive days." },
+    { "Key": "You Have A Choice",    "Name": "You Have A Choice",    "GamerScore": 20, "Icon": "youhaveachoice.png", "Description": "All minigames unlocked." },
+    { "Key": "A Little Bonus",       "Name": "A Little Bonus",       "GamerScore": 10, "Icon": "alittlebonus.png", "Description": "Unlock Sudoku." },
+    { "Key": "Sudoku Rookie",        "Name": "Sudoku Rookie",        "GamerScore":  5, "Icon": "sudokurookie.png", "Description": "Solve a Sudoku puzzle on Easy." },
+    { "Key": "Sudoku Apprentice",    "Name": "Sudoku Apprentice",    "GamerScore": 10, "Icon": "sudokuapprentice.png", "Description": "Solve a Sudoku puzzle on Medium." },
+    { "Key": "Sudoku Master",        "Name": "Sudoku Master",        "GamerScore": 15, "Icon": "sudokumaster.png", "Description": "Solve a Sudoku puzzle on Hard." }
   ]
 }
+

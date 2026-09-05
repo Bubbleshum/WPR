@@ -3,17 +3,18 @@
   "Description": "A time-management game about serving travellers around the world -- Montreal, Hawaii, Italy, London, Hong Kong -- for a five-star rank in each.",
   "KeySource": "xlast",
   "Achievements": [
-    { "Key": "achievement_01", "Name": "Do The Darwin",     "GamerScore": 15, "Description": "Hit 40 dance steps in a row in the Galapagos." },
-    { "Key": "achievement_02", "Name": "Montreal Sell Out", "GamerScore": 15, "Description": "Purchase all items from the shop in Montreal." },
-    { "Key": "achievement_03", "Name": "Montreal 5 Star",   "GamerScore": 20, "Description": "Achieve a 5 star rank in Montreal." },
-    { "Key": "achievement_04", "Name": "Pool Party",        "GamerScore": 15, "Description": "Fill up the pool with 3 customers in Hawaii." },
-    { "Key": "achievement_05", "Name": "Barista Blitz",     "GamerScore": 15, "Description": "Serve 5 coffees in a row in Italy." },
-    { "Key": "achievement_06", "Name": "London 5 Star",     "GamerScore": 20, "Description": "Achieve a 5 star rank in London." },
-    { "Key": "achievement_07", "Name": "Bigfoot",           "GamerScore": 15, "Description": "Find the hidden Bigfoot in the Rocky Mountains." },
-    { "Key": "achievement_08", "Name": "Extended Vacation", "GamerScore": 15, "Description": "Have all 4 planes full at the same time in Hong Kong." },
-    { "Key": "achievement_09", "Name": "Hong Kong 5 Star",  "GamerScore": 20, "Description": "Achieve a 5 star rank in Hong Kong." },
-    { "Key": "achievement_10", "Name": "Coastal Collector", "GamerScore": 15, "Description": "Deliver 1 of each sea shell in Barcelona." },
-    { "Key": "achievement_11", "Name": "Yeti",              "GamerScore": 15, "Description": "Find the hidden Yeti in Alaska." },
-    { "Key": "achievement_12", "Name": "Sydney 5 Star",     "GamerScore": 20, "Description": "Achieve a 5 star rank in Sydney." }
+    { "Key": "achievement_01", "Name": "Do The Darwin",     "GamerScore": 15, "Icon": "dothedarwin.png", "Description": "Hit 40 dance steps in a row in the Galapagos." },
+    { "Key": "achievement_02", "Name": "Montreal Sell Out", "GamerScore": 15, "Icon": "montrealsellout.png", "Description": "Purchase all items from the shop in Montreal." },
+    { "Key": "achievement_03", "Name": "Montreal 5 Star",   "GamerScore": 20, "Icon": "montreal5star.png", "Description": "Achieve a 5 star rank in Montreal." },
+    { "Key": "achievement_04", "Name": "Pool Party",        "GamerScore": 15, "Icon": "poolparty.png", "Description": "Fill up the pool with 3 customers in Hawaii." },
+    { "Key": "achievement_05", "Name": "Barista Blitz",     "GamerScore": 15, "Icon": "baristablitz.png", "Description": "Serve 5 coffees in a row in Italy." },
+    { "Key": "achievement_06", "Name": "London 5 Star",     "GamerScore": 20, "Icon": "london5star.png", "Description": "Achieve a 5 star rank in London." },
+    { "Key": "achievement_07", "Name": "Bigfoot",           "GamerScore": 15, "Icon": "bigfoot.png", "Description": "Find the hidden Bigfoot in the Rocky Mountains." },
+    { "Key": "achievement_08", "Name": "Extended Vacation", "GamerScore": 15, "Icon": "extendedvacation.png", "Description": "Have all 4 planes full at the same time in Hong Kong." },
+    { "Key": "achievement_09", "Name": "Hong Kong 5 Star",  "GamerScore": 20, "Icon": "hongkong5star.png", "Description": "Achieve a 5 star rank in Hong Kong." },
+    { "Key": "achievement_10", "Name": "Coastal Collector", "GamerScore": 15, "Icon": "coastalcollector.png", "Description": "Deliver 1 of each sea shell in Barcelona." },
+    { "Key": "achievement_11", "Name": "Yeti",              "GamerScore": 15, "Icon": "yeti.png", "Description": "Find the hidden Yeti in Alaska." },
+    { "Key": "achievement_12", "Name": "Sydney 5 Star",     "GamerScore": 20, "Icon": "sydney5star.png", "Description": "Achieve a 5 star rank in Sydney." }
   ]
 }
+
