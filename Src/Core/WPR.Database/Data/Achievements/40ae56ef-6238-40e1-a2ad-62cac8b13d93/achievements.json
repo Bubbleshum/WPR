@@ -1,4 +1,25 @@
 {
   "Name": "Assassin's Creed Pirates",
-  "Achievements": []
+  "Achievements": [
+    { "Key": "On my way",             "Name": "On my way",             "GamerScore": 10, "Description": "Complete A Legend is Born" },
+    { "Key": "Sea Rover",             "Name": "On my way",             "GamerScore": 10, "Description": "Complete 10 secondary missions" },
+    { "Key": "Sea Wolf",              "Name": "Sea Wolf",              "GamerScore": 10, "Description": "Complete 50 secondary missions" },
+    { "Key": "Master of the Seas",    "Name": "Master of the Seas",    "GamerScore": 10, "Description": "Destroy your first enemy ship" },
+    { "Key": "Terror of the Seas",    "Name": "Terror of the Seas",    "GamerScore": 10, "Description": "Destroy 200 enemy ships" },
+    { "Key": "Captain Blood",         "Name": "Captain Blood",         "GamerScore": 10, "Description": "Destroy 1000 enemy ships" },
+    { "Key": "Abandon Ship",          "Name": "Abandon Ship",          "GamerScore": 10, "Description": "Unlock the Wanderer" },
+    { "Key": "Jump Ship",             "Name": "Jump Ship",             "GamerScore": 10, "Description": "Unlock the Riptide" },
+    { "Key": "Ship Off",              "Name": "Ship Off",              "GamerScore": 10, "Description": "Unlock the Fearless" },
+    { "Key": "When my ship comes in", "Name": "When my ship comes in", "GamerScore": 10, "Description": "Unlock the Abyss" },
+    { "Key": "Sailing in style",      "Name": "Sailing in style",      "GamerScore": 10, "Description": "Fully upgrade one ship" },
+    { "Key": "Join me",               "Name": "Join me!",              "GamerScore": 10, "Description": "Recruit your first crew member" },
+    { "Key": "Bounty Call",           "Name": "Bounty Call",           "GamerScore": 10, "Description": "Find your first treasure" },
+    { "Key": "Buccaneer",             "Name": "Buccaneer",             "GamerScore": 10, "Description": "Reach Level 10" },
+    { "Key": "Brother of the Coast",  "Name": "Brother of the Coast",  "GamerScore": 10, "Description": "Reach Level 20" },
+    { "Key": "The Navigator",         "Name": "The Navigator",         "GamerScore": 10, "Description": "Reach 100% sync on Scorpion Reef" },
+    { "Key": "The Explorer",          "Name": "The Explorer",          "GamerScore": 10, "Description": "Reach 100% sync on BahÃ­a de Guadiana" },
+    { "Key": "The Adventurer",        "Name": "The Adventurer",        "GamerScore": 10, "Description": "Reach 100% sync on Los MÃ¡rtires" },
+    { "Key": "The Discoverer",        "Name": "The Discoverer",        "GamerScore": 10, "Description": "Reach 100% sync on La Habana" },
+    { "Key": "The Seeker",            "Name": "The Seeker",            "GamerScore": 10, "Description": "Reach 100% sync on Grand Bahama" }
+  ]
 }

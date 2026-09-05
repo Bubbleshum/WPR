@@ -1,4 +1,25 @@
 {
   "Name": "Ice Age Village",
-  "Achievements": []
+  "Achievements": [
+    { "Key": "FOR_BEGINNER_ONLY",       "Name": "For Beginners Only",       "GamerScore": 10, "Description": "For Beginners Only" },
+    { "Key": "OM_NOM_NOM",              "Name": "Om Nom Nom!",              "GamerScore": 10, "Description": "Om Nom Nom!" },
+    { "Key": "BIG_HEARTS",              "Name": "Big Hearts",               "GamerScore": 10, "Description": "Big Hearts" },
+    { "Key": "EXPERT SLASHER",          "Name": "Expert Slasher",           "GamerScore": 10, "Description": "Expert Slasher" },
+    { "Key": "AIIEE",                   "Name": "Aiiiiiiieeeee!",           "GamerScore": 10, "Description": "Aiiiiiiieeeee!" },
+    { "Key": "THE_BIGGER",              "Name": "The Bigger They Are",      "GamerScore": 10, "Description": "The Bigger They Are" },
+    { "Key": "TWEET_TWEET",             "Name": "Tweet Tweet!",             "GamerScore": 10, "Description": "Tweet Tweet!" },
+    { "Key": "THE_STARS_OF_SHOW",       "Name": "The Stars of the Show",    "GamerScore": 10, "Description": "The Stars of the Show" },
+    { "Key": "MOST_FAMOUS",             "Name": "Most Famous",              "GamerScore": 10, "Description": "Most Famous" },
+    { "Key": "DASHING_DASHERS",         "Name": "Dashing Dashers",          "GamerScore": 10, "Description": "Dashing Dashers" },
+    { "Key": "SURVIVAL_OF_THE_FITTEST", "Name": "Survival of the Fittest",  "GamerScore": 10, "Description": "Survival of the Fittest" },
+    { "Key": "RULE_THE_ROOST",          "Name": "Rule the Roost!",          "GamerScore": 10, "Description": "Rule the Roost!" },
+    { "Key": "OUTTA_THE_WAY",           "Name": "Outta the Way!",           "GamerScore": 10, "Description": "Outta the Way!" },
+    { "Key": "RICHI_RICH",              "Name": "I'm the Richest",          "GamerScore": 10, "Description": "I'm the Richest" },
+    { "Key": "CARETAKER",               "Name": "Caretaker",                "GamerScore":  5, "Description": "Caretaker" },
+    { "Key": "COMMUNITY_ORGANIZER",     "Name": "Community Organizer",      "GamerScore":  6, "Description": "Community Organizer" },
+    { "Key": "THE_MAYOR",               "Name": "The Mayor",                "GamerScore":  7, "Description": "The Mayor" },
+    { "Key": "THE_GOV",                 "Name": "The Gov",                  "GamerScore":  8, "Description": "The Gov" },
+    { "Key": "THE_PRESIDENT",           "Name": "The President",            "GamerScore": 12, "Description": "The President" },
+    { "Key": "THE_BEST_OF_THE_BEST",    "Name": "The Bestest of the Best!", "GamerScore": 22, "Description": "The Bestest of the Best!" }
+  ]
 }

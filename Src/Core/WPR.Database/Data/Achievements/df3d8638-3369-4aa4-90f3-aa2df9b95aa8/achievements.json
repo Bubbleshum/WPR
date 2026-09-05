@@ -1,4 +1,25 @@
 {
   "Name": "The Amazing Spider-Man",
-  "Achievements": []
+  "Achievements": [
+    { "Key": "Parkour Pro",             "Name": "Parkour Pro",             "GamerScore": 10, "Description": "Jump over 20 obstacles while running" },
+    { "Key": "Wall Crawler",            "Name": "Wall Crawler",            "GamerScore": 10, "Description": "Wall climb a total of 3 kilometers" },
+    { "Key": "Super Swinger",           "Name": "Super Swinger",           "GamerScore": 10, "Description": "Web-sling a total of 5 kilometers" },
+    { "Key": "Take Your Medicine",      "Name": "Take Your Medicine",      "GamerScore": 10, "Description": "Use 5 tonics" },
+    { "Key": "Shoot to Thrill",         "Name": "Shoot to Thrill",         "GamerScore":  5, "Description": "Shoot 30 web projectiles" },
+    { "Key": "Bring the Pain",          "Name": "Bring the Pain",          "GamerScore": 10, "Description": "Defeat 20 enemies" },
+    { "Key": "Untouchable",             "Name": "Untouchable",             "GamerScore": 10, "Description": "Avoid 10 attacks" },
+    { "Key": "Say Cheese",              "Name": "Say Cheese",              "GamerScore":  5, "Description": "Take 5 photos" },
+    { "Key": "The New Hero",            "Name": "The New Hero",            "GamerScore": 10, "Description": "Reach Level 5" },
+    { "Key": "Reptile Wrangler",        "Name": "Reptile Wrangler",        "GamerScore": 10, "Description": "Meet the Lizard (Mission 12)" },
+    { "Key": "Super Charger",           "Name": "Super Charger",           "GamerScore":  5, "Description": "Get your powers back (Mission 18)" },
+    { "Key": "Spider Supreme",          "Name": "Spider Supreme",          "GamerScore": 10, "Description": "Defeat the Lizard (Mission 26)" },
+    { "Key": "Arachnophobia",           "Name": "Arachnophobia",           "GamerScore": 15, "Description": "Collect 1500 Spiders" },
+    { "Key": "Skills to pay the Bills", "Name": "Skills to pay the Bills", "GamerScore":  5, "Description": "Learn 20 skills" },
+    { "Key": "Shockwave ",              "Name": "Shockwave",               "GamerScore": 10, "Description": "Defeat 15 enemies with the Super Attack" },
+    { "Key": "The Golden Age",          "Name": "The Golden Age",          "GamerScore": 15, "Description": "Earn the Gold rank in all random events" },
+    { "Key": "Hometown Legend",         "Name": "Hometown Legend",         "GamerScore": 10, "Description": "Save 15 citizens" },
+    { "Key": "Bomb Squad",              "Name": "Bomb Squad",              "GamerScore": 10, "Description": "Dismantle 10 bombs" },
+    { "Key": "Hobby Hunter",            "Name": "Hobby Hunter",            "GamerScore": 15, "Description": "Acquire 20 of each collectible" },
+    { "Key": "King of New York",        "Name": "King of New York",        "GamerScore": 15, "Description": "Finish all Challenges" }
+  ]
 }

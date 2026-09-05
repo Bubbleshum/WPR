@@ -1,4 +1,25 @@
 {
   "Name": "Six-Guns",
-  "Achievements": []
+  "Achievements": [
+    { "Key": "Western 101",            "Name": "Western 101",            "GamerScore": 10, "Description": "Complete the tutorial mission." },
+    { "Key": "Straight to Hell",       "Name": "Straight to Hell",       "GamerScore": 10, "Description": "Kill one demon of each type." },
+    { "Key": "Top of the Food Chain",  "Name": "Top of the Food Chain",  "GamerScore": 10, "Description": "Kill one animal of each kind." },
+    { "Key": "Natural Born Killer",    "Name": "Natural Born Killer",    "GamerScore":  5, "Description": "Kill 500 enemies." },
+    { "Key": "Angel of Death",         "Name": "Angel of Death",         "GamerScore": 10, "Description": "Kill 1,000 enemies." },
+    { "Key": "Genocide",               "Name": "Genocide",               "GamerScore": 20, "Description": "Kill 10,000 enemies" },
+    { "Key": "Demon Hunter I",         "Name": "Demon Hunter I",         "GamerScore": 10, "Description": "Reach level 15." },
+    { "Key": "Demon Hunter II",        "Name": "Demon Hunter II",        "GamerScore":  5, "Description": "Reach level 25." },
+    { "Key": "Demon Hunter III",       "Name": "Demon Hunter III",       "GamerScore": 10, "Description": "Reach level 40." },
+    { "Key": "Demon Hunter IV",        "Name": "Demon Hunter IV",        "GamerScore": 15, "Description": "Reach level 50." },
+    { "Key": "100 Percent Completion", "Name": "100% Completion",        "GamerScore": 20, "Description": "Complete all quests from beginning to end." },
+    { "Key": "Legendary Gunslinger",   "Name": "Legendary Gunslinger",   "GamerScore":  5, "Description": "Win 25 matches in Multiplayer mode." },
+    { "Key": "Too Hardcore to Live",   "Name": "Too Hardcore to Live",   "GamerScore": 10, "Description": "Kill your own horse." },
+    { "Key": "Gold More Gold",         "Name": "Gold! More Gold!",       "GamerScore": 15, "Description": "Obtain 50,000 coins." },
+    { "Key": "Lone Ranger",            "Name": "Lone Ranger",            "GamerScore": 10, "Description": "Visit Oregon." },
+    { "Key": "Death Is Not the End",   "Name": "Death Is Not the End",   "GamerScore":  5, "Description": "Die once." },
+    { "Key": "The Bigger They Are",    "Name": "The Bigger They Are...", "GamerScore":  5, "Description": "Kill a Giant Werewolf." },
+    { "Key": "Homeless",               "Name": "Homeless",               "GamerScore": 10, "Description": "Use all the Road Signs in the game." },
+    { "Key": "Whats Inside the Box",   "Name": "What's Inside the Box?", "GamerScore": 10, "Description": "Open 200 chests." },
+    { "Key": "My Lucky Day",           "Name": "My Lucky Day",           "GamerScore":  5, "Description": "Try your luck with the Lottery" }
+  ]
 }
