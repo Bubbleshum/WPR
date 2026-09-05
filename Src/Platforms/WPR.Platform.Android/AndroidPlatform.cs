@@ -32,7 +32,7 @@ namespace WPR.Platform.Android
             // IAccelerometerProvider, so the hardware code (and its Xamarin.Essentials dependency) stays
             // in this head. No KeyboardEmulation counterpart — a phone does not need one, and the game
             // host therefore attaches no tilt components here.
-            caps.Accelerometer(new WPR.Input.XamarinEssentials.EssentialsAccelerometerProvider());
+            caps.Accelerometer(new WPR.Input.XamarinEssentials.AndroidAccelerometerProvider());
 
             // THE graphics decision, declared as an answer rather than a policy.
             //

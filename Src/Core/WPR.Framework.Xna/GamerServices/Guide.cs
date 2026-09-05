@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Linq;
@@ -196,10 +197,27 @@ namespace Microsoft.Xna.Framework.GamerServices
             }
         }
 
+        /// <summary>Counts <see cref="IsTrialMode"/> reads so the trace can stay bounded.</summary>
+        private static int _isTrialModeReads;
+
+        /// <summary>
+        /// Always false: every game WPR runs is installed from a full XAP, so nothing is a trial.
+        ///
+        /// <para>Traced (first few reads only) because a WP7 title's menu often differs entirely
+        /// between trial and full — Doodle Jump gates a "buy full game" entry and its "local
+        /// challenge" mode on it — so "what did the game ask, and when" is the first question when
+        /// a menu comes up wrong. A game that never reads this is telling you the menu is being
+        /// driven by something else.</para>
+        /// </summary>
         public static bool IsTrialMode
         {
             get
             {
+                int n = System.Threading.Interlocked.Increment(ref _isTrialModeReads);
+                if (n <= 8)
+                {
+                    Trace.WriteLine($"[wpr-trial] Guide.IsTrialMode read #{n} → false");
+                }
                 return false;
             }
         }
