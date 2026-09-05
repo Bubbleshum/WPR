@@ -742,6 +742,89 @@ and it affects every game rather than this one.
 No `ApplicationPatcher.Version` bump and no reinstall — this is backend behaviour in FNA.Platform,
 so games pick it up on next launch.
 
+### The backbuffer is discarded after Present, because DiscardContents is the default (2026-09-05)
+
+`PresentationParameters.RenderTargetUsage` defaults to `DiscardContents`, and XNA's contract for
+that is: **the surface holds nothing at the start of a frame.** A game that wants last frame's
+pixels has to ask, by setting `PreserveContents`. `GraphicsDevice.SetRenderTargets` already applied
+exactly that rule to every *offscreen* target — but nothing reset the **backbuffer** between
+frames, so in practice it always behaved as `PreserveContents`.
+`GraphicsDevice.DiscardBackbufferContents()` now clears colour, depth and stencil right after
+`Present`.
+
+**It only matters for a game that never calls `Clear`** — which is legal, and which WP7's
+tile-based GPUs made free (each frame started from a blank tile). Most titles clear every frame and
+cannot tell the difference; the extra clear is what they already issue.
+
+**Fable: Coin Golf clears exactly zero times** and is the reference case. Both halves of a stale
+frame hurt it, and **the depth half is the one that misleads**:
+
+- **Stale depth occludes the new frame.** Its level drew *behind* the previous screen's geometry,
+  lost the depth test, and the old screen simply stayed on display — the loading screen sat behind
+  the dialogue for as long as the dialogue ran, and starting a level showed a black screen instead
+  of the course. That is the "black screen on level start" the compat list recorded.
+- **Stale colour accumulates.** The engine lays translucent passes down every frame (`CIwRenderable`
+  fades set `BasicEffect.Alpha = 0.5`), and a 50% layer composited against its own previous output
+  converges on black within a handful of frames: fades went to black instead of fading, and moving
+  art left a hard-edged trail — on the dialogue screen, ~10 ghost copies of a sliding portrait card.
+
+**The trap is that all of it reads as an alpha or blend-state bug.** It is not: the blend states are
+right, `BlendState.AlphaBlend` is correctly premultiplied, `BasicEffect.Alpha` reaches the shader,
+and every pixel is drawn correctly — against the wrong starting buffer. Two specific dead ends,
+both walked on 2026-09-05: sampling the halo pixels shows pure black (1,1,1), which looks like
+"alpha ignored, transparent texels drawn opaque" but is actually N compositing passes; and the
+game's textures are DXT3/DXT5, which invites a premultiplied-DXT theory that goes nowhere.
+
+**How to recognise it in one step:** `grep -c "GraphicsDevice.Clear #"` the per-game log. That trace
+fires on the *first* clear and thereafter only when the clear colour changes, so **zero lines means
+the game never cleared at all** — and any rendering weirdness that looks like "the previous screen
+is still there" or "it fades to black and stays" is this. A game that clears logs at least one line.
+
+Deliberately clears to **black in both configurations**, not the purple `DiscardColor` that
+`SetRenderTargets` uses. Purple earns its place on an offscreen target — nothing ships it to the
+screen — but the backbuffer is what the player looks at, and the normal loop here is a Debug build
+judged by eye, so purple would repaint any game that leaves a margin unpainted and make Debug and
+Release disagree about how a game looks. Black is also what the WP7 framebuffer actually started as.
+
+Correct on both drivers: FNA3D's OpenGL `Clear` disables `GL_SCISSOR_TEST` around `glClear`, so a
+game that left a scissor rect set still gets the whole surface reset.
+
+No `ApplicationPatcher.Version` bump and no reinstall — this is device behaviour in
+`WPR.Framework.Xna`, so games pick it up on next launch.
+
+### `..` in an external content reference may escape the ContentManager root (2026-09-05)
+
+`MonoGame.Utilities.FileHelpers.ResolveRelativePath` — the resolver behind
+`ContentReader.ReadExternalReference` — was `Uri`-based, and **`Uri` clamps `..` at the root by
+design** (RFC 3986 `remove_dot_segments`). Asset names arriving there are relative to a
+ContentManager's `RootDirectory`, so a leading `..` that survives resolution is how content
+legitimately addresses a **sibling of that directory**; clamping silently rewrote the reference to
+name a file that does not exist. It is now a plain segment walk that keeps leading `..`.
+
+**Fable: Coin Golf is the reference case.** Its ContentManager roots at `Content/data`, and every
+level piece under `Content/data/pieces/` names its textures `..\..\<texture>` — i.e.
+`Content/<texture>`, one level above the root, which is exactly where all 113 of those XNBs ship.
+Clamping turned every one into `Content/data/<texture>`: 588 `ContentLoadException`s per run, and
+the whole course drew untextured (a flat white/grey mass — *not* black; that was the separate
+backbuffer bug above).
+
+**The failure is invisible from inside the game**, because `ReadExternalReference` treats a missing
+referenced asset as optional and hands back `default(T)`. That swallow is still there and still
+wanted, but it means **"the XAP shipped without its content" is a conclusion to verify, not
+assume** — the comment on that catch used to cite this very game as an example of a short XAP and
+was simply wrong. Check the path we looked in against where the file actually is:
+
+```powershell
+# every "missing" name, against the content root one level up
+grep -o 'missing referenced asset "[^"]*"' wpr_game_debug.log | sort -u
+```
+
+Dropping `Uri` also fixed two latent hazards in passing: it treated `#` and `?` in an asset name as
+fragment/query delimiters, and these titles' texture names contain spaces (`MILL _0`,
+`bridge to cross water_0`).
+
+No `ApplicationPatcher.Version` bump and no reinstall — games pick it up on next launch.
+
 ### The patcher rescopes typerefs, and blobs are not typerefs (patcher v22, 2026-09-05)
 
 A `typeof(...)` argument inside a **custom attribute** is stored in the attribute blob as an

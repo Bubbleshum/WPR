@@ -585,6 +585,7 @@ namespace Microsoft.Xna.Framework.Graphics
 				null,
 				PresentationParameters.DeviceWindowHandle
 			);
+			DiscardBackbufferContents();
 		}
 
 		public void Present(
@@ -601,6 +602,73 @@ namespace Microsoft.Xna.Framework.Graphics
 				sourceRectangle,
 				destinationRectangle,
 				overrideWindowHandle
+			);
+			DiscardBackbufferContents();
+		}
+
+		/// <summary>
+		/// Honours <see cref="RenderTargetUsage.DiscardContents"/> — the default for
+		/// <see cref="PresentationParameters.RenderTargetUsage"/> — on the BACKBUFFER, by
+		/// resetting colour, depth and stencil once the frame has been presented.
+		/// </summary>
+		/// <remarks>
+		/// XNA's contract is that a DiscardContents surface holds nothing at the start of a
+		/// frame; a game that wants last frame's pixels has to ask, by setting
+		/// PreserveContents. <see cref="SetRenderTargets(RenderTargetBinding[])"/> already
+		/// applies exactly this rule to every *offscreen* target (and to the backbuffer when
+		/// a game unbinds one). The backbuffer had no such reset between frames, so in
+		/// practice it always behaved as PreserveContents.
+		///
+		/// That difference only shows up in a game that never calls
+		/// <see cref="Clear(ClearOptions,Color,float,int)"/> — which is legal, and rested on
+		/// WP7's tile-based GPUs starting each frame from a blank tile. **Fable: Coin Golf
+		/// clears exactly zero times per frame** and is the reference case. Both halves of a
+		/// stale frame hurt it, and the depth half is the one that misleads:
+		///
+		/// * stale DEPTH occludes the new frame. Its level drew behind the previous screen's
+		///   geometry and simply lost the depth test, so the *old* screen stayed on display —
+		///   the loading screen sat behind the dialogue for as long as the dialogue ran, and
+		///   a starting level showed a black screen rather than the course.
+		/// * stale COLOUR accumulates. The engine lays translucent passes down every frame
+		///   (CIwRenderable's fades set BasicEffect.Alpha = 0.5), so a 50% layer composited
+		///   against its own previous output converges on black within a few frames: fades
+		///   went to black instead of fading, and moving art left a hard-edged trail.
+		///
+		/// Reading those symptoms as alpha or blend-state bugs is the trap — the blend states
+		/// are right, and every pixel was drawn correctly against the wrong starting buffer.
+		///
+		/// Cost is one clear per frame, which is what a well-behaved game already issues. A
+		/// game that genuinely wants persistence still gets it: it sets PreserveContents, and
+		/// this returns immediately.
+		///
+		/// Deliberately BLACK in both configurations, rather than the purple
+		/// <c>DiscardColor</c> that <see cref="SetRenderTargets(RenderTargetBinding[])"/>
+		/// uses. Purple earns its place on an offscreen target — nothing ships it to the
+		/// screen, so it can only ever be a diagnostic. The backbuffer *is* what the player
+		/// looks at, and this repo's normal loop is a Debug build judged by eye, so purple
+		/// there would repaint every game that leaves any margin unpainted — during a
+		/// letterboxed frame or a resize — and make Debug and Release disagree about how a
+		/// game looks. Black is also what the WP7 framebuffer these titles were written
+		/// against actually started each frame as.
+		/// </remarks>
+		private void DiscardBackbufferContents()
+		{
+			// Only the backbuffer. With a target bound, Present is not the frame boundary
+			// and SetRenderTargets owns that surface's discard.
+			if (renderTargetCount != 0)
+			{
+				return;
+			}
+			if (PresentationParameters.RenderTargetUsage != RenderTargetUsage.DiscardContents)
+			{
+				return;
+			}
+			Vector4 black = new Vector4(0.0f, 0.0f, 0.0f, 1.0f);
+			ClearCore(
+				ClearOptions.Target | ClearOptions.DepthBuffer | ClearOptions.Stencil,
+				ref black,
+				Viewport.MaxDepth,
+				0
 			);
 		}
 
@@ -747,6 +815,23 @@ namespace Microsoft.Xna.Framework.Graphics
 			{
 				_wprSameColorRun++;
 			}
+			ClearCore(options, ref color, depth, stencil);
+		}
+
+		/// <summary>
+		/// The clear itself, without the call tracing above it.
+		/// </summary>
+		/// <remarks>
+		/// Split out for <see cref="DiscardBackbufferContents"/>, which runs every frame and
+		/// must not go through the traced entry point: that trace logs whenever the clear
+		/// colour CHANGES, so a per-frame black discard interleaved with a game's own
+		/// coloured clear would alternate and log two lines every frame for the rest of the
+		/// run. Keeping the discard out of the trace also preserves what the trace is for —
+		/// it still reports the game's own clears, and still says nothing at all for a game
+		/// that never clears.
+		/// </remarks>
+		private void ClearCore(ClearOptions options, ref Vector4 color, float depth, int stencil)
+		{
 			DepthFormat dsFormat;
 			if (renderTargetCount == 0)
 			{

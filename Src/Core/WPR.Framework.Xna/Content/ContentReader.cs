@@ -117,12 +117,19 @@ namespace Microsoft.Xna.Framework.Content
 				catch (ContentLoadException ex) when (IsMissingFile(ex))
 				{
 					// The parent XNB authored an external reference to an asset that isn't
-					// on disk. Common with WP7 XAPs that ship without their full content set
-					// (e.g. Fable Coin Golf references chapter-2 textures that the base XAP
-					// omits — the obstacles list still points to them). Treat missing
-					// referenced assets as optional and return default(T); the consumer
-					// (BasicEffectReader, SpriteFontReader, ModelReader, …) typically
-					// null-checks before using the value.
+					// on disk. Treat missing referenced assets as optional and return
+					// default(T); the consumer (BasicEffectReader, SpriteFontReader,
+					// ModelReader, …) typically null-checks before using the value.
+					//
+					// This is a genuine last resort and NOT a normal outcome: it turns a
+					// hard failure into a silently absent texture/effect, which reads as a
+					// black or untextured object rather than as an error. Fable: Coin Golf
+					// used to be cited here as a game whose XAP shipped without its full
+					// content set; that was wrong. All 113 assets it "lost" were present —
+					// FileHelpers.ResolveRelativePath was clamping their leading ".." and
+					// pointing every one of them at the wrong directory. Before concluding
+					// an asset is absent, check the path we actually looked in against
+					// where the file really is.
 					//
 					// We deliberately do NOT swallow at TitleContainer.OpenStream level —
 					// games like Castlevania Puzzle's DashResourceProvider depend on a
