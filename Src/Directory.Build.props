@@ -41,12 +41,15 @@
     the only things that should carry the product version, so they opt in explicitly.
   -->
   <PropertyGroup>
-    <!-- 0.1.0 -> 0.1.01 on 2026-08-31, -> 0.1.02 on 2026-09-03. Note the two-digit patch: it satisfies release.yml's
+    <!-- 0.1.0 -> 0.1.01 on 2026-08-31, -> 0.1.02 on 2026-09-03, -> 0.1.03 on 2026-09-05 (UNRELEASED —
+         see Docs/ReleaseNotes/0.1.03.md; this is the version being worked towards, not one that has
+         shipped, which is exactly what the note below about local/dev builds means).
+         Note the two-digit patch: it satisfies release.yml's
          ^[0-9]+\.[0-9]+\.[0-9]+$ check and reaches Android's versionName verbatim, but the Windows
          head feeds $(WprVersion) into <Version>, and AssemblyVersion/FileVersion parse "01" as 1 —
          so desktop assembly metadata reads 0.1.2 while the displayed product version reads 0.1.02.
          Use a single-digit patch if you want those to agree. -->
-    <WprVersion>0.1.02</WprVersion>
+    <WprVersion>0.1.03</WprVersion>
     <!-- There is deliberately no version SUFFIX. $(WprVersionSuffix) was "alpha" and the Windows
          head appended it to InformationalVersion, so the window title and About page read
          "0.1.01-alpha". Dropped for 0.1.02: the displayed version is now exactly $(WprVersion).

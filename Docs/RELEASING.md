@@ -80,6 +80,22 @@ generated list — nothing breaks.
 So for a significant release: write `Docs/ReleaseNotes/0.2.0.md` before dispatching. See
 [`Docs/ReleaseNotes/0.1.0.md`](ReleaseNotes/0.1.0.md) for the shape.
 
+#### Write them as you go, not at the end
+
+The notes file for the *next* release is created as soon as the first thing lands for it and is
+added to as work merges — [`Docs/ReleaseNotes/0.1.03.md`](ReleaseNotes/0.1.03.md) is the current
+one. Two reasons: reconstructing user-facing notes from `git log` weeks later loses the "why", and
+a file on `main` describing what is coming is something people can be pointed at when they ask
+whether a fix has shipped.
+
+Such a file carries a **"Coming in `<version>` — not released yet" banner**, and that banner
+**must be deleted before dispatching the workflow** — the file is prepended verbatim, so leaving
+it in tells readers of the published release that it has not happened. `README.md` carries a
+matching banner under its "What's new" section, which has to come down at the same time. Each
+in-progress file repeats the full checklist as an HTML comment at the top, along with the other
+things to re-check — the "Upgrading?" line in particular, which goes stale the moment anything
+bumps `ApplicationPatcher.Version`.
+
 
 ## Android signing
 
