@@ -35,7 +35,7 @@
   {"name":"3D Brick Breaker Revolution","dev":"Digital Chocolate","status":"Playable","android":"Playable","achv":true,"notes":"Boots and runs end-to-end on Windows and Android.","type":"XNA","dagger":false,"img":"brickbreakerrevolution3d.jpg"},
   {"name":"Briquid Mini","dev":"Gamious","status":"Broken","android":"Broken","achv":false,"notes":"Silverlight title; not yet running on this fork.","type":"Silverlight","dagger":false,"img":"briquidmini.jpg"},
   {"name":"Bubble Guriko","dev":"Pupgam Studios","status":"Broken","android":"Broken","achv":false,"notes":"Silverlight title; not yet running on this fork.","type":"Silverlight","dagger":false,"img":"bubbleguriko.jpg"},
-  {"name":"Bubble Town 2","dev":"i-Play","status":"Untested","achv":false,"notes":"","type":"XNA","dagger":false,"img":"bubbletown2.jpg"},
+  {"name":"Bubble Town 2","dev":"i-Play","status":"Untested","android":"Playable","achv":false,"notes":"","type":"XNA","dagger":false,"img":"bubbletown2.jpg"},
   {"name":"Bug Village","dev":"Glu Mobile","status":"Playable","achv":true,"notes":"Boots and runs end-to-end.","type":"XNA","dagger":false,"img":"bugvillage.jpg"},
   {"name":"Bullet Asylum","dev":"Ubergeek Games","status":"Untested","achv":false,"notes":"","type":"XNA","dagger":false,"img":"bulletasylum.jpg"},
   {"name":"Burn It All!","dev":"Pastagames and BulkyPix","status":"Untested","achv":false,"notes":"","type":"XNA","dagger":false,"img":"burnitall.jpg"},
