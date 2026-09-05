@@ -697,18 +697,29 @@ namespace Microsoft.Xna.Framework
 			string screenDeviceName,
 			ref string resultDeviceName
 		) {
-			// WPR: WP7 titles ran on a fixed 800x480 phone surface and commonly stamp
-			// PresentationParameters.IsFullScreen=true (Battleship does this in its own
-			// PreparingDeviceSettings handler, which bypasses GraphicsDeviceManager2's
-			// neutralized IsFullScreen setter). On desktop we always want a real window, so
-			// force windowed at this single choke point — every fullscreen transition
-			// (property set, direct pp stamp, ToggleFullScreen, alt-tab refullscreen) funnels
-			// through here. clientWidth/clientHeight pass through unchanged, so the game's
-			// 800x480 backbuffer/viewport sizing is preserved.
-			if (!IsMobilePlatform())
-			{
-				wantsFullscreen = false;
-			}
+			/* WPR: whether the game is fullscreen is a fact about the DEVICE, not a
+			 * preference the game gets to express. A WP7 phone had no windowed mode at all, so
+			 * XNA's GraphicsDeviceManager.IsFullScreen defaulted to true there and games treated
+			 * it as decoration; a desktop host always wants a real window. Decide it here, at the
+			 * single choke point every fullscreen transition funnels through (property set,
+			 * direct pp stamp, ToggleFullScreen, alt-tab refullscreen). clientWidth/clientHeight
+			 * pass through unchanged, so the game's 800x480 backbuffer/viewport sizing is
+			 * preserved either way.
+			 *
+			 * Honouring the game's answer on mobile is not a neutral default, it is actively
+			 * destructive: SDL routes SDL_SetWindowFullscreen through SDLActivity.setWindowStyle,
+			 * and the false branch CLEARS FLAG_FULLSCREEN and drops the immersive flags — beating
+			 * MyTheme.NoActionBar's own android:windowFullscreen. So a game whose IsFullScreen is
+			 * false at device-creation time is left with the status bar, the navigation bar and a
+			 * surface inset by both, i.e. it does not fill the screen.
+			 *
+			 * That is reachable, and the games it hits are not the ones you would guess. Most WP7
+			 * titles set IsFullScreen in their Game constructor, before CreateDevice, so they were
+			 * fine. Fight Game Rivals ({57b854f3-…}) sets it from FGViewer's constructor — which
+			 * runs during Game.Initialize, AFTER the device exists — and never calls ApplyChanges,
+			 * so the value never reached a window. Measured on a 2400x1080 device: black bars on
+			 * all four sides plus both system bars, against Mirror's Edge filling the screen. */
+			wantsFullscreen = IsMobilePlatform();
 
 			bool center = false;
 

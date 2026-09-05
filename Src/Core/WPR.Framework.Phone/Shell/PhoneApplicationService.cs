@@ -43,7 +43,8 @@ namespace Microsoft.Phone.Shell
         /// <summary>
         /// Drives the WP7 boot lifecycle from <c>ApplicationLaunch</c>. A fresh launch
         /// (<paramref name="anew"/>=true) raises <see cref="Launching"/>; a resume (anew=false)
-        /// does not. <see cref="Activated"/> is raised on BOTH paths, and always with
+        /// does not. <see cref="Activated"/> is raised on BOTH paths unless the caller passes
+        /// <paramref name="raiseActivated"/>=<c>false</c>, and always with
         /// <see cref="ActivatedEventArgs.IsApplicationInstancePreserved"/>=<c>true</c>.
         /// <para>
         /// <b>Launching on anew=true:</b> games that build their scene graph in the Launching
@@ -70,11 +71,21 @@ namespace Microsoft.Phone.Shell
         /// (Hoth) are unaffected. On a genuine resume (anew=false, e.g. a MediaPlayerLauncher
         /// round-trip) preserved=true is also correct — the WPR process never died.
         /// </para>
+        /// <para>
+        /// <b><paramref name="raiseActivated"/>=false — the per-game opt-out:</b> the boot
+        /// Activated above is a WPR invention (real WP7 raises Launching only at cold start), and
+        /// a title that runs its own init AND treats Activated as "re-initialise" then does that
+        /// work twice. Doodle God aborts on it — see <c>GameLifecycleQuirks</c>, which is the only
+        /// thing that passes false and which names the games. Never passed on the resume path:
+        /// there Activated is the genuine WP7 signal.
+        /// </para>
         /// </summary>
-        public void HandleApplicationStart(bool anew)
+        public void HandleApplicationStart(bool anew, bool raiseActivated = true)
         {
 #if DEBUG
-            Trace.WriteLine($"[wpr-trace] PhoneApplicationService.HandleApplicationStart(anew={anew}) firing {(anew ? "Launching+Activated" : "Activated")} (preserved=true). " +
+            string raising = (anew ? "Launching" : "") + (anew && raiseActivated ? "+" : "") + (raiseActivated ? "Activated" : "");
+            Trace.WriteLine($"[wpr-trace] PhoneApplicationService.HandleApplicationStart(anew={anew}) firing {raising} (preserved=true)" +
+                $"{(raiseActivated ? "" : " [boot Activated suppressed for this game]")}. " +
                 $"Subscribers: Launching={CountInvocations(_Launching)} Activated={CountInvocations(_Activated)}");
 #endif
 
@@ -89,6 +100,15 @@ namespace Microsoft.Phone.Shell
                     _ = ex;
 #endif
                 }
+            }
+
+            if (!raiseActivated)
+            {
+                // Deliberately leaves _AppActivated false. It is what the Activated `add`
+                // accessor replays to a late subscriber, so setting it here would re-deliver
+                // exactly the activation this call was asked to suppress — the game subscribes
+                // in its ctor today, but that is its choice, not a guarantee.
+                return;
             }
 
             // Always raise Activated (boot AND resume), but as an instance-preserved

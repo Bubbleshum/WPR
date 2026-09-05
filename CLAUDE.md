@@ -670,6 +670,128 @@ forced OpenGL path.
   adb shell "echo Vulkan > /storage/emulated/0/Android/data/com.wpr.android/files/fna3d_driver.txt"
   ```
 
+### The Vulkan validation layer is NOT shipped, on purpose (2026-09-05)
+
+`libVkLayer_khronos_validation.so` used to sit in all three `Libraries/<abi>/` folders (~105 MB of
+the Debug APK) and it **aborted the game process**: `FORTIFY: pthread_mutex_lock called on a
+destroyed mutex` inside the layer's own bookkeeping, under
+`VULKAN_INTERNAL_SubmitCommands` <- `VULKAN_SwapBuffers`, about a minute into play. Deleted, so
+FNA3D takes the fallback it already has: `"Validation layers not found, continuing without
+validation"`.
+
+**Removing it did not make the emulator able to run a Vulkan-heavy game, and nothing will.** With
+the layer gone, Fight Game Rivals got a little further and then took a SIGSEGV one level lower — in
+`/vendor/lib64/hw/vulkan.ranchu.so`, the emulator's own gfxstream driver, null-dereferencing in
+`get_host_u64_VkBuffer` while marshalling a `VkWriteDescriptorSet` from
+`VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets` <- `VULKAN_DrawIndexedPrimitives`. That is
+FNA3D's unfinished Vulkan driver meeting the emulator's unfinished Vulkan driver, and it is
+unreachable on hardware, where `fna3d.env` forces OpenGL. **Treat "renders on the emulator" as a
+smoke test only: a game that draws its menus there may still die the moment it draws its actual
+scene, and neither crash says anything about the device.**
+
+**Only the emulator could ever hit it, and only in Debug**, which is why it went unnoticed: a
+physical device keeps `fna3d.env`'s forced OpenGL and never creates a Vulkan instance at all, while
+`GraphicsDriverPolicy` clears that force on an emulator so it renders. The layer is then requested
+because `GraphicsDevice`'s ctor passes `debugMode = 1` under `#if DEBUG`, and FNA3D asks for
+`VK_LAYER_KHRONOS_validation` whenever `debugMode` is set. Read the two lines together in logcat:
+
+```
+FNA3D Driver: Vulkan
+Vulkan validation enabled! Expect debug-level performance!
+```
+
+Removing the binaries rather than passing `debugMode = 0` on Android is deliberate: `debugMode`
+also turns on the OpenGL driver's `GL_KHR_debug` callbacks, which are the useful half on the driver
+real devices actually run. Dropping the layer disables Vulkan validation *only*.
+
+If you ever need Vulkan validation back, drop the `.so` for the ABI you are testing into
+`Libraries/<abi>/` locally — do not re-commit it — and expect the abort above to come with it.
+
+### On a phone the game window is ALWAYS fullscreen (2026-09-05)
+
+`SDL2_FNAPlatform.ApplyWindowChanges` used to honour `PresentationParameters.IsFullScreen` on
+mobile, forcing windowed only on desktop. On Android that is not a neutral default, it is actively
+destructive: SDL routes `SDL_SetWindowFullscreen` through `SDLActivity.setWindowStyle`, and the
+**false** branch *clears* `FLAG_FULLSCREEN` and drops the immersive flags — beating
+`MyTheme.NoActionBar`'s own `android:windowFullscreen`. A game whose `IsFullScreen` is false when
+the device is created therefore keeps the status bar, the navigation bar **and** a surface inset by
+both: it does not fill the screen. It is now `wantsFullscreen = IsMobilePlatform()` — a fact about
+the device rather than a preference the game expresses, which is what WP7 actually was (XNA's
+`IsFullScreen` defaulted to true on the phone and games treated it as decoration).
+
+**The games this hits are not the ones you would guess**, which is why it survived so long. 23 of
+the 25 installed titles set `IsFullScreen` in their `Game` constructor, i.e. before `CreateDevice`,
+and were always fine. **Fight Game Rivals** (`{57b854f3-a3cc-4213-aa91-07aae56e146c}`) sets it from
+`FGViewer`'s constructor — which runs during `Game.Initialize`, **after** the device exists — and
+never calls `ApplyChanges`, so the value never reached a window. Measured on a 2400x1080 device:
+black bars on all four sides plus both system bars, against Mirror's Edge filling the screen.
+**Before blaming a game's own layout for "not full size", check whether it sets `IsFullScreen`
+before or after `CreateDevice`** — a Cecil scan of the install folder for `set_IsFullScreen` and
+`ApplyChanges` answers it in one pass.
+
+Desktop is unchanged: `IsMobilePlatform()` is false there, so the window is still forced windowed
+at the same single choke point every fullscreen transition funnels through.
+
+Two things deliberately **not** changed. `GraphicsDeviceManager.IsFullScreen` still defaults to
+false rather than true-on-mobile — the choke point already covers every path, including a game
+that sets it false later, and a second default is one more place for the two to disagree. And
+nothing sets `layoutInDisplayCutoutMode`: the vendored SDL Java carries no cutout handling at all,
+so on a notched phone a landscape game is still letterboxed away from the cutout. Separate issue,
+and it affects every game rather than this one.
+
+No `ApplicationPatcher.Version` bump and no reinstall — this is backend behaviour in FNA.Platform,
+so games pick it up on next launch.
+
+### The patcher rescopes typerefs, and blobs are not typerefs (patcher v22, 2026-09-05)
+
+A `typeof(...)` argument inside a **custom attribute** is stored in the attribute blob as an
+assembly-qualified **string**, not as a row in the TypeRef table. `module.GetTypeReferences()`
+never returns it, so every redirect the patcher performs — `Microsoft.Xna.* -> FNA`, the
+`WprFrameworkXnaTypes` rescope, every `Patches` entry — had been walking straight past them since
+the patcher was written. The attribute kept naming a WP7 assembly that does not exist at runtime.
+
+`RescopeCustomAttributeTypeArguments` now walks every attribute on the assembly, module, types,
+fields, properties, events, methods, their parameters and return types, and applies the *same*
+`RescopeTypeReference` the table walk uses (it is a local function precisely so the two cannot
+drift — a `typeof()` resolving somewhere its IL counterpart does not is the worst of both).
+
+Three things about it are worth knowing before touching it:
+
+- **Reading the arguments is the fix, not just the diagnosis.** Cecil parses a blob lazily and, if
+  nothing touches `ConstructorArguments`/`Properties`/`Fields`, writes the original bytes back
+  verbatim. That is exactly why the bug existed: the patcher renamed the assembly ref to `FNA` and
+  the blob went on saying `Microsoft.Xna.Framework`. Touching them forces Cecil to materialise each
+  argument into a `TypeReference` and to re-serialise from that model on write, so mutating the
+  reference in place is enough.
+- **A blob-parsed type does NOT share the module's AssemblyNameReference.** By the time Cecil
+  parses the string there is no ref called `Microsoft.Xna.Framework` left to match — the rename
+  already happened — so it mints a throwaway one for the dead identity. `assemblyScopesByOriginalName`
+  (built *before* the rename loop mutates anything) maps it back onto the live instance, which is
+  what makes every existing rename carry over to attributes for free instead of needing its own
+  entry. The identity check keeps the table walk bit-for-bit unchanged.
+- **An unresolvable attribute type is skipped, not fatal.** Cecil needs the constructor's signature
+  to parse a blob, and WP7's `mscorlib, Version=2.0.5.0` cannot be resolved on any machine here, so
+  `DebuggableAttribute` and `EditorBrowsableAttribute` throw. Their bytes are left untouched (which
+  is the old behaviour, so no regression) and the distinct type names are reported **once per
+  assembly** as `[attr-fixup]`. Do not restore per-attribute logging — it was hundreds of identical
+  unactionable lines per install. A *game* attribute appearing in that list is the one case worth
+  chasing.
+
+**The failure mode is a hang, not a crash**, because in practice the attributes carrying `typeof()`
+are `XmlSerializer` hints — `[XmlElement]`, `[XmlArrayItem]`, `[XmlInclude]`. Nothing loads the
+type until a serializer is constructed over the declaring type, and the `TypeLoadException` then
+arrives wrapped in `InvalidOperationException: There was an error reflecting type '…'`, which games
+routinely swallow. **Fight Game Rivals** is the reference case: one
+`[XmlArrayItem(ElementName = "Vector2", Type = typeof(Vector2))]` on
+`GameObjectManager.BaseGameObject.CustomData.xmlValues` failed the serializer for
+`Manager.xmlGameObjectSpecification`, which is how *every* screen in that game is deserialised, so
+it sat on its splash screen for ever. The only trace was a first-chance exception in the per-game
+log — grep `error reflecting type` there before concluding a stuck game is a timing bug.
+
+**This is a patcher table change: `ApplicationPatcher.Version` is 22 and affected games must be
+repatched.** Unlike v21 it is not identity-binding — a v21 install still launches, it just keeps
+failing to build the affected serializer — so `--repatch-installed` is enough.
+
 ### A suppressed draw starves FNA3D's off-thread command queue (2026-09-01)
 
 `Game.SuppressDraw()` used to skip `BeginDraw`/`Draw`/`EndDraw` entirely, so the frame produced no
@@ -1018,6 +1140,57 @@ top-level SDL window or is composited into the Avalonia shell is answered by an 
 `IPlatformBackend` (or a different `GameWindow` subclass behind `CreateWindow`), not by the
 contract. The migration plan had the two fused, which is why the spine sat blocked for a UX
 decision it never depended on.
+
+### The cold-start `Activated` is a WPR invention, and some games choke on it (2026-09-05)
+
+Real WP7 raises `Launching` at a cold start and `Activated` only on a resume. WPR raises **both**
+at boot, from `PhoneApplicationService.HandleApplicationStart(anew: true)`, because several titles
+key their level/HUD setup off the activation signal and show nothing without it (Hoth,
+Battlewagon — the long remarks on that method are the record). The cost is that a game which does
+its own cold-start init **and** treats `Activated` as "re-initialise everything" does that work
+twice.
+
+**Doodle God** (`{34e0f2e7-…}`) dies of it. Its `Activated` handler is `DoodleGame.ᜁ()`, the full
+asset + localisation init — which the game also runs itself, on its own loading thread, once its
+two splash screens have shown. Each extra run re-parses `Content/data/loc/elements.txt` into the
+same `Dictionary`, so `Settings.LoadElementsLoc` throws *"An item with the same key has already
+been added. Key: Adventurers"* — caught on the game thread, **fatal on the loading thread**. The
+process aborts about 18 frames in, on the second splash. Nothing about it is platform-specific.
+
+`ApplicationLaunch` made it worse by firing the cold-start signal **twice**: once "primed" before
+`Game.Run`, once from the post-first-tick `Activated` that `Game.Tick` synthesises. So the init
+ran three times.
+
+**The lever is `GameLifecycleQuirks`** (`Src/Backends/WPR.Backend.FNA/`) — a ProductId table read
+once per launch and passed to both cold-start call sites as
+`HandleApplicationStart(true, raiseActivated: false)`. A quirked game still gets `Launching` at
+boot and `Activated` on a genuine resume, which is exactly WP7's own contract. Three things about
+it:
+
+- **Do not "fix" this globally.** Dropping the boot `Activated` for everyone is the WP7-accurate
+  change and it regresses Hoth and Battlewagon. A Cecil sweep of the 25 installed desktop titles
+  found 3 that hook `Activated` only and 7 that hook both — and Hoth and Doodle God are *both* in
+  the "both" bucket, so no property of a game's subscriptions separates the two groups. This is a
+  list of names because it cannot be a rule.
+- **Suppression must leave `_AppActivated` false.** That flag is what the `Activated` add accessor
+  replays to a late subscriber, so setting it would re-deliver the very activation being
+  suppressed.
+- **The priming pass runs before `GraphicsDeviceManager.CreateDevice()`**, so any content load
+  inside a `Launching`/`Activated` handler fails there with
+  `ArgumentNullException (Parameter 'graphicsDevice')`, which `PhoneApplicationService` swallows.
+  Doodle God takes that hit twice and survives only because its `Launching` handler just assigns
+  fields; one that accumulated into a list would not. Worth remembering before blaming a game for
+  a half-built scene.
+
+Read it out of the per-game log — the two cold-start signals say so explicitly:
+
+```
+[wpr-trace] ApplicationLaunch: boot Activated suppressed for 34e0f2e7-… (GameLifecycleQuirks)
+[wpr-trace] PhoneApplicationService.HandleApplicationStart(anew=True) firing Launching (preserved=true) [boot Activated suppressed for this game].
+```
+
+No `ApplicationPatcher.Version` bump and no reinstall — no patcher table changed and no IL is
+rewritten. Games pick it up on next launch.
 
 ### Launching one game without the launcher UI
 

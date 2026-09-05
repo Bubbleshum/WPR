@@ -82,7 +82,14 @@ namespace WPR
         // same change; this rescope replaces it. Do not re-add one — a forwarder plus a rescope means
         // two ways to resolve the same type, and the failure mode (a game binding the forwarder while
         // the patcher table says otherwise) is invisible until a cast fails at runtime.
-        public static int Version => 21;
+        //
+        // Bumped to 22: typeof() arguments inside CUSTOM ATTRIBUTE BLOBS are now rescoped too
+        // (RescopeCustomAttributeTypeArguments). They are stored as assembly-qualified STRINGS, not
+        // as TypeRef table rows, so every redirect above had been skipping them since forever — an
+        // attribute kept naming a WP7 assembly that no longer exists. Not identity-binding: a v21
+        // install still launches, it just keeps failing to build any XmlSerializer over the
+        // affected type. Repatch (or reinstall) to pick it up.
+        public static int Version => 22;
 
         private AssemblyNameReference FnaBackendRef;
         private AssemblyNameReference FNARef;
@@ -1478,6 +1485,194 @@ namespace WPR
 
         }//ApplicationPatcher
 
+        /// <summary>
+        /// Rescopes every <c>typeof(...)</c> argument in every custom attribute in the module.
+        /// </summary>
+        /// <remarks>
+        /// <para><b>A custom attribute blob names types by STRING, so the TypeRef rescope cannot
+        /// see them.</b> An argument of type <c>System.Type</c> is stored as an assembly-qualified
+        /// name — <c>"Microsoft.Xna.Framework.Vector2, Microsoft.Xna.Framework, Version=4.0.0.0,
+        /// …, PublicKeyToken=842cf8be1de50553"</c> — not as a row in the TypeRef table, so
+        /// <c>module.GetTypeReferences()</c> never returns it and every redirect this patcher
+        /// performs used to pass it by. The name then points at a WP7 assembly that does not
+        /// exist at runtime.</para>
+        ///
+        /// <para><b>Reading the arguments is what makes the fix stick, and it is also why the bug
+        /// existed.</b> Cecil parses a blob lazily and, if nothing ever touches
+        /// <c>ConstructorArguments</c>/<c>Properties</c>/<c>Fields</c>, writes the original bytes
+        /// back verbatim — which is exactly what happened before this method: the patcher rewrote
+        /// the assembly ref from <c>Microsoft.Xna.Framework</c> to <c>FNA</c> and the blob kept
+        /// saying <c>Microsoft.Xna.Framework</c> regardless. Touching them here forces Cecil to
+        /// materialise each argument into a <see cref="TypeReference"/> and to re-serialise the
+        /// blob from that model on write, so mutating the reference is enough.</para>
+        ///
+        /// <para><b>The failure is a hang, not a crash</b>, because the types that carry
+        /// <c>typeof()</c> in practice are <c>XmlSerializer</c> hints — <c>[XmlElement]</c>,
+        /// <c>[XmlArrayItem]</c>, <c>[XmlInclude]</c>. Nothing loads the type until a serializer is
+        /// constructed over the declaring type, and then the <c>TypeLoadException</c> arrives
+        /// wrapped in <c>InvalidOperationException: There was an error reflecting type '…'</c>,
+        /// which games routinely swallow. Fight Game Rivals
+        /// (<c>{57b854f3-a3cc-4213-aa91-07aae56e146c}</c>) is the reference case: one
+        /// <c>[XmlArrayItem(ElementName = "Vector2", Type = typeof(Vector2))]</c> on
+        /// <c>GameObjectManager.BaseGameObject.CustomData.xmlValues</c> failed the serializer for
+        /// <c>Manager.xmlGameObjectSpecification</c>, which is how EVERY screen in the game is
+        /// deserialised — so it sat on its splash screen for ever, with the only trace a
+        /// first-chance exception in the per-game log.</para>
+        /// </remarks>
+        private static void RescopeCustomAttributeTypeArguments(
+            ModuleDefinition module,
+            Action<TypeReference> rescope)
+        {
+            /* Attribute types whose blob could not be parsed at all, deduplicated. Reported as one
+             * line per assembly rather than one per attribute: the usual cause is a BCL attribute
+             * (DebuggableAttribute, EditorBrowsableAttribute) whose enum argument lives in WP7's
+             * own mscorlib/System, which nothing on this machine can resolve — hundreds of
+             * identical lines per install, none of them actionable. Still reported, because a
+             * GAME attribute in this list is the one case where a typeof() silently keeps its
+             * dead WP7 assembly name. */
+            SortedSet<string> unparsedAttributeTypes = new SortedSet<string>(StringComparer.Ordinal);
+
+            RescopeProvider(module.Assembly);
+            RescopeProvider(module);
+
+            foreach (TypeDefinition type in module.GetTypes())
+            {
+                RescopeProvider(type);
+
+                foreach (FieldDefinition field in type.Fields)
+                {
+                    RescopeProvider(field);
+                }
+
+                foreach (PropertyDefinition property in type.Properties)
+                {
+                    RescopeProvider(property);
+                }
+
+                foreach (EventDefinition evt in type.Events)
+                {
+                    RescopeProvider(evt);
+                }
+
+                foreach (MethodDefinition method in type.Methods)
+                {
+                    RescopeProvider(method);
+                    RescopeProvider(method.MethodReturnType);
+
+                    foreach (ParameterDefinition parameter in method.Parameters)
+                    {
+                        RescopeProvider(parameter);
+                    }
+                }
+            }
+
+            ReportUnparsed();
+
+            void RescopeProvider(ICustomAttributeProvider? provider)
+            {
+                if (provider == null || !provider.HasCustomAttributes)
+                {
+                    return;
+                }
+
+                foreach (CustomAttribute attribute in provider.CustomAttributes)
+                {
+                    /* An attribute whose own type cannot be resolved throws from the blob parser
+                     * (it needs the constructor's signature to know each argument's type). That is
+                     * not fatal on its own — an unresolvable attribute is inert unless something
+                     * reflects over it — so skip it and leave its bytes untouched rather than
+                     * failing the whole install. */
+                    try
+                    {
+                        foreach (CustomAttributeArgument argument in attribute.ConstructorArguments)
+                        {
+                            RescopeArgument(argument);
+                        }
+
+                        foreach (CustomAttributeNamedArgument named in attribute.Properties)
+                        {
+                            RescopeArgument(named.Argument);
+                        }
+
+                        foreach (CustomAttributeNamedArgument named in attribute.Fields)
+                        {
+                            RescopeArgument(named.Argument);
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        unparsedAttributeTypes.Add(attribute.AttributeType.FullName);
+                    }
+                }
+            }
+
+            void RescopeArgument(CustomAttributeArgument argument)
+            {
+                switch (argument.Value)
+                {
+                    // typeof(...). Mutating the reference in place is what the writer picks up —
+                    // CustomAttributeArgument is a struct, so assigning a new one to the local
+                    // would be thrown away.
+                    case TypeReference typeArgument:
+                        RescopeTypeTree(typeArgument);
+                        break;
+
+                    // An array-valued argument, e.g. Type[].
+                    case CustomAttributeArgument[] arrayArgument:
+                        foreach (CustomAttributeArgument element in arrayArgument)
+                        {
+                            RescopeArgument(element);
+                        }
+                        break;
+
+                    // A boxed argument — what an `object`-typed attribute parameter holds.
+                    case CustomAttributeArgument boxedArgument:
+                        RescopeArgument(boxedArgument);
+                        break;
+                }
+            }
+
+            void RescopeTypeTree(TypeReference type)
+            {
+                /* typeof(List<Vector2>) and typeof(Vector2[]) both hide the interesting reference
+                 * one level down, and only the leaf carries a scope worth rewriting. */
+                if (type is GenericInstanceType genericInstance)
+                {
+                    foreach (TypeReference genericArgument in genericInstance.GenericArguments)
+                    {
+                        RescopeTypeTree(genericArgument);
+                    }
+                }
+
+                if (type is TypeSpecification specification)
+                {
+                    RescopeTypeTree(specification.ElementType);
+                    return;
+                }
+
+                if (type.IsGenericParameter)
+                {
+                    return;
+                }
+
+                rescope(type);
+            }
+
+            void ReportUnparsed()
+            {
+                if (unparsedAttributeTypes.Count == 0)
+                {
+                    return;
+                }
+
+                Log.Warn(LogCategory.AppInstall,
+                    "[attr-fixup] " + module.Name + ": could not parse "
+                    + unparsedAttributeTypes.Count + " attribute type(s), so any typeof() in them "
+                    + "keeps its original assembly name: "
+                    + string.Join(", ", unparsedAttributeTypes));
+            }
+        }
+
         private void PatchRelaxedXmlNullableAttribTextSerialize(ModuleDefinition? module)
         {
             Queue<TypeDefinition> typeScanQueue = new Queue<TypeDefinition>();
@@ -1877,9 +2072,25 @@ namespace WPR
                 }
             }
 
-            // module.AssemblyReferences cycle 
+            /* Every assembly ref this loop is about to touch, keyed by the name it has BEFORE the
+             * rename.
+             *
+             * A typeref in the TypeRef TABLE follows a rename for free — its Scope is that very
+             * AssemblyNameReference instance, mutated in place. A type named inside a CUSTOM
+             * ATTRIBUTE BLOB does not: the blob stores an assembly-qualified name as a STRING, and
+             * when Cecil parses it (RescopeCustomAttributeTypeArguments, below) there is no ref
+             * called "Microsoft.Xna.Framework" left to match — this loop renamed it to "FNA" — so
+             * Cecil mints a fresh AssemblyNameReference for the dead WP7 identity.
+             *
+             * This map is how such a type gets back onto the same instance the table refs use. */
+            Dictionary<string, AssemblyNameReference> assemblyScopesByOriginalName =
+                new Dictionary<string, AssemblyNameReference>(StringComparer.Ordinal);
+
+            // module.AssemblyReferences cycle
             foreach (var refer in module.AssemblyReferences)
             {
+                assemblyScopesByOriginalName[refer.Name] = refer;
+
                 if (refer.Name.Contains("Microsoft.Xna"))
                 {
                     // Test the more specific "GamerServicesExtensions" first —
@@ -1989,6 +2200,20 @@ namespace WPR
             // cycle existing refs...
             foreach (var existingRef in module.GetTypeReferences())
             {
+                RescopeTypeReference(existingRef);
+            }//for...
+
+            /* GetTypeReferences() above walks the TypeRef metadata TABLE, and a type named inside
+             * a custom attribute blob is not in it — the blob carries an assembly-qualified name
+             * as a plain string, which no amount of table walking reaches. Those strings need
+             * exactly the same rescoping, so hand the same function over them. */
+            RescopeCustomAttributeTypeArguments(module, RescopeTypeReference);
+
+            // Points one typeref at whatever WPR assembly owns that type now. A local function so
+            // the blob walk above and the table walk share one set of rules; they must agree, or a
+            // typeof() in an attribute resolves somewhere its IL counterpart does not.
+            void RescopeTypeReference(TypeReference existingRef)
+            {
                 existingRef.Name = AssemblyNameStandardization.Process(existingRef.Name);
 
                 if (existingRef.FullName
@@ -2042,8 +2267,25 @@ namespace WPR
                             }
                         }
                     }
+                    else if (existingRef.Scope is AssemblyNameReference blobScope
+                        && assemblyScopesByOriginalName.TryGetValue(
+                            blobScope.Name, out AssemblyNameReference? liveScope)
+                        && !ReferenceEquals(blobScope, liveScope))
+                    {
+                        /* Only a type parsed out of a custom attribute blob reaches this. A
+                         * TypeRef-table entry already holds `liveScope` itself, so the identity
+                         * test short-circuits and the table walk is bit-for-bit unchanged.
+                         *
+                         * A blob-parsed one holds a throwaway AssemblyNameReference Cecil built
+                         * from the string, still naming the pre-rename identity. Retarget it, and
+                         * every rename this method performs — Microsoft.Xna.* -> FNA,
+                         * mscorlib.Extensions -> System.Runtime, System.ServiceModel ->
+                         * System.ServiceModel.Primitives — carries over to attribute arguments for
+                         * free, rather than each needing its own entry here. */
+                        existingRef.Scope = liveScope;
+                    }
                 }
-            }//for...
+            }//RescopeTypeReference
 
 
             // Send every IsolatedStorageFile.OpenFile / CreateFile call through the sharing shim.
