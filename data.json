@@ -146,7 +146,7 @@
   {"name":"Kinectimals","dev":"Frontier Developments Ltd.","status":"Playable","achv":true,"notes":"Promoted legacy → Playable after hardening the AchievementCollection string indexer to return an unearned placeholder instead of null (fixed the splash hang). Camera, background-agent and geolocation entry points reference types WPR does not shim yet, but none are on the main play path.","type":"XNA","dagger":false,"img":"kinectimals.jpg"},
   {"name":"Kinectimals Unleashed","dev":"Frontier Developments Ltd.","status":"Untested","android":"Broken","achv":false,"notes":"","type":"Silverlight","dagger":false,"img":"kinectimalsunleashed.jpg"},
   {"name":"Kingdoms \u0026 Lords","dev":"Gameloft","status":"Broken","android":"Broken","achv":false,"notes":"Silverlight title; not yet running on this fork.","type":"Silverlight","dagger":false,"img":"kingdomsandlords.jpg"},
-  {"name":"KooZac","dev":"SPL","status":"Untested","achv":false,"notes":"","type":"XNA","dagger":false,"img":"koozac.jpg"},
+  {"name":"KooZac","dev":"SPL","status":"Untested","android":"Playable","achv":false,"notes":"","type":"XNA","dagger":false,"img":"koozac.jpg"},
   {"name":"Lara Croft: Relic Run","dev":"Simutronics","status":"Untested","android":"Broken","achv":false,"notes":"","type":"Silverlight","dagger":false,"img":"laracroftrelicrun.jpg"},
   {"name":"Let\u0027s Golf 2","dev":"Gameloft","status":"Untested","achv":false,"notes":"","type":"XNA","dagger":false,"img":"letsgolf2.jpg"},
   {"name":"Lines The Game","dev":"Gamious","status":"Untested","android":"Broken","achv":false,"notes":"","type":"Silverlight","dagger":false,"img":"linesthegame.jpg"},
