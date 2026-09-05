@@ -1,19 +1,19 @@
 {
   "Name": "Contre Jour",
   "Achievements": [
-    { "Key": "speedy",           "Name": "Speedy Racer",               "GamerScore":  0, "Description": "Reach speed 500 pixels per second on the ground" },
-    { "Key": "mighty_bird",      "Name": "The Mighty Bird",            "GamerScore":  0, "Description": "Reach speed 1000 pixels per second in the air" },
-    { "Key": "rush_hour",        "Name": "Rush Hour",                  "GamerScore":  0, "Description": "Complete any level in 5 seconds" },
-    { "Key": "fast_perfect",     "Name": "Fast and Perfect",           "GamerScore":  0, "Description": "Complete any level with 3 lights in 10 seconds" },
-    { "Key": "spider",           "Name": "Spider",                     "GamerScore":  0, "Description": "Link 6 tentacles at the same time" },
-    { "Key": "blue_lantern",     "Name": "Blue Lantern",               "GamerScore":  0, "Description": "Collect 180 lights" },
-    { "Key": "sunrise",          "Name": "Sunrise",                    "GamerScore":  0, "Description": "Collect 300 lights" },
-    { "Key": "little_prince",    "Name": "Little Prince",              "GamerScore":  0, "Description": "Save the Rose" },
-    { "Key": "chapter1_perfect", "Name": "Ch.1 \"Monsters\" Perfect",  "GamerScore":  0, "Description": "Get three lights in all levels of chapter 1" },
-    { "Key": "chapter2_perfect", "Name": "Ch.2 \"The Night\" Perfect", "GamerScore":  0, "Description": "Get three lights in all levels of chapter 2" },
-    { "Key": "chapter3_perfect", "Name": "Ch.3 \"Machine\" Perfect",   "GamerScore":  0, "Description": "Get three lights in all levels of chapter 3" },
-    { "Key": "chapter4_perfect", "Name": "Ch.4 \"Moonlight\" Perfect", "GamerScore":  0, "Description": "Get three lights in all levels of chapter 4" },
-    { "Key": "chapter5_perfect", "Name": "Ch.5 \"Jungle\" Perfect",    "GamerScore":  0, "Description": "Get three lights in all levels of chapter 5" },
-    { "Key": "chapter6_perfect", "Name": "Ch.6 \"Mango\" Perfect",     "GamerScore":  0, "Description": "Get three lights in all levels of chapter 6" }
+    { "Key": "speedy",           "Name": "Speedy Racer",               "GamerScore": 10, "Description": "Reach speed 500 pixels per second on the ground" },
+    { "Key": "mighty_bird",      "Name": "The Mighty Bird",            "GamerScore": 10, "Description": "Reach speed 1000 pixels per second in the air" },
+    { "Key": "rush_hour",        "Name": "Rush Hour",                  "GamerScore": 10, "Description": "Complete any level in 5 seconds" },
+    { "Key": "fast_perfect",     "Name": "Fast and Perfect",           "GamerScore": 15, "Description": "Complete any level with 3 lights in 10 seconds" },
+    { "Key": "spider",           "Name": "Spider",                     "GamerScore": 10, "Description": "Link 6 tentacles at the same time" },
+    { "Key": "blue_lantern",     "Name": "Blue Lantern",               "GamerScore": 10, "Description": "Collect 180 lights" },
+    { "Key": "sunrise",          "Name": "Sunrise",                    "GamerScore": 25, "Description": "Collect 300 lights" },
+    { "Key": "little_prince",    "Name": "Little Prince",              "GamerScore": 20, "Description": "Save the Rose" },
+    { "Key": "chapter1_perfect", "Name": "Ch.1 \"Monsters\" Perfect",  "GamerScore": 15, "Description": "Get three lights in all levels of chapter 1" },
+    { "Key": "chapter2_perfect", "Name": "Ch.2 \"The Night\" Perfect", "GamerScore": 15, "Description": "Get three lights in all levels of chapter 2" },
+    { "Key": "chapter3_perfect", "Name": "Ch.3 \"Machine\" Perfect",   "GamerScore": 15, "Description": "Get three lights in all levels of chapter 3" },
+    { "Key": "chapter4_perfect", "Name": "Ch.4 \"Moonlight\" Perfect", "GamerScore": 15, "Description": "Get three lights in all levels of chapter 4" },
+    { "Key": "chapter5_perfect", "Name": "Ch.5 \"Jungle\" Perfect",    "GamerScore": 15, "Description": "Get three lights in all levels of chapter 5" },
+    { "Key": "chapter6_perfect", "Name": "Ch.6 \"Mango\" Perfect",     "GamerScore": 15, "Description": "Get three lights in all levels of chapter 6" }
   ]
 }

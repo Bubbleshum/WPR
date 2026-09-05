@@ -1,16 +1,16 @@
 {
   "Name": "The Game of Life",
   "Achievements": [
-    { "Key": "LivingTheLife",           "Name": "Living the Life",              "GamerScore":  0, "Description": "Win 1 game of original" },
-    { "Key": "VarietyIsTheSpiceOfLife", "Name": "Variety is the Spice of Life", "GamerScore":  0, "Description": "Change careers at least once in a single game" },
-    { "Key": "FamilyValues",            "Name": "Family Values",                "GamerScore":  0, "Description": "Win the game while having the most children" },
-    { "Key": "GoldPlated",              "Name": "Gold Plated",                  "GamerScore":  0, "Description": "Win a game with over $2,000,000 of wealth" },
-    { "Key": "DontBlameMe",             "Name": "Don't blame me!",              "GamerScore":  0, "Description": "Beat another player who is nominated to be sued in a lawsuit" },
-    { "Key": "TopOfTheWorld",           "Name": "Top of the World",             "GamerScore":  0, "Description": "Be a Doctor and own the Mansion House" },
-    { "Key": "MVP",                     "Name": "MVP",                          "GamerScore":  0, "Description": "Be an Athlete and own the Mansion House" },
-    { "Key": "MoneyMoneyMoney",         "Name": "Money Money Money",            "GamerScore":  0, "Description": "Have an investment pay off 5 times in a single game" },
-    { "Key": "InItToWinIt",             "Name": "In it to win it",              "GamerScore":  0, "Description": "Win $500,000 on Spin to Win" },
-    { "Key": "OnPatrol",                "Name": "On Patrol",                    "GamerScore":  0, "Description": "Be a Police Officer and bust another player for speeding" },
-    { "Key": "LifetimeAchievement",     "Name": "Lifetime Achievement",         "GamerScore":  0, "Description": "Win 10 games of original" }
+    { "Key": "LivingTheLife",           "Name": "Living the Life",              "GamerScore":  5, "Description": "Win 1 game of original" },
+    { "Key": "VarietyIsTheSpiceOfLife", "Name": "Variety is the Spice of Life", "GamerScore":  5, "Description": "Change careers at least once in a single game" },
+    { "Key": "FamilyValues",            "Name": "Family Values",                "GamerScore": 10, "Description": "Win the game while having the most children" },
+    { "Key": "GoldPlated",              "Name": "Gold Plated",                  "GamerScore": 10, "Description": "Win a game with over $2,000,000 of wealth" },
+    { "Key": "DontBlameMe",             "Name": "Don't blame me!",              "GamerScore": 15, "Description": "Beat another player who is nominated to be sued in a lawsuit" },
+    { "Key": "TopOfTheWorld",           "Name": "Top of the World",             "GamerScore": 15, "Description": "Be a Doctor and own the Mansion House" },
+    { "Key": "MVP",                     "Name": "MVP",                          "GamerScore": 20, "Description": "Be an Athlete and own the Mansion House" },
+    { "Key": "MoneyMoneyMoney",         "Name": "Money Money Money",            "GamerScore": 20, "Description": "Have an investment pay off 5 times in a single game" },
+    { "Key": "InItToWinIt",             "Name": "In it to win it",              "GamerScore": 25, "Description": "Win $500,000 on Spin to Win" },
+    { "Key": "OnPatrol",                "Name": "On Patrol",                    "GamerScore": 25, "Description": "Be a Police Officer and bust another player for speeding" },
+    { "Key": "LifetimeAchievement",     "Name": "Lifetime Achievement",         "GamerScore": 50, "Description": "Win 10 games of original" }
   ]
 }
