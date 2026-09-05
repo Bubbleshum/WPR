@@ -1,17 +1,16 @@
 {
   "Name": "The Game of Life",
-  "KeySource": "xlast",
   "Achievements": [
-    { "Key": "LivingTheLife",            "GamerScore": 0 },
-    { "Key": "VarietyIsTheSpiceOfLife",  "GamerScore": 0 },
-    { "Key": "FamilyValues",             "GamerScore": 0 },
-    { "Key": "GoldPlated",               "GamerScore": 0 },
-    { "Key": "DontBlameMe",              "GamerScore": 0 },
-    { "Key": "TopOfTheWorld",            "GamerScore": 0 },
-    { "Key": "MVP",                      "GamerScore": 0 },
-    { "Key": "MoneyMoneyMoney",          "GamerScore": 0 },
-    { "Key": "InItToWinIt",              "GamerScore": 0 },
-    { "Key": "OnPatrol",                 "GamerScore": 0 },
-    { "Key": "LifetimeAchievement",      "GamerScore": 0 }
+    { "Key": "LivingTheLife",           "Name": "Living the Life",              "GamerScore":  0, "Description": "Win 1 game of original" },
+    { "Key": "VarietyIsTheSpiceOfLife", "Name": "Variety is the Spice of Life", "GamerScore":  0, "Description": "Change careers at least once in a single game" },
+    { "Key": "FamilyValues",            "Name": "Family Values",                "GamerScore":  0, "Description": "Win the game while having the most children" },
+    { "Key": "GoldPlated",              "Name": "Gold Plated",                  "GamerScore":  0, "Description": "Win a game with over $2,000,000 of wealth" },
+    { "Key": "DontBlameMe",             "Name": "Don't blame me!",              "GamerScore":  0, "Description": "Beat another player who is nominated to be sued in a lawsuit" },
+    { "Key": "TopOfTheWorld",           "Name": "Top of the World",             "GamerScore":  0, "Description": "Be a Doctor and own the Mansion House" },
+    { "Key": "MVP",                     "Name": "MVP",                          "GamerScore":  0, "Description": "Be an Athlete and own the Mansion House" },
+    { "Key": "MoneyMoneyMoney",         "Name": "Money Money Money",            "GamerScore":  0, "Description": "Have an investment pay off 5 times in a single game" },
+    { "Key": "InItToWinIt",             "Name": "In it to win it",              "GamerScore":  0, "Description": "Win $500,000 on Spin to Win" },
+    { "Key": "OnPatrol",                "Name": "On Patrol",                    "GamerScore":  0, "Description": "Be a Police Officer and bust another player for speeding" },
+    { "Key": "LifetimeAchievement",     "Name": "Lifetime Achievement",         "GamerScore":  0, "Description": "Win 10 games of original" }
   ]
 }

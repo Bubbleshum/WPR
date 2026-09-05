@@ -1,18 +1,17 @@
 {
   "Name": "Monopoly",
-  "KeySource": "xlast",
   "Achievements": [
-    { "Key": "Everybody Starts Somewhere",  "GamerScore": 0 },
-    { "Key": "Now Youre On Your Way",       "GamerScore": 0 },
-    { "Key": "Moving On Up",                "GamerScore": 0 },
-    { "Key": "The View From The Top",       "GamerScore": 0 },
-    { "Key": "Rolled To Jail",              "GamerScore": 0 },
-    { "Key": "Rolled To Freedom",           "GamerScore": 0 },
-    { "Key": "Globe Trotter",               "GamerScore": 0 },
-    { "Key": "Taking Sides",                "GamerScore": 0 },
-    { "Key": "Transport King",              "GamerScore": 0 },
-    { "Key": "Youve Got The Power",         "GamerScore": 0 },
-    { "Key": "Deal Of The Century",         "GamerScore": 0 },
-    { "Key": "No Mercy",                    "GamerScore": 0 }
+    { "Key": "Everybody Starts Somewhere", "Name": "Everybody Starts Somewhere", "GamerScore":  0, "Description": "Buy a property." },
+    { "Key": "Now Youre On Your Way",      "Name": "Now You're On Your Way",     "GamerScore":  0, "Description": "Own a monopoly." },
+    { "Key": "Moving On Up",               "Name": "Moving On Up",               "GamerScore":  0, "Description": "Build your first set of houses." },
+    { "Key": "The View From The Top",      "Name": "View from the Top",          "GamerScore":  0, "Description": "Build your first set of hotels." },
+    { "Key": "Rolled To Jail",             "Name": "Rolled to Jail",             "GamerScore":  0, "Description": "Roll three doubles in a row and get sent to jail." },
+    { "Key": "Rolled To Freedom",          "Name": "Rolled to Freedom",          "GamerScore":  0, "Description": "Rolled a double to get out of jail." },
+    { "Key": "Globe Trotter",              "Name": "Globe Trotter",              "GamerScore":  0, "Description": "Land on every property on the board." },
+    { "Key": "Taking Sides",               "Name": "Taking Sides",               "GamerScore":  0, "Description": "Own every property, including any ports and utilities, down one whole side of the board." },
+    { "Key": "Transport King",             "Name": "Transport King",             "GamerScore":  0, "Description": "Own the monopoly on the transport properties." },
+    { "Key": "Youve Got The Power",        "Name": "You've Got the Power",       "GamerScore":  0, "Description": "Own the monopoly on the utilities." },
+    { "Key": "Deal Of The Century",        "Name": "Deal of the Century",        "GamerScore":  0, "Description": "Form a monopoly as a result of trading." },
+    { "Key": "No Mercy",                   "Name": "No Mercy",                   "GamerScore":  0, "Description": "Be responsible for the bankruptcy of another player." }
   ]
 }
