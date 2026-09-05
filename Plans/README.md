@@ -35,6 +35,7 @@ native titles, one that turned out to be hostable after all.
 | --- | --- |
 | [Unity_WP8_Feasibility.md](Unity_WP8_Feasibility.md) | Unity WP titles can't be hosted (native ARM engine) but *are* recoverable — a one-time per-game rebuild that WPR launches instead. The launcher rail for this is implemented; the per-game port is not. |
 | [Spark2_Managed_Reimplementation_Feasibility.md](Spark2_Managed_Reimplementation_Feasibility.md) | Ubisoft's Spark2 engine (AC Pirates): **not practically feasible**. Gated on decrypting AES content from non-runnable ARM binaries, behind which sits a full proprietary D3D11 engine. |
+| [WP8-NATIVE-RESUME.md](WP8-NATIVE-RESUME.md) | WP8 native (C++/DirectX) titles: **feasible, demonstrated** in an ARM probe that lives on the `wp8-native` branch (worktree `.claude/worktrees/wp8-native`). This page is the pointer: where the work is, its state, and how to resume it. The full plan and measurements are on that branch. |
 | [WP8-NATIVE-PROBE.md](WP8-NATIVE-PROBE.md) | WP8 native (C++/DirectX) titles: **feasible, and demonstrated** — an ARM probe boots Angry Birds Rio to its menus and drives them with touch. Two known blockers, both measured: one bug in the game's own Lua, and a CPU that must move to dynarmic for both licence and speed. |
 
 ## Open TODO lists
