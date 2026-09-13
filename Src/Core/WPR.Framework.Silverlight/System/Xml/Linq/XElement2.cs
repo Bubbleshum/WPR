@@ -1,6 +1,5 @@
 using System.Xml.Linq;
-using System.IO;
-using WPR.Common;
+using WPR.Engine.Content;
 
 namespace WPR.WindowsCompability
 {
@@ -13,30 +12,21 @@ namespace WPR.WindowsCompability
     /// </summary>
     public class XElement2
     {
-        public static XElement Load(string path)
-        {
-            string normalized = (Path.DirectorySeparatorChar == '\\')
-                ? path
-                : path.Replace('\\', Path.DirectorySeparatorChar);
+        public static XElement Load(string path) => XElement.Load(Resolve(path));
 
-            // WP7 titles read data files (e.g. XboxLIVESettings.xml) with a bare relative
-            // path. On real WP7 the working directory WAS the install root; under WPR a
-            // Silverlight app runs in-process so the CWD is the host exe dir and the file
-            // isn't there. If the path is relative and not found in the CWD, fall back to
-            // the current game's install folder (published by the launch path). Absolute
-            // paths and CWD-relative paths that already resolve keep their existing behaviour.
-            if (!Path.IsPathRooted(normalized) && !File.Exists(normalized))
-            {
-                string? installFolder = WprHostEnvironment.CurrentInstallFolder;
-                if (!string.IsNullOrEmpty(installFolder))
-                {
-                    string candidate = Path.Combine(installFolder, normalized);
-                    if (File.Exists(candidate))
-                        return XElement.Load(candidate);
-                }
-            }
+        public static XElement Load(string path, LoadOptions options) =>
+            XElement.Load(Resolve(path), options);
 
-            return XElement.Load(normalized);
-        }
+        /// <summary>
+        /// The path this shim will actually open.
+        ///
+        /// <para>Both halves of what used to be written out here - normalising Windows
+        /// separators, and falling back to the game's install folder for a relative path the
+        /// working directory cannot satisfy - now live in
+        /// <see cref="ContentPaths.Resolve"/>, driven by rules the platform declares. This shim
+        /// was where that logic was first written; generalising it to every path-taking BCL
+        /// member is what moved it into the engine.</para>
+        /// </summary>
+        private static string Resolve(string path) => ContentPaths.Resolve(path)!;
     }
 }

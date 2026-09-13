@@ -362,7 +362,32 @@ namespace WPR
                         {
                             Exception fce = e.Exception;
                             WprTrace($"[wpr-fce] {fce.GetType().FullName}: {fce.Message}");
-                            WprTrace("[wpr-fce] " + (fce.StackTrace ?? "(no stack)"));
+
+                            // WALK THE STACK HERE rather than printing fce.StackTrace.
+                            // FirstChanceException fires on the throwing thread with the full
+                            // call chain still on it, so this walk names every caller. The
+                            // exception's OWN trace is close to useless at this point: it is
+                            // built up as the exception propagates, so it is either null (caught
+                            // in the frame that threw) or a single frame — for a BCL range check
+                            // that one frame is "System.ThrowHelper.ThrowArgumentOutOfRange_...",
+                            // which identifies nothing at all.
+                            //
+                            // That matters because this hook exists precisely for exceptions a
+                            // game swallows in a broad catch, where type and message are all you
+                            // otherwise get. Measured on Feed Me Oil: 284 stackless
+                            // IndexOutOfRangeExceptions on Android and 711 one-frame
+                            // ArgumentOutOfRangeExceptions on Windows, none of which named a
+                            // single frame of game or WPR code.
+                            //
+                            // fNeedFileInfo: line numbers wherever a .pdb sits beside the .dll.
+                            // Skip frame 0, which is this handler.
+                            string trace = new System.Diagnostics.StackTrace(1, true).ToString();
+                            if (string.IsNullOrWhiteSpace(trace))
+                            {
+                                trace = fce.StackTrace ?? "(no stack)";
+                            }
+
+                            WprTrace("[wpr-fce] " + trace);
                         }
                         catch { /* never let logging mask the original throw */ }
                         finally { _inFirstChance = false; }

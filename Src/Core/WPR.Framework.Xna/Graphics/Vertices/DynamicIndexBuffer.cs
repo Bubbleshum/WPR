@@ -81,14 +81,22 @@ namespace Microsoft.Xna.Framework.Graphics
 			ErrorCheck(data, startIndex, elementCount);
 
 			GCHandle handle = GCHandle.Alloc(data, GCHandleType.Pinned);
+			IntPtr source =
+				handle.AddrOfPinnedObject() + (startIndex * Marshal.SizeOf(typeof(T)));
+			int lengthInBytes = elementCount * Marshal.SizeOf(typeof(T));
 			XnaBackend.Graphics.SetIndexBufferData(
 				GraphicsDevice.GLDevice,
 				buffer,
 				offsetInBytes,
-				handle.AddrOfPinnedObject() + (startIndex * Marshal.SizeOf(typeof(T))),
-				elementCount * Marshal.SizeOf(typeof(T)),
+				source,
+				lengthInBytes,
 				options
 			);
+			if (options == SetDataOptions.Discard)
+			{
+				shadow.Discard();
+			}
+			shadow.Write(offsetInBytes, source, lengthInBytes);
 			handle.Free();
 		}
 
@@ -101,14 +109,22 @@ namespace Microsoft.Xna.Framework.Graphics
 			ErrorCheck(data, startIndex, elementCount);
 
 			GCHandle handle = GCHandle.Alloc(data, GCHandleType.Pinned);
+			IntPtr source =
+				handle.AddrOfPinnedObject() + (startIndex * Marshal.SizeOf(typeof(T)));
+			int lengthInBytes = elementCount * Marshal.SizeOf(typeof(T));
 			XnaBackend.Graphics.SetIndexBufferData(
 				GraphicsDevice.GLDevice,
 				buffer,
 				0,
-				handle.AddrOfPinnedObject() + (startIndex * Marshal.SizeOf(typeof(T))),
-				elementCount * Marshal.SizeOf(typeof(T)),
+				source,
+				lengthInBytes,
 				options
 			);
+			if (options == SetDataOptions.Discard)
+			{
+				shadow.Discard();
+			}
+			shadow.Write(0, source, lengthInBytes);
 			handle.Free();
 		}
 

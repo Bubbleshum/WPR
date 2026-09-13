@@ -89,7 +89,33 @@ namespace WPR
         // attribute kept naming a WP7 assembly that no longer exists. Not identity-binding: a v21
         // install still launches, it just keeps failing to build any XmlSerializer over the
         // affected type. Repatch (or reinstall) to pick it up.
-        public static int Version => 22;
+        //
+        // Bumped to 23: game file I/O now goes through WPR.Engine.Content, so a hardcoded Windows
+        // path like "Content\Credits.xml" opens on Android instead of naming a single file with a
+        // backslash in it. Affects every path-taking System.IO / System.Xml member a game calls
+        // (see the MemberPatches block). Not identity-binding: a v22 install still launches, it
+        // just keeps failing those opens — and because games swallow the exception the symptom
+        // shows up somewhere unrelated (Battlewagon: no menu, 5,593 NREs a run). Repatch is
+        // enough; no reinstall needed.
+        //
+        // Bumped to 24: no table changed — what changed is that assemblies which previously
+        // FAILED to patch now succeed. Cecil resolves a constant's declared type while writing
+        // the Constant table (MetadataBuilder.GetConstantType), which on Android always failed
+        // because no managed assembly is on disk there; PatchDll logged it and left that DLL
+        // unpatched, so the game still bound the WP7 XNA identities and died at launch with a
+        // FileNotFoundException inside an AggregateException. ConstantEnumStubResolver answers
+        // that resolve from the constant's own recorded value. The bump exists purely so those
+        // installs repatch themselves — an affected DLL is pristine on disk, not stale, and
+        // nothing else can tell the difference. Repatch is enough; no reinstall needed.
+        // Measured on a 36-game phone: Beards and Beaks and Chickens Can't Fly each had their
+        // MAIN assembly skipped and neither would start.
+        //
+        // Bumped to 25: ApplyGameSpecificFixups gained a second entry — Feed Me Oil's
+        // OggSound.StopById is rewritten to guard its unconditional RemoveAt(found), which is
+        // what froze the game (input included) on its first change of music. This DOES rewrite
+        // game IL, so an install made before it keeps the old body and keeps freezing.
+        // Not identity-binding — a v24 install still launches — so repatch is enough.
+        public static int Version => 25;
 
         private AssemblyNameReference FnaBackendRef;
         private AssemblyNameReference FNARef;
@@ -1436,7 +1462,213 @@ namespace WPR
                     "System.Byte[] System.Security.Cryptography.ProtectedData::Unprotect(System.Byte[],System.Byte[])",
                     typeof(WPR.WindowsCompability.ProtectedData)
                 },
-                 
+
+                // ---- Windows path separators in game file I/O -------------------------------
+                //
+                // WP7 titles were built on Windows, where '\' and '/' are interchangeable, so
+                // hardcoded paths like "Content\Credits.xml" are everywhere — 7 of the 26
+                // installed titles carry one, and one carries 89. On Android '\' is an ordinary
+                // filename character, so the open fails, the game swallows it, and the symptom
+                // surfaces somewhere unrelated. Battlewagon is the reference case: one failed
+                // XmlReader.Create left a null field and TitleScene.Update then threw an NRE on
+                // every frame (5,593 in one run) — its menu never built while the background
+                // animated happily. The rules are declared by the platform; see
+                // WPR.Engine.Content.ContentPaths.
+                //
+                // These normalise at the point of USE rather than rewriting string literals, so
+                // a path assembled at run time (concatenation, Path.Combine, "Level{0}\{0}.txt")
+                // is covered too. Windows behaviour is unchanged — the normaliser is a no-op
+                // when the platform separator is already '\'.
+                //
+                // NOT covered: System.IO.FileInfo / DirectoryInfo. Both are SEALED, so no
+                // subclass can stand where the constructed instance lands, and retargeting the
+                // declaring type is all this table can do. They need a call-site rewrite like
+                // RedirectIsolatedStorageOpens; only 3 uses exist across the installed library,
+                // so that is deliberately left until something actually needs it.
+                {
+                    "System.IO.FileStream System.IO.File::Open(System.String,System.IO.FileMode)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.IO.FileStream System.IO.File::Open(System.String,System.IO.FileMode,System.IO.FileAccess)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.IO.FileStream System.IO.File::Open(System.String,System.IO.FileMode,System.IO.FileAccess,System.IO.FileShare)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.Boolean System.IO.File::Exists(System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.IO.StreamReader System.IO.File::OpenText(System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.IO.FileStream System.IO.File::OpenRead(System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.IO.FileStream System.IO.File::OpenWrite(System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.IO.FileStream System.IO.File::Create(System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.IO.StreamWriter System.IO.File::CreateText(System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.IO.StreamWriter System.IO.File::AppendText(System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.String System.IO.File::ReadAllText(System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.Byte[] System.IO.File::ReadAllBytes(System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.String[] System.IO.File::ReadAllLines(System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.Void System.IO.File::WriteAllText(System.String,System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.Void System.IO.File::WriteAllBytes(System.String,System.Byte[])",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.Void System.IO.File::AppendAllText(System.String,System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.Void System.IO.File::Delete(System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.Void System.IO.File::Copy(System.String,System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.Void System.IO.File::Copy(System.String,System.String,System.Boolean)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.Void System.IO.File::Move(System.String,System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+
+                {
+                    "System.Boolean System.IO.Directory::Exists(System.String)",
+                    typeof(WPR.WindowsCompability.Directory2)
+                },
+                {
+                    "System.IO.DirectoryInfo System.IO.Directory::CreateDirectory(System.String)",
+                    typeof(WPR.WindowsCompability.Directory2)
+                },
+                {
+                    "System.Void System.IO.Directory::Delete(System.String)",
+                    typeof(WPR.WindowsCompability.Directory2)
+                },
+                {
+                    "System.Void System.IO.Directory::Delete(System.String,System.Boolean)",
+                    typeof(WPR.WindowsCompability.Directory2)
+                },
+                {
+                    "System.String[] System.IO.Directory::GetFiles(System.String)",
+                    typeof(WPR.WindowsCompability.Directory2)
+                },
+                {
+                    "System.String[] System.IO.Directory::GetFiles(System.String,System.String)",
+                    typeof(WPR.WindowsCompability.Directory2)
+                },
+                {
+                    "System.String[] System.IO.Directory::GetDirectories(System.String)",
+                    typeof(WPR.WindowsCompability.Directory2)
+                },
+                {
+                    "System.String[] System.IO.Directory::GetDirectories(System.String,System.String)",
+                    typeof(WPR.WindowsCompability.Directory2)
+                },
+
+                // Constructors: the replacement must be SUBSTITUTABLE for the original, because
+                // all this table does is retarget the newobj's declaring type. FileStream,
+                // StreamReader and StreamWriter are all unsealed, so a subclass works — the same
+                // mechanism SharedIsolatedStorageFileStream already uses.
+                {
+                    "System.Void System.IO.FileStream::.ctor(System.String,System.IO.FileMode)",
+                    typeof(WPR.WindowsCompability.NormalizedPathFileStream)
+                },
+                {
+                    "System.Void System.IO.FileStream::.ctor(System.String,System.IO.FileMode,System.IO.FileAccess)",
+                    typeof(WPR.WindowsCompability.NormalizedPathFileStream)
+                },
+                {
+                    "System.Void System.IO.FileStream::.ctor(System.String,System.IO.FileMode,System.IO.FileAccess,System.IO.FileShare)",
+                    typeof(WPR.WindowsCompability.NormalizedPathFileStream)
+                },
+                {
+                    "System.Void System.IO.StreamReader::.ctor(System.String)",
+                    typeof(WPR.WindowsCompability.NormalizedPathStreamReader)
+                },
+                {
+                    "System.Void System.IO.StreamReader::.ctor(System.String,System.Text.Encoding)",
+                    typeof(WPR.WindowsCompability.NormalizedPathStreamReader)
+                },
+                {
+                    "System.Void System.IO.StreamReader::.ctor(System.String,System.Boolean)",
+                    typeof(WPR.WindowsCompability.NormalizedPathStreamReader)
+                },
+                {
+                    "System.Void System.IO.StreamWriter::.ctor(System.String)",
+                    typeof(WPR.WindowsCompability.NormalizedPathStreamWriter)
+                },
+                {
+                    "System.Void System.IO.StreamWriter::.ctor(System.String,System.Boolean)",
+                    typeof(WPR.WindowsCompability.NormalizedPathStreamWriter)
+                },
+                {
+                    "System.Void System.IO.StreamWriter::.ctor(System.String,System.Boolean,System.Text.Encoding)",
+                    typeof(WPR.WindowsCompability.NormalizedPathStreamWriter)
+                },
+
+                // XmlReader.Create is the one that actually broke Battlewagon: it resolves its
+                // argument as a URI and opens the FileStream inside XmlDownloadManager, so the
+                // System.IO entries above never see the path.
+                {
+                    "System.Xml.XmlReader System.Xml.XmlReader::Create(System.String)",
+                    typeof(WPR.WindowsCompability.XmlReader2)
+                },
+                {
+                    "System.Xml.XmlReader System.Xml.XmlReader::Create(System.String,System.Xml.XmlReaderSettings)",
+                    typeof(WPR.WindowsCompability.XmlReader2)
+                },
+                {
+                    "System.Xml.Linq.XDocument System.Xml.Linq.XDocument::Load(System.String)",
+                    typeof(WPR.WindowsCompability.XDocument2)
+                },
+                {
+                    "System.Xml.Linq.XDocument System.Xml.Linq.XDocument::Load(System.String,System.Xml.Linq.LoadOptions)",
+                    typeof(WPR.WindowsCompability.XDocument2)
+                },
+                // NOTE: XElement::Load(String) is NOT listed here — it already had an entry at the
+                // bottom of this table, pointing at the same XElement2. That shim predates this
+                // block and does the same normalisation plus an install-folder fallback for
+                // relative paths; only the LoadOptions overload was missing.
+                {
+                    "System.Xml.Linq.XElement System.Xml.Linq.XElement::Load(System.String,System.Xml.Linq.LoadOptions)",
+                    typeof(WPR.WindowsCompability.XElement2)
+                },
+                // ---- end Windows path separators --------------------------------------------
+
                 //{
                 //    "System.Windows.Media.Imaging.WriteableBitmap System.Windows.Media.Imaging.WriteableBitmap(System.Integer,System.Integer)",
                 //    typeof(WPR.WindowsCompability.WriteableBitmap)
@@ -1944,7 +2176,18 @@ namespace WPR
         /// touches the exact game it targets and no-ops (rather than corrupting the DLL) if the
         /// expected IL isn't present, e.g. a different build of the title.
         /// </summary>
+        /// <summary>
+        /// Per-title IL repairs that don't fit the reference-redirect tables. Each entry gates
+        /// itself on a type only that game defines, so this is a list of independent fixups —
+        /// add to it, and do NOT early-return from here, or every later fixup stops running.
+        /// </summary>
         private static void ApplyGameSpecificFixups(ModuleDefinition module)
+        {
+            ApplyHothRevealFixup(module);
+            ApplyFeedMeOilStopByIdFixup(module);
+        }
+
+        private static void ApplyHothRevealFixup(ModuleDefinition module)
         {
             // Star Wars: The Battle for Hoth (SWTheBattleForHoth.dll). On a *fresh* game the
             // in-game HUD and the tutorial popups are revealed by animating the sprites in from
@@ -1979,6 +2222,113 @@ namespace WPR
                 {
                     Debug.WriteLine($"[hoth-fixup] {typeName} threw: {ex.Message}");
                 }
+            }
+        }
+
+        /// <summary>
+        /// Feed Me Oil (FeedMeOil.dll). Guards the unconditional <c>RemoveAt</c> at the end of
+        /// <c>OggSound.StopById</c>, which is what freezes the game on its first music change.
+        ///
+        /// <para><b>The game's bug.</b> <c>StopById</c> is
+        /// <c>found = -1; for (i..) if (_instances[i].id == id) { found = i; …Stop(); break; }
+        /// _instances.RemoveAt(found);</c> — the remove runs even when the search fell through and
+        /// <c>found</c> is still -1. Reached with a guard, it simply removes nothing, which is
+        /// exactly right: nothing matched, so there is nothing to take out of the list.</para>
+        ///
+        /// <para><b>Why it is reached.</b> <c>SBSounds.playMusic</c> assigns
+        /// <c>__lastMusicSound = soundId</c> BEFORE calling <c>stopMusic()</c>, and
+        /// <c>stopMusic</c> resolves the sound to stop through that very field. So a change of
+        /// track looks for the OUTGOING music's instance id inside the INCOMING sound's instance
+        /// list, which can never match.</para>
+        ///
+        /// <para><b>Why one miss freezes the game for good.</b> The throw happens inside
+        /// <c>stopMusic</c> BEFORE it can run <c>__musicId = 0</c>, so the stale id survives; the
+        /// next frame takes the same branch and throws again, for ever. It escapes through
+        /// <c>SBSceneObjects.onEnter</c> into <c>Director.Update</c>, which is where the game reads
+        /// <c>TouchPanel.GetState()</c> and dispatches <c>TouchBegan/Moved/Ended</c> — all of it
+        /// below the throw. <c>Draw</c> is a separate call and keeps running, so the game paints a
+        /// perfectly good frame while nothing advances and no tap is ever seen. That is the whole
+        /// of the reported symptom: "gets into gameplay, then clicks don't register and it freezes."
+        /// The guard lets <c>stopMusic</c> finish, <c>__musicId</c> reaches 0, and play resumes.</para>
+        ///
+        /// <para>Identical on both heads — measured on a Galaxy S24 and on Windows, failing at the
+        /// same point (the story cutscene handing over to level 1). Nothing here is Android's.</para>
+        /// </summary>
+        private static void ApplyFeedMeOilStopByIdFixup(ModuleDefinition module)
+        {
+            TypeDefinition? ogg = module.GetType("FeedMeOil.OggSound");
+            if (ogg == null) return;
+
+            MethodDefinition? m = ogg.Methods.FirstOrDefault(x => x.Name == "StopById" && x.HasBody);
+            if (m == null)
+            {
+                Log.Warn(LogCategory.AppInstall, "[fmo-fixup] FeedMeOil.OggSound.StopById not found — skip.");
+                return;
+            }
+
+            try
+            {
+                // Long-form every macro first: inserting instructions lengthens the method, and a
+                // pre-existing short branch (there is one — the loop's `break` jumps at the remove)
+                // can then no longer reach its target. OptimizeMacros re-shortens what still fits.
+                m.Body.SimplifyMacros();
+
+                Instruction? removeAt = m.Body.Instructions.FirstOrDefault(
+                    i => (i.OpCode == OpCodes.Callvirt || i.OpCode == OpCodes.Call)
+                         && i.Operand is MethodReference mr
+                         && mr.Name == "RemoveAt"
+                         && mr.DeclaringType.Name.StartsWith("List`1", StringComparison.Ordinal));
+
+                // Argument shape: ldarg.0 ; ldfld _instances ; ldloc <found> ; callvirt RemoveAt.
+                Instruction? idxLoad = removeAt?.Previous;
+                Instruction? fieldLoad = idxLoad?.Previous;
+                Instruction? seqStart = fieldLoad?.Previous;
+                Instruction last = m.Body.Instructions[m.Body.Instructions.Count - 1];
+
+                if (removeAt == null || seqStart == null
+                    || idxLoad!.OpCode != OpCodes.Ldloc || idxLoad.Operand is not VariableDefinition found
+                    || fieldLoad!.OpCode != OpCodes.Ldfld
+                    || last.OpCode != OpCodes.Ret)
+                {
+                    Log.Warn(LogCategory.AppInstall,
+                        "[fmo-fixup] StopById IL does not match the expected shape — left unpatched.");
+                    m.Body.OptimizeMacros();
+                    return;
+                }
+
+                ILProcessor il = m.Body.GetILProcessor();
+                Instruction guard = Instruction.Create(OpCodes.Ldloc, found);
+                Instruction zero = Instruction.Create(OpCodes.Ldc_I4_0);
+                Instruction skip = Instruction.Create(OpCodes.Blt, last);
+
+                il.InsertBefore(seqStart, guard);
+                il.InsertBefore(seqStart, zero);
+                il.InsertBefore(seqStart, skip);
+
+                // Anything that jumped to the old first instruction must now jump to the guard,
+                // or the loop's `break` lands past it and the fix silently does nothing.
+                foreach (Instruction i in m.Body.Instructions)
+                {
+                    if (ReferenceEquals(i.Operand, seqStart))
+                    {
+                        i.Operand = guard;
+                    }
+                    else if (i.Operand is Instruction[] targets)
+                    {
+                        for (int t = 0; t < targets.Length; t++)
+                        {
+                            if (ReferenceEquals(targets[t], seqStart)) targets[t] = guard;
+                        }
+                    }
+                }
+
+                m.Body.OptimizeMacros();
+                Log.Info(LogCategory.AppInstall,
+                    "[fmo-fixup] guarded FeedMeOil.OggSound.StopById against RemoveAt(-1).");
+            }
+            catch (Exception ex)
+            {
+                Log.Warn(LogCategory.AppInstall, $"[fmo-fixup] threw, left unpatched: {ex.Message}");
             }
         }
 
@@ -2038,7 +2388,15 @@ namespace WPR
             // never redirected -> TypeLoadException at launch). Point the resolver at
             // the install dir *and* the running WPR bin (where FNA + the shims are
             // deployed) so those resolves succeed. Repro'd on "Beards and Beaks.dll".
-            var resolver = new DefaultAssemblyResolver();
+            //
+            // The WPR bin only helps a platform that HAS a WPR bin. On Android every
+            // managed assembly is embedded in the APK and mapped out of it, so
+            // AppContext.BaseDirectory holds no .dll at all and that resolve fails no
+            // matter what is added here — which is why the same "Beards and Beaks.dll"
+            // was still arriving unpatched on a phone long after the line above fixed
+            // it on Windows. ConstantEnumStubResolver answers that one resolve without
+            // needing a file; see its remarks.
+            var resolver = new ConstantEnumStubResolver();
             resolver.AddSearchDirectory(Path.GetDirectoryName(modulePath)!);
             resolver.AddSearchDirectory(AppContext.BaseDirectory);
 
@@ -2295,6 +2653,18 @@ namespace WPR
 
             // Game-specific IL fixups that don't fit the reference-redirect tables above.
             ApplyGameSpecificFixups(module);
+
+            // Cecil resolves a constant's declared type while building the Constant table,
+            // to learn the integer behind an enum. Prepare an answer for any that cannot be
+            // found on disk — which on Android is all of ours. Must run here: the scope Cecil
+            // asks for is the one the rescoping above just renamed it to.
+            int stubbed = resolver.PrimeConstantTypes(module);
+            if (stubbed > 0)
+            {
+                Log.Info(LogCategory.AppInstall,
+                    $"[const-fixup] {Path.GetFileName(modulePath)}: {stubbed} constant type(s) " +
+                    "resolved from the constant's own value (assembly not on disk).");
+            }
 
             // create .dll.new
             try

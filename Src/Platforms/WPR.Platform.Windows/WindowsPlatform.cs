@@ -26,6 +26,18 @@ namespace WPR.Platform.Windows
             // the game host attaches no tilt components there.
             .KeyboardEmulation(new WPR.Input.Keyboard.KeyboardEmulationHost())
 
+            // Windows accepts a WP7 game's "Content\Foo.xml" as-is, so nothing is translated
+            // here — the interesting half of this declaration is that Android's says the
+            // opposite. The install-folder probe IS on, and for a reason that has nothing to do
+            // with separators: a Silverlight app runs in-process, so the working directory is this
+            // exe's rather than the game's, and a title reading a bare relative filename would
+            // otherwise miss a file that is sitting right there.
+            .ContentPaths(new WPR.Engine.Content.ContentPathRules
+            {
+                WindowsSeparatorsAreNative = true,
+                ProbeInstallFolderForRelativePaths = true,
+            })
+
             // Deliberately no GraphicsDriver declaration. Windows compiles in D3D11 and OpenGL,
             // FNA3D offers D3D11 first, and it is the right answer — so the lever stays untouched
             // rather than being explicitly set to Automatic, which would clear a hint the desktop

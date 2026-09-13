@@ -27,6 +27,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Content\WPR.Engine.Content.csproj" />
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Graphics\WPR.Engine.Graphics.csproj" />
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Audio\WPR.Engine.Audio.csproj" />
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Sensors\WPR.Engine.Sensors.csproj" />

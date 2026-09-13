@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Engine.Content - the content/file-path subsystem's composition layer.
+
+    Part of the Engine tier, and the direct sibling of WPR.Engine.Graphics: a platform head
+    declares FACTS about its filesystem (ContentPathRules) and this project owns the LOGIC that
+    turns those facts into a usable path (ContentPaths). The framework keeps only the thin shims
+    that game IL is patched to call, because those must live where the patcher can name them.
+
+    References WPR.Common for WprHostEnvironment.CurrentInstallFolder - the install folder is
+    the fallback root for a relative path, and it is published by the launch path. That is the
+    same single-reason dependency WPR.Engine.Vibration takes on WPR.Common.
+  -->
+
+  <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+  </PropertyGroup>
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net8.0-android</TargetFrameworks>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <AssemblyName>WPR.Engine.Content</AssemblyName>
+    <RootNamespace>WPR.Engine.Content</RootNamespace>
+    <Nullable>enable</Nullable>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net8.0-android'">21.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(SolutionDir)\Core\WPR.Common\WPR.Common.csproj" />
+  </ItemGroup>
+
+</Project>

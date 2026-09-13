@@ -53,38 +53,9 @@ namespace Microsoft.Devices.Sensors
 
         public SensorState State { get; private set; }
 
-        /// <summary>
-        /// Boxed <see cref="AccelerometerReading"/>, published with a volatile reference write.
-        ///
-        /// <para><b>Why boxed rather than a plain auto-property.</b> Samples arrive on the
-        /// platform's sampling thread while the game reads <see cref="CurrentValue"/> from its
-        /// update thread, and the reading is a ~28-byte struct (a <see cref="DateTimeOffset"/>
-        /// plus a vector) — big enough that a struct-copy write can be observed half-updated,
-        /// which would surface as a one-frame garbage acceleration that never reproduces.
-        /// Swapping a reference is atomic, so the reader either sees the previous sample whole
-        /// or the new one whole. The cost is one small gen0 allocation per sample, and only
-        /// while a game is actually reading.</para>
-        /// </summary>
-        private object? _currentValueBox;
-
-        /// <summary>
-        /// Last reading produced by the platform provider. WP7 games that poll instead of
-        /// subscribing to <see cref="ReadingChanged"/> read this each frame.
-        /// </summary>
-        public AccelerometerReading CurrentValue
-            => Volatile.Read(ref _currentValueBox) is AccelerometerReading reading
-                ? reading
-                : default;
-
-        /// <summary>True once at least one reading has been produced since <see cref="Start"/>.</summary>
-        public bool IsDataValid => Volatile.Read(ref _currentValueBox) != null;
-
-        /// <summary>
-        /// WP7 throttle hint — how often the game wants updates. Neither provider honours it
-        /// today (the emulator ticks at 60Hz, Android samples at its Game speed); the property
-        /// exists so games that set it don't blow up.
-        /// </summary>
-        public TimeSpan TimeBetweenUpdates { get; set; } = TimeSpan.FromMilliseconds(20);
+        // CurrentValue / IsDataValid / TimeBetweenUpdates used to be declared here. They are on
+        // SensorBase<T> now, because that is where WP7 declares them and therefore what game IL
+        // binds — see the note on that type. Do not move them back down.
 
         /// <summary>
         /// The provider this instance actually started against, held so <see cref="Stop"/>
@@ -96,7 +67,7 @@ namespace Microsoft.Devices.Sensors
         /// </summary>
         private IAccelerometerProvider? _startedOn;
 
-        public void Start()
+        public override void Start()
         {
             if (_Started)
             {
@@ -118,7 +89,7 @@ namespace Microsoft.Devices.Sensors
             provider.Start();
         }
 
-        public void Stop()
+        public override void Stop()
         {
             if (!_Started)
             {
@@ -154,7 +125,7 @@ namespace Microsoft.Devices.Sensors
 
             // Publish before raising, so a handler that reads CurrentValue sees this sample and
             // not the previous one. The single write also sets IsDataValid.
-            Volatile.Write(ref _currentValueBox, reading);
+            SetCurrentValue(reading);
 
             ReadingChanged?.Invoke(this, new AccelerometerReadingEventArgs(
                 acceleration.X, acceleration.Y, acceleration.Z, reading.Timestamp));

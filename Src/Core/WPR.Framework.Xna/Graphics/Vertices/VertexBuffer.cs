@@ -45,6 +45,116 @@ namespace Microsoft.Xna.Framework.Graphics
 
 		#endregion
 
+		#region Internal CPU Shadow
+
+		/* Serves GetData without a GPU readback, because FNA3D's OpenGL driver
+		 * implements that with glGetBufferSubData — a NonES3 entry point that is
+		 * NULL under OpenGL ES. See GpuBufferShadow for the full story.
+		 *
+		 * Null for a BufferUsage.WriteOnly buffer: GetData below throws on one
+		 * before it could ever reach the readback, so shadowing it would be pure
+		 * memory cost. That matters here and not in IndexBuffer — vertex data is
+		 * the bulk of a game's buffer memory, and most vertex buffers are WriteOnly.
+		 */
+		internal readonly GpuBufferShadow shadow;
+
+		#endregion
+
+		#region Internal Format Translation
+
+		/* Non-null only when some element format needs expanding. */
+		private readonly VertexDeclaration translatedDeclaration;
+
+		/// <summary>
+		/// The declaration the graphics backend is bound with — the translated one
+		/// where the original names a format the GPU may reject, otherwise the
+		/// original itself. Games always see <see cref="VertexDeclaration"/>.
+		/// </summary>
+		internal VertexDeclaration BindingDeclaration
+		{
+			get { return translatedDeclaration ?? VertexDeclaration; }
+		}
+
+		/// <summary>
+		/// Hands vertex data to the backend, converting it into the translated
+		/// layout first when there is one. Everything that writes vertex data goes
+		/// through here so the conversion cannot be forgotten on one overload.
+		/// </summary>
+		internal unsafe void SubmitVertexData(
+			int offsetInBytes,
+			IntPtr source,
+			int elementCount,
+			int elementSizeInBytes,
+			int vertexStride,
+			SetDataOptions options
+		) {
+			if (translatedDeclaration == null)
+			{
+				XnaBackend.Graphics.SetVertexBufferData(
+					GraphicsDevice.GLDevice,
+					buffer,
+					offsetInBytes,
+					source,
+					elementCount,
+					elementSizeInBytes,
+					vertexStride,
+					options
+				);
+				return;
+			}
+
+			int translatedStride = translatedDeclaration.VertexStride;
+
+			/* offsetInBytes is a byte offset the game computed against the
+			 * ORIGINAL stride, so it has to be rescaled. A partial-vertex offset
+			 * has no meaning in the translated layout; leave it alone and let the
+			 * write land where it would have, rather than inventing a position.
+			 */
+			int translatedOffset = offsetInBytes;
+			if (offsetInBytes != 0 && vertexStride > 0)
+			{
+				if ((offsetInBytes % vertexStride) == 0)
+				{
+					translatedOffset = (offsetInBytes / vertexStride) * translatedStride;
+				}
+				else
+				{
+					XnaBackend.LogWarn(
+						"[wpr-vfmt] vertex write at a partial-vertex offset (" +
+						offsetInBytes + " into stride " + vertexStride +
+						") cannot be translated; the GPU copy may be misaligned."
+					);
+				}
+			}
+
+			byte[] staging = new byte[(long) elementCount * translatedStride];
+			fixed (byte* dst = staging)
+			{
+				VertexFormatExpansion.Convert(
+					source,
+					vertexStride,
+					VertexDeclaration.elements,
+					(IntPtr) dst,
+					translatedStride,
+					translatedDeclaration.elements,
+					elementCount
+				);
+
+				XnaBackend.Graphics.SetVertexBufferData(
+					GraphicsDevice.GLDevice,
+					buffer,
+					translatedOffset,
+					(IntPtr) dst,
+					elementCount,
+					translatedStride,
+					translatedStride,
+					options
+				);
+			}
+		}
+
+		#endregion
+
 		#region Public Constructors
 
 		public VertexBuffer(
@@ -102,11 +212,27 @@ namespace Microsoft.Xna.Framework.Graphics
 				vertexDeclaration.GraphicsDevice = graphicsDevice;
 			}
 
+			/* If any element uses a format the GPU may not accept, everything the
+			 * backend sees - the declaration, the stride, the data - is the
+			 * translated one. See VertexFormatExpansion.
+			 */
+			translatedDeclaration = VertexFormatExpansion.TryTranslate(vertexDeclaration);
+
+			if (bufferUsage != BufferUsage.WriteOnly)
+			{
+				/* Sized and filled in the ORIGINAL layout: GetData must hand back
+				 * what the game wrote, not what the backend was given.
+				 */
+				shadow = new GpuBufferShadow(
+					VertexCount * VertexDeclaration.VertexStride
+				);
+			}
+
 			buffer = XnaBackend.Graphics.GenVertexBuffer(
 				GraphicsDevice.GLDevice,
 				(byte) (dynamic ? 1 : 0),
 				bufferUsage,
-				VertexCount * VertexDeclaration.VertexStride
+				VertexCount * BindingDeclaration.VertexStride
 			);
 		}
 
@@ -212,15 +338,27 @@ namespace Microsoft.Xna.Framework.Graphics
 			}
 
 			GCHandle handle = GCHandle.Alloc(data, GCHandleType.Pinned);
-			XnaBackend.Graphics.GetVertexBufferData(
-				GraphicsDevice.GLDevice,
-				buffer,
-				offsetInBytes,
-				handle.AddrOfPinnedObject() + (startIndex * elementSizeInBytes),
-				elementCount,
-				elementSizeInBytes,
-				vertexStride
-			);
+			IntPtr destination =
+				handle.AddrOfPinnedObject() + (startIndex * elementSizeInBytes);
+			if (	shadow == null ||
+				!shadow.ReadStrided(
+					offsetInBytes,
+					destination,
+					elementCount,
+					elementSizeInBytes,
+					vertexStride
+				)	)
+			{
+				XnaBackend.Graphics.GetVertexBufferData(
+					GraphicsDevice.GLDevice,
+					buffer,
+					offsetInBytes,
+					destination,
+					elementCount,
+					elementSizeInBytes,
+					vertexStride
+				);
+			}
 			handle.Free();
 		}
 
@@ -264,16 +402,27 @@ namespace Microsoft.Xna.Framework.Graphics
 
 			int elementSizeInBytes = Marshal.SizeOf(typeof(T));
 			GCHandle handle = GCHandle.Alloc(data, GCHandleType.Pinned);
-			XnaBackend.Graphics.SetVertexBufferData(
-				GraphicsDevice.GLDevice,
-				buffer,
+			IntPtr source =
+				handle.AddrOfPinnedObject() + (startIndex * elementSizeInBytes);
+			SubmitVertexData(
 				offsetInBytes,
-				handle.AddrOfPinnedObject() + (startIndex * elementSizeInBytes),
+				source,
 				elementCount,
 				elementSizeInBytes,
 				vertexStride,
 				SetDataOptions.None
 			);
+			if (shadow != null)
+			{
+				/* The ORIGINAL bytes, before any translation: GetData is defined
+				 * in terms of what the game wrote. FNA3D consumes
+				 * elementCount * vertexStride bytes contiguously. */
+				shadow.Write(
+					offsetInBytes,
+					source,
+					elementCount * vertexStride
+				);
+			}
 			handle.Free();
 		}
 
@@ -287,6 +436,11 @@ namespace Microsoft.Xna.Framework.Graphics
 			int dataLength,
 			SetDataOptions options
 		) {
+			/* A raw byte blob with no element structure, so there is nothing to
+			 * translate against - element size and stride are both 1. A game using
+			 * this on a buffer whose declaration needed expanding would be writing
+			 * untranslated bytes, but nothing in the WP7 catalogue does: this is an
+			 * FNA extension, and the stock effects all go through SetData<T>. */
 			XnaBackend.Graphics.SetVertexBufferData(
 				GraphicsDevice.GLDevice,
 				buffer,
@@ -297,6 +451,15 @@ namespace Microsoft.Xna.Framework.Graphics
 				1,
 				options
 			);
+			if (shadow != null)
+			{
+				if (options == SetDataOptions.Discard)
+				{
+					shadow.Discard();
+				}
+				/* elementCount = dataLength with a stride of 1. */
+				shadow.Write(offsetInBytes, data, dataLength);
+			}
 		}
 
 		#endregion

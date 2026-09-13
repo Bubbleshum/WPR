@@ -34,29 +34,42 @@ namespace WPR.Platform.Android
             // one, and the game host therefore attaches no tilt components here.
             caps.Accelerometer(new WPR.Input.AndroidSensor.AndroidAccelerometerProvider());
 
-            // THE graphics decision, declared as an answer rather than a policy.
+            // THE graphics decision, declared as an answer rather than a policy — and since
+            // 2026-09-07 it is the SAME answer on the emulator and on hardware, which is the
+            // point of it. Emulator results are only worth anything if both run one driver.
             //
-            // fna3d.env forces OpenGL process-wide because FNA3D's Vulkan driver mistranslates
-            // SkinnedEffect's relative-addressed bone array and T-posed every animated character on
-            // real hardware. But the emulator cannot run the OpenGL path at all — it leaves the
-            // game's own clear colour on screen and draws nothing. So the answer differs per
-            // device and has to be decided at runtime.
+            // Vulkan, because FNA3D's OpenGL driver marshals every off-thread GPU call onto the
+            // device thread and blocks the caller until the next SwapBuffers drains the queue
+            // (ForceToMainThread — 19 call sites; Vulkan and D3D11 have none). A game that loads
+            // content on a worker while its game thread waits on a lock that worker holds
+            // deadlocks with no crash and no CPU. Fable: Coin Golf did exactly that.
             //
-            // Detection is biased to FALSE NEGATIVES on purpose and must stay that way: a missed
-            // emulator only means the emulator renders nothing, whereas a false positive puts a
-            // real phone back on the T-posing driver. Never invert this into "force OpenGL only
-            // when we detect hardware".
-            caps.GraphicsDriver(
-                AndroidDeviceKind.IsEmulator()
-                    /* Automatic, not "Vulkan" by name: FNA3D already offers OpenGL first and falls
-                     * through there, so this stays correct if an emulator image ever gains a
-                     * working GL translator, and it does not hard-fail on an image built without
-                     * the Vulkan driver. */
-                    ? GraphicsDriver.Automatic
-                    /* Physical device: re-declaring OpenGL is equivalent to leaving fna3d.env's
-                     * force alone, and says so explicitly rather than relying on the env file. */
-                    : GraphicsDriver.OpenGL,
-                _externalFilesDirectory);
+            // This REVERSES the old force of OpenGL, which existed because Vulkan T-posed every
+            // skinned character. That was never a shader-translation bug: BlendIndices is Byte4,
+            // which maps to VK_FORMAT_R8G8B8A8_USCALED, and Adreno does not support the optional
+            // *_SCALED vertex formats — so the attribute delivered nothing and every vertex
+            // resolved to bone 0, which is identity. VertexFormatExpansion now rewrites those
+            // formats to float above the driver. If that is ever reverted, revert this too.
+            //
+            // By name rather than Automatic: automatic order offers OpenGL first on Android and
+            // would land straight back on the deadlocking driver. A per-device fna3d_driver.txt
+            // still overrides this for testing a regression.
+            caps.GraphicsDriver(GraphicsDriver.Vulkan, _externalFilesDirectory);
+
+            // THE content decision, and the mirror image of the Windows head's. Here '\' is an
+            // ordinary character in a filename, so a WP7 title's hardcoded "Content\Credits.xml"
+            // names one file in the install root instead of Credits.xml inside Content. Games
+            // swallow the resulting exception, so the symptom is never a file error — Battlewagon
+            // drew its animated background for ever and never built its menu, throwing an NRE on
+            // every frame from a field the failed load left null.
+            //
+            // A fact, not an instruction: WPR.Engine.Content.ContentPaths decides what to do about
+            // it, and the framework shims the patcher points games at are one call each into that.
+            caps.ContentPaths(new WPR.Engine.Content.ContentPathRules
+            {
+                WindowsSeparatorsAreNative = false,
+                ProbeInstallFolderForRelativePaths = true,
+            });
 
             // Replace FAudio's song player with the platform's own. FAudio's XNA_Song decodes a
             // full second of Vorbis per buffer with a queue depth of one, refilled from

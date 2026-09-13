@@ -1684,10 +1684,15 @@ namespace Microsoft.Xna.Framework.Graphics
 				for (int i = 0; i < vertexBufferCount; i += 1)
 				{
 					VertexBuffer buffer = vertexBufferBindings[i].VertexBuffer;
+					/* BindingDeclaration, not VertexDeclaration: a buffer whose
+					 * elements use a format the GPU may reject is stored, and must
+					 * therefore be bound, in an expanded layout. It is the original
+					 * declaration for every other buffer. See VertexFormatExpansion. */
+					VertexDeclaration declaration = buffer.BindingDeclaration;
 					b[i].vertexBuffer = buffer.buffer;
-					b[i].vertexDeclaration.vertexStride = buffer.VertexDeclaration.VertexStride;
-					b[i].vertexDeclaration.elementCount = buffer.VertexDeclaration.elements.Length;
-					b[i].vertexDeclaration.elements = buffer.VertexDeclaration.elementsPin;
+					b[i].vertexDeclaration.vertexStride = declaration.VertexStride;
+					b[i].vertexDeclaration.elementCount = declaration.elements.Length;
+					b[i].vertexDeclaration.elements = declaration.elementsPin;
 					b[i].vertexOffset = vertexBufferBindings[i].VertexOffset;
 					b[i].instanceFrequency = vertexBufferBindings[i].InstanceFrequency;
 				}
