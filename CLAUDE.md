@@ -374,7 +374,7 @@ accelerometer module never hit it only because it does not `using Android.OS`.
 says how the device was set up:
 
 ```
-[wpr-platform] Android: accelerometer=EssentialsAccelerometerProvider vibration=AndroidVibratorProvider driver=OpenGL …
+[wpr-platform] Android: accelerometer=EssentialsAccelerometerProvider vibration=AndroidVibratorProvider driver=Vulkan …
 ```
 
 `vibration=none` means composition, not hardware. `[wpr-vibrate] vibrator resolved — hasVibrator=…`
@@ -585,92 +585,433 @@ Android registers nothing (it has a real accelerometer), so the backend attaches
 the same "absent means unavailable, never an exception" degradation as the achievement store.
 
 
-### Android graphics: FNA3D picks a driver, and which one it picks matters
+### Android graphics: the driver is Vulkan, forced, on emulator and hardware alike (2026-09-07)
+
+> **This section REVERSES the long-standing force of OpenGL.** If you are reading an older note,
+> a commit message or a code comment that says Android forces OpenGL and that doing so is
+> load-bearing against the T-pose, that is history — see "the T-pose was never the driver's fault"
+> below. The reversal is only safe because `VertexFormatExpansion` exists; the two are a pair.
 
 `FNA3D_PrepareWindowAttributes` walks `drivers[]` in order and takes the first whose
 `PrepareWindowAttributes` succeeds. The compiled-in set differs per platform:
 
-| head | drivers available | what actually gets picked |
+| head | drivers available | what it gets |
 | --- | --- | --- |
-| Windows | D3D11, OpenGL | **D3D11** |
-| Android | OpenGL, Vulkan | OpenGL is offered first and **declined**, so it fell through to **Vulkan** — until `fna3d.env` started forcing OpenGL |
+| Windows | D3D11, OpenGL | **D3D11**, picked automatically — the head declares no driver at all |
+| Android | OpenGL, Vulkan | **Vulkan**, forced by name — automatic order offers OpenGL first |
 
-Vulkan is the one FNA3D's own source still gates behind
-`/* TODO: Bump this to the top when Vulkan is done! */` (`FNA3D.c:45`). This is the **only**
-graphics-stack difference between the two heads, so it is the first thing to suspect for anything
-that renders correctly on desktop and wrongly on Android.
+Android forces it in two places, deliberately: `fna3d.env` sets `FNA3D_FORCE_DRIVER=Vulkan`
+process-wide, and `AndroidPlatform` declares `caps.GraphicsDriver(GraphicsDriver.Vulkan, …)`. The
+env file covers the process from the first instruction; the capability says it in the one file
+you are meant to read to learn what this platform is.
 
-**This is confirmed, not theorised** (2026-08-31). Mirror's Edge drew its world, lighting and
-reflections perfectly on Android while every skinned character stayed in bind pose — a T-pose —
-and forcing the OpenGL driver fixed it on real hardware. It animates via the stock
-`SkinnedEffect`, whose vertex shader carries `float4x3 Bones[72]` at `_vs(c26)` indexed by a vertex
-attribute (~242 uniform vec4s, relative-addressed): exactly what the unfinished Vulkan driver
-mistranslates. Windows, on D3D11, animated it correctly all along.
+**Why Vulkan, in the order the reasons actually matter:**
 
-**Expect this to have fixed more than one game.** Nothing about the failure is Mirror's Edge
-specific — any XNA title using `SkinnedEffect` for 3D character animation was T-posing on Android
-for the same reason. Worth re-testing the Android column of the compat list against this.
+1. **The OpenGL driver blocks any off-thread GPU call until the next swap.** `ForceToMainThread`
+   in `FNA3D_Driver_OpenGL.c` — 19 call sites, the `CreateTexture*` / `SetTextureData*` /
+   `Gen*Buffer` / `Set*BufferData` / `CreateEffect` set — appends the call to a command list and
+   parks the caller on a semaphore, drained only by `ExecuteCommands` from `OPENGL_SwapBuffers`.
+   A game loading content on a worker while its game thread waits on a lock that worker holds
+   deadlocks outright: no crash, no CPU, nothing in the log. **Fable: Coin Golf** did exactly
+   that, stopping for ever on asset 33 of 602; on Vulkan it loads all 602. Vulkan and D3D11 have
+   no such queue — that entire bug class does not exist off the GL driver. (The `OffThreadGpuCalls`
+   mitigation below still exists and still helps, but it only makes the wait finite, not absent.)
+2. **Emulator and hardware then run the same driver**, so an emulator result means something. The
+   old arrangement ran GL on phones and Vulkan on the emulator, which made every emulator
+   observation unusable as evidence about a device.
 
-`Src/Platforms/WPR.Platform.Android/fna3d.env` now forces `FNA3D_FORCE_DRIVER=OpenGL` via
-`@(AndroidEnvironment)`. Three things to know before touching it:
+**The T-pose was never the driver's fault**, and this is the correction that unblocked everything
+above. Mirror's Edge drew its world, lighting and reflections perfectly while every skinned
+character stood in bind pose, and that was blamed on FNA3D's unfinished Vulkan driver
+mistranslating `SkinnedEffect`'s relative-addressed `float4x3 Bones[72]`. Measured 2026-09-07, it
+does not:
+
+- the SPIR-V is **correct** — verified instruction by instruction for the one-bone and four-bone
+  variants, including the relative addressing, the x3 bone stride and the array bounds;
+- the bone matrices **arrive correctly**, and animate;
+- the real cause is **vertex formats**. `BlendIndices` is `Byte4`, which FNA3D maps to
+  `VK_FORMAT_R8G8B8A8_USCALED`. The `*_SCALED` formats are **optional** in Vulkan for vertex
+  buffers and Adreno does not implement them, so the attribute delivered nothing, every vertex
+  read bone 0, bone 0 is identity, and the mesh rendered its bind pose. `Short2` and `Short4` are
+  unsupported for the same reason. Measured on an Adreno 750, logged as `[wpr-vfmt]`.
+
+The fix sits **above the driver**: `Microsoft.Xna.Framework.Graphics.VertexFormatExpansion`
+rewrites those three formats to float and converts the data to match. Unconditionally, because
+expanding to float is lossless and lands on formats every device supports — gating it would need a
+per-device capability query, meaning a new FNA3D vtable entry, a P/Invoke and a seam member, for
+three rarely-used formats. The game still sees the `VertexDeclaration` it created; only
+`GraphicsDevice.PrepareVertexBindingArray` is shown the translated one. **Revert that and you must
+revert the driver force too** — the comment in `fna3d.env` says so, keep it saying so.
+
+**Two FNA3D Vulkan fixes were needed to make the switch, and `libFNA3D.so` was rebuilt for all
+three ABIs to carry them.** The vendored C under `FNA.Platform/lib` is still not compiled by any
+build here, so the `.so` and the `.c` are kept in step by hand:
+
+- **`VK_ERROR_SURFACE_LOST_KHR` is handled alongside `OUT_OF_DATE`.** On Android it is the normal
+  case, not an exotic one: backgrounding destroys the `ANativeWindow` and takes the `VkSurfaceKHR`
+  with it. Without this the swapchain is never torn down, `validSwapchainExists` stays 1, and
+  every present after a resume fails identically — **the game runs on with a black screen and
+  nothing in the log**. Recreating the swapchain is sufficient only because
+  `VULKAN_INTERNAL_DestroySwapchain` destroys the surface too; if that stops being true this needs
+  its own path.
+- **`preTransform` asks for `IDENTITY`, not `currentTransform`.** `currentTransform` is a *promise*
+  that the application has already rotated its rendering to match the display, and FNA3D has not —
+  it renders axis-aligned to the swapchain extent. On Android a landscape activity over a
+  portrait-native panel reports `ROTATE_90`, so honouring it presents the image **sideways while
+  touch, which never goes through the swapchain, stays correct**. Desktop surfaces report
+  `IDENTITY`, so this changes nothing there. The cost is a compositor rotation pass on some mobile
+  GPUs; correctness first.
+
+**Things that did not change with the switch:**
 
 - **It must be a real process environment variable.** FNA3D reads the hint through `SDL_GetHint`,
   which falls back to `SDL_getenv`; .NET's `Environment.SetEnvironmentVariable` does **not**
   propagate to the native environ on Unix, so FNA's own `gldevice` launch-parameter path
   (`FNAPlatform.cs:54`) cannot set it on Android.
 - **Forcing is a hard selection, not a preference.** The loop `continue`s past every driver whose
-  `Name` doesn't `strcmp`-match, so if the forced driver declines you get "No supported FNA3D driver
-  found!" and device creation fails — the game won't start at all rather than falling back. The name
-  is exactly `"OpenGL"` (`FNA3D_Driver_OpenGL.c:6179`).
-- **The emulator cannot render the OpenGL path**, so it does not validate it. On Pixel_Dev
-  (API 36 x86_64) the GL driver initialises and reports `OpenGL ES 3.1`, then the screen stays on
-  the game's own clear colour — for Mirror's Edge a flat white, which is why it reads as "nothing
-  draws" — with no FNA3D error and no managed exception. Judge the GL path on real hardware only.
-
-  Two red herrings, both of which cost time on 2026-08-31 and neither of which is the renderer:
-  the `E libEGL: called unimplemented OpenGL ES API` flood is emitted **once per second by a
-  `.NET TP Worker` thread**, not per frame by `SDLThread` — that is the emulator's per-thread GL
-  dispatch stubbing out a call made with no current EGL context, and it appears under Vulkan's
-  absence too. And a white screen is not necessarily a dead one: `wpr_game_debug.log` showed
-  `GraphicsDevice.Clear ... color=(1.00,1.00,1.00,1.00)` repeating, i.e. the game clearing happily.
-
-**Which driver a launch gets is decided at runtime, not by the env file alone** (2026-08-31). The
-env var forcing OpenGL is still the default, but `GameActivity.SDLMain` calls
-`Graphics.GraphicsDriverPolicy.Apply(...)` before the host builds the game, and that relaxes the
-force on the emulator so it renders (verified: full Mirror's Edge menu, `FNA3D Driver: Vulkan`, and
-the libEGL flood at zero). Physical devices take a deliberate **do-nothing** branch and keep the
-forced OpenGL path.
-
-- The lever is `WPR.Backend.FNA.GraphicsDriverSelection.Apply(name)` —
-  `SDL_SetHintWithPriority(..., SDL_HINT_OVERRIDE)`, the one thing that beats the process env var
-  (`SDL_GetHint` consults its hint list first and an OVERRIDE-priority hint wins). Pass **null**,
-  never `""`, to restore automatic order: an empty string is still non-NULL to `SDL_GetHint` and
-  would `strcmp` against every driver name and match none.
-- Policy lives in the head (`Graphics/GraphicsDriverPolicy.cs`), plumbing in the backend. "Is this
-  an emulator" is not something a graphics backend should reason about.
-- **Keep the failure direction.** Detection is biased to false negatives on purpose: a missed
-  emulator only means the emulator renders nothing, whereas a false positive puts a real phone back
-  on the T-posing Vulkan driver. Never invert this into "force OpenGL only when we detect hardware".
-- **A declined driver falls through by name, it does not throw** (2026-08-31).
+  `Name` doesn't `strcmp`-match. The name is exactly `"Vulkan"` (`FNA3D_Driver_Vulkan.c`) —
+  `"vulkan"` and `"VK"` silently match nothing.
+- **A declined driver falls through by name, it does not throw.**
   `SDL2_FNAPlatform.PrepareWindowAttributesWithFallback` walks an explicit ladder — the requested
-  driver first, then `OpenGL`, `Vulkan`, then automatic — logging each attempt. The earlier shape
-  ("on failure clear the force and let FNA3D choose") crashed a user's device with
-  `No supported FNA3D driver found!`, for two reasons worth not re-introducing: **automatic order is
-  not a safety net on Android**, because FNA3D offers OpenGL first and it is declined there, so
-  "automatic" effectively means Vulkan — walking away from the one driver that may work; and
-  `IsDriverForced()` read the hint, which the head legitimately clears (emulator policy, the
-  override file), so a failure looked like "nothing was forced, nothing to fall back to" and
-  rethrew. **Whatever was requested stays first in the ladder — including "automatic"**, or the
-  fallback silently overrules the emulator policy and puts it back on the non-rendering GL path.
-- No rebuild needed to re-test a driver: a `fna3d_driver.txt` next to the app's external files
-  (containing `OpenGL`, `Vulkan` or `auto`) overrides both branches. Useful for a phone whose GL
-  driver misbehaves.
+  driver first, then `OpenGL`, `Vulkan`, then automatic — logging each attempt. **Whatever was
+  requested stays first in the ladder, including "automatic"**, or the fallback silently overrules
+  the head's declaration.
+- The lever is `WPR.Backend.FNA.GraphicsDriverSelection.Apply(name)` —
+  `SDL_SetHintWithPriority(..., SDL_HINT_OVERRIDE)`, the one thing that beats the process env var.
+  Pass **null**, never `""`, to restore automatic order: an empty string is still non-NULL to
+  `SDL_GetHint` and would `strcmp` against every driver name and match none.
+- **`GraphicsDriver.Unspecified` ≠ `Automatic`.** `Unspecified` leaves the lever untouched (what
+  Windows wants); `Automatic` actively *clears* a force. On Android `Automatic` would mean OpenGL,
+  because that is what FNA3D offers first — which is why the head names Vulkan explicitly rather
+  than declaring `Automatic`.
+- No rebuild needed to re-test a driver: an `fna3d_driver.txt` next to the app's external files
+  (containing `OpenGL`, `Vulkan` or `auto`) overrides the declaration. This is the first thing to
+  reach for on a phone whose Vulkan driver misbehaves.
 
   ```powershell
-  adb shell "echo Vulkan > /storage/emulated/0/Android/data/com.wpr.android/files/fna3d_driver.txt"
+  adb shell "echo OpenGL > /storage/emulated/0/Android/data/com.wpr.android/files/fna3d_driver.txt"
   ```
 
+**What went away with the switch.** `Graphics/GraphicsDriverPolicy.cs` is deleted — there is no
+per-device branch any more, so nothing asks `AndroidDeviceKind.IsEmulator()` about graphics. The
+old rule "detection is biased to false negatives, never invert it" is therefore moot, and the old
+observation that the emulator cannot render the OpenGL path (it leaves the game's clear colour on
+screen — a flat white for Mirror's Edge — with no error) no longer matters because nothing runs
+that path. If you ever reintroduce a per-device branch, you are reintroducing the problem in
+reason 2 above.
+
+One surviving GL artefact worth knowing, because it is a `SIGSEGV` rather than a wrong pixel:
+`OPENGL_GetVertexBufferData` / `OPENGL_GetIndexBufferData` are implemented with
+`glGetBufferSubData`, declared `GL_PROC(NonES3, …)` and therefore **never resolved under OpenGL
+ES** — the pointer stays NULL, the only guard is an `SDL_assert` compiled out of our prebuilt
+release `.so`, and the first `GetData` branches to address 0. `GpuBufferShadow` serves those reads
+from a CPU-side mirror instead, so the crash cannot happen on either driver. (Its doc comment
+still says "where `fna3d.env` forces the OpenGL driver" — stale wording, live code.)
+
+### The Vulkan validation layer is NOT shipped, on purpose (2026-09-05)
+
+`libVkLayer_khronos_validation.so` used to sit in all three `Libraries/<abi>/` folders (~105 MB of
+the Debug APK) and it **aborted the game process**: `FORTIFY: pthread_mutex_lock called on a
+destroyed mutex` inside the layer's own bookkeeping, under
+`VULKAN_INTERNAL_SubmitCommands` <- `VULKAN_SwapBuffers`, about a minute into play. Deleted, so
+FNA3D takes the fallback it already has: `"Validation layers not found, continuing without
+validation"`.
+
+**Removing it did not make the emulator able to run a Vulkan-heavy game, and nothing will.** With
+the layer gone, Fight Game Rivals got a little further and then took a SIGSEGV one level lower — in
+`/vendor/lib64/hw/vulkan.ranchu.so`, the emulator's own gfxstream driver, null-dereferencing in
+`get_host_u64_VkBuffer` while marshalling a `VkWriteDescriptorSet` from
+`VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets` <- `VULKAN_DrawIndexedPrimitives`. That is
+FNA3D's Vulkan driver meeting the emulator's gfxstream one. **Treat "renders on the emulator" as a
+smoke test only: a game that draws its menus there may still die the moment it draws its actual
+scene, and that crash says nothing about a device.**
+
+**Re-read this in light of the 2026-09-07 driver switch.** When it was written, only the emulator
+ever created a Vulkan instance — a phone kept `fna3d.env`'s forced OpenGL. **Every device now runs
+Vulkan**, so in a Debug build every device asks for `VK_LAYER_KHRONOS_validation`
+(`GraphicsDevice`'s ctor passes `debugMode = 1` under `#if DEBUG`, and FNA3D requests the layer
+whenever it is set). Because the `.so` is not shipped, what every device gets is the graceful
+fallback — that is the whole point of deleting the binaries rather than the request. Read the two
+lines together in logcat; the second should **not** appear:
+
+```
+FNA3D Driver: Vulkan
+Vulkan validation enabled! Expect debug-level performance!
+```
+
+If it ever does, someone has dropped the layer back into `Libraries/<abi>/`, and the abort above is
+now reachable on real hardware rather than just on an emulator.
+
+Removing the binaries rather than passing `debugMode = 0` on Android stays deliberate: `debugMode`
+also turns on the OpenGL driver's `GL_KHR_debug` callbacks. That mattered more when phones ran GL;
+it is now only relevant to a device put back on OpenGL through `fna3d_driver.txt`. Dropping the
+layer disables Vulkan validation *only*.
+
+If you ever need Vulkan validation back, drop the `.so` for the ABI you are testing into
+`Libraries/<abi>/` locally — do not re-commit it — and expect the abort above to come with it.
+
+### On a phone the game window is ALWAYS fullscreen (2026-09-05)
+
+`SDL2_FNAPlatform.ApplyWindowChanges` used to honour `PresentationParameters.IsFullScreen` on
+mobile, forcing windowed only on desktop. On Android that is not a neutral default, it is actively
+destructive: SDL routes `SDL_SetWindowFullscreen` through `SDLActivity.setWindowStyle`, and the
+**false** branch *clears* `FLAG_FULLSCREEN` and drops the immersive flags — beating
+`MyTheme.NoActionBar`'s own `android:windowFullscreen`. A game whose `IsFullScreen` is false when
+the device is created therefore keeps the status bar, the navigation bar **and** a surface inset by
+both: it does not fill the screen. It is now `wantsFullscreen = IsMobilePlatform()` — a fact about
+the device rather than a preference the game expresses, which is what WP7 actually was (XNA's
+`IsFullScreen` defaulted to true on the phone and games treated it as decoration).
+
+**The games this hits are not the ones you would guess**, which is why it survived so long. 23 of
+the 25 installed titles set `IsFullScreen` in their `Game` constructor, i.e. before `CreateDevice`,
+and were always fine. **Fight Game Rivals** (`{57b854f3-a3cc-4213-aa91-07aae56e146c}`) sets it from
+`FGViewer`'s constructor — which runs during `Game.Initialize`, **after** the device exists — and
+never calls `ApplyChanges`, so the value never reached a window. Measured on a 2400x1080 device:
+black bars on all four sides plus both system bars, against Mirror's Edge filling the screen.
+**Before blaming a game's own layout for "not full size", check whether it sets `IsFullScreen`
+before or after `CreateDevice`** — a Cecil scan of the install folder for `set_IsFullScreen` and
+`ApplyChanges` answers it in one pass.
+
+Desktop is unchanged: `IsMobilePlatform()` is false there, so the window is still forced windowed
+at the same single choke point every fullscreen transition funnels through.
+
+Two things deliberately **not** changed. `GraphicsDeviceManager.IsFullScreen` still defaults to
+false rather than true-on-mobile — the choke point already covers every path, including a game
+that sets it false later, and a second default is one more place for the two to disagree. And
+nothing sets `layoutInDisplayCutoutMode`: the vendored SDL Java carries no cutout handling at all,
+so on a notched phone a landscape game is still letterboxed away from the cutout. Separate issue,
+and it affects every game rather than this one.
+
+No `ApplicationPatcher.Version` bump and no reinstall — this is backend behaviour in FNA.Platform,
+so games pick it up on next launch.
+
+### The backbuffer is discarded after Present, because DiscardContents is the default (2026-09-05)
+
+`PresentationParameters.RenderTargetUsage` defaults to `DiscardContents`, and XNA's contract for
+that is: **the surface holds nothing at the start of a frame.** A game that wants last frame's
+pixels has to ask, by setting `PreserveContents`. `GraphicsDevice.SetRenderTargets` already applied
+exactly that rule to every *offscreen* target — but nothing reset the **backbuffer** between
+frames, so in practice it always behaved as `PreserveContents`.
+`GraphicsDevice.DiscardBackbufferContents()` now clears colour, depth and stencil right after
+`Present`.
+
+**It only matters for a game that never calls `Clear`** — which is legal, and which WP7's
+tile-based GPUs made free (each frame started from a blank tile). Most titles clear every frame and
+cannot tell the difference; the extra clear is what they already issue.
+
+**Fable: Coin Golf clears exactly zero times** and is the reference case. Both halves of a stale
+frame hurt it, and **the depth half is the one that misleads**:
+
+- **Stale depth occludes the new frame.** Its level drew *behind* the previous screen's geometry,
+  lost the depth test, and the old screen simply stayed on display — the loading screen sat behind
+  the dialogue for as long as the dialogue ran, and starting a level showed a black screen instead
+  of the course. That is the "black screen on level start" the compat list recorded.
+- **Stale colour accumulates.** The engine lays translucent passes down every frame (`CIwRenderable`
+  fades set `BasicEffect.Alpha = 0.5`), and a 50% layer composited against its own previous output
+  converges on black within a handful of frames: fades went to black instead of fading, and moving
+  art left a hard-edged trail — on the dialogue screen, ~10 ghost copies of a sliding portrait card.
+
+**The trap is that all of it reads as an alpha or blend-state bug.** It is not: the blend states are
+right, `BlendState.AlphaBlend` is correctly premultiplied, `BasicEffect.Alpha` reaches the shader,
+and every pixel is drawn correctly — against the wrong starting buffer. Two specific dead ends,
+both walked on 2026-09-05: sampling the halo pixels shows pure black (1,1,1), which looks like
+"alpha ignored, transparent texels drawn opaque" but is actually N compositing passes; and the
+game's textures are DXT3/DXT5, which invites a premultiplied-DXT theory that goes nowhere.
+
+**How to recognise it in one step:** `grep -c "GraphicsDevice.Clear #"` the per-game log. That trace
+fires on the *first* clear and thereafter only when the clear colour changes, so **zero lines means
+the game never cleared at all** — and any rendering weirdness that looks like "the previous screen
+is still there" or "it fades to black and stays" is this. A game that clears logs at least one line.
+
+Deliberately clears to **black in both configurations**, not the purple `DiscardColor` that
+`SetRenderTargets` uses. Purple earns its place on an offscreen target — nothing ships it to the
+screen — but the backbuffer is what the player looks at, and the normal loop here is a Debug build
+judged by eye, so purple would repaint any game that leaves a margin unpainted and make Debug and
+Release disagree about how a game looks. Black is also what the WP7 framebuffer actually started as.
+
+Correct on both drivers: FNA3D's OpenGL `Clear` disables `GL_SCISSOR_TEST` around `glClear`, so a
+game that left a scissor rect set still gets the whole surface reset.
+
+No `ApplicationPatcher.Version` bump and no reinstall — this is device behaviour in
+`WPR.Framework.Xna`, so games pick it up on next launch.
+
+### `..` in an external content reference may escape the ContentManager root (2026-09-05)
+
+`MonoGame.Utilities.FileHelpers.ResolveRelativePath` — the resolver behind
+`ContentReader.ReadExternalReference` — was `Uri`-based, and **`Uri` clamps `..` at the root by
+design** (RFC 3986 `remove_dot_segments`). Asset names arriving there are relative to a
+ContentManager's `RootDirectory`, so a leading `..` that survives resolution is how content
+legitimately addresses a **sibling of that directory**; clamping silently rewrote the reference to
+name a file that does not exist. It is now a plain segment walk that keeps leading `..`.
+
+**Fable: Coin Golf is the reference case.** Its ContentManager roots at `Content/data`, and every
+level piece under `Content/data/pieces/` names its textures `..\..\<texture>` — i.e.
+`Content/<texture>`, one level above the root, which is exactly where all 113 of those XNBs ship.
+Clamping turned every one into `Content/data/<texture>`: 588 `ContentLoadException`s per run, and
+the whole course drew untextured (a flat white/grey mass — *not* black; that was the separate
+backbuffer bug above).
+
+**The failure is invisible from inside the game**, because `ReadExternalReference` treats a missing
+referenced asset as optional and hands back `default(T)`. That swallow is still there and still
+wanted, but it means **"the XAP shipped without its content" is a conclusion to verify, not
+assume** — the comment on that catch used to cite this very game as an example of a short XAP and
+was simply wrong. Check the path we looked in against where the file actually is:
+
+```powershell
+# every "missing" name, against the content root one level up
+grep -o 'missing referenced asset "[^"]*"' wpr_game_debug.log | sort -u
+```
+
+Dropping `Uri` also fixed two latent hazards in passing: it treated `#` and `?` in an asset name as
+fragment/query delimiters, and these titles' texture names contain spaces (`MILL _0`,
+`bridge to cross water_0`).
+
+No `ApplicationPatcher.Version` bump and no reinstall — games pick it up on next launch.
+
+### The patcher rescopes typerefs, and blobs are not typerefs (patcher v22, 2026-09-05)
+
+A `typeof(...)` argument inside a **custom attribute** is stored in the attribute blob as an
+assembly-qualified **string**, not as a row in the TypeRef table. `module.GetTypeReferences()`
+never returns it, so every redirect the patcher performs — `Microsoft.Xna.* -> FNA`, the
+`WprFrameworkXnaTypes` rescope, every `Patches` entry — had been walking straight past them since
+the patcher was written. The attribute kept naming a WP7 assembly that does not exist at runtime.
+
+`RescopeCustomAttributeTypeArguments` now walks every attribute on the assembly, module, types,
+fields, properties, events, methods, their parameters and return types, and applies the *same*
+`RescopeTypeReference` the table walk uses (it is a local function precisely so the two cannot
+drift — a `typeof()` resolving somewhere its IL counterpart does not is the worst of both).
+
+Three things about it are worth knowing before touching it:
+
+- **Reading the arguments is the fix, not just the diagnosis.** Cecil parses a blob lazily and, if
+  nothing touches `ConstructorArguments`/`Properties`/`Fields`, writes the original bytes back
+  verbatim. That is exactly why the bug existed: the patcher renamed the assembly ref to `FNA` and
+  the blob went on saying `Microsoft.Xna.Framework`. Touching them forces Cecil to materialise each
+  argument into a `TypeReference` and to re-serialise from that model on write, so mutating the
+  reference in place is enough.
+- **A blob-parsed type does NOT share the module's AssemblyNameReference.** By the time Cecil
+  parses the string there is no ref called `Microsoft.Xna.Framework` left to match — the rename
+  already happened — so it mints a throwaway one for the dead identity. `assemblyScopesByOriginalName`
+  (built *before* the rename loop mutates anything) maps it back onto the live instance, which is
+  what makes every existing rename carry over to attributes for free instead of needing its own
+  entry. The identity check keeps the table walk bit-for-bit unchanged.
+- **An unresolvable attribute type is skipped, not fatal.** Cecil needs the constructor's signature
+  to parse a blob, and WP7's `mscorlib, Version=2.0.5.0` cannot be resolved on any machine here, so
+  `DebuggableAttribute` and `EditorBrowsableAttribute` throw. Their bytes are left untouched (which
+  is the old behaviour, so no regression) and the distinct type names are reported **once per
+  assembly** as `[attr-fixup]`. Do not restore per-attribute logging — it was hundreds of identical
+  unactionable lines per install. A *game* attribute appearing in that list is the one case worth
+  chasing.
+
+**The failure mode is a hang, not a crash**, because in practice the attributes carrying `typeof()`
+are `XmlSerializer` hints — `[XmlElement]`, `[XmlArrayItem]`, `[XmlInclude]`. Nothing loads the
+type until a serializer is constructed over the declaring type, and the `TypeLoadException` then
+arrives wrapped in `InvalidOperationException: There was an error reflecting type '…'`, which games
+routinely swallow. **Fight Game Rivals** is the reference case: one
+`[XmlArrayItem(ElementName = "Vector2", Type = typeof(Vector2))]` on
+`GameObjectManager.BaseGameObject.CustomData.xmlValues` failed the serializer for
+`Manager.xmlGameObjectSpecification`, which is how *every* screen in that game is deserialised, so
+it sat on its splash screen for ever. The only trace was a first-chance exception in the per-game
+log — grep `error reflecting type` there before concluding a stuck game is a timing bug.
+
+**This was a patcher table change (v22), and affected games must be repatched.** Unlike v21 it is
+not identity-binding — a v21 install still launches, it just keeps failing to build the affected
+serializer — so `--repatch-installed` is enough. **The current version is 25**; see the next
+section.
+
+### Windows path separators in game file I/O (patcher v23), a patch that silently skipped (v24), and a game-specific IL guard (v25)
+
+Three bumps, 2026-09-07 onward. None is identity-binding, so `--repatch-installed` is enough for
+all three and no reinstall is needed.
+
+**v23 — `Content\Credits.xml` opens on Android.** WP7 titles were built on Windows, where `\` and
+`/` are interchangeable, so hardcoded Windows paths are everywhere: **7 of the 26 installed titles
+carry one, and one carries 89**. On Android `\` is an ordinary filename character, so the open
+fails, the game swallows it, and the symptom surfaces somewhere else entirely. **Battlewagon** is
+the reference case — one failed `XmlReader.Create` left a field null and `TitleScene.Update` then
+threw an NRE on every frame (5,593 in one run); its menu never built while the background animated
+happily.
+
+Four things about the shape of this fix:
+
+- **It normalises at the point of USE, not by rewriting string literals.** A path assembled at run
+  time — concatenation, `Path.Combine`, `"Level{0}\{0}.txt"` — is covered too. Windows behaviour is
+  unchanged: the normaliser is a no-op when the platform separator is already `\`.
+- **The rules are a platform capability, not a policy in the engine.** `caps.ContentPaths(...)` with
+  `ContentPathRules { WindowsSeparatorsAreNative, ProbeInstallFolderForRelativePaths }`; the head
+  states what its filesystem does and `WPR.Engine.Content.ContentPaths` decides what to do about it.
+  **Omit it and the engine measures the running filesystem**, which is what keeps the bare
+  game-host harness (no head, no composition) correct.
+- **`MemberPatches` can only retarget a member's declaring type**, so every replacement must be
+  substitutable for the original. `FileStream` / `StreamReader` / `StreamWriter` are unsealed, so
+  `NormalizedPath*` subclasses work — the same mechanism `SharedIsolatedStorageFileStream` uses.
+  `XmlReader.Create` needed its own entry because it resolves its argument as a URI and opens the
+  stream inside `XmlDownloadManager`, where the `System.IO` entries never see the path.
+- **NOT covered: `FileInfo` / `DirectoryInfo`.** Both are `sealed`, so no subclass can stand where
+  the constructed instance lands. They would need a call-site rewrite like
+  `RedirectIsolatedStorageOpens`; only 3 uses exist across the installed library, so it is
+  deliberately left.
+
+Note `XElement::Load(String)` already had an entry pointing at `XElement2` before this block
+existed; only the `LoadOptions` overload was missing.
+
+**v24 — no table changed; what changed is that assemblies which previously FAILED to patch now
+succeed.** Cecil resolves a constant's declared type while writing the Constant table
+(`MetadataBuilder.GetConstantType`), which on Android **always** failed because no managed assembly
+is on disk there. `PatchDll` logged it and left that DLL unpatched — so the game still bound the
+WP7 XNA identities and died at launch with a `FileNotFoundException` inside an
+`AggregateException`. `ConstantEnumStubResolver` answers that resolve from the constant's own
+recorded value.
+
+**The bump exists purely so those installs repatch themselves.** An affected DLL is *pristine* on
+disk, not stale, and nothing else can tell the difference — which is also why this went unnoticed:
+a skipped assembly looks untouched rather than half-finished. Measured on a 36-game phone, two
+titles had their **main** assembly skipped. A repatch removes this as a reason a game cannot start;
+it does not promise the game then runs, and at least one of those two still does not.
+
+**v25 — the second entry in `ApplyGameSpecificFixups`, and the first one that rewrites a method
+body for a single title.** Feed Me Oil's `OggSound.StopById` ends in an unconditional
+`_instances.RemoveAt(found)` that runs even when the search fell through and `found` is still -1.
+It is reached because `SBSounds.playMusic` assigns `__lastMusicSound = soundId` **before** calling
+`stopMusic()`, which resolves what to stop through that very field — so a change of track hunts for
+the outgoing id inside the incoming sound's list and can never match. The fixup guards the remove;
+reached with a guard it removes nothing, which is exactly right.
+
+**Why one miss freezes the game permanently** is the part worth carrying forward, because the
+symptom is generic and the cause is not. The throw happens inside `stopMusic` *before* it can run
+`__musicId = 0`, so the stale id survives and the next frame takes the same branch for ever. It
+escapes through `SBSceneObjects.onEnter` into `Director.Update` — which is where the game reads
+`TouchPanel.GetState()` and dispatches `TouchBegan/Moved/Ended`, all of it below the throw. `Draw`
+is a separate call and keeps running. **So the game paints a perfect frame at full rate while
+nothing advances and no tap is ever seen**: "renders but is frozen and ignores input" is an
+exception thrown once per frame out of `Update`, not a hang, and the per-game log's `[wpr-fce]`
+lines are where to look. Identical on both heads — measured on a Galaxy S24 and on Windows, failing
+at the same point (the story cutscene handing over to level 1).
+
+Unlike v23 and v24 this one **does rewrite game IL**, so a pre-v25 install keeps the old body and
+keeps freezing. Still not identity-binding: a v24 install launches fine.
+
+**Feed Me Oil needed a shim fix too, and that one needs no repatch.** `BitmapSource` decoding was a
+stub returning a 1x1 image with no pixels, and `WriteableBitmap.Pixels` handed back a fresh
+zero-filled array of the wrong length (`height` ints, not `width * height`) — so writes went to the
+GC and reads were sized wrong. `SBLevelData` builds its collision grid from
+`res/data/level<n>.png`, so every level came out one pixel wide with an empty mask and the first tap
+walked `AddActiveCollisions` off the end. Two details to keep: **`Pixels` are ARGB ints
+(`0xAARRGGBB`)**, because games do `BitConverter.GetBytes(Pixels[i])` and index the little-endian
+bytes as B,G,R,A — decoding yields RGBA bytes, so channels are reassembled rather than blitted; and
+decoding **borrows `IGraphicsBackend.ReadImageStream`** (FNA3D's stb_image) rather than carrying a
+second codec. That last one puts a `WPR.Framework.Silverlight -> WPR.Framework.Xna` reference in
+the csproj — a peer edge under `Src/Core`, one-way and cycle-free, and *not* the backend reference
+`BackendIsolationTests` guards.
+
 ### A suppressed draw starves FNA3D's off-thread command queue (2026-09-01)
+
+> **Neither head runs this driver by default any more** (Windows is D3D11, Android moved to Vulkan
+> on 2026-09-07), so nothing below is reachable unless a device is put back on OpenGL through
+> `fna3d_driver.txt`. The mitigation stays: it is cheap, it is correct on every driver, and the
+> override exists precisely so a phone with a bad Vulkan driver can take the GL path. Note this is
+> the *same* queue described in reason 1 of the graphics section above — this section narrows it to
+> the `SuppressDraw` case, and the driver switch is what removed the general one.
 
 `Game.SuppressDraw()` used to skip `BeginDraw`/`Draw`/`EndDraw` entirely, so the frame produced no
 `SDL_GL_SwapWindow`. On the **OpenGL** driver that is a deadlock, not an optimisation.
@@ -878,7 +1219,7 @@ lifetimes (`XnaBackend`'s twelve slots, `SensorBackend`, `AudioTranscoderBackend
 **Read the platform out of the launch log.** One line per composition:
 
 ```
-[wpr-platform] Android: accelerometer=AndroidAccelerometerProvider driver=OpenGL audio=[AndroidMediaPlayer] transcoder=RemoteAudioTranscoder achievements=EfAchievementStore notifications=AndroidNotificationManager tilt=none
+[wpr-platform] Android: accelerometer=AndroidAccelerometerProvider driver=Vulkan audio=[AndroidMediaPlayer] transcoder=RemoteAudioTranscoder achievements=EfAchievementStore notifications=AndroidNotificationManager tilt=none
 ```
 
 That is the first thing to check for any "works on one platform" report — it says how the device was
@@ -896,6 +1237,13 @@ drew, and is correct.
 `PlatformComposition.Recorder`, write it in `Commit()`, add it to `Summarise()`, and declare it in
 whichever heads have it. A capability no head declares is simply absent — absent means "this
 platform does not have it", never an error.
+
+`ContentPaths` (2026-09-07) is the worked example of that recipe, and of the "declare answers, not
+policies" rule: the head states whether `\` is a path separator on its filesystem, and
+`WPR.Engine.Content.ContentPaths` decides what to do about it. It is also the one capability whose
+absence is *measured* rather than treated as "not present" — with no declaration the engine probes
+the running filesystem, which is what keeps the bare game-host harness correct. See the patcher v23
+section for what it fixes.
 
 **Not everything is a capability.** `SilverlightBackend.SurfaceRenderer` stays a direct
 registration in the Windows head: it is a framework-internal renderer choice, not a fact about the
@@ -958,7 +1306,8 @@ Four things that will bite if you touch this:
 `Game`, `GameComponent`, `DrawableGameComponent`, `GameServiceContainer`, `GameWindow`,
 `GraphicsDeviceInformation` and `PreparingDeviceSettingsEventArgs` now live in
 `WPR.Framework.Xna` and are rescoped there by `ApplicationPatcher.WprFrameworkXnaTypes`.
-**`ApplicationPatcher.Version` is 21 and every installed game must be repatched or reinstalled** —
+**This bumped `ApplicationPatcher.Version` to 21, and every game installed before it must be
+repatched or reinstalled** (the current version is 25) —
 a v20 install carries IL naming `[FNA]Microsoft.Xna.Framework.Game`, FNA no longer defines it, and
 the game will TypeLoadException at launch. `--repatch-installed` is enough.
 
@@ -1019,6 +1368,57 @@ top-level SDL window or is composited into the Avalonia shell is answered by an 
 contract. The migration plan had the two fused, which is why the spine sat blocked for a UX
 decision it never depended on.
 
+### The cold-start `Activated` is a WPR invention, and some games choke on it (2026-09-05)
+
+Real WP7 raises `Launching` at a cold start and `Activated` only on a resume. WPR raises **both**
+at boot, from `PhoneApplicationService.HandleApplicationStart(anew: true)`, because several titles
+key their level/HUD setup off the activation signal and show nothing without it (Hoth,
+Battlewagon — the long remarks on that method are the record). The cost is that a game which does
+its own cold-start init **and** treats `Activated` as "re-initialise everything" does that work
+twice.
+
+**Doodle God** (`{34e0f2e7-…}`) dies of it. Its `Activated` handler is `DoodleGame.ᜁ()`, the full
+asset + localisation init — which the game also runs itself, on its own loading thread, once its
+two splash screens have shown. Each extra run re-parses `Content/data/loc/elements.txt` into the
+same `Dictionary`, so `Settings.LoadElementsLoc` throws *"An item with the same key has already
+been added. Key: Adventurers"* — caught on the game thread, **fatal on the loading thread**. The
+process aborts about 18 frames in, on the second splash. Nothing about it is platform-specific.
+
+`ApplicationLaunch` made it worse by firing the cold-start signal **twice**: once "primed" before
+`Game.Run`, once from the post-first-tick `Activated` that `Game.Tick` synthesises. So the init
+ran three times.
+
+**The lever is `GameLifecycleQuirks`** (`Src/Backends/WPR.Backend.FNA/`) — a ProductId table read
+once per launch and passed to both cold-start call sites as
+`HandleApplicationStart(true, raiseActivated: false)`. A quirked game still gets `Launching` at
+boot and `Activated` on a genuine resume, which is exactly WP7's own contract. Three things about
+it:
+
+- **Do not "fix" this globally.** Dropping the boot `Activated` for everyone is the WP7-accurate
+  change and it regresses Hoth and Battlewagon. A Cecil sweep of the 25 installed desktop titles
+  found 3 that hook `Activated` only and 7 that hook both — and Hoth and Doodle God are *both* in
+  the "both" bucket, so no property of a game's subscriptions separates the two groups. This is a
+  list of names because it cannot be a rule.
+- **Suppression must leave `_AppActivated` false.** That flag is what the `Activated` add accessor
+  replays to a late subscriber, so setting it would re-deliver the very activation being
+  suppressed.
+- **The priming pass runs before `GraphicsDeviceManager.CreateDevice()`**, so any content load
+  inside a `Launching`/`Activated` handler fails there with
+  `ArgumentNullException (Parameter 'graphicsDevice')`, which `PhoneApplicationService` swallows.
+  Doodle God takes that hit twice and survives only because its `Launching` handler just assigns
+  fields; one that accumulated into a list would not. Worth remembering before blaming a game for
+  a half-built scene.
+
+Read it out of the per-game log — the two cold-start signals say so explicitly:
+
+```
+[wpr-trace] ApplicationLaunch: boot Activated suppressed for 34e0f2e7-… (GameLifecycleQuirks)
+[wpr-trace] PhoneApplicationService.HandleApplicationStart(anew=True) firing Launching (preserved=true) [boot Activated suppressed for this game].
+```
+
+No `ApplicationPatcher.Version` bump and no reinstall — no patcher table changed and no IL is
+rewritten. Games pick it up on next launch.
+
 ### Launching one game without the launcher UI
 
 Driving the Avalonia list to reproduce a game bug is slow and stops working the moment the
@@ -1034,8 +1434,9 @@ workstation locks. A ~60-line console app that references `WPR.Backend.FNA` + `W
   project, not by a `ProjectReference`.
 
 `ServicesSetup.Start()` is *not* needed (it pulls in Avalonia); a game just runs without
-achievements or the keyboard tilt emulator. `FNA3D_FORCE_DRIVER=OpenGL` in the parent shell is
-inherited by the child, which is how the Android-only GL path gets reproduced on Windows.
+achievements or the keyboard tilt emulator. `FNA3D_FORCE_DRIVER=<name>` in the parent shell is
+inherited by the child, which is how another head's driver gets reproduced on Windows — set it to
+`Vulkan` to run what Android runs, or `OpenGL` to reach the GL-only failure modes.
 
 ### Isolated storage always opens shared (patcher v20)
 
@@ -1074,9 +1475,9 @@ progress".
 `[iso-fixup] redirected N … call(s)` is written to the install log per assembly, so the count says
 whether a given game used this path at all.
 
-**This was a patcher table change (v20).** The current version is **21** — see "The XNA spine is
-WPR-owned" above, which supersedes this paragraph's version number; the v20 note below still
-describes what v20 itself changed. Unlike v19 it is not identity-binding — a v19 install still launches, it
+**This was a patcher table change (v20).** The current version is **25** — see "Windows path
+separators in game file I/O" above for the most recent bumps; this paragraph describes what v20
+itself changed. Unlike v19 it is not identity-binding — a v19 install still launches, it
 just keeps the exclusive share and keeps failing to save. `--repatch-installed` is enough (it
 restores each `.dll.original` first, so repatching is idempotent).
 

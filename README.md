@@ -60,30 +60,46 @@ will be familiar if you ever owned one:
   <img src="Images/screenshot-android-achievements.png" width="30%" alt="Achievements on Android" />
 </p>
 
-## What's new in 0.1.03
+## What's new in 0.1.04
 
-- **200 more games have an achievement list.** 254 games now ship one, covering
-  4,350 achievements with their proper names, descriptions, gamerscores and
-  artwork. Most games showed an empty achievements page before, even though the
-  unlocks were being recorded correctly all along.
-- **Games can vibrate your phone on Android** — collisions, wrong answers, menu
-  taps. None of it did anything before. One on/off switch in Settings covers
-  every game and any connected controller.
-- **Tilt works in games that ignored it completely,** Doodle Jump among them, on
-  Windows as well as Android. Anything you'd written off as unplayable because it
-  wouldn't steer is worth another go.
-- **Pin a game to your Android home screen,** with its own box art and name, and
-  launch it in one tap without passing through WPR.
-- **Uninstalled games keep their icon** on the achievements list instead of
-  dropping to a grey placeholder.
-- **The Android download is 20 MB smaller** than 0.1.02 — 137 MB against 158 MB —
-  despite carrying all that new artwork.
+- **Games now fill the whole Android screen.** 14 games ran in a shrunken box
+  with the status bar, the navigation buttons and black borders around them.
+- **3D characters animate again on Android.** They used to stand frozen in a
+  T-pose, arms out, sliding around a level that moved perfectly well without
+  them. Mirror's Edge is the obvious one.
+- **Games that stopped part-way through loading now finish,** and coming back to
+  a game after a call no longer leaves you on a black screen. Both came out of
+  changing the way Android draws games.
+- **Games stuck on their splash screen now start** — they were waiting for a
+  first menu that could never load. Fight Game: Rivals, and any game built the
+  same way.
+- **Five more games play that did not before:** Doodle God, which closed itself
+  a second in; Fable: Coin Golf, where every course was a black screen;
+  Battlewagon, which drew its scenery and never put a menu on it; Contre Jour,
+  which died before its first frame and again whenever you looked away; and Feed
+  Me Oil, which drew a perfect picture and stopped taking taps.
+- **WPR can read images now.** The picture loader was never written, and games
+  that build level data out of a PNG — collision masks and the like — were being
+  handed a blank one pixel wide.
+- **Installing a game on Android no longer silently skips part of it,** which
+  could leave a game half-converted and unable to start at all.
+- **Games no longer quietly fail to find their own files on Android.** 7 of 26
+  games checked name at least one file the Windows way; most got away with it,
+  and the ones that didn't failed silently.
+- **The Android download is about 14 MB smaller.**
 
-> **Nothing to do after updating** — no repatch, no reinstall. Installed games
-> pick this up the next time you launch them, achievements included.
+> **Updating on Android? Uninstall WPR first, just this once.** Every release up
+> to 0.1.03 was signed with a throwaway key, so 0.1.04 will not install over
+> them — Android turns it away as *"App not installed"*. You will lose your
+> installed games and need to add them again. **This is the last time:** from
+> 0.1.04 onward updates install straight over the top, library intact.
+>
+> After that there is nothing to do. Some fixes need a repatch, and on Android
+> that happens by itself the first time you open each game; on Windows, press
+> **Repatch** on a game's page.
 
 Full notes for this release are in
-[`Docs/ReleaseNotes/0.1.03.md`](Docs/ReleaseNotes/0.1.03.md); earlier ones sit
+[`Docs/ReleaseNotes/0.1.04.md`](Docs/ReleaseNotes/0.1.04.md); earlier ones sit
 beside it, and older changes are on the
 [Update History wiki page](https://github.com/Bubbleshum/WPR/wiki/Update-History).
 

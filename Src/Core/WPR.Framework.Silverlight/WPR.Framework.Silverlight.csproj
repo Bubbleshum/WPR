@@ -29,6 +29,23 @@
        references nothing back, so this stays one-way and cycle-free. -->
   <ItemGroup>
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Common\WPR.Common.csproj" />
+    <!-- WPR.Engine.Content owns the path-resolution logic; the shims under System/IO and
+         System/Xml are the thin call sites the patcher can name. The engine tier sits ABOVE the
+         frameworks, and this project is what the reference points at rather than the other way
+         round, so it stays cycle-free: WPR.Engine.Content references only WPR.Common. -->
+    <ProjectReference Include="$(SolutionDir)\Engine\WPR.Engine.Content\WPR.Engine.Content.csproj" />
+    <!-- For XnaBackend/IGraphicsBackend only, so BitmapSource.SetSource can decode an image with
+         the codec the platform already ships (FNA3D's stb_image, reached through the RHI seam)
+         instead of this project carrying a second one. The codec half of that seam is
+         device-independent — ReadImageStream/FreeImage touch no GraphicsDevice.
+
+         This is NOT a backend reference and does not re-open the leak the fitness test guards:
+         WPR.Framework.Xna is a peer under Src/Core, and it references neither this project nor
+         WPR.Framework.Phone, so the edge is one-way and cycle-free. It is also the right
+         direction in practice — the games that reach WriteableBitmap through the patcher are XNA
+         titles (Feed Me Oil loads its collision masks this way), so the XNA graphics backend is
+         exactly what is registered when this runs. -->
+    <ProjectReference Include="$(SolutionDir)\Core\WPR.Framework.Xna\WPR.Framework.Xna.csproj" />
   </ItemGroup>
 
   <!--

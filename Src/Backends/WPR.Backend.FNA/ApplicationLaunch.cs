@@ -362,7 +362,32 @@ namespace WPR
                         {
                             Exception fce = e.Exception;
                             WprTrace($"[wpr-fce] {fce.GetType().FullName}: {fce.Message}");
-                            WprTrace("[wpr-fce] " + (fce.StackTrace ?? "(no stack)"));
+
+                            // WALK THE STACK HERE rather than printing fce.StackTrace.
+                            // FirstChanceException fires on the throwing thread with the full
+                            // call chain still on it, so this walk names every caller. The
+                            // exception's OWN trace is close to useless at this point: it is
+                            // built up as the exception propagates, so it is either null (caught
+                            // in the frame that threw) or a single frame — for a BCL range check
+                            // that one frame is "System.ThrowHelper.ThrowArgumentOutOfRange_...",
+                            // which identifies nothing at all.
+                            //
+                            // That matters because this hook exists precisely for exceptions a
+                            // game swallows in a broad catch, where type and message are all you
+                            // otherwise get. Measured on Feed Me Oil: 284 stackless
+                            // IndexOutOfRangeExceptions on Android and 711 one-frame
+                            // ArgumentOutOfRangeExceptions on Windows, none of which named a
+                            // single frame of game or WPR code.
+                            //
+                            // fNeedFileInfo: line numbers wherever a .pdb sits beside the .dll.
+                            // Skip frame 0, which is this handler.
+                            string trace = new System.Diagnostics.StackTrace(1, true).ToString();
+                            if (string.IsNullOrWhiteSpace(trace))
+                            {
+                                trace = fce.StackTrace ?? "(no stack)";
+                            }
+
+                            WprTrace("[wpr-fce] " + trace);
                         }
                         catch { /* never let logging mask the original throw */ }
                         finally { _inFirstChance = false; }
@@ -575,11 +600,20 @@ namespace WPR
                     WPR.Backend.FNA.Compat.GraphicsDeviceManager.RequestOrientation = requestOrientation;
                     GamerServicesDispatcher.WindowHandle = obj.Window.Handle;
 
+                    // A handful of titles must not receive the synthetic cold-start Activated
+                    // (they init themselves and would do it twice). Resolved once per launch;
+                    // both cold-start signals below honour it, the resume path never does.
+                    bool raiseBootActivated = !GameLifecycleQuirks.SuppressesBootActivated(app.ProductId);
+                    if (!raiseBootActivated)
+                    {
+                        WprTrace($"[wpr-trace] ApplicationLaunch: boot Activated suppressed for {app.ProductId} (GameLifecycleQuirks)");
+                    }
+
                     WprTrace("[wpr-trace] ApplicationLaunch: subscribing to obj.Activated");
                     obj.Activated += (obj, args) =>
                     {
-                        WprTrace("[wpr-trace] ApplicationLaunch: obj.Activated fired -> HandleApplicationStart(true)");
-                        PhoneApplicationService.Current!.HandleApplicationStart(true);
+                        WprTrace($"[wpr-trace] ApplicationLaunch: obj.Activated fired -> HandleApplicationStart(true, raiseActivated: {raiseBootActivated})");
+                        PhoneApplicationService.Current!.HandleApplicationStart(true, raiseBootActivated);
                     };
 
                     // FNA only raises Game.Activated when the SDL window receives a focus event.
@@ -589,10 +623,10 @@ namespace WPR
                     // the game then sits on a "not initialised" black screen because its
                     // Application_Launching handler is where it builds its scene graph.
                     // Fire the lifecycle once, unconditionally, right at startup as a safety net.
-                    WprTrace("[wpr-trace] ApplicationLaunch: priming PhoneApplicationService.HandleApplicationStart(true) before Game.Run");
+                    WprTrace($"[wpr-trace] ApplicationLaunch: priming PhoneApplicationService.HandleApplicationStart(true, raiseActivated: {raiseBootActivated}) before Game.Run");
                     try
                     {
-                        PhoneApplicationService.Current!.HandleApplicationStart(true);
+                        PhoneApplicationService.Current!.HandleApplicationStart(true, raiseBootActivated);
                     }
                     catch (Exception ex)
                     {

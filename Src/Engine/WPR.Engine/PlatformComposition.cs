@@ -1,6 +1,7 @@
 #nullable enable
 using WPR.Engine.Notifications;
 using WPR.Engine.Audio;
+using WPR.Engine.Content;
 using System;
 using System.Collections.Generic;
 using WPR.Engine.Notifications;
@@ -70,6 +71,7 @@ namespace WPR.Engine
              * method name shadows a type name inside the class that declares it. */
             private WPR.Engine.Graphics.GraphicsDriver _driver = WPR.Engine.Graphics.GraphicsDriver.Unspecified;
             private string? _driverOverrideDirectory;
+            private ContentPathRules? _contentPaths;
             private readonly List<IAudioModule> _audio = new List<IAudioModule>();
             private IAudioTranscoder? _transcoder;
             private WPR.Xna.Achievements.IAchievementStore? _achievements;
@@ -92,6 +94,15 @@ namespace WPR.Engine
             {
                 _driver = driver;
                 _driverOverrideDirectory = overrideDirectory;
+                return this;
+            }
+
+            /* Fully qualified for the same reason as GraphicsDriver above: the interface member
+             * and the engine type share a name, and a method name shadows a type name inside the
+             * class that declares it. */
+            public IPlatformCapabilities ContentPaths(ContentPathRules rules)
+            {
+                _contentPaths = rules ?? throw new ArgumentNullException(nameof(rules));
                 return this;
             }
 
@@ -135,6 +146,12 @@ namespace WPR.Engine
                  * keeps the resolved answer available to the launch log either way. */
                 GraphicsDriverPreference.Declare(_driver, _driverOverrideDirectory);
 
+                /* Unlike the registries above, leaving this unset is not "absent": the engine
+                 * falls back to measuring the running filesystem, so a game still opens its
+                 * files. A platform declares it to be explicit and to turn on the install-folder
+                 * probe, which is a hosting policy the engine will not infer. */
+                if (_contentPaths != null) WPR.Engine.Content.ContentPaths.Declare(_contentPaths);
+
                 foreach (IAudioModule module in _audio) AudioBackendRegistry.Register(module);
 
                 if (_transcoder != null) AudioTranscoderBackend.SetTranscoder(_transcoder);
@@ -149,6 +166,7 @@ namespace WPR.Engine
                 parts.Add("accelerometer=" + Name(_accelerometer));
                 parts.Add("vibration=" + Name(_vibration));
                 parts.Add(GraphicsDriverPreference.Describe());
+                parts.Add(WPR.Engine.Content.ContentPaths.Describe());
                 parts.Add("audio=[" + string.Join(", ", _audio.ConvertAll(m => m.Name)) + "]");
                 parts.Add("transcoder=" + Name(_transcoder));
                 parts.Add("achievements=" + Name(_achievements));

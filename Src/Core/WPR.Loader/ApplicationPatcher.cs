@@ -82,7 +82,40 @@ namespace WPR
         // same change; this rescope replaces it. Do not re-add one — a forwarder plus a rescope means
         // two ways to resolve the same type, and the failure mode (a game binding the forwarder while
         // the patcher table says otherwise) is invisible until a cast fails at runtime.
-        public static int Version => 21;
+        //
+        // Bumped to 22: typeof() arguments inside CUSTOM ATTRIBUTE BLOBS are now rescoped too
+        // (RescopeCustomAttributeTypeArguments). They are stored as assembly-qualified STRINGS, not
+        // as TypeRef table rows, so every redirect above had been skipping them since forever — an
+        // attribute kept naming a WP7 assembly that no longer exists. Not identity-binding: a v21
+        // install still launches, it just keeps failing to build any XmlSerializer over the
+        // affected type. Repatch (or reinstall) to pick it up.
+        //
+        // Bumped to 23: game file I/O now goes through WPR.Engine.Content, so a hardcoded Windows
+        // path like "Content\Credits.xml" opens on Android instead of naming a single file with a
+        // backslash in it. Affects every path-taking System.IO / System.Xml member a game calls
+        // (see the MemberPatches block). Not identity-binding: a v22 install still launches, it
+        // just keeps failing those opens — and because games swallow the exception the symptom
+        // shows up somewhere unrelated (Battlewagon: no menu, 5,593 NREs a run). Repatch is
+        // enough; no reinstall needed.
+        //
+        // Bumped to 24: no table changed — what changed is that assemblies which previously
+        // FAILED to patch now succeed. Cecil resolves a constant's declared type while writing
+        // the Constant table (MetadataBuilder.GetConstantType), which on Android always failed
+        // because no managed assembly is on disk there; PatchDll logged it and left that DLL
+        // unpatched, so the game still bound the WP7 XNA identities and died at launch with a
+        // FileNotFoundException inside an AggregateException. ConstantEnumStubResolver answers
+        // that resolve from the constant's own recorded value. The bump exists purely so those
+        // installs repatch themselves — an affected DLL is pristine on disk, not stale, and
+        // nothing else can tell the difference. Repatch is enough; no reinstall needed.
+        // Measured on a 36-game phone: Beards and Beaks and Chickens Can't Fly each had their
+        // MAIN assembly skipped and neither would start.
+        //
+        // Bumped to 25: ApplyGameSpecificFixups gained a second entry — Feed Me Oil's
+        // OggSound.StopById is rewritten to guard its unconditional RemoveAt(found), which is
+        // what froze the game (input included) on its first change of music. This DOES rewrite
+        // game IL, so an install made before it keeps the old body and keeps freezing.
+        // Not identity-binding — a v24 install still launches — so repatch is enough.
+        public static int Version => 25;
 
         private AssemblyNameReference FnaBackendRef;
         private AssemblyNameReference FNARef;
@@ -1429,7 +1462,213 @@ namespace WPR
                     "System.Byte[] System.Security.Cryptography.ProtectedData::Unprotect(System.Byte[],System.Byte[])",
                     typeof(WPR.WindowsCompability.ProtectedData)
                 },
-                 
+
+                // ---- Windows path separators in game file I/O -------------------------------
+                //
+                // WP7 titles were built on Windows, where '\' and '/' are interchangeable, so
+                // hardcoded paths like "Content\Credits.xml" are everywhere — 7 of the 26
+                // installed titles carry one, and one carries 89. On Android '\' is an ordinary
+                // filename character, so the open fails, the game swallows it, and the symptom
+                // surfaces somewhere unrelated. Battlewagon is the reference case: one failed
+                // XmlReader.Create left a null field and TitleScene.Update then threw an NRE on
+                // every frame (5,593 in one run) — its menu never built while the background
+                // animated happily. The rules are declared by the platform; see
+                // WPR.Engine.Content.ContentPaths.
+                //
+                // These normalise at the point of USE rather than rewriting string literals, so
+                // a path assembled at run time (concatenation, Path.Combine, "Level{0}\{0}.txt")
+                // is covered too. Windows behaviour is unchanged — the normaliser is a no-op
+                // when the platform separator is already '\'.
+                //
+                // NOT covered: System.IO.FileInfo / DirectoryInfo. Both are SEALED, so no
+                // subclass can stand where the constructed instance lands, and retargeting the
+                // declaring type is all this table can do. They need a call-site rewrite like
+                // RedirectIsolatedStorageOpens; only 3 uses exist across the installed library,
+                // so that is deliberately left until something actually needs it.
+                {
+                    "System.IO.FileStream System.IO.File::Open(System.String,System.IO.FileMode)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.IO.FileStream System.IO.File::Open(System.String,System.IO.FileMode,System.IO.FileAccess)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.IO.FileStream System.IO.File::Open(System.String,System.IO.FileMode,System.IO.FileAccess,System.IO.FileShare)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.Boolean System.IO.File::Exists(System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.IO.StreamReader System.IO.File::OpenText(System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.IO.FileStream System.IO.File::OpenRead(System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.IO.FileStream System.IO.File::OpenWrite(System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.IO.FileStream System.IO.File::Create(System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.IO.StreamWriter System.IO.File::CreateText(System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.IO.StreamWriter System.IO.File::AppendText(System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.String System.IO.File::ReadAllText(System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.Byte[] System.IO.File::ReadAllBytes(System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.String[] System.IO.File::ReadAllLines(System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.Void System.IO.File::WriteAllText(System.String,System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.Void System.IO.File::WriteAllBytes(System.String,System.Byte[])",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.Void System.IO.File::AppendAllText(System.String,System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.Void System.IO.File::Delete(System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.Void System.IO.File::Copy(System.String,System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.Void System.IO.File::Copy(System.String,System.String,System.Boolean)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+                {
+                    "System.Void System.IO.File::Move(System.String,System.String)",
+                    typeof(WPR.WindowsCompability.File2)
+                },
+
+                {
+                    "System.Boolean System.IO.Directory::Exists(System.String)",
+                    typeof(WPR.WindowsCompability.Directory2)
+                },
+                {
+                    "System.IO.DirectoryInfo System.IO.Directory::CreateDirectory(System.String)",
+                    typeof(WPR.WindowsCompability.Directory2)
+                },
+                {
+                    "System.Void System.IO.Directory::Delete(System.String)",
+                    typeof(WPR.WindowsCompability.Directory2)
+                },
+                {
+                    "System.Void System.IO.Directory::Delete(System.String,System.Boolean)",
+                    typeof(WPR.WindowsCompability.Directory2)
+                },
+                {
+                    "System.String[] System.IO.Directory::GetFiles(System.String)",
+                    typeof(WPR.WindowsCompability.Directory2)
+                },
+                {
+                    "System.String[] System.IO.Directory::GetFiles(System.String,System.String)",
+                    typeof(WPR.WindowsCompability.Directory2)
+                },
+                {
+                    "System.String[] System.IO.Directory::GetDirectories(System.String)",
+                    typeof(WPR.WindowsCompability.Directory2)
+                },
+                {
+                    "System.String[] System.IO.Directory::GetDirectories(System.String,System.String)",
+                    typeof(WPR.WindowsCompability.Directory2)
+                },
+
+                // Constructors: the replacement must be SUBSTITUTABLE for the original, because
+                // all this table does is retarget the newobj's declaring type. FileStream,
+                // StreamReader and StreamWriter are all unsealed, so a subclass works — the same
+                // mechanism SharedIsolatedStorageFileStream already uses.
+                {
+                    "System.Void System.IO.FileStream::.ctor(System.String,System.IO.FileMode)",
+                    typeof(WPR.WindowsCompability.NormalizedPathFileStream)
+                },
+                {
+                    "System.Void System.IO.FileStream::.ctor(System.String,System.IO.FileMode,System.IO.FileAccess)",
+                    typeof(WPR.WindowsCompability.NormalizedPathFileStream)
+                },
+                {
+                    "System.Void System.IO.FileStream::.ctor(System.String,System.IO.FileMode,System.IO.FileAccess,System.IO.FileShare)",
+                    typeof(WPR.WindowsCompability.NormalizedPathFileStream)
+                },
+                {
+                    "System.Void System.IO.StreamReader::.ctor(System.String)",
+                    typeof(WPR.WindowsCompability.NormalizedPathStreamReader)
+                },
+                {
+                    "System.Void System.IO.StreamReader::.ctor(System.String,System.Text.Encoding)",
+                    typeof(WPR.WindowsCompability.NormalizedPathStreamReader)
+                },
+                {
+                    "System.Void System.IO.StreamReader::.ctor(System.String,System.Boolean)",
+                    typeof(WPR.WindowsCompability.NormalizedPathStreamReader)
+                },
+                {
+                    "System.Void System.IO.StreamWriter::.ctor(System.String)",
+                    typeof(WPR.WindowsCompability.NormalizedPathStreamWriter)
+                },
+                {
+                    "System.Void System.IO.StreamWriter::.ctor(System.String,System.Boolean)",
+                    typeof(WPR.WindowsCompability.NormalizedPathStreamWriter)
+                },
+                {
+                    "System.Void System.IO.StreamWriter::.ctor(System.String,System.Boolean,System.Text.Encoding)",
+                    typeof(WPR.WindowsCompability.NormalizedPathStreamWriter)
+                },
+
+                // XmlReader.Create is the one that actually broke Battlewagon: it resolves its
+                // argument as a URI and opens the FileStream inside XmlDownloadManager, so the
+                // System.IO entries above never see the path.
+                {
+                    "System.Xml.XmlReader System.Xml.XmlReader::Create(System.String)",
+                    typeof(WPR.WindowsCompability.XmlReader2)
+                },
+                {
+                    "System.Xml.XmlReader System.Xml.XmlReader::Create(System.String,System.Xml.XmlReaderSettings)",
+                    typeof(WPR.WindowsCompability.XmlReader2)
+                },
+                {
+                    "System.Xml.Linq.XDocument System.Xml.Linq.XDocument::Load(System.String)",
+                    typeof(WPR.WindowsCompability.XDocument2)
+                },
+                {
+                    "System.Xml.Linq.XDocument System.Xml.Linq.XDocument::Load(System.String,System.Xml.Linq.LoadOptions)",
+                    typeof(WPR.WindowsCompability.XDocument2)
+                },
+                // NOTE: XElement::Load(String) is NOT listed here — it already had an entry at the
+                // bottom of this table, pointing at the same XElement2. That shim predates this
+                // block and does the same normalisation plus an install-folder fallback for
+                // relative paths; only the LoadOptions overload was missing.
+                {
+                    "System.Xml.Linq.XElement System.Xml.Linq.XElement::Load(System.String,System.Xml.Linq.LoadOptions)",
+                    typeof(WPR.WindowsCompability.XElement2)
+                },
+                // ---- end Windows path separators --------------------------------------------
+
                 //{
                 //    "System.Windows.Media.Imaging.WriteableBitmap System.Windows.Media.Imaging.WriteableBitmap(System.Integer,System.Integer)",
                 //    typeof(WPR.WindowsCompability.WriteableBitmap)
@@ -1477,6 +1716,194 @@ namespace WPR
             };
 
         }//ApplicationPatcher
+
+        /// <summary>
+        /// Rescopes every <c>typeof(...)</c> argument in every custom attribute in the module.
+        /// </summary>
+        /// <remarks>
+        /// <para><b>A custom attribute blob names types by STRING, so the TypeRef rescope cannot
+        /// see them.</b> An argument of type <c>System.Type</c> is stored as an assembly-qualified
+        /// name — <c>"Microsoft.Xna.Framework.Vector2, Microsoft.Xna.Framework, Version=4.0.0.0,
+        /// …, PublicKeyToken=842cf8be1de50553"</c> — not as a row in the TypeRef table, so
+        /// <c>module.GetTypeReferences()</c> never returns it and every redirect this patcher
+        /// performs used to pass it by. The name then points at a WP7 assembly that does not
+        /// exist at runtime.</para>
+        ///
+        /// <para><b>Reading the arguments is what makes the fix stick, and it is also why the bug
+        /// existed.</b> Cecil parses a blob lazily and, if nothing ever touches
+        /// <c>ConstructorArguments</c>/<c>Properties</c>/<c>Fields</c>, writes the original bytes
+        /// back verbatim — which is exactly what happened before this method: the patcher rewrote
+        /// the assembly ref from <c>Microsoft.Xna.Framework</c> to <c>FNA</c> and the blob kept
+        /// saying <c>Microsoft.Xna.Framework</c> regardless. Touching them here forces Cecil to
+        /// materialise each argument into a <see cref="TypeReference"/> and to re-serialise the
+        /// blob from that model on write, so mutating the reference is enough.</para>
+        ///
+        /// <para><b>The failure is a hang, not a crash</b>, because the types that carry
+        /// <c>typeof()</c> in practice are <c>XmlSerializer</c> hints — <c>[XmlElement]</c>,
+        /// <c>[XmlArrayItem]</c>, <c>[XmlInclude]</c>. Nothing loads the type until a serializer is
+        /// constructed over the declaring type, and then the <c>TypeLoadException</c> arrives
+        /// wrapped in <c>InvalidOperationException: There was an error reflecting type '…'</c>,
+        /// which games routinely swallow. Fight Game Rivals
+        /// (<c>{57b854f3-a3cc-4213-aa91-07aae56e146c}</c>) is the reference case: one
+        /// <c>[XmlArrayItem(ElementName = "Vector2", Type = typeof(Vector2))]</c> on
+        /// <c>GameObjectManager.BaseGameObject.CustomData.xmlValues</c> failed the serializer for
+        /// <c>Manager.xmlGameObjectSpecification</c>, which is how EVERY screen in the game is
+        /// deserialised — so it sat on its splash screen for ever, with the only trace a
+        /// first-chance exception in the per-game log.</para>
+        /// </remarks>
+        private static void RescopeCustomAttributeTypeArguments(
+            ModuleDefinition module,
+            Action<TypeReference> rescope)
+        {
+            /* Attribute types whose blob could not be parsed at all, deduplicated. Reported as one
+             * line per assembly rather than one per attribute: the usual cause is a BCL attribute
+             * (DebuggableAttribute, EditorBrowsableAttribute) whose enum argument lives in WP7's
+             * own mscorlib/System, which nothing on this machine can resolve — hundreds of
+             * identical lines per install, none of them actionable. Still reported, because a
+             * GAME attribute in this list is the one case where a typeof() silently keeps its
+             * dead WP7 assembly name. */
+            SortedSet<string> unparsedAttributeTypes = new SortedSet<string>(StringComparer.Ordinal);
+
+            RescopeProvider(module.Assembly);
+            RescopeProvider(module);
+
+            foreach (TypeDefinition type in module.GetTypes())
+            {
+                RescopeProvider(type);
+
+                foreach (FieldDefinition field in type.Fields)
+                {
+                    RescopeProvider(field);
+                }
+
+                foreach (PropertyDefinition property in type.Properties)
+                {
+                    RescopeProvider(property);
+                }
+
+                foreach (EventDefinition evt in type.Events)
+                {
+                    RescopeProvider(evt);
+                }
+
+                foreach (MethodDefinition method in type.Methods)
+                {
+                    RescopeProvider(method);
+                    RescopeProvider(method.MethodReturnType);
+
+                    foreach (ParameterDefinition parameter in method.Parameters)
+                    {
+                        RescopeProvider(parameter);
+                    }
+                }
+            }
+
+            ReportUnparsed();
+
+            void RescopeProvider(ICustomAttributeProvider? provider)
+            {
+                if (provider == null || !provider.HasCustomAttributes)
+                {
+                    return;
+                }
+
+                foreach (CustomAttribute attribute in provider.CustomAttributes)
+                {
+                    /* An attribute whose own type cannot be resolved throws from the blob parser
+                     * (it needs the constructor's signature to know each argument's type). That is
+                     * not fatal on its own — an unresolvable attribute is inert unless something
+                     * reflects over it — so skip it and leave its bytes untouched rather than
+                     * failing the whole install. */
+                    try
+                    {
+                        foreach (CustomAttributeArgument argument in attribute.ConstructorArguments)
+                        {
+                            RescopeArgument(argument);
+                        }
+
+                        foreach (CustomAttributeNamedArgument named in attribute.Properties)
+                        {
+                            RescopeArgument(named.Argument);
+                        }
+
+                        foreach (CustomAttributeNamedArgument named in attribute.Fields)
+                        {
+                            RescopeArgument(named.Argument);
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        unparsedAttributeTypes.Add(attribute.AttributeType.FullName);
+                    }
+                }
+            }
+
+            void RescopeArgument(CustomAttributeArgument argument)
+            {
+                switch (argument.Value)
+                {
+                    // typeof(...). Mutating the reference in place is what the writer picks up —
+                    // CustomAttributeArgument is a struct, so assigning a new one to the local
+                    // would be thrown away.
+                    case TypeReference typeArgument:
+                        RescopeTypeTree(typeArgument);
+                        break;
+
+                    // An array-valued argument, e.g. Type[].
+                    case CustomAttributeArgument[] arrayArgument:
+                        foreach (CustomAttributeArgument element in arrayArgument)
+                        {
+                            RescopeArgument(element);
+                        }
+                        break;
+
+                    // A boxed argument — what an `object`-typed attribute parameter holds.
+                    case CustomAttributeArgument boxedArgument:
+                        RescopeArgument(boxedArgument);
+                        break;
+                }
+            }
+
+            void RescopeTypeTree(TypeReference type)
+            {
+                /* typeof(List<Vector2>) and typeof(Vector2[]) both hide the interesting reference
+                 * one level down, and only the leaf carries a scope worth rewriting. */
+                if (type is GenericInstanceType genericInstance)
+                {
+                    foreach (TypeReference genericArgument in genericInstance.GenericArguments)
+                    {
+                        RescopeTypeTree(genericArgument);
+                    }
+                }
+
+                if (type is TypeSpecification specification)
+                {
+                    RescopeTypeTree(specification.ElementType);
+                    return;
+                }
+
+                if (type.IsGenericParameter)
+                {
+                    return;
+                }
+
+                rescope(type);
+            }
+
+            void ReportUnparsed()
+            {
+                if (unparsedAttributeTypes.Count == 0)
+                {
+                    return;
+                }
+
+                Log.Warn(LogCategory.AppInstall,
+                    "[attr-fixup] " + module.Name + ": could not parse "
+                    + unparsedAttributeTypes.Count + " attribute type(s), so any typeof() in them "
+                    + "keeps its original assembly name: "
+                    + string.Join(", ", unparsedAttributeTypes));
+            }
+        }
 
         private void PatchRelaxedXmlNullableAttribTextSerialize(ModuleDefinition? module)
         {
@@ -1749,7 +2176,18 @@ namespace WPR
         /// touches the exact game it targets and no-ops (rather than corrupting the DLL) if the
         /// expected IL isn't present, e.g. a different build of the title.
         /// </summary>
+        /// <summary>
+        /// Per-title IL repairs that don't fit the reference-redirect tables. Each entry gates
+        /// itself on a type only that game defines, so this is a list of independent fixups —
+        /// add to it, and do NOT early-return from here, or every later fixup stops running.
+        /// </summary>
         private static void ApplyGameSpecificFixups(ModuleDefinition module)
+        {
+            ApplyHothRevealFixup(module);
+            ApplyFeedMeOilStopByIdFixup(module);
+        }
+
+        private static void ApplyHothRevealFixup(ModuleDefinition module)
         {
             // Star Wars: The Battle for Hoth (SWTheBattleForHoth.dll). On a *fresh* game the
             // in-game HUD and the tutorial popups are revealed by animating the sprites in from
@@ -1784,6 +2222,113 @@ namespace WPR
                 {
                     Debug.WriteLine($"[hoth-fixup] {typeName} threw: {ex.Message}");
                 }
+            }
+        }
+
+        /// <summary>
+        /// Feed Me Oil (FeedMeOil.dll). Guards the unconditional <c>RemoveAt</c> at the end of
+        /// <c>OggSound.StopById</c>, which is what freezes the game on its first music change.
+        ///
+        /// <para><b>The game's bug.</b> <c>StopById</c> is
+        /// <c>found = -1; for (i..) if (_instances[i].id == id) { found = i; …Stop(); break; }
+        /// _instances.RemoveAt(found);</c> — the remove runs even when the search fell through and
+        /// <c>found</c> is still -1. Reached with a guard, it simply removes nothing, which is
+        /// exactly right: nothing matched, so there is nothing to take out of the list.</para>
+        ///
+        /// <para><b>Why it is reached.</b> <c>SBSounds.playMusic</c> assigns
+        /// <c>__lastMusicSound = soundId</c> BEFORE calling <c>stopMusic()</c>, and
+        /// <c>stopMusic</c> resolves the sound to stop through that very field. So a change of
+        /// track looks for the OUTGOING music's instance id inside the INCOMING sound's instance
+        /// list, which can never match.</para>
+        ///
+        /// <para><b>Why one miss freezes the game for good.</b> The throw happens inside
+        /// <c>stopMusic</c> BEFORE it can run <c>__musicId = 0</c>, so the stale id survives; the
+        /// next frame takes the same branch and throws again, for ever. It escapes through
+        /// <c>SBSceneObjects.onEnter</c> into <c>Director.Update</c>, which is where the game reads
+        /// <c>TouchPanel.GetState()</c> and dispatches <c>TouchBegan/Moved/Ended</c> — all of it
+        /// below the throw. <c>Draw</c> is a separate call and keeps running, so the game paints a
+        /// perfectly good frame while nothing advances and no tap is ever seen. That is the whole
+        /// of the reported symptom: "gets into gameplay, then clicks don't register and it freezes."
+        /// The guard lets <c>stopMusic</c> finish, <c>__musicId</c> reaches 0, and play resumes.</para>
+        ///
+        /// <para>Identical on both heads — measured on a Galaxy S24 and on Windows, failing at the
+        /// same point (the story cutscene handing over to level 1). Nothing here is Android's.</para>
+        /// </summary>
+        private static void ApplyFeedMeOilStopByIdFixup(ModuleDefinition module)
+        {
+            TypeDefinition? ogg = module.GetType("FeedMeOil.OggSound");
+            if (ogg == null) return;
+
+            MethodDefinition? m = ogg.Methods.FirstOrDefault(x => x.Name == "StopById" && x.HasBody);
+            if (m == null)
+            {
+                Log.Warn(LogCategory.AppInstall, "[fmo-fixup] FeedMeOil.OggSound.StopById not found — skip.");
+                return;
+            }
+
+            try
+            {
+                // Long-form every macro first: inserting instructions lengthens the method, and a
+                // pre-existing short branch (there is one — the loop's `break` jumps at the remove)
+                // can then no longer reach its target. OptimizeMacros re-shortens what still fits.
+                m.Body.SimplifyMacros();
+
+                Instruction? removeAt = m.Body.Instructions.FirstOrDefault(
+                    i => (i.OpCode == OpCodes.Callvirt || i.OpCode == OpCodes.Call)
+                         && i.Operand is MethodReference mr
+                         && mr.Name == "RemoveAt"
+                         && mr.DeclaringType.Name.StartsWith("List`1", StringComparison.Ordinal));
+
+                // Argument shape: ldarg.0 ; ldfld _instances ; ldloc <found> ; callvirt RemoveAt.
+                Instruction? idxLoad = removeAt?.Previous;
+                Instruction? fieldLoad = idxLoad?.Previous;
+                Instruction? seqStart = fieldLoad?.Previous;
+                Instruction last = m.Body.Instructions[m.Body.Instructions.Count - 1];
+
+                if (removeAt == null || seqStart == null
+                    || idxLoad!.OpCode != OpCodes.Ldloc || idxLoad.Operand is not VariableDefinition found
+                    || fieldLoad!.OpCode != OpCodes.Ldfld
+                    || last.OpCode != OpCodes.Ret)
+                {
+                    Log.Warn(LogCategory.AppInstall,
+                        "[fmo-fixup] StopById IL does not match the expected shape — left unpatched.");
+                    m.Body.OptimizeMacros();
+                    return;
+                }
+
+                ILProcessor il = m.Body.GetILProcessor();
+                Instruction guard = Instruction.Create(OpCodes.Ldloc, found);
+                Instruction zero = Instruction.Create(OpCodes.Ldc_I4_0);
+                Instruction skip = Instruction.Create(OpCodes.Blt, last);
+
+                il.InsertBefore(seqStart, guard);
+                il.InsertBefore(seqStart, zero);
+                il.InsertBefore(seqStart, skip);
+
+                // Anything that jumped to the old first instruction must now jump to the guard,
+                // or the loop's `break` lands past it and the fix silently does nothing.
+                foreach (Instruction i in m.Body.Instructions)
+                {
+                    if (ReferenceEquals(i.Operand, seqStart))
+                    {
+                        i.Operand = guard;
+                    }
+                    else if (i.Operand is Instruction[] targets)
+                    {
+                        for (int t = 0; t < targets.Length; t++)
+                        {
+                            if (ReferenceEquals(targets[t], seqStart)) targets[t] = guard;
+                        }
+                    }
+                }
+
+                m.Body.OptimizeMacros();
+                Log.Info(LogCategory.AppInstall,
+                    "[fmo-fixup] guarded FeedMeOil.OggSound.StopById against RemoveAt(-1).");
+            }
+            catch (Exception ex)
+            {
+                Log.Warn(LogCategory.AppInstall, $"[fmo-fixup] threw, left unpatched: {ex.Message}");
             }
         }
 
@@ -1843,7 +2388,15 @@ namespace WPR
             // never redirected -> TypeLoadException at launch). Point the resolver at
             // the install dir *and* the running WPR bin (where FNA + the shims are
             // deployed) so those resolves succeed. Repro'd on "Beards and Beaks.dll".
-            var resolver = new DefaultAssemblyResolver();
+            //
+            // The WPR bin only helps a platform that HAS a WPR bin. On Android every
+            // managed assembly is embedded in the APK and mapped out of it, so
+            // AppContext.BaseDirectory holds no .dll at all and that resolve fails no
+            // matter what is added here — which is why the same "Beards and Beaks.dll"
+            // was still arriving unpatched on a phone long after the line above fixed
+            // it on Windows. ConstantEnumStubResolver answers that one resolve without
+            // needing a file; see its remarks.
+            var resolver = new ConstantEnumStubResolver();
             resolver.AddSearchDirectory(Path.GetDirectoryName(modulePath)!);
             resolver.AddSearchDirectory(AppContext.BaseDirectory);
 
@@ -1877,9 +2430,25 @@ namespace WPR
                 }
             }
 
-            // module.AssemblyReferences cycle 
+            /* Every assembly ref this loop is about to touch, keyed by the name it has BEFORE the
+             * rename.
+             *
+             * A typeref in the TypeRef TABLE follows a rename for free — its Scope is that very
+             * AssemblyNameReference instance, mutated in place. A type named inside a CUSTOM
+             * ATTRIBUTE BLOB does not: the blob stores an assembly-qualified name as a STRING, and
+             * when Cecil parses it (RescopeCustomAttributeTypeArguments, below) there is no ref
+             * called "Microsoft.Xna.Framework" left to match — this loop renamed it to "FNA" — so
+             * Cecil mints a fresh AssemblyNameReference for the dead WP7 identity.
+             *
+             * This map is how such a type gets back onto the same instance the table refs use. */
+            Dictionary<string, AssemblyNameReference> assemblyScopesByOriginalName =
+                new Dictionary<string, AssemblyNameReference>(StringComparer.Ordinal);
+
+            // module.AssemblyReferences cycle
             foreach (var refer in module.AssemblyReferences)
             {
+                assemblyScopesByOriginalName[refer.Name] = refer;
+
                 if (refer.Name.Contains("Microsoft.Xna"))
                 {
                     // Test the more specific "GamerServicesExtensions" first —
@@ -1989,6 +2558,20 @@ namespace WPR
             // cycle existing refs...
             foreach (var existingRef in module.GetTypeReferences())
             {
+                RescopeTypeReference(existingRef);
+            }//for...
+
+            /* GetTypeReferences() above walks the TypeRef metadata TABLE, and a type named inside
+             * a custom attribute blob is not in it — the blob carries an assembly-qualified name
+             * as a plain string, which no amount of table walking reaches. Those strings need
+             * exactly the same rescoping, so hand the same function over them. */
+            RescopeCustomAttributeTypeArguments(module, RescopeTypeReference);
+
+            // Points one typeref at whatever WPR assembly owns that type now. A local function so
+            // the blob walk above and the table walk share one set of rules; they must agree, or a
+            // typeof() in an attribute resolves somewhere its IL counterpart does not.
+            void RescopeTypeReference(TypeReference existingRef)
+            {
                 existingRef.Name = AssemblyNameStandardization.Process(existingRef.Name);
 
                 if (existingRef.FullName
@@ -2042,8 +2625,25 @@ namespace WPR
                             }
                         }
                     }
+                    else if (existingRef.Scope is AssemblyNameReference blobScope
+                        && assemblyScopesByOriginalName.TryGetValue(
+                            blobScope.Name, out AssemblyNameReference? liveScope)
+                        && !ReferenceEquals(blobScope, liveScope))
+                    {
+                        /* Only a type parsed out of a custom attribute blob reaches this. A
+                         * TypeRef-table entry already holds `liveScope` itself, so the identity
+                         * test short-circuits and the table walk is bit-for-bit unchanged.
+                         *
+                         * A blob-parsed one holds a throwaway AssemblyNameReference Cecil built
+                         * from the string, still naming the pre-rename identity. Retarget it, and
+                         * every rename this method performs — Microsoft.Xna.* -> FNA,
+                         * mscorlib.Extensions -> System.Runtime, System.ServiceModel ->
+                         * System.ServiceModel.Primitives — carries over to attribute arguments for
+                         * free, rather than each needing its own entry here. */
+                        existingRef.Scope = liveScope;
+                    }
                 }
-            }//for...
+            }//RescopeTypeReference
 
 
             // Send every IsolatedStorageFile.OpenFile / CreateFile call through the sharing shim.
@@ -2053,6 +2653,18 @@ namespace WPR
 
             // Game-specific IL fixups that don't fit the reference-redirect tables above.
             ApplyGameSpecificFixups(module);
+
+            // Cecil resolves a constant's declared type while building the Constant table,
+            // to learn the integer behind an enum. Prepare an answer for any that cannot be
+            // found on disk — which on Android is all of ours. Must run here: the scope Cecil
+            // asks for is the one the rescoping above just renamed it to.
+            int stubbed = resolver.PrimeConstantTypes(module);
+            if (stubbed > 0)
+            {
+                Log.Info(LogCategory.AppInstall,
+                    $"[const-fixup] {Path.GetFileName(modulePath)}: {stubbed} constant type(s) " +
+                    "resolved from the constant's own value (assembly not on disk).");
+            }
 
             // create .dll.new
             try

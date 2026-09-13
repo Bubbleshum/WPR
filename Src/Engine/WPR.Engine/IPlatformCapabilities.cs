@@ -1,5 +1,6 @@
 #nullable enable
 using WPR.Engine.Audio;
+using WPR.Engine.Content;
 using WPR.Engine.Notifications;
 using WPR.Engine.Sensors;
 using WPR.Engine.Graphics;
@@ -58,6 +59,17 @@ namespace WPR.Engine
         /// <param name="overrideDirectory">Where to look for the runtime override file, or null to
         /// disable that escape hatch.</param>
         IPlatformCapabilities GraphicsDriver(GraphicsDriver driver, string? overrideDirectory = null);
+
+        /// <summary>
+        /// How this platform's filesystem treats the paths WP7 games ask for - chiefly whether a
+        /// Windows-style <c>Content\Foo.xml</c> opens as-is.
+        ///
+        /// <para>Facts, not instructions: the head states what its filesystem does and
+        /// <see cref="WPR.Engine.Content.ContentPaths"/> decides what to do about it. Omit it and
+        /// the engine measures the running filesystem instead, which is what keeps a host that
+        /// composes no platform (the bare game-host harness) correct.</para>
+        /// </summary>
+        IPlatformCapabilities ContentPaths(ContentPathRules rules);
 
         /// <summary>
         /// This platform brings its own audio implementation, layered over the host's default.

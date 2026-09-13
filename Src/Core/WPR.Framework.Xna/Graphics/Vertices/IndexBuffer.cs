@@ -45,6 +45,21 @@ namespace Microsoft.Xna.Framework.Graphics
 
 		#endregion
 
+		#region Internal CPU Shadow
+
+		/* Serves GetData without a GPU readback, because FNA3D's OpenGL driver
+		 * implements that with glGetBufferSubData — a NonES3 entry point that is
+		 * NULL under OpenGL ES. See GpuBufferShadow for the full story.
+		 *
+		 * Unlike VertexBuffer this is kept even for BufferUsage.WriteOnly, because
+		 * GetData below only warns about a WriteOnly read instead of throwing (a
+		 * deliberate WPR softening of the XNA contract), so such a call really does
+		 * reach the readback and really would branch to address 0.
+		 */
+		internal readonly GpuBufferShadow shadow;
+
+		#endregion
+
 		#region Public Constructors
 
 		public IndexBuffer(
@@ -112,6 +127,8 @@ namespace Microsoft.Xna.Framework.Graphics
 			BufferUsage = usage;
 
 			int stride = (indexElementSize == IndexElementSize.ThirtyTwoBits) ? 4 : 2;
+
+			shadow = new GpuBufferShadow(IndexCount * stride);
 
 			buffer = XnaBackend.Graphics.GenIndexBuffer(
 				GraphicsDevice.GLDevice,
@@ -205,13 +222,21 @@ namespace Microsoft.Xna.Framework.Graphics
 
 			int elementSizeInBytes = Marshal.SizeOf(typeof(T));
 			GCHandle handle = GCHandle.Alloc(data, GCHandleType.Pinned);
-			XnaBackend.Graphics.GetIndexBufferData(
-				GraphicsDevice.GLDevice,
-				buffer,
+			IntPtr destination =
+				handle.AddrOfPinnedObject() + (startIndex * elementSizeInBytes);
+			if (!shadow.Read(
 				offsetInBytes,
-				handle.AddrOfPinnedObject() + (startIndex * elementSizeInBytes),
+				destination,
 				elementCount * elementSizeInBytes
-			);
+			)) {
+				XnaBackend.Graphics.GetIndexBufferData(
+					GraphicsDevice.GLDevice,
+					buffer,
+					offsetInBytes,
+					destination,
+					elementCount * elementSizeInBytes
+				);
+			}
 			handle.Free();
 		}
 
@@ -222,14 +247,16 @@ namespace Microsoft.Xna.Framework.Graphics
 		public void SetData<T>(T[] data) where T : struct
 		{
 			GCHandle handle = GCHandle.Alloc(data, GCHandleType.Pinned);
+			int lengthInBytes = data.Length * Marshal.SizeOf(typeof(T));
 			XnaBackend.Graphics.SetIndexBufferData(
 				GraphicsDevice.GLDevice,
 				buffer,
 				0,
 				handle.AddrOfPinnedObject(),
-				data.Length * Marshal.SizeOf(typeof(T)),
+				lengthInBytes,
 				SetDataOptions.None
 			);
+			shadow.Write(0, handle.AddrOfPinnedObject(), lengthInBytes);
 			handle.Free();
 		}
 
@@ -241,14 +268,18 @@ namespace Microsoft.Xna.Framework.Graphics
 			ErrorCheck(data, startIndex, elementCount);
 
 			GCHandle handle = GCHandle.Alloc(data, GCHandleType.Pinned);
+			IntPtr source =
+				handle.AddrOfPinnedObject() + (startIndex * Marshal.SizeOf(typeof(T)));
+			int lengthInBytes = elementCount * Marshal.SizeOf(typeof(T));
 			XnaBackend.Graphics.SetIndexBufferData(
 				GraphicsDevice.GLDevice,
 				buffer,
 				0,
-				handle.AddrOfPinnedObject() + (startIndex * Marshal.SizeOf(typeof(T))),
-				elementCount * Marshal.SizeOf(typeof(T)),
+				source,
+				lengthInBytes,
 				SetDataOptions.None
 			);
+			shadow.Write(0, source, lengthInBytes);
 			handle.Free();
 		}
 
@@ -261,14 +292,18 @@ namespace Microsoft.Xna.Framework.Graphics
 			ErrorCheck(data, startIndex, elementCount);
 
 			GCHandle handle = GCHandle.Alloc(data, GCHandleType.Pinned);
+			IntPtr source =
+				handle.AddrOfPinnedObject() + (startIndex * Marshal.SizeOf(typeof(T)));
+			int lengthInBytes = elementCount * Marshal.SizeOf(typeof(T));
 			XnaBackend.Graphics.SetIndexBufferData(
 				GraphicsDevice.GLDevice,
 				buffer,
 				offsetInBytes,
-				handle.AddrOfPinnedObject() + (startIndex * Marshal.SizeOf(typeof(T))),
-				elementCount * Marshal.SizeOf(typeof(T)),
+				source,
+				lengthInBytes,
 				SetDataOptions.None
 			);
+			shadow.Write(offsetInBytes, source, lengthInBytes);
 			handle.Free();
 		}
 
@@ -290,6 +325,11 @@ namespace Microsoft.Xna.Framework.Graphics
 				dataLength,
 				options
 			);
+			if (options == SetDataOptions.Discard)
+			{
+				shadow.Discard();
+			}
+			shadow.Write(offsetInBytes, data, dataLength);
 		}
 
 		#endregion

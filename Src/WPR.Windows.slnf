@@ -17,6 +17,7 @@
       "Core\\WPR.Shell\\WPR.Shell.csproj",
       "Core\\WPR.SilverlightCompability.Tests\\WPR.SilverlightCompability.Tests.csproj",
       "Engine\\WPR.Engine.Audio\\WPR.Engine.Audio.csproj",
+      "Engine\\WPR.Engine.Content\\WPR.Engine.Content.csproj",
       "Engine\\WPR.Engine.GameLoop\\WPR.Engine.GameLoop.csproj",
       "Engine\\WPR.Engine.Graphics\\WPR.Engine.Graphics.csproj",
       "Engine\\WPR.Engine.Notifications\\WPR.Engine.Notifications.csproj",

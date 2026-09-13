@@ -6315,9 +6315,32 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		if (	!validSwapchainExists ||
 			acquireResult == VK_ERROR_OUT_OF_DATE_KHR ||
 			acquireResult == VK_SUBOPTIMAL_KHR ||
+			acquireResult == VK_ERROR_SURFACE_LOST_KHR ||
 			presentResult == VK_ERROR_OUT_OF_DATE_KHR ||
-			presentResult == VK_SUBOPTIMAL_KHR	)
+			presentResult == VK_SUBOPTIMAL_KHR ||
+			presentResult == VK_ERROR_SURFACE_LOST_KHR	)
 		{
+			/* SURFACE_LOST is not the same as OUT_OF_DATE, and on Android it is
+			 * the normal case rather than an exotic one: backgrounding the app
+			 * destroys the ANativeWindow, which takes the VkSurfaceKHR built over
+			 * it with it. An out-of-date swapchain still has a live surface and
+			 * merely needs resizing; a lost one does not, so recreating the
+			 * swapchain alone would not be enough.
+			 *
+			 * It is enough here only because VULKAN_INTERNAL_DestroySwapchain
+			 * destroys the surface too and VULKAN_INTERNAL_CreateSwapchain builds
+			 * a fresh one from the window ("Each swapchain must have its own
+			 * surface"). If that ever stops being true, this case needs its own
+			 * path.
+			 *
+			 * Without this the swapchain is never torn down, validSwapchainExists
+			 * stays 1, and every present after a resume fails the same way — the
+			 * game runs on with a black screen and nothing in the log. Recreation
+			 * failing while still backgrounded is fine and self-heals: the destroy
+			 * has already NULLed WINDOW_SWAPCHAIN_DATA, so the next present takes
+			 * the "no swapchain" branch above and tries again once there is a
+			 * window to build on.
+			 */
 			VULKAN_INTERNAL_RecreateSwapchain(renderer, windowHandle);
 		}
 
@@ -6630,7 +6653,30 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	swapchainCreateInfo.queueFamilyIndexCount = 0;
 	swapchainCreateInfo.pQueueFamilyIndices = NULL;
-	swapchainCreateInfo.preTransform = swapchainSupportDetails.capabilities.currentTransform;
+	/* preTransform is a PROMISE that the application has already rotated its
+	 * rendering to match the display. FNA3D has not: it renders axis-aligned to
+	 * the swapchain extent and compensates nowhere, so passing currentTransform
+	 * presents the image rotated on any device whose surface reports one.
+	 *
+	 * That is the normal case on Android, where the panel is portrait-native and
+	 * a landscape activity therefore reports ROTATE_90 — the symptom is a
+	 * sideways image while touch, which never goes through the swapchain, stays
+	 * correct. Desktop surfaces report IDENTITY, so this changes nothing there.
+	 *
+	 * Asking for IDENTITY hands the rotation to the compositor. On some mobile
+	 * GPUs that costs an extra composition pass, which is the documented reason
+	 * to pre-rotate instead — but pre-rotating means rotating every projection
+	 * and scissor rect in the driver, and correctness comes first.
+	 */
+	if (	swapchainSupportDetails.capabilities.supportedTransforms &
+		VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR	)
+	{
+		swapchainCreateInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+	}
+	else
+	{
+		swapchainCreateInfo.preTransform = swapchainSupportDetails.capabilities.currentTransform;
+	}
 	swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 	swapchainCreateInfo.presentMode = swapchainData->presentMode;
 	swapchainCreateInfo.clipped = VK_TRUE;
@@ -12174,6 +12220,38 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		"Vulkan Device: %s",
 		renderer->physicalDeviceProperties.properties.deviceName
 	);
+
+	/* Vertex attribute formats this device will not accept. Adreno rejects the
+	 * *_USCALED / *_SSCALED types, which are optional in Vulkan for vertex
+	 * buffers - BYTE4, SHORT2 and SHORT4 map to them. WPR handles that above the
+	 * driver, by rewriting those elements to float in
+	 * Microsoft.Xna.Framework.Graphics.VertexFormatExpansion, so this is reported
+	 * rather than worked around here. Silence means every format is supported. */
+	{
+		int wprFmt;
+		const char *wprFmtNames[] = {
+			"SINGLE", "VECTOR2", "VECTOR3", "VECTOR4", "COLOR", "BYTE4",
+			"SHORT2", "SHORT4", "NORMALIZEDSHORT2", "NORMALIZEDSHORT4",
+			"HALFVECTOR2", "HALFVECTOR4"
+		};
+		for (wprFmt = 0; wprFmt < 12; wprFmt += 1)
+		{
+			VkFormatProperties wprProps;
+			renderer->vkGetPhysicalDeviceFormatProperties(
+				renderer->physicalDevice,
+				XNAToVK_VertexAttribType[wprFmt],
+				&wprProps
+			);
+			if (!(wprProps.bufferFeatures & VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT))
+			{
+				FNA3D_LogInfo(
+					"Unsupported vertex format: %s (VkFormat %d)",
+					wprFmtNames[wprFmt],
+					(int) XNAToVK_VertexAttribType[wprFmt]
+				);
+			}
+		}
+	}
 	if (renderer->supports.KHR_driver_properties)
 	{
 		FNA3D_LogInfo(

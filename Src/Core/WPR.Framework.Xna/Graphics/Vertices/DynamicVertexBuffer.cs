@@ -83,16 +83,28 @@ namespace Microsoft.Xna.Framework.Graphics
 
 			int elementSizeInBytes = Marshal.SizeOf(typeof(T));
 			GCHandle handle = GCHandle.Alloc(data, GCHandleType.Pinned);
-			XnaBackend.Graphics.SetVertexBufferData(
-				GraphicsDevice.GLDevice,
-				buffer,
+			IntPtr source =
+				handle.AddrOfPinnedObject() + (startIndex * elementSizeInBytes);
+			SubmitVertexData(
 				offsetInBytes,
-				handle.AddrOfPinnedObject() + (startIndex * elementSizeInBytes),
+				source,
 				elementCount,
 				elementSizeInBytes,
 				vertexStride,
 				options
 			);
+			if (shadow != null)
+			{
+				if (options == SetDataOptions.Discard)
+				{
+					shadow.Discard();
+				}
+				shadow.Write(
+					offsetInBytes,
+					source,
+					elementCount * vertexStride
+				);
+			}
 			handle.Free();
 		}
 
@@ -106,16 +118,28 @@ namespace Microsoft.Xna.Framework.Graphics
 			ErrorCheck(data, startIndex, elementCount, elementSizeInBytes);
 
 			GCHandle handle = GCHandle.Alloc(data, GCHandleType.Pinned);
-			XnaBackend.Graphics.SetVertexBufferData(
-				GraphicsDevice.GLDevice,
-				buffer,
+			IntPtr source =
+				handle.AddrOfPinnedObject() + (startIndex * elementSizeInBytes);
+			SubmitVertexData(
 				0,
-				handle.AddrOfPinnedObject() + (startIndex * elementSizeInBytes),
+				source,
 				elementCount,
 				elementSizeInBytes,
 				elementSizeInBytes,
 				options
 			);
+			if (shadow != null)
+			{
+				if (options == SetDataOptions.Discard)
+				{
+					shadow.Discard();
+				}
+				shadow.Write(
+					0,
+					source,
+					elementCount * elementSizeInBytes
+				);
+			}
 			handle.Free();
 		}
 
