@@ -122,6 +122,34 @@
         android:lineSpacingExtra="3dp"
         android:text="applies to every game, and to any connected controller. a game already running keeps its current setting until you next launch it." />
 
+    <!-- Graphics driver. Not a Switch, because neither value is "off" and a switch would have
+         to label one of them as the absence of the other. Two buttons built in code, using the
+         same white-frame selection marker as the accent grid above. -->
+    <TextView
+        style="@style/WpSectionHeader"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="28dp"
+        android:text="GRAPHICS" />
+
+    <LinearLayout
+        android:id="@+id/graphicsDriverOptions"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:orientation="horizontal" />
+
+    <TextView
+        android:id="@+id/graphicsDriverNote"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:fontFamily="sans-serif"
+        android:textColor="@color/wp_subtle"
+        android:textSize="13sp"
+        android:lineSpacingExtra="3dp"
+        android:text="leave this on vulkan. switch to opengl only if games show a black screen or fail to start on this device — some phones cannot run the vulkan path. takes effect the next time you launch a game." />
+
     <TextView
         style="@style/WpSectionHeader"
         android:layout_width="wrap_content"

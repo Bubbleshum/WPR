@@ -113,7 +113,13 @@ namespace Microsoft.Xna.Framework.Graphics
 		private int numSprites;
 
 		// Where are we in the vertex buffer ring?
-		private int bufferOffset;
+		/* Lives on the device, because the buffer it indexes does. Two batches with private offsets
+		 * into one shared buffer would hand out overlapping NoOverwrite ranges. */
+		private int bufferOffset
+		{
+			get { return GraphicsDevice.SharedSpriteBufferOffset; }
+			set { GraphicsDevice.SharedSpriteBufferOffset = value; }
+		}
 		private bool supportsNoOverwrite;
 
 		// Matrix to be used when creating the projection matrix
@@ -153,24 +159,40 @@ namespace Microsoft.Xna.Framework.Graphics
 			textureInfo = new Texture2D[MAX_SPRITES];
 			spriteInfos = new SpriteInfo[MAX_SPRITES];
 			sortedSpriteInfos = new IntPtr[MAX_SPRITES];
-			vertexBuffer = new DynamicVertexBuffer(
-				graphicsDevice,
-				typeof(VertexPositionColorTexture),
-				MAX_VERTICES,
-				BufferUsage.WriteOnly
-			);
-			indexBuffer = new IndexBuffer(
-				graphicsDevice,
-				IndexElementSize.SixteenBits,
-				MAX_INDICES,
-				BufferUsage.WriteOnly
-			);
-			indexBuffer.SetData(indexData);
+			/* Shared per device, like the effect below — see GraphicsDevice.SharedSpriteVertexBuffer.
+			 * These are ~220 KB of GPU memory per batch and GraphicsResource's finalizer is empty,
+			 * so a game that builds batches in a loop leaks them for the life of the device. */
+			if (graphicsDevice.SharedSpriteVertexBuffer == null)
+			{
+				graphicsDevice.SharedSpriteVertexBuffer = new DynamicVertexBuffer(
+					graphicsDevice,
+					typeof(VertexPositionColorTexture),
+					MAX_VERTICES,
+					BufferUsage.WriteOnly
+				);
+				graphicsDevice.SharedSpriteIndexBuffer = new IndexBuffer(
+					graphicsDevice,
+					IndexElementSize.SixteenBits,
+					MAX_INDICES,
+					BufferUsage.WriteOnly
+				);
+				graphicsDevice.SharedSpriteIndexBuffer.SetData(indexData);
+			}
+			vertexBuffer = graphicsDevice.SharedSpriteVertexBuffer;
+			indexBuffer = graphicsDevice.SharedSpriteIndexBuffer;
 
-			spriteEffect = new Effect(
-				graphicsDevice,
-				spriteEffectCode
-			);
+			/* One effect per DEVICE, not per batch. See GraphicsDevice.SharedSpriteEffect for why:
+			 * a J2ME port builds a SpriteBatch per getGraphics() call and never disposes it, and on
+			 * Vulkan each effect's shaders hold a descriptor pool that is only released when the
+			 * shader is deleted. */
+			if (graphicsDevice.SharedSpriteEffect == null)
+			{
+				graphicsDevice.SharedSpriteEffect = new Effect(
+					graphicsDevice,
+					spriteEffectCode
+				);
+			}
+			spriteEffect = graphicsDevice.SharedSpriteEffect;
 			spriteMatrixTransform = spriteEffect.Parameters["MatrixTransform"].values;
 			spriteEffectPass = spriteEffect.CurrentTechnique.Passes[0];
 
@@ -189,9 +211,10 @@ namespace Microsoft.Xna.Framework.Graphics
 		{
 			if (!IsDisposed)
 			{
-				spriteEffect.Dispose();
-				indexBuffer.Dispose();
-				vertexBuffer.Dispose();
+				/* Nothing is disposed here any more. The effect and both buffers belong to the
+				 * GraphicsDevice and are shared with every other SpriteBatch on it; the device
+				 * disposes them along with its other resources. Disposing them from one batch
+				 * would pull them out from under the rest. */
 			}
 			base.Dispose(disposing);
 		}

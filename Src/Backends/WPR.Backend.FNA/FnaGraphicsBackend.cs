@@ -59,19 +59,48 @@ namespace WPR.Backend.FNA
 			// latch its own renderer->threadID, so the two cannot disagree about which thread
 			// may touch the GL context. See OffThreadGpuCalls.
 			OffThreadGpuCalls.SetDeviceThread();
-			return F3D.FNA3D_CreateDevice(ref pp, debugMode);
+			IntPtr created = F3D.FNA3D_CreateDevice(ref pp, debugMode);
+
+			/* Ask the device itself which of the *_SCALED vertex formats it will accept,
+			 * and rewrite only the ones it refuses. It has to happen here: a device must
+			 * exist before it can be asked, and no VertexBuffer can exist before this
+			 * call returns, so nothing can be built against a stale answer. A driver that
+			 * is not Vulkan reports all three usable and the rewrite never runs. See
+			 * VulkanVertexFormatSupport and VertexFormatExpansion. */
+			bool byte4, short2, short4;
+			string detail;
+			VulkanVertexFormatSupport.Query(created, out byte4, out short2, out short4, out detail);
+			Microsoft.Xna.Framework.Graphics.VertexFormatExpansion.SetDeviceSupport(
+				byte4, short2, short4, detail);
+
+			return created;
 		}
 
 		public void DestroyDevice(IntPtr device)
 		{
 			F3D.FNA3D_DestroyDevice(device);
 			OffThreadGpuCalls.ClearDeviceThread();
+			Microsoft.Xna.Framework.Graphics.VertexFormatExpansion.ClearDeviceSupport();
 		}
 
 		// ---- Presentation ----
 
 		public void SwapBuffers(IntPtr device, Rectangle? sourceRectangle, Rectangle? destinationRectangle, IntPtr overrideWindowHandle)
 		{
+			// A frame is about to reach the screen, which is the whole proof the crash breadcrumb
+			// was waiting for — the driver initialised AND rendered. Retires the pending mark left
+			// by FnaGameHost. Every call after the first short-circuits on a volatile read, so this
+			// costs nothing per frame, and it deliberately reports the driver the ladder SETTLED ON
+			// rather than the one requested: a declined driver falls through silently, and a
+			// verdict naming only the request would hide which one really ran.
+			if (!_capabilitiesPublished)
+			{
+				PublishCapabilities(device);
+			}
+
+			WPR.Engine.Graphics.GraphicsDriverProbe.MarkWorking(
+				SDL2_FNAPlatform.SelectedDriverName);
+
 			// Dispatch to FNA3D's overload set (the ref/null combinations) here, in the backend.
 			if (sourceRectangle.HasValue && destinationRectangle.HasValue)
 			{
@@ -354,6 +383,56 @@ namespace WPR.Backend.FNA
 		public int QueryPixelCount(IntPtr device, IntPtr query) => F3D.FNA3D_QueryPixelCount(device, query);
 
 		// ---- Feature queries ----
+
+		/* Latched so the eight native queries below run once per launch rather than per frame.
+		 * Not a violation of this type's statelessness contract in any way that matters: it is a
+		 * one-way diagnostic latch, not per-device state, and a second registered instance would
+		 * simply measure again. */
+		private bool _capabilitiesPublished;
+
+		/// <summary>
+		/// Measure the device and publish it as <see cref="WPR.Engine.Graphics.IGraphicsCapabilities"/>.
+		/// Called at the first presented frame, which is the earliest point where a device exists
+		/// AND has demonstrably worked.
+		///
+		/// <para>Deliberately reports only what FNA3D can actually answer. Its entire capability
+		/// surface is these eight functions — there is no entry point for maximum texture size, the
+		/// GL/GLES version, or multiple render targets, so those are absent here rather than
+		/// invented. A diagnostic row that is secretly a constant is worse than a missing one.</para>
+		/// </summary>
+		private void PublishCapabilities(IntPtr device)
+		{
+			_capabilitiesPublished = true;
+
+			try
+			{
+				GetMaxTextureSlots(device, out int textures, out int vertexTextures);
+
+				string driver = SDL2_FNAPlatform.SelectedDriverName;
+
+				WPR.Engine.Graphics.GraphicsCapabilitiesStore.Publish(
+					new WPR.Engine.Graphics.GraphicsCapabilities(
+						backend: driver,
+						// A property of FNA3D's driver implementations rather than of the device:
+						// only the OpenGL driver has ForceToMainThread, and that is the difference
+						// between a game whose loader thread runs and one that deadlocks.
+						supportsOffThreadResourceCreation:
+							WPR.Engine.Graphics.GraphicsCapabilities.OffThreadResourceCreationFor(driver),
+						supportsDxt1: SupportsDXT1(device) != 0,
+						supportsS3tc: SupportsS3TC(device) != 0,
+						supportsBc7: SupportsBC7(device) != 0,
+						supportsHardwareInstancing: SupportsHardwareInstancing(device) != 0,
+						supportsNoOverwrite: SupportsNoOverwrite(device) != 0,
+						supportsSrgbRenderTargets: SupportsSRGBRenderTargets(device) != 0,
+						maxTextureSlots: textures,
+						maxVertexTextureSlots: vertexTextures));
+			}
+			catch (Exception)
+			{
+				/* Diagnostics only. A driver that throws on a feature query must not take the
+				 * frame — or the launch — down with it. */
+			}
+		}
 
 		public byte SupportsDXT1(IntPtr device) => F3D.FNA3D_SupportsDXT1(device);
 		public byte SupportsS3TC(IntPtr device) => F3D.FNA3D_SupportsS3TC(device);

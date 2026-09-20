@@ -1,4 +1,3 @@
-using WPR.Engine.Audio;
 using SDL2;
 
 namespace WPR.Backend.FNA
@@ -11,10 +10,10 @@ namespace WPR.Backend.FNA
     /// order and takes the first whose <c>PrepareWindowAttributes</c> succeeds, unless the
     /// <c>FNA3D_FORCE_DRIVER</c> hint names one — in which case it <c>continue</c>s past every other
     /// driver, so forcing is a hard selection with no fallback. Android ships that hint as a real
-    /// process environment variable (<c>fna3d.env</c>) set to <c>OpenGL</c>, because the compiled-in
-    /// alternative there is the Vulkan driver that FNA3D's own source still gates behind
-    /// "TODO: Bump this to the top when Vulkan is done!" — and it mistranslates <c>SkinnedEffect</c>'s
-    /// relative-addressed bone array, which T-posed every animated character.</para>
+    /// process environment variable (<c>fna3d.env</c>) set to <c>Vulkan</c>, because automatic order
+    /// offers OpenGL first there and that driver marshals every off-thread GPU call onto the device
+    /// thread, blocking the caller until the next swap — which deadlocks any game that loads content
+    /// on a worker.</para>
     ///
     /// <para><b>Why it has to be a hint and not an env var.</b> The env var cannot be changed from
     /// managed code: .NET's <c>Environment.SetEnvironmentVariable</c> does not propagate to the
@@ -24,8 +23,10 @@ namespace WPR.Backend.FNA
     /// works after the process has started.</para>
     ///
     /// <para>This type is deliberately policy-free: it knows how to set the lever, not when to. The
-    /// platform head decides that (see the Android head's <c>GraphicsDriverPolicy</c>), because
-    /// "is this an emulator" is not something a graphics backend should be reasoning about.</para>
+    /// platform head decides that — it declares a driver through <c>IPlatformCapabilities</c> and
+    /// <c>WPR.Engine.Graphics.GraphicsDriverPreference</c> resolves the declaration against the
+    /// per-device <c>fna3d_driver.txt</c> override. Which driver a device wants is not something a
+    /// graphics backend should be reasoning about.</para>
     /// </summary>
     public static class GraphicsDriverSelection
     {

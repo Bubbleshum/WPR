@@ -3,13 +3,13 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using WPR.Xna.Rhi;
 
-namespace WPR.Backend.FNA.Input
+namespace WPR.Engine.Input
 {
     /// <summary>
     /// XNA <see cref="GameComponent"/> that polls <see cref="Keyboard.GetState"/> each Update and
     /// reports the held keys, plus the resolved display orientation, to the head's
     /// <see cref="IKeyboardEmulationHost"/>. Attached to <c>Game.Components</c> by
-    /// <see cref="ApplicationLaunch"/> right after the Game ctor, and only when a head has
+    /// <see cref="KeyboardEmulation.AttachTo"/> right after the Game ctor, and only when a head has
     /// registered an emulator.
     /// </summary>
     /// <remarks>
@@ -18,11 +18,11 @@ namespace WPR.Backend.FNA.Input
     /// UpdateOrder is negative so we run before the game's own Update reads keyboard state,
     /// keeping the simulated reading consistent with whatever the game sees on the same tick.</para>
     ///
-    /// <para><b>Lives here, not in the head</b> (moved 2026-09-01, Stage 5). It derives from a
-    /// spine type, so the assembly holding it necessarily references FNA — which was the entire
-    /// reason <c>WPR.Platform.Windows</c> was in <c>KnownBackendLeaks</c>. Meaning-of-a-key stays
-    /// in the head behind <see cref="IKeyboardEmulationHost"/>; this class only knows how to read a
-    /// keyboard and measure a viewport.</para>
+    /// <para><b>Engine code, not backend code</b> (moved out of the Windows head 2026-09-01, out
+    /// of <c>WPR.Backend.FNA</c> 2026-09-20). It derives from a spine type, and the spine is the
+    /// framework's — nothing here names FNA. Meaning-of-a-key stays in the head's module behind
+    /// <see cref="IKeyboardEmulationHost"/>; this class only knows how to read a keyboard and
+    /// measure a viewport.</para>
     /// </remarks>
     internal sealed class TiltInputXnaComponent : GameComponent
     {
@@ -95,7 +95,11 @@ namespace WPR.Backend.FNA.Input
             // window's client rect (always present once the SDL window exists).
             if (win != null)
             {
-                Rectangle b = win.ClientBounds;
+                // HostClientBounds, not ClientBounds: this is inferring which way the game is
+                // presenting, and ClientBounds is WP7's fixed portrait screen, which would
+                // answer Portrait for every game. The host window's shape is the only hint
+                // available this early.
+                Rectangle b = win.HostClientBounds;
                 if (b.Width > 0 && b.Height > 0)
                 {
                     return b.Width > b.Height ? DisplayOrientation.LandscapeRight : DisplayOrientation.Portrait;

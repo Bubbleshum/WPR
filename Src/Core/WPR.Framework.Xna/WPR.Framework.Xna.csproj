@@ -134,6 +134,14 @@
     <!-- The FAudio audio backend (Src/Audio/, split out of WPR.Backend.FNA on 2026-09-01)
          constructs Microphone and uses MonoGame.Utilities.FileHelpers for XACT bank paths. -->
     <InternalsVisibleTo Include="WPR.Audio.FAudio" />
+    <!-- The engine tier's game-launch sequence (2026-09-20, moved out of WPR.Backend.FNA):
+         ApplicationLaunch pushes the presented backbuffer size into Mouse.INTERNAL_BackBuffer*
+         from the XnaBackend backbuffer hook. -->
+    <InternalsVisibleTo Include="WPR.Engine.GameLoop" />
+    <!-- The engine tier's input emulation (2026-09-20, moved out of WPR.Backend.FNA/Input/):
+         SyntheticTouchInputBackend writes TouchPanel.SetFinger / INTERNAL_onTouchEvent and the
+         reserved-slot bookkeeping; TiltInputXnaComponent reads GameWindow.HostClientBounds. -->
+    <InternalsVisibleTo Include="WPR.Engine.Input" />
   </ItemGroup>
 
 </Project>

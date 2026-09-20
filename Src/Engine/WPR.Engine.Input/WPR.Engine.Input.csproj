@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Engine.Input - the input-emulation subsystem: what turns a head's IKeyboardEmulationHost
+    (the module that knows what a key MEANS) into XNA-visible input for the running game.
+
+      * KeyboardEmulation        - attaches the two components below to a freshly created Game,
+                                   and wraps the platform's IInputBackend in the touch injector.
+      * TiltInputXnaComponent    - polls Keyboard.GetState each Update and reports held keys plus
+                                   the presented orientation to the host.
+      * TiltOverlayXnaComponent  - the optional on-screen tilt dial.
+      * SyntheticTouchInputBackend - the IInputBackend decorator that writes a synthesised finger
+                                   into TouchPanel after the platform drain (see its remarks for
+                                   why it must be a decorator and not a component).
+
+    Moved here from WPR.Backend.FNA/Input/ on 2026-09-20. They were put in the backend on
+    2026-09-01 because "they derive from spine types and therefore have to live in a backend" -
+    which was true for the two days before the spine (Game, GameComponent,
+    DrawableGameComponent) moved into WPR.Framework.Xna. Since then nothing in these four files
+    has named an FNA type: they read Keyboard, TouchPanel, SpriteBatch and GameWindow, all of
+    which are the framework's. A component that derives from a framework type is framework-tier
+    code composed by the engine, not backend code.
+
+    The seam this implements against (WPR.Xna.Rhi.IKeyboardEmulationHost) stays in the framework
+    because it speaks Keys and DisplayOrientation; the implementation of THAT is the
+    WPR.Input.Keyboard module. So the layering reads: module (meaning of a key) -> this project
+    (how it reaches the game) -> framework (the devices the game polls).
+
+    References the framework's internals - TouchPanel.SetFinger / INTERNAL_onTouchEvent / the
+    reserved-slot bookkeeping, and GameWindow.HostClientBounds - through an InternalsVisibleTo
+    in WPR.Framework.Xna.csproj, the same arrangement the backend had.
+
+    No FNA reference, and BackendIsolationTests scans Engine/ to keep it that way.
+  -->
+
+  <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+  </PropertyGroup>
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net8.0-android</TargetFrameworks>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <AssemblyName>WPR.Engine.Input</AssemblyName>
+    <RootNamespace>WPR.Engine.Input</RootNamespace>
+    <Nullable>enable</Nullable>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net8.0-android'">21.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Game / GameComponent / Keyboard / TouchPanel / SpriteBatch and the WPR.Xna.Rhi seams. -->
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Xna\WPR.Framework.Xna.csproj" />
+    <!-- Log.Warn when attaching the components fails. -->
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Common\WPR.Common.csproj" />
+  </ItemGroup>
+
+</Project>

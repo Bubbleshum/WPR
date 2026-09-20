@@ -28,6 +28,17 @@ namespace WPR.Platform.Android
 
         public override void Describe(IPlatformCapabilities caps)
         {
+            // Point the crash breadcrumb at its storage before anything asks it a question —
+            // ChosenGraphicsDriver() below reads it. Keyed on Build.Fingerprint, which changes with
+            // any system image update, so a driver condemned by a firmware that is no longer
+            // installed gets another chance instead of inheriting the verdict for ever.
+            WPR.Engine.Graphics.GraphicsDriverProbe.Configure(
+                _externalFilesDirectory, global::Android.OS.Build.Fingerprint);
+
+            // Same directory, same cross-process reason: a device can only be measured in the
+            // :game process and the diagnostics screen that shows it lives in the launcher.
+            WPR.Engine.Graphics.GraphicsCapabilitiesStore.Configure(_externalFilesDirectory);
+
             // The device's real accelerometer, read from SensorManager by the WPR.Input.AndroidSensor
             // module. The WP7 Accelerometer shim sees only IAccelerometerProvider and never learns
             // which implementation it got. No KeyboardEmulation counterpart — a phone does not need
@@ -54,7 +65,15 @@ namespace WPR.Platform.Android
             // By name rather than Automatic: automatic order offers OpenGL first on Android and
             // would land straight back on the deadlocking driver. A per-device fna3d_driver.txt
             // still overrides this for testing a regression.
-            caps.GraphicsDriver(GraphicsDriver.Vulkan, _externalFilesDirectory);
+            //
+            // ChosenGraphicsDriver, not a bare Vulkan, because Vulkan is not universally usable:
+            // FNA3D's Vulkan driver is unfinished, and the ladder in
+            // SDL2_FNAPlatform.PrepareWindowAttributesWithFallback can only rescue a driver that
+            // declines at PrepareWindowAttributes — one that prepares and then fails inside
+            // FNA3D_CreateDevice reaches the player as a black screen, an error dialog and a dead
+            // game process, with no way back. The override file is the triage tool for that and
+            // needs a PC; this is the same lever for someone holding only the phone.
+            caps.GraphicsDriver(ChosenGraphicsDriver(), _externalFilesDirectory);
 
             // THE content decision, and the mirror image of the Windows head's. Here '\' is an
             // ordinary character in a filename, so a WP7 title's hardcoded "Content\Credits.xml"
@@ -104,6 +123,56 @@ namespace WPR.Platform.Android
             }
 
             caps.Achievements(new WPR.Database.Achievements.EfAchievementStore());
+        }
+
+        /// <summary>
+        /// The driver to declare: whatever the user picked in Settings, then whatever the crash
+        /// breadcrumb has learned, and Vulkan when neither says otherwise — which is every install
+        /// that has not gone looking for this and has never had a launch die on it.
+        ///
+        /// <para><b>An unrecognised name falls back to Vulkan rather than being passed through.</b>
+        /// FNA3D matches the force hint with <c>strcmp</c> against a driver's own <c>Name</c>, so a
+        /// typo'd or stale value would match nothing at all and turn into a launch failure — the
+        /// exact thing this setting exists to get someone out of. The names here are the two
+        /// drivers Android actually compiles in; <c>fna3d_driver.txt</c> stays the unvalidated
+        /// escape hatch for anything else.</para>
+        ///
+        /// <para><b>An explicit choice outranks the breadcrumb, and that ordering is the whole
+        /// point of both.</b> The probe exists so someone holding only a phone does not have to
+        /// discover the setting; the setting exists so someone whose device the probe got wrong can
+        /// overrule it. Letting the probe win would collapse the second case into the first and
+        /// leave that person with no way out again.</para>
+        /// </summary>
+        private static GraphicsDriver ChosenGraphicsDriver()
+        {
+            string? chosen = WPR.Common.Configuration.Current?.GraphicsDriver;
+
+            if (!string.IsNullOrEmpty(chosen))
+            {
+                return string.Equals(chosen, "OpenGL", System.StringComparison.OrdinalIgnoreCase)
+                    ? GraphicsDriver.OpenGL
+                    : GraphicsDriver.Vulkan;
+            }
+
+            // Nothing chosen. If the last launch asked for Vulkan and never got a frame onto the
+            // screen, take the other driver this platform has rather than repeating it — the
+            // failure that leaves this mark behind is a dead game process every single launch, and
+            // FNA3D's own ladder cannot rescue it (it only retries a driver that DECLINES, not one
+            // that initialises and then dies, still less one that SIGSEGVs).
+            //
+            // Only Vulkan is demoted. A pending mark against OpenGL means the fallback itself
+            // failed, and sending the device back to Vulkan on that evidence would flip it between
+            // two broken drivers for ever; leaving it on OpenGL at least keeps the state readable
+            // and lets the Settings picker mean something.
+            if (string.Equals(
+                    WPR.Engine.Graphics.GraphicsDriverProbe.FailedDriver,
+                    "Vulkan",
+                    System.StringComparison.OrdinalIgnoreCase))
+            {
+                return GraphicsDriver.OpenGL;
+            }
+
+            return GraphicsDriver.Vulkan;
         }
     }
 }

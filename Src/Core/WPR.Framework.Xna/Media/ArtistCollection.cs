@@ -16,5 +16,8 @@ namespace Microsoft.Xna.Framework.Media
 
         IEnumerator IEnumerable.GetEnumerator() => _Artists.GetEnumerator();
         public int Count => _Artists.Count;
+
+        /// <summary>The sibling of <see cref="AlbumCollection.this"/> — see the note there.</summary>
+        public Artist this[int index] => _Artists[index];
     }
 }

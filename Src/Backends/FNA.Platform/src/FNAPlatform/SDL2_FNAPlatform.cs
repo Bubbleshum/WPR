@@ -502,6 +502,12 @@ namespace Microsoft.Xna.Framework
 					);
 				}
 
+				/* Publish the winner. The request is not the answer: a driver that declines here is
+				 * skipped silently, so "we asked for Vulkan" and "Vulkan ran" are different facts
+				 * and only this loop knows the second one. GraphicsDriverProbe records it so a
+				 * device that quietly fell through to another driver says so. */
+				SelectedDriverName = candidate;
+
 				return attributes;
 			}
 
@@ -518,6 +524,15 @@ namespace Microsoft.Xna.Framework
 		}
 
 		private const string ForceDriverHintName = "FNA3D_FORCE_DRIVER";
+
+		/* The driver the ladder actually settled on, or null when automatic selection won (in which
+		 * case FNA3D picked from its own table and only its log line names the result). Null before
+		 * the ladder has run. Read by WPR.Backend.FNA to record which driver served a launch. */
+		internal static string SelectedDriverName
+		{
+			get;
+			private set;
+		}
 
 		/* Order matters. OpenGL before Vulkan on purpose: FNA3D's own table has Vulkan behind a
 		 * "TODO: Bump this to the top when Vulkan is done!" and its unfinished shader translation
@@ -1352,6 +1367,35 @@ namespace Microsoft.Xna.Framework
 				{
 					// 120 units per notch. Because reasons.
 					Mouse.INTERNAL_MouseWheel += evt.wheel.y * 120;
+
+					/* WPR: turn a wheel notch into a synthesised vertical finger
+					 * drag, so a WP7 list can be scrolled with a real mouse. A
+					 * short mouse DRAG is not usable for this: titles routinely
+					 * call anything under ~40 px a tap while starting a drag at
+					 * ~15 px, so a mouse hand lands in that window every time and
+					 * opens the item instead of scrolling. See WheelTouchScroll.
+					 *
+					 * Mutually exclusive with the wheel->Pinch synthesis below,
+					 * which fires only when the title has enabled Pinch: without
+					 * the exclusion one notch would zoom AND scroll.
+					 */
+					if (TouchPanel.MouseAsTouch &&
+						(TouchPanel.EnabledGestures & GestureType.Pinch) == 0 &&
+						evt.wheel.y != 0)
+					{
+						SDL.SDL_GetMouseState(out int wsx, out int wsy);
+						int wsWidth = Mouse.INTERNAL_WindowWidth;
+						int wsHeight = Mouse.INTERNAL_WindowHeight;
+						WPR.Xna.Rhi.WheelTouchScroll.Notify(
+							(wsWidth > 0)
+								? wsx * (float) TouchPanel.DisplayWidth / wsWidth
+								: wsx,
+							(wsHeight > 0)
+								? wsy * (float) TouchPanel.DisplayHeight / wsHeight
+								: wsy,
+							evt.wheel.y
+						);
+					}
 
 					/* WPR: synthesise a Pinch GestureSample per wheel notch when
 					 * mouse-as-touch is in effect and the title has enabled

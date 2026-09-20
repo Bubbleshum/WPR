@@ -48,18 +48,47 @@ namespace WPR.WindowsCompability
     /// handle, so a later flush genuinely has nothing left to do. Note the relaxation stops at
     /// flushing — a <b>write</b> to a closed stream still throws, because that one really would lose
     /// data.</para>
+    ///
+    /// <para><b>A creating open makes its parent directory first.</b> That is the third WP7-ism,
+    /// and like the other two it exists because WP7 gave a game an environment WPR does not.
+    /// A WP7 app's isolated store was provisioned by the phone shell, so some folders were
+    /// simply always there — <c>Shared/ShellContent</c>, where the OS required a secondary
+    /// tile's background image to be written, is the documented one. Under WPR the store starts
+    /// empty and nothing else ever creates them, so a game writing a live-tile image gets
+    /// <c>DirectoryNotFoundException</c>, which the BCL rewraps as
+    /// <c>IsolatedStorageException "Operation not permitted on IsolatedStorageFileStream"</c> —
+    /// a message that says nothing about the missing folder.</para>
+    ///
+    /// <para>Chickens Can't Fly is the reference case, and the damage lands nowhere near the
+    /// tile: <c>TilesHelper.UpdateBackgroundImage</c> writes <c>/Shared/ShellContent/main.png</c>
+    /// from <c>RefreshMainTile()</c>, which the loading screen calls in <c>DoAfterLoading()</c>
+    /// — so the throw skipped the <c>_loadingDone = true</c> on the next line and the game sat
+    /// on its title screen for ever, still ticking, with the doors that reveal the menu never
+    /// sliding. A live tile is cosmetic on WP7 and has no meaning at all here (<c>ShellTile</c>
+    /// is an inert shim); failing a game's boot over it is not.</para>
+    ///
+    /// <para>Scoped to modes that create the file, so an open-for-read of a missing path still
+    /// throws exactly what it threw before. It cannot lose data or paper over a game bug: the
+    /// caller was about to create that file, and the only thing WP7 did differently was have
+    /// the folder there already.</para>
+    ///
+    /// <para><b><see cref="IsolatedStorageFile.CreateDirectory"/> does NOT sandbox its argument</b>
+    /// — measured, not assumed: <c>isf.CreateDirectory(@"..\..\..\..\X")</c> happily creates
+    /// <c>X</c> outside the store. So the escaping shapes are screened out here instead, and a
+    /// path carrying one is simply left to the BCL to reject exactly as it does today. Do not
+    /// remove that screen on the belief that the store checks for you.</para>
     /// </summary>
     public sealed class SharedIsolatedStorageFileStream : IsolatedStorageFileStream
     {
         private volatile bool _closed;
 
         public SharedIsolatedStorageFileStream(string path, FileMode mode, IsolatedStorageFile isf)
-            : base(path, mode, DefaultAccess(mode), FileShare.ReadWrite, isf)
+            : base(EnsureParentDirectory(path, mode, isf), mode, DefaultAccess(mode), FileShare.ReadWrite, isf)
         {
         }
 
         public SharedIsolatedStorageFileStream(string path, FileMode mode, FileAccess access, IsolatedStorageFile isf)
-            : base(path, mode, access, FileShare.ReadWrite, isf)
+            : base(EnsureParentDirectory(path, mode, isf), mode, access, FileShare.ReadWrite, isf)
         {
         }
 
@@ -67,6 +96,74 @@ namespace WPR.WindowsCompability
         // everything else is read/write. Keeps behaviour identical apart from the share flag.
         private static FileAccess DefaultAccess(FileMode mode)
             => mode == FileMode.Append ? FileAccess.Write : FileAccess.ReadWrite;
+
+        /// <summary>
+        /// Best-effort <c>mkdir -p</c> of <paramref name="path"/>'s parent for the modes that can
+        /// create a file, returning <paramref name="path"/> untouched so it can be used directly
+        /// as the base constructor's first argument. See the note on the type.
+        /// </summary>
+        /// <remarks>
+        /// Deliberately silent on failure: the very next thing that happens is the real open, so
+        /// a genuine problem surfaces there as the exception the caller already expects, with the
+        /// path it already names. Throwing a different one from here would only obscure it.
+        /// <para><see cref="FileMode.Truncate"/> is excluded with the read modes — it requires the
+        /// file to exist, so a missing directory is a real error there, not a missing folder WP7
+        /// would have had.</para>
+        /// </remarks>
+        private static string EnsureParentDirectory(string path, FileMode mode, IsolatedStorageFile isf)
+        {
+            if (mode != FileMode.Create && mode != FileMode.CreateNew &&
+                mode != FileMode.OpenOrCreate && mode != FileMode.Append)
+            {
+                return path;
+            }
+
+            try
+            {
+                // Path.GetDirectoryName over the store-relative path: it never touches the disk,
+                // and both separators are handled because WP7 paths use either. Empty means the
+                // file sits at the store root, which always exists.
+                string? directory = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(directory) && IsContainedInStore(directory))
+                {
+                    isf.CreateDirectory(directory);
+                }
+            }
+            catch
+            {
+                // See remarks.
+            }
+
+            return path;
+        }
+
+        /// <summary>
+        /// True when <paramref name="directory"/> is a plain store-relative path that cannot
+        /// resolve outside the store — the only shape this type will create. See the note on the
+        /// type for why the store does not answer this itself.
+        /// </summary>
+        private static bool IsContainedInStore(string directory)
+        {
+            // A leading separator is not an escape: IsolatedStorageFile strips leading separators
+            // before combining, which is why "/Shared/ShellContent/main.png" — the WP7 spelling —
+            // lands inside the store. Anything still rooted after that (a drive letter, a UNC
+            // share) would win the Path.Combine and escape.
+            string relative = directory.TrimStart('/', '\\');
+            if (relative.Length == 0 || Path.IsPathRooted(relative))
+            {
+                return false;
+            }
+
+            foreach (string segment in relative.Split('/', '\\'))
+            {
+                if (segment == "..")
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
 
         // The flag is set in a finally so a throwing base.Dispose still leaves the stream marked
         // closed — the handle is gone either way, and a later flush must not resurrect the throw.

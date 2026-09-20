@@ -4,15 +4,21 @@
     WPR.Backend.FNA — the FNA rendering/host backend (Stage 4 / 5b, Plans/ARCHITECTURE-MIGRATION.md).
 
     This is the ONLY layer (with WPR.Backend.Direct3D11) permitted to reference FNA — see the
-    fitness function's AllowedReferrers. It hosts the FNA game-loop driver (ApplicationLaunch,
-    moved here VERBATIM from WPR.Runtime to preserve the load-bearing teardown ordering that
-    prevents the ALC-unload / audio-leak / duplicate-static-key regressions — ADR Risk #1) and
-    exposes it through the WPR.Engine.GameLoop IGameHost seam (FnaGameHost). Launchers compose this
-    backend; Runtime no longer owns the FNA loop.
+    fitness function's AllowedReferrers. It is the FNA ADAPTER and nothing more: the RHI seam
+    implementations (FnaGraphicsBackend / FnaInputBackend / FnaStorageBackend / FnaPlatformBackend),
+    the IGameHost implementation that composes them per launch (FnaGameHost), the SDL-level
+    helpers (window icon, driver hint, leaked-window diagnostics, the Vulkan format query), and
+    the two Compat types games bind by this assembly's identity.
 
-    Stage-5b will finish the job (split ALC/lifecycle coordination back into Runtime behind
-    IGameHost, and turn ApplicationLaunch's static body into the FnaGameHost instance). This step
-    only relocates + wraps; the game-loop behaviour is unchanged.
+    The launch sequence itself (ApplicationLaunch) is NOT here any more. It sat in this project
+    from Stage 4 (2026-08) until 2026-09-20 because it had been moved in verbatim from
+    WPR.Runtime while it still named FNAPlatform and FNA's spine types; once the spine moved into
+    WPR.Framework.Xna and the windowing calls went behind IPlatformBackend, what was left naming
+    FNA was four lines. It now lives in WPR.Engine.GameLoop beside IGameHost, and reaches the four
+    backend-specific steps through WPR.Engine.GameLoop.IGameLaunchHooks, implemented privately by
+    FnaGameHost. The keyboard-driven input emulation (tilt components + synthetic touch) moved to
+    WPR.Engine.Input at the same time, for the same reason: it derives from framework types, not
+    FNA ones.
   -->
 
   <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
@@ -36,10 +42,14 @@
     <!-- IGameHost / GameHostState / TeardownPhase. Was WPR.Abstractions until that project was
          dissolved on 2026-09-01; the contract now sits in its own engine subsystem project. -->
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.GameLoop\WPR.Engine.GameLoop.csproj" />
+    <!-- WPR.Models.Application (the row FnaGameHost is constructed with) comes through Loader's
+         WPR.Database reference. WPR.Framework.Silverlight / .Phone are no longer referenced: the
+         singleton resets that used them moved out with ApplicationLaunch on 2026-09-20. -->
     <ProjectReference Include="$(SolutionDir)Core\WPR.Loader\WPR.Loader.csproj" />
     <ProjectReference Include="$(SolutionDir)Core\WPR.Common\WPR.Common.csproj" />
-    <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Silverlight\WPR.Framework.Silverlight.csproj" />
-    <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Phone\WPR.Framework.Phone.csproj" />
+    <!-- The keyboard-driven input emulation: FnaGameHost wraps its input adapter in the synthetic
+         touch decorator through KeyboardEmulation.WrapInput. -->
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Input\WPR.Engine.Input.csproj" />
     <!-- No WPR.XnaCompability reference. It was here for GraphicsDeviceManager2, which moved into
          this project's Compat/ folder on 2026-08-29 and lost its "2"; nothing here used the shim
          assembly afterwards. Games still bind WPR.XnaCompability at runtime (the patcher rescopes
@@ -50,13 +60,7 @@
          (WPR.Xna.Rhi.IGraphicsBackend) — see FnaGraphicsBackend. Explicit ref (was
          transitive via FNA) now that the backend is a first-class RHI consumer. -->
     <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Xna\WPR.Framework.Xna.csproj" />
-    <!-- For WPR.Sensors.SensorBackend only. Teardown must drop the sensor provider's subscribers:
-         a game that starts the accelerometer and exits without stopping it leaves a handler on an
-         event held by a launcher-lifetime object, pinning its ALC (and, on the desktop emulator,
-         leaving a 60Hz timer running). See ResetWprSingletons. This backend never names a platform
-         implementation — it goes through IAccelerometerProvider, which is what lets the same code path
-         serve the Windows keyboard emulator and the Android hardware sensor. -->
-    <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Devices.Sensors\WPR.Framework.Devices.Sensors.csproj" />
+
     <!-- The audio implementation of last resort. FnaGameHost installs FAudioModule as the audio
          registry's BASE so a game always has sound, including on a code path that never runs a
          platform head's ServicesSetup. The FAudio/FACT/Theorafile adapters themselves moved out of

@@ -1,36 +1,77 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    WPR.Engine.GameLoop - the contract for driving a game's run loop and tearing it down.
+    WPR.Engine.GameLoop - the game-loop subsystem: the contract for driving a game's run loop
+    (IGameHost, GameHostState, TeardownPhase) AND the launch sequence that drives it
+    (ApplicationLaunch), plus the per-title lifecycle table (GameLifecycleQuirks).
 
-    Holds IGameHost, GameHostState and TeardownPhase. Implemented by WPR.Backend.FNA (FnaGameHost)
-    and, once the Stage-4 host promotion lands, consumed by WPR.Runtime so the launcher drives a
-    game through the interface rather than constructing the FNA host concretely - which is what
-    both heads still do today.
+    ApplicationLaunch moved here from WPR.Backend.FNA on 2026-09-20. It was in the FNA backend
+    because it was moved there VERBATIM from WPR.Runtime in Stage 4, when it still named
+    FNAPlatform and FNA's spine types directly. Both of those went away underneath it: the spine
+    is WPR.Framework.Xna's since 2026-09-01, and the windowing calls go through the
+    WPR.Xna.Rhi.IPlatformBackend seam. What was left naming FNA was four lines - the title
+    location, the leaked-window check, and two diagnostics - and those are now IGameLaunchHooks,
+    implemented by FnaGameHost. Everything else in the file is host coordination: the collectible
+    ALC and its Resolving handlers, the WP7 lifecycle priming, the per-game trace log, and the
+    ordered teardown. None of that is a property of the rendering backend, so none of it belongs
+    in one. The same rule that put composition in the engine tier ("a contract belongs with the
+    subsystem that composes it") puts the launch sequence beside the contract it drives.
+
+    THE TEARDOWN ORDER INSIDE ApplicationLaunch.Start IS LOAD-BEARING. It was moved byte-for-byte
+    apart from the hook substitutions; see the remarks in the method before reordering anything.
+
+    Dependency notes:
+      * WPR.Framework.Xna / .Phone / .Silverlight - the launch sequence resets their per-launch
+        singletons on teardown and primes the WP7 lifecycle. Engine -> framework is the
+        established direction (WPR.Engine and WPR.Engine.Audio already do it); the frameworks
+        never reference back.
+      * WPR.Database (the Application row) and WPR.Loader (AssemblyNameStandardization,
+        HardcodedAchievementCatalogue) are why the TFM list mirrors WPR.Backend.FNA rather than
+        the plain net8.0;net8.0-android of the other engine projects: on Windows WPR.Database has
+        no plain net8.0 leg, so a bare net8.0 here would fail restore with NU1201.
+      * WPR.Engine.Input - the keyboard-driven tilt/touch emulation components are attached to
+        the freshly created Game from here, exactly where the backend used to do it.
+      * WPR.Engine.Sensors / .Vibration / .Audio - teardown resets the accelerometer subscribers,
+        stops the motor, and the per-game log records which audio module served the run.
 
     THIS PROJECT DISSOLVED WPR.Abstractions (2026-09-01). That project was meant to be the
     linchpin every layer implemented; it ended up holding 14 types of which 11 had no consumer at
     all, and the three that did belonged next to the registry that hands them out - IAudioTranscoder
-    to WPR.Engine.Audio, IAccelerometerProvider to WPR.Engine.Sensors, and this. The lesson worth keeping:
-    a contract belongs with the subsystem that composes it, not in a shared bucket named after the
-    fact that it is abstract.
+    to WPR.Engine.Audio, IAccelerometerProvider to WPR.Engine.Sensors, and IGameHost here. The
+    lesson worth keeping: a contract belongs with the subsystem that composes it, not in a shared
+    bucket named after the fact that it is abstract.
 
-    Dependency-free on purpose, and it is the one engine project that can stay that way - the game
-    loop's vocabulary is two enums and five members. A backend referencing this does NOT pull in
-    the platform-composition root (WPR.Engine), which is exactly why the contract is here and not
-    there.
+    A backend referencing this still does NOT pull in the platform-composition root (WPR.Engine),
+    which is what keeps a backend free of the composition root's opinions.
   -->
 
   <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
     <CheckEolWorkloads>false</CheckEolWorkloads>
+    <TargetFrameworks>net8.0;net8.0-android</TargetFrameworks>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(OS)' == 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <TargetFrameworks>net8.0-windows10.0.17763.0;net8.0-android</TargetFrameworks>
   </PropertyGroup>
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net8.0-android</TargetFrameworks>
     <CheckEolWorkloads>false</CheckEolWorkloads>
     <AssemblyName>WPR.Engine.GameLoop</AssemblyName>
     <RootNamespace>WPR.Engine.GameLoop</RootNamespace>
     <Nullable>enable</Nullable>
     <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net8.0-android'">21.0</SupportedOSPlatformVersion>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Common\WPR.Common.csproj" />
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Database\WPR.Database.csproj" />
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Loader\WPR.Loader.csproj" />
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Xna\WPR.Framework.Xna.csproj" />
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Phone\WPR.Framework.Phone.csproj" />
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Silverlight\WPR.Framework.Silverlight.csproj" />
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Input\WPR.Engine.Input.csproj" />
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Sensors\WPR.Engine.Sensors.csproj" />
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Vibration\WPR.Engine.Vibration.csproj" />
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Audio\WPR.Engine.Audio.csproj" />
+  </ItemGroup>
 
 </Project>

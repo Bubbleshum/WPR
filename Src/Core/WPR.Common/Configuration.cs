@@ -55,6 +55,15 @@ namespace WPR.Common
             // rather than as an explicit "off"; same reason TiltSimulationEnabled is nullable
             // and TiltOverlayEnabled (which defaults off) is not.
             public bool? VibrationEnabled;
+
+            // Which FNA3D graphics driver games are launched with, as the driver's own name
+            // ("Vulkan" / "OpenGL"). Null = whatever the platform declares for itself, which is
+            // what every existing config.json says and what the vast majority of devices should
+            // keep — this is an escape hatch, not a preference.
+            //
+            // A string rather than an enum because WPR.Common must not reference
+            // WPR.Engine.Graphics; the head that consumes it maps the name onto GraphicsDriver.
+            public string? GraphicsDriver;
         };
 
         private const string ConfigurationFilePath = "config.json";
@@ -175,6 +184,21 @@ namespace WPR.Common
         {
             get => _ConfPrivate!.VibrationEnabled ?? true;
             set => _ConfPrivate!.VibrationEnabled = value;
+        }
+        /// <summary>
+        /// The FNA3D graphics driver to launch games with, by the driver's own name
+        /// (<c>"Vulkan"</c> / <c>"OpenGL"</c>), or <b>null to leave the platform's own choice
+        /// alone</b> — which is the default and what every device should stay on unless games
+        /// fail to start on it.
+        ///
+        /// <para>Null is deliberately distinct from any name: a head reads this and only
+        /// substitutes its declaration when something is set, so an untouched install behaves
+        /// exactly as it did before this setting existed.</para>
+        /// </summary>
+        public string? GraphicsDriver
+        {
+            get => _ConfPrivate!.GraphicsDriver;
+            set => _ConfPrivate!.GraphicsDriver = string.IsNullOrWhiteSpace(value) ? null : value!.Trim();
         }
 
         public static event EventHandler<string?>? GameLibraryPathChanged;

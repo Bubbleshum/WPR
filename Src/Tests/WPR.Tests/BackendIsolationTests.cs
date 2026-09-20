@@ -116,6 +116,12 @@ namespace WPR.Tests
                 // type deriving from a backend type is only a *leak* when it lives outside an
                 // allowed referrer. The plan asserted this baseline was blocked on the
                 // window-compositing product call; it was not.
+                //
+                // Postscript (2026-09-20): once the spine DID move into WPR.Framework.Xna, those
+                // same components stopped deriving from anything FNA-owned, so they left the
+                // backend again — for Engine/WPR.Engine.Input — along with ApplicationLaunch
+                // (now Engine/WPR.Engine.GameLoop). Both new assemblies are scanned by this test
+                // via the "Engine" search root and must stay FNA-free.
             };
 
         [Fact]

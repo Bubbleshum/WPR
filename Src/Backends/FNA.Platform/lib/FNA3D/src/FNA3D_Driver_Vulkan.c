@@ -156,6 +156,16 @@ static inline void CreateDeviceExtensionArray(
 #define PRIMITIVE_TYPES_COUNT 5
 
 #define STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE 16
+
+/* WPR: ceiling on the doubling in ShaderResources_FetchDescriptorSet. Upstream doubles the next
+ * pool size on every refill and never stops, so a title that burns descriptor sets quickly walks
+ * 16, 32, 64 ... into five-figure pool requests that no mobile driver will satisfy, and from that
+ * point every refill fails identically. Growing the POOL COUNT linearly instead of the POOL SIZE
+ * exponentially costs a few more small allocations and cannot run away.
+ * Found via 3D Brick Breaker Revolution, a J2ME port whose Graphics.fillRect ends in a
+ * SpriteBatch.End per primitive (the whole assembly has exactly one SpriteBatch.Begin call site),
+ * so it consumes a descriptor set per rectangle. */
+#define MAX_SAMPLER_DESCRIPTOR_POOL_SIZE 256
 #define STARTING_TRANSFER_BUFFER_SIZE 8000000 /* 8MB */
 
 #define DEFAULT_PIPELINE_CACHE_FILE_NAME "FNA3D_Vulkan_PipelineCache.blob"
@@ -1333,7 +1343,17 @@ typedef struct VulkanRenderer
 	VulkanTexture *dummyFragTexture3D;
 	VulkanTexture *dummyFragTextureCube;
 
+	/* WPR: the CURRENT uniform pool. Upstream had exactly one, created at device init with a hard
+	 * cap of MAX_UNIFORM_DESCRIPTOR_SETS and no growth and no failure handling, which is fine only
+	 * while a title uses few shaders. A ShaderResources is created per MojoShader shader and takes
+	 * one set from here for life, so a game that churns shaders exhausts it — measured at 304
+	 * distinct ShaderResources in 45 seconds in 3D Brick Breaker Revolution. Past the cap every
+	 * new shader silently got an uninitialised VkDescriptorSet, which vkUpdateDescriptorSets then
+	 * wrote through, and every draw using that shader rendered nothing: the game's menu vanished.
+	 * Retired pools are kept only so teardown can destroy them. */
 	VkDescriptorPool uniformBufferDescriptorPool;
+	VkDescriptorPool *retiredUniformBufferDescriptorPools;
+	uint32_t retiredUniformBufferDescriptorPoolCount;
 	VkDescriptorSetLayout vertexUniformBufferDescriptorSetLayout;
 	VkDescriptorSetLayout fragUniformBufferDescriptorSetLayout;
 	VkDescriptorSet dummyVertexUniformBufferDescriptorSet;
@@ -1495,14 +1515,29 @@ static inline VkSampleCountFlagBits XNAToVK_SampleCount(int32_t sampleCount)
 static VkComponentMapping XNAToVK_SurfaceSwizzle[] =
 {
 	IDENTITY_SWIZZLE,	/* SurfaceFormat.Color */
-	{			/* SurfaceFormat.Bgr565 */
-		VK_COMPONENT_SWIZZLE_B,
+	/* WPR: was { B, G, R, ONE }, which swapped red and blue on every 565 texture.
+	 * Vulkan names the components of a packed format MSB-to-LSB while XNA and DXGI
+	 * name them LSB-to-MSB, so VK_FORMAT_R5G6B5_UNORM_PACK16 (R in bits 11..15,
+	 * G in 5..10, B in 0..4) is bit-for-bit the same layout as XNA's Bgr565 and as
+	 * DXGI_FORMAT_B5G6R5_UNORM. No swizzle is required, and applying one introduces
+	 * the very swap it looks like it is correcting. The neighbouring
+	 * Bgra5551 -> VK_FORMAT_A1R5G5B5_UNORM_PACK16 is identity for the same reason.
+	 * Found via Brain Challenge HD, whose two coach sprite sheets are the only
+	 * Bgr565 assets it has: the scientist rendered with blue skin. */
+	IDENTITY_SWIZZLE,	/* SurfaceFormat.Bgr565 */
+	IDENTITY_SWIZZLE,	/* SurfaceFormat.Bgra5551 */
+	/* WPR: was IDENTITY_SWIZZLE. XNA's Bgra4444 is A in bits 12..15, R in 8..11,
+	 * G in 4..7, B in 0..3; VK_FORMAT_B4G4R4A4_UNORM_PACK16 decodes those same bits
+	 * as B, G, R, A respectively. So the hardware's R is the real G, its G the real
+	 * R, its B the real A and its A the real B -- hence { G, R, A, B }. The x64
+	 * FNA3D.dll shipped here already carried this fix while the three Android .so
+	 * did not; this line is what puts source and all four binaries in step. */
+	{			/* SurfaceFormat.Bgra4444 */
 		VK_COMPONENT_SWIZZLE_G,
 		VK_COMPONENT_SWIZZLE_R,
-		VK_COMPONENT_SWIZZLE_ONE
+		VK_COMPONENT_SWIZZLE_A,
+		VK_COMPONENT_SWIZZLE_B
 	},
-	IDENTITY_SWIZZLE,	/* SurfaceFormat.Bgra5551 */
-	IDENTITY_SWIZZLE,	/* SurfaceFormat.Bgra4444 */
 	IDENTITY_SWIZZLE,	/* SurfaceFormat.Dxt1 */
 	IDENTITY_SWIZZLE,	/* SurfaceFormat.Dxt3 */
 	IDENTITY_SWIZZLE,	/* SurfaceFormat.Dxt5 */
@@ -5165,6 +5200,67 @@ static uint8_t VULKAN_INTERNAL_AllocateDescriptorSets(
 	return 1;
 }
 
+/* WPR: allocate one uniform-buffer descriptor set, growing the pool rather than failing.
+ *
+ * The caller owns the set for the lifetime of its ShaderResources and never returns it, so demand
+ * here is "one per shader the title ever uses" — unbounded in principle, and genuinely in the
+ * thousands for J2ME ports that flush a batch per primitive. Retiring the full pool and starting a
+ * fresh one keeps every previously handed-out set valid (they belong to their own pool, which is
+ * not destroyed until teardown) while letting the next allocation succeed. */
+static uint8_t VULKAN_INTERNAL_AllocateUniformDescriptorSet(
+	VulkanRenderer *renderer,
+	VkDescriptorSetLayout layout,
+	VkDescriptorSet *descriptorSet
+) {
+	VkDescriptorPool grownPool = VK_NULL_HANDLE;
+
+	if (VULKAN_INTERNAL_AllocateDescriptorSets(
+		renderer,
+		renderer->uniformBufferDescriptorPool,
+		layout,
+		1,
+		descriptorSet
+	)) {
+		return 1;
+	}
+
+	if (!VULKAN_INTERNAL_CreateDescriptorPool(
+		renderer,
+		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+		MAX_UNIFORM_DESCRIPTOR_SETS,
+		MAX_UNIFORM_DESCRIPTOR_SETS,
+		&grownPool
+	)) {
+		*descriptorSet = VK_NULL_HANDLE;
+		return 0;
+	}
+
+	/* Park the old pool for teardown; sets already issued from it stay live. */
+	renderer->retiredUniformBufferDescriptorPoolCount += 1;
+	renderer->retiredUniformBufferDescriptorPools = SDL_realloc(
+		renderer->retiredUniformBufferDescriptorPools,
+		sizeof(VkDescriptorPool) * renderer->retiredUniformBufferDescriptorPoolCount
+	);
+	renderer->retiredUniformBufferDescriptorPools[
+		renderer->retiredUniformBufferDescriptorPoolCount - 1
+	] = renderer->uniformBufferDescriptorPool;
+
+	renderer->uniformBufferDescriptorPool = grownPool;
+
+	if (!VULKAN_INTERNAL_AllocateDescriptorSets(
+		renderer,
+		renderer->uniformBufferDescriptorPool,
+		layout,
+		1,
+		descriptorSet
+	)) {
+		*descriptorSet = VK_NULL_HANDLE;
+		return 0;
+	}
+
+	return 1;
+}
+
 static uint16_t VULKAN_INTERNAL_FetchSamplerBitmask(
 	MOJOSHADER_vkShader *shader
 ) {
@@ -5404,11 +5500,9 @@ static ShaderResources *ShaderResources_Init(
 
 	if (shaderStageFlag == VK_SHADER_STAGE_VERTEX_BIT)
 	{
-		VULKAN_INTERNAL_AllocateDescriptorSets(
+		VULKAN_INTERNAL_AllocateUniformDescriptorSet(
 			renderer,
-			renderer->uniformBufferDescriptorPool,
 			renderer->vertexUniformBufferDescriptorSetLayout,
-			1,
 			&shaderResources->uniformDescriptorSet
 		);
 
@@ -5418,11 +5512,9 @@ static ShaderResources *ShaderResources_Init(
 	}
 	else
 	{
-		VULKAN_INTERNAL_AllocateDescriptorSets(
+		VULKAN_INTERNAL_AllocateUniformDescriptorSet(
 			renderer,
-			renderer->uniformBufferDescriptorPool,
 			renderer->fragUniformBufferDescriptorSetLayout,
-			1,
 			&shaderResources->uniformDescriptorSet
 		);
 
@@ -5484,38 +5576,91 @@ static VkDescriptorSet ShaderResources_FetchDescriptorSet(
 
 	if (shaderResources->inactiveDescriptorSetCount == 0)
 	{
+		/* WPR: upstream ignored the result of BOTH calls below and then assigned
+		 * inactiveDescriptorSetCount unconditionally, so once the device refused an allocation the
+		 * driver handed out uninitialised VkDescriptorSet handles and carried on drawing with them.
+		 * VK_ERROR_OUT_OF_POOL_MEMORY appears nowhere in this driver except the error-to-string
+		 * table, so there was no recovery path at any level. The observed shape was ~900 logged
+		 * failures over several thousand frames followed by a native death far from the cause.
+		 *
+		 * Now: back off by halving until the device accepts a pool, commit only what actually
+		 * succeeded, and leave the count at zero if nothing did. A caller that gets
+		 * VK_NULL_HANDLE keeps its previous binding for that draw rather than binding garbage. */
+		uint32_t requestedSize = shaderResources->nextPoolSize;
+		VkDescriptorPool newPool = VK_NULL_HANDLE;
+		uint32_t allocatedSize = 0;
+		uint32_t grownCapacity = 0;
+
+		while (requestedSize >= 1)
+		{
+			if (!VULKAN_INTERNAL_CreateDescriptorPool(
+				renderer,
+				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				requestedSize,
+				requestedSize * SDL_max(shaderResources->samplerCount, 1), /* dont want 0 in case of dummy data */
+				&newPool
+			)) {
+				newPool = VK_NULL_HANDLE;
+				requestedSize /= 2;
+				continue;
+			}
+
+			/* Capacity must stay the RUNNING TOTAL of every set this ShaderResources owns, which
+			 * is the invariant upstream maintained with its unconditional "+= nextPoolSize". All
+			 * of them can come back at once in the recycle loop in
+			 * VULKAN_INTERNAL_ResetCommandBufferContainer, which writes at
+			 * inactiveDescriptorSetCount with no bounds check of its own — so under-counting here
+			 * is a heap overflow, not a missed optimisation. Grown before the allocation and
+			 * committed only on success. */
+			grownCapacity = shaderResources->inactiveDescriptorSetCapacity + requestedSize;
+			shaderResources->inactiveDescriptorSets = SDL_realloc(
+				shaderResources->inactiveDescriptorSets,
+				sizeof(VkDescriptorSet) * grownCapacity
+			);
+
+			if (VULKAN_INTERNAL_AllocateDescriptorSets(
+				renderer,
+				newPool,
+				shaderResources->samplerLayout,
+				requestedSize,
+				shaderResources->inactiveDescriptorSets
+			)) {
+				shaderResources->inactiveDescriptorSetCapacity = grownCapacity;
+				allocatedSize = requestedSize;
+				break;
+			}
+
+			/* The pool was created but cannot serve the sets. Destroy it rather than parking a
+			 * live handle nothing will ever allocate from. */
+			renderer->vkDestroyDescriptorPool(
+				renderer->logicalDevice,
+				newPool,
+				NULL
+			);
+			newPool = VK_NULL_HANDLE;
+			requestedSize /= 2;
+		}
+
+		if (allocatedSize == 0)
+		{
+			return VK_NULL_HANDLE;
+		}
+
+		/* Only commit the pool to the array once it holds sets: the teardown path destroys every
+		 * entry, so a failed handle parked here would crash on device destruction instead. */
 		shaderResources->samplerDescriptorPoolCount += 1;
 		shaderResources->samplerDescriptorPools = SDL_realloc(
 			shaderResources->samplerDescriptorPools,
 			sizeof(VkDescriptorPool) * shaderResources->samplerDescriptorPoolCount
 		);
+		shaderResources->samplerDescriptorPools[shaderResources->samplerDescriptorPoolCount - 1] = newPool;
 
-		VULKAN_INTERNAL_CreateDescriptorPool(
-			renderer,
-			VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-			shaderResources->nextPoolSize,
-			shaderResources->nextPoolSize * SDL_max(shaderResources->samplerCount, 1), /* dont want 0 in case of dummy data */
-			&shaderResources->samplerDescriptorPools[shaderResources->samplerDescriptorPoolCount - 1]
-		);
+		shaderResources->inactiveDescriptorSetCount = allocatedSize;
 
-		shaderResources->inactiveDescriptorSetCapacity += shaderResources->nextPoolSize;
-
-		shaderResources->inactiveDescriptorSets = SDL_realloc(
-			shaderResources->inactiveDescriptorSets,
-			sizeof(VkDescriptorSet) * shaderResources->inactiveDescriptorSetCapacity
-		);
-
-		VULKAN_INTERNAL_AllocateDescriptorSets(
-			renderer,
-			shaderResources->samplerDescriptorPools[shaderResources->samplerDescriptorPoolCount - 1],
-			shaderResources->samplerLayout,
-			shaderResources->nextPoolSize,
-			shaderResources->inactiveDescriptorSets
-		);
-
-		shaderResources->inactiveDescriptorSetCount = shaderResources->nextPoolSize;
-
-		shaderResources->nextPoolSize *= 2;
+		if (shaderResources->nextPoolSize < MAX_SAMPLER_DESCRIPTOR_POOL_SIZE)
+		{
+			shaderResources->nextPoolSize *= 2;
+		}
 	}
 
 	newDescriptorSet = shaderResources->inactiveDescriptorSets[shaderResources->inactiveDescriptorSetCount - 1];
@@ -5543,6 +5688,7 @@ static void VULKAN_INTERNAL_RegisterUsedDescriptorSet(
 	commandBufferContainer->usedDescriptorSetDatas[commandBufferContainer->usedDescriptorSetDataCount].descriptorSet = descriptorSet;
 	commandBufferContainer->usedDescriptorSetDatas[commandBufferContainer->usedDescriptorSetDataCount].parent = parent;
 	commandBufferContainer->usedDescriptorSetDataCount += 1;
+
 }
 
 /* Must take an array of descriptor sets of size 4 */
@@ -5563,6 +5709,10 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 
 	uint32_t i;
 
+	/* WPR: ShaderResources_FetchDescriptorSet can now report exhaustion instead of returning an
+	 * uninitialised handle, so its result is held here and only bound once it is known good. */
+	VkDescriptorSet fetchedSamplerSet;
+
 	MOJOSHADER_vkGetBoundShaders(renderer->mojoshaderContext, &vertShader, &fragShader);
 
 	if (renderer->vertexSamplerDescriptorSetDataNeedsUpdate)
@@ -5573,10 +5723,17 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 		}
 		else
 		{
-			renderer->currentVertexSamplerDescriptorSet = ShaderResources_FetchDescriptorSet(
+			/* WPR: keep the previous binding when the device cannot give us a set. Drawing one
+			 * frame with a stale texture binding is survivable; binding a garbage handle is not. */
+			fetchedSamplerSet = ShaderResources_FetchDescriptorSet(
 				renderer,
 				vertShaderResources
 			);
+
+			if (fetchedSamplerSet != VK_NULL_HANDLE)
+			{
+				renderer->currentVertexSamplerDescriptorSet = fetchedSamplerSet;
+			}
 
 			for (i = 0; i < vertShaderResources->samplerCount; i += 1)
 			{
@@ -5621,19 +5778,24 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 				writeDescriptorSets[i].pTexelBufferView = NULL;
 			}
 
-			renderer->vkUpdateDescriptorSets(
-				renderer->logicalDevice,
-				vertShaderResources->samplerCount,
-				writeDescriptorSets,
-				0,
-				NULL
-			);
+			/* WPR: skipped on exhaustion — updating the PREVIOUS set here would rewrite a
+			 * descriptor set that is already bound and possibly in flight. */
+			if (fetchedSamplerSet != VK_NULL_HANDLE)
+			{
+				renderer->vkUpdateDescriptorSets(
+					renderer->logicalDevice,
+					vertShaderResources->samplerCount,
+					writeDescriptorSets,
+					0,
+					NULL
+				);
 
-			VULKAN_INTERNAL_RegisterUsedDescriptorSet(
-				renderer,
-				vertShaderResources,
-				renderer->currentVertexSamplerDescriptorSet
-			);
+				VULKAN_INTERNAL_RegisterUsedDescriptorSet(
+					renderer,
+					vertShaderResources,
+					renderer->currentVertexSamplerDescriptorSet
+				);
+			}
 		}
 	}
 
@@ -5645,10 +5807,16 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 		}
 		else
 		{
-			renderer->currentFragSamplerDescriptorSet = ShaderResources_FetchDescriptorSet(
+			/* WPR: see the vertex path above — exhaustion keeps the previous binding. */
+			fetchedSamplerSet = ShaderResources_FetchDescriptorSet(
 				renderer,
 				fragShaderResources
 			);
+
+			if (fetchedSamplerSet != VK_NULL_HANDLE)
+			{
+				renderer->currentFragSamplerDescriptorSet = fetchedSamplerSet;
+			}
 
 			for (i = 0; i < fragShaderResources->samplerCount; i += 1)
 			{
@@ -5694,6 +5862,9 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 				writeDescriptorSets[i].pTexelBufferView = NULL;
 			}
 
+			/* WPR: see the vertex path — skipped on exhaustion so an in-flight set is not rewritten. */
+			if (fetchedSamplerSet != VK_NULL_HANDLE)
+			{
 			renderer->vkUpdateDescriptorSets(
 				renderer->logicalDevice,
 				fragShaderResources->samplerCount,
@@ -5707,6 +5878,7 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 				fragShaderResources,
 				renderer->currentFragSamplerDescriptorSet
 			);
+			}
 		}
 	}
 
@@ -5914,6 +6086,7 @@ static void VULKAN_INTERNAL_CleanCommandBuffer(
 			descriptorSetData->parent->inactiveDescriptorSetCount += 1;
 		}
 	}
+
 	vulkanCommandBufferContainer->usedDescriptorSetDataCount = 0;
 
 	/* Reset the command buffer */
@@ -9297,6 +9470,17 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 		renderer->uniformBufferDescriptorPool,
 		NULL
 	);
+
+	/* WPR: plus every pool retired by VULKAN_INTERNAL_AllocateUniformDescriptorSet. */
+	for (i = 0; i < renderer->retiredUniformBufferDescriptorPoolCount; i += 1)
+	{
+		renderer->vkDestroyDescriptorPool(
+			renderer->logicalDevice,
+			renderer->retiredUniformBufferDescriptorPools[i],
+			NULL
+		);
+	}
+	SDL_free(renderer->retiredUniformBufferDescriptorPools);
 
 	for (i = 0; i < NUM_DESCRIPTOR_SET_LAYOUT_BUCKETS; i += 1)
 	{

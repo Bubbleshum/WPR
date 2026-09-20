@@ -222,6 +222,10 @@ typedef struct OpenGLRenderer /* Cast from FNA3D_Renderer* */
 	uint8_t scissorTestEnable;
 	FNA3D_CullMode cullFrontFace;
 	FNA3D_FillMode fillMode;
+	/* WPR: latches the one-shot warning in OPENGL_ApplyRasterizerState when a
+	 * game asks for FillMode.WireFrame on a driver with no glPolygonMode.
+	 */
+	uint8_t warnedNoPolygonMode;
 	float depthBias;
 	float slopeScaleDepthBias;
 	uint8_t multiSampleEnable;
@@ -2183,10 +2187,34 @@ static void OPENGL_ApplyRasterizerState(
 	if (rasterizerState->fillMode != renderer->fillMode)
 	{
 		renderer->fillMode = rasterizerState->fillMode;
-		renderer->glPolygonMode(
-			GL_FRONT_AND_BACK,
-			XNAToGL_GLFillMode[renderer->fillMode]
-		);
+		/* WPR: glPolygonMode is desktop GL only. It is declared
+		 * GL_PROC(NonES3, ...) and therefore never resolves under OpenGL ES,
+		 * so the pointer stays NULL - and unlike the other NonES3 entry points
+		 * this call site had no guard at all, only the SDL_assert that a
+		 * release build compiles out. Calling it is an immediate SIGSEGV at
+		 * pc 0, which is what any title using FillMode.WireFrame did the
+		 * moment it drew its first wireframe model (DoDonPachi Maximum,
+		 * stage 1). Wireframe is a rendering nicety; drawing those models
+		 * solid is survivable, a dead game process is not.
+		 */
+		if (renderer->supports_NonES3)
+		{
+			renderer->glPolygonMode(
+				GL_FRONT_AND_BACK,
+				XNAToGL_GLFillMode[renderer->fillMode]
+			);
+		}
+		else if (!renderer->warnedNoPolygonMode)
+		{
+			/* Once per device: a silent fallback and a driver that never had
+			 * this feature are otherwise indistinguishable from a log.
+			 */
+			renderer->warnedNoPolygonMode = 1;
+			FNA3D_LogWarn(
+				"glPolygonMode is unavailable on OpenGL ES; "
+				"FillMode.WireFrame will draw as Solid"
+			);
+		}
 	}
 
 	realDepthBias = rasterizerState->depthBias * XNAToGL_DepthBiasScale[

@@ -122,6 +122,13 @@ namespace Microsoft.Xna.Framework.Graphics
 			}
 			set
 			{
+				if (value != null)
+				{
+					/* XNA binds a state object to the device on assignment; see
+					 * GraphicsResource.BindToGraphicsDevice for why that matters.
+					 */
+					value.BindToGraphicsDevice(this);
+				}
 				nextBlend = value;
 			}
 		}
@@ -134,14 +141,35 @@ namespace Microsoft.Xna.Framework.Graphics
 			}
 			set
 			{
+				if (value != null)
+				{
+					/* XNA binds a state object to the device on assignment; see
+					 * GraphicsResource.BindToGraphicsDevice for why that matters.
+					 */
+					value.BindToGraphicsDevice(this);
+				}
 				nextDepthStencil = value;
 			}
 		}
 
+		private RasterizerState rasterizerState;
 		public RasterizerState RasterizerState
 		{
-			get;
-			set;
+			get
+			{
+				return rasterizerState;
+			}
+			set
+			{
+				if (value != null)
+				{
+					/* XNA binds a state object to the device on assignment; see
+					 * GraphicsResource.BindToGraphicsDevice for why that matters.
+					 */
+					value.BindToGraphicsDevice(this);
+				}
+				rasterizerState = value;
+			}
 		}
 
 		/* We have to store this internally because we flip the Rectangle for
@@ -251,6 +279,59 @@ namespace Microsoft.Xna.Framework.Graphics
 		#region Internal FNA3D_Device
 
 		internal readonly IntPtr GLDevice;
+
+		/// <summary>
+		/// The one <see cref="Effect"/> every <see cref="SpriteBatch"/> on this device shares.
+		///
+		/// <para><b>Why this is not per SpriteBatch.</b> Upstream builds a fresh
+		/// <c>Effect</c> in each SpriteBatch constructor from the same immutable shader bytes, so
+		/// N batches mean N identical effects — and on the Vulkan driver an effect's shaders each
+		/// get their own <c>ShaderResources</c>, which owns a descriptor pool and its sets and is
+		/// only freed when the shader is deleted. J2ME ports build a SpriteBatch per
+		/// <c>Image.getGraphics()</c> / <c>GameCanvas.getGraphics()</c> call and never dispose it
+		/// (3D Brick Breaker Revolution: measured 1,792 shader objects in 50 seconds), and because
+		/// the leaked wrapper is a few bytes of managed memory holding a whole descriptor pool the
+		/// GC feels no pressure to collect it. The device then runs out of descriptor pool memory,
+		/// every later shader silently gets an unusable set, and whole screens stop drawing.
+		/// Sharing removes the per-instance cost entirely rather than trying to make the leak
+		/// cheaper.</para>
+		///
+		/// <para>Safe to share because the only mutable state is the MatrixTransform parameter,
+		/// which <c>SpriteBatch.PrepRenderState</c> writes immediately before
+		/// <c>spriteEffectPass.Apply()</c> in the same synchronous call — two interleaved batches
+		/// cannot observe each other's matrix. Registered as a resource of the device like any
+		/// other <c>Effect</c>, so <see cref="Dispose(bool)"/> frees it with everything else and a
+		/// second device in the same process gets its own.</para>
+		/// </summary>
+		internal Effect SharedSpriteEffect;
+
+		/// <summary>
+		/// The vertex and index buffers every <see cref="SpriteBatch"/> on this device shares, and
+		/// the rolling write offset that goes with them.
+		///
+		/// <para><b>Why these are not per SpriteBatch either.</b> Same leak as
+		/// <see cref="SharedSpriteEffect"/>, and worse in bytes: a batch built its own
+		/// <c>DynamicVertexBuffer</c> of <c>MAX_SPRITES * 4</c> vertices plus a matching index
+		/// buffer — about 220 KB of GPU memory each. A J2ME port creates one per
+		/// <c>getGraphics()</c> call and never disposes it, and <c>~GraphicsResource</c> is an
+		/// EMPTY finalizer (flibit's "FIXME: We really should call Dispose() here!"), so these are
+		/// never reclaimed by the GC either — they leak for the life of the device.</para>
+		///
+		/// <para>Safe to share for the same reason the effect is: every write is immediately
+		/// followed by the draw that consumes it, inside one synchronous call on the game thread
+		/// (<c>UpdateVertexBuffer</c> then <c>DrawPrimitives</c>), so no batch can observe another's
+		/// half-written vertices. Sharing the offset as well is required, not incidental — two
+		/// batches with private offsets into one buffer would hand out overlapping
+		/// <c>NoOverwrite</c> ranges. The index buffer is immutable after its single
+		/// <c>SetData</c>, so it is shareable unconditionally.</para>
+		/// </summary>
+		internal DynamicVertexBuffer SharedSpriteVertexBuffer;
+
+		/// <summary>See <see cref="SharedSpriteVertexBuffer"/>.</summary>
+		internal IndexBuffer SharedSpriteIndexBuffer;
+
+		/// <summary>See <see cref="SharedSpriteVertexBuffer"/>.</summary>
+		internal int SharedSpriteBufferOffset;
 
 		#endregion
 
@@ -439,6 +520,7 @@ namespace Microsoft.Xna.Framework.Graphics
 				modifiedSamplers
 			);
 			SamplerStates = new SamplerStateCollection(
+				this,
 				maxTextures,
 				modifiedSamplers
 			);
@@ -447,6 +529,7 @@ namespace Microsoft.Xna.Framework.Graphics
 				modifiedVertexSamplers
 			);
 			VertexSamplerStates = new SamplerStateCollection(
+				this,
 				maxVertexTextures,
 				modifiedVertexSamplers
 			);

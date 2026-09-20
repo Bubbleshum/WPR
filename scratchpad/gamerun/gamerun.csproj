@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows10.0.17763.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <AssemblyName>gamerun</AssemblyName>
+    <RootNamespace>GameRun</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>$(NoWarn);CS8618;CS8600;CS8602</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Src\Backends\WPR.Backend.FNA\WPR.Backend.FNA.csproj" />
+    <ProjectReference Include="..\..\Src\Core\WPR.Database\WPR.Database.csproj" />
+    <!-- Mirror the WCF packages the two real heads carry. The Default ALC binds from THIS exe's
+         deps.json, not from whatever happens to sit in the folder, so without these a game that
+         touches System.ServiceModel fails here and succeeds in the app — a harness-only false
+         positive. Keep in step with WPR.Platform.Windows.csproj. -->
+    <PackageReference Include="System.ServiceModel.Http" Version="4.10.0" />
+    <PackageReference Include="System.ServiceModel.Primitives" Version="4.10.0" />
+    <PackageReference Include="System.Formats.Asn1" Version="8.0.1" />
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="8.0.4" />
+  </ItemGroup>
+</Project>

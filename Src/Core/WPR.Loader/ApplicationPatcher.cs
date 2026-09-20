@@ -115,7 +115,44 @@ namespace WPR
         // what froze the game (input included) on its first change of music. This DOES rewrite
         // game IL, so an install made before it keeps the old body and keeps freezing.
         // Not identity-binding — a v24 install still launches — so repatch is enough.
-        public static int Version => 25;
+        //
+        // Bumped to 26: WprFrameworkXnaTypes gained Microsoft.Xna.Framework.Media.Playlist and
+        // PlaylistCollection, the only two types of that namespace WPR had never defined. Without
+        // the entries a game's typeref stays scoped to FNA, which defines no XNA API at all, so
+        // the load throws TypeLoadException. Fast and the Furious: Adrenaline asks for the
+        // playlist count from a constructor fourteen objects deep, so that throw unwound its whole
+        // application object and left the Oberon SDK's PlatformStub.Draw NREing on every frame
+        // with nothing drawn — reported as a white screen on load. IS identity-binding for any
+        // game that touches playlists (a v25 install carries IL naming [FNA]…PlaylistCollection),
+        // but repatch is still enough: --repatch-installed rescopes the typeref in place.
+        //
+        // Bumped to 27: RelocateMonoStackConflictBlocks, a new IL pass that works around MonoVM's
+        // IL importer carrying the stack state across an unconditional branch into the block that
+        // follows it. Affects ANDROID ONLY at runtime — CoreCLR compiles the original shape fine —
+        // but the patched install is shared between the heads, so the pass runs unconditionally.
+        // This DOES rewrite game IL, so an install made before it keeps the old bodies and keeps
+        // throwing InvalidProgramException with an empty message out of whichever method hits the
+        // shape. Not identity-binding — a v26 install still launches — so repatch is enough.
+        //
+        // Bumped to 28: the same pass now also relocates blocks that end in br, not just ret and
+        // throw. The br case is not a corner — Earthworm Jim's b2PolygonShape::.ctor has four
+        // conflicting blocks and ALL FOUR end in br, so v27 left that method untouched.
+        //
+        // Bumped to 29: the v28 br extension is OFF by default again (see MonoRelocationBrEnabled),
+        // so v29 output is byte-for-byte v27 output. Measured 2026-09-20 on the emulator with a
+        // RELEASE APK — i.e. the Mono JIT, which is what every shipped build runs — Earthworm Jim:
+        //   v21 IL (0.1.03)            -> title, menu, level 1 plays
+        //   v28 IL, pass disabled       -> title, menu, level 1 plays
+        //   v28 IL, br extension off    -> title, menu, level 1 plays   (this is v29 / v27 output)
+        //   v28 IL as shipped           -> never leaves the Gameloft logo; no exception logged
+        // Final Fantasy III's IL is identical for v21, v27 and v29 and differs only under v28
+        // (three br blocks), so the same regression covers it. The InvalidProgramException the
+        // v27/v28 notes chased is a property of the Mono INTERPRETER, which only a Debug APK
+        // runs: the identical v21 IL throws it on every frame under a Debug build and plays
+        // under a Release build of the same tree. Rewrites game IL, not identity-binding, so
+        // --repatch-installed is enough; a v28 install keeps the br clones and keeps hanging
+        // until it is repatched.
+        public static int Version => 29;
 
         private AssemblyNameReference FnaBackendRef;
         private AssemblyNameReference FNARef;
@@ -396,6 +433,8 @@ namespace WPR
             "Microsoft.Xna.Framework.Media.MediaState",
             "Microsoft.Xna.Framework.Media.Picture",
             "Microsoft.Xna.Framework.Media.PictureCollection",
+            "Microsoft.Xna.Framework.Media.Playlist",
+            "Microsoft.Xna.Framework.Media.PlaylistCollection",
             "Microsoft.Xna.Framework.Media.Song",
             "Microsoft.Xna.Framework.Media.SongCollection",
             "Microsoft.Xna.Framework.Media.Video",
@@ -2088,6 +2127,649 @@ namespace WPR
         /// handle was free on a WP7 device and costly only under WPR's one-process model, so the
         /// same latent bug is expected across the library.</para>
         /// </summary>
+        /// <summary>
+        /// Works around a defect in MonoVM's IL importer, which is what net8.0-android runs on.
+        ///
+        /// Mono carries the evaluation-stack state linearly into the instruction FOLLOWING an
+        /// unconditional branch. When that instruction happens to begin a block entered from
+        /// somewhere else at a different depth, the two states conflict and Mono refuses to
+        /// compile the WHOLE METHOD, throwing InvalidProgramException with an EMPTY message.
+        /// CoreCLR does not do this and ILVerify does not flag it, because the block is perfectly
+        /// legal: its real predecessors all enter it at the depth it expects, and control never
+        /// falls through the branch into it.
+        ///
+        /// Proven by an A/B on device: an identical three-instruction block reachable only through
+        /// a switch FAILS when it is sited after a br that left depth 2, and COMPILES unchanged
+        /// when sited after a br that left depth 0.
+        ///
+        /// Obfuscators produce this shape constantly. Control-flow flattening emits one giant
+        /// switch over a state local with every arm ending in "stloc state; br dispatch", so arms
+        /// sit back to back and an arm that leaves the stack non-empty is immediately followed by
+        /// the next arm's entry point. Brain Challenge HD is the reference case: two methods
+        /// failed this way, which killed Game.Update on every frame and left the game rendering a
+        /// screen that never advanced and never took input.
+        ///
+        /// The fix is to COPY the affected block to the end of the method and repoint its
+        /// entrants at the copy. The original stays put and simply becomes unreachable, and Mono
+        /// does not import unreachable code -- which is precisely why this cures it.
+        ///
+        /// COPY, NEVER MOVE. Moving the block makes whatever followed it the new neighbour of the
+        /// same br, which re-creates the defect somewhere else: a move-based version of this
+        /// fixed the two known failures and introduced 2,816 new ones in a single method.
+        ///
+        /// Three restrictions keep the transform safe, and each one was a real failure first:
+        ///  * methods with protected regions are skipped, or the appended clone would sit outside
+        ///    the try/handler it came from (ILVerify: BranchOutOfFinally);
+        ///  * the method must already END in ret/throw, or the clone becomes reachable by
+        ///    fallthrough at the wrong depth (ILVerify: PathStackDepth);
+        ///  * a block must contain no other entry point, or repointing its entrants would strand
+        ///    whoever jumped into the middle of it.
+        ///
+        /// A block may end in ret, throw or br, and the terminator decides what the clone hands
+        /// to the NEXT appended clone -- the very defect this pass removes, recreated among the
+        /// clones themselves. ret and throw end the flow, so whatever follows starts clean; that
+        /// is why the original method must end in one of them, and why the first clone is always
+        /// safe. A br does not: it hands its own depth straight on.
+        ///
+        /// So the clones are ORDERED rather than merely filtered. Every ret/throw clone goes
+        /// first, in any order, because each one resets the carry for its successor. The
+        /// br-terminated clones then follow as a chain in which each one's exit depth equals the
+        /// next one's entry depth; the first of them is free because a reset precedes it. A block
+        /// that cannot be chained is simply left alone.
+        ///
+        /// br-terminated blocks were excluded outright until 2026-09-19, and that left whole
+        /// methods unfixed: Earthworm Jim's b2PolygonShape::.ctor has four conflicting blocks and
+        /// every one of them ends in br, so the method stayed broken and took b2Shape::Create --
+        /// its only caller -- down with it on every level load.
+        ///
+        /// Windows is unaffected either way (CoreCLR compiles the original shape fine), so this
+        /// runs unconditionally rather than per-platform: one install is shared between the heads,
+        /// and a game patched on a PC and copied to a phone has to carry the fix.
+        /// </summary>
+        /// <summary>
+        /// Diagnostic kill switch for <see cref="RelocateMonoStackConflictBlocks"/>: set the
+        /// environment variable <c>WPR_PATCHER_DISABLE_MONO_RELOCATION</c> to any non-empty value
+        /// and the pass is skipped with everything else unchanged. Exists so an A/B of one game's
+        /// IL with and without the pass is a repatch rather than a rebuild.
+        /// </summary>
+        public static bool MonoRelocationDisabled =>
+            !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WPR_PATCHER_DISABLE_MONO_RELOCATION"));
+
+        /// <summary>
+        /// The v28 half of the pass — relocating blocks that end in <c>br</c> as a depth-matched
+        /// chain — is opt-in: set <c>WPR_PATCHER_MONO_RELOCATION_BR</c> to any non-empty value.
+        /// Off, br-terminated blocks are left in place and only ret/throw-terminated ones move
+        /// (the v27 behaviour). It is off because the br clones are what stopped Earthworm Jim
+        /// and Final Fantasy III starting under the Mono JIT (Release APK) — see the v29 note on
+        /// <see cref="Version"/>. The code is kept, behind this switch, so the A/B stays a
+        /// repatch rather than an archaeology dig.
+        /// </summary>
+        public static bool MonoRelocationBrEnabled =>
+            !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WPR_PATCHER_MONO_RELOCATION_BR"));
+
+        private static void RelocateMonoStackConflictBlocks(ModuleDefinition module, string moduleName)
+        {
+            int relocated = 0;
+            int methodsTouched = 0;
+
+            foreach (TypeDefinition type in module.GetTypes())
+            {
+                foreach (MethodDefinition method in type.Methods)
+                {
+                    if (!method.HasBody || method.Body.Instructions.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    MethodBody body = method.Body;
+
+                    if (body.ExceptionHandlers.Count > 0)
+                    {
+                        continue;
+                    }
+
+                    List<Instruction> instructions = new List<Instruction>(body.Instructions);
+                    Instruction last = instructions[instructions.Count - 1];
+                    if (last.OpCode.Code != Code.Ret && last.OpCode.Code != Code.Throw)
+                    {
+                        continue;
+                    }
+
+                    int[] depth = ComputeEntryStackDepths(instructions);
+
+                    HashSet<Instruction> targets = new HashSet<Instruction>();
+                    foreach (Instruction ins in instructions)
+                    {
+                        if (ins.Operand is Instruction single)
+                        {
+                            targets.Add(single);
+                        }
+                        else if (ins.Operand is Instruction[] many)
+                        {
+                            foreach (Instruction t in many)
+                            {
+                                targets.Add(t);
+                            }
+                        }
+                    }
+
+                    // Collected up front against the ORIGINAL layout. Copying only appends, so
+                    // these indices stay valid for the whole pass.
+                    List<RelocatableBlock> candidates = new List<RelocatableBlock>();
+                    for (int i = 1; i < instructions.Count; i++)
+                    {
+                        Instruction previous = instructions[i - 1];
+                        if (previous.OpCode.Code != Code.Br && previous.OpCode.Code != Code.Br_S)
+                        {
+                            continue;
+                        }
+
+                        // Only a block someone BRANCHES to can disagree with the state the branch
+                        // left behind; straight-line code after a br is simply unreachable.
+                        if (!targets.Contains(instructions[i]))
+                        {
+                            continue;
+                        }
+
+                        // A br that left the stack empty agrees with every entry point.
+                        //
+                        // Widening this to "carried depth differs from entry depth, either way"
+                        // was tried on 2026-09-19 and reverted: it flags 25,918 sites across the
+                        // installed library, including all through Angry Birds, Pac-Man and
+                        // Guitar Hero 5, which run on Android today. A predicate that fires on
+                        // tens of thousands of shapes MonoVM demonstrably accepts is not
+                        // describing the defect, and relocating on it is churn with no evidence
+                        // behind it.
+                        if (depth[i - 1] <= 0 || depth[i] < 0)
+                        {
+                            continue;
+                        }
+
+                        int end = i;
+                        bool delimited = false;
+                        bool resetsCarry = false;
+                        int exitDepth = -1;
+                        while (end < instructions.Count)
+                        {
+                            if (end > i && targets.Contains(instructions[end]))
+                            {
+                                break;      // a second entry point: not a single block
+                            }
+
+                            Code code = instructions[end].OpCode.Code;
+                            if (code == Code.Ret || code == Code.Throw)
+                            {
+                                delimited = true;
+                                resetsCarry = true;
+                                break;
+                            }
+
+                            if (code == Code.Br || code == Code.Br_S)
+                            {
+                                if (!MonoRelocationBrEnabled)
+                                {
+                                    break;  // default (v27/v29): a br-terminated block is left alone
+                                }
+
+                                // br neither pops nor pushes, so its entry depth IS what the
+                                // block hands to whatever follows the clone.
+                                delimited = true;
+                                exitDepth = depth[end];
+                                break;
+                            }
+
+                            end++;
+                        }
+
+                        if (delimited && (resetsCarry || exitDepth >= 0))
+                        {
+                            candidates.Add(new RelocatableBlock(i, end, resetsCarry, depth[i], exitDepth));
+                        }
+                    }
+
+                    if (candidates.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    // Clones are appended back to back, so each one's terminator is carried into
+                    // the next — exactly the defect being removed. Order them so that never
+                    // happens: resets first, then the br-terminated ones as a chain where each
+                    // exit depth feeds the next entry depth. See the doc comment.
+                    List<RelocatableBlock> ordered = new List<RelocatableBlock>(candidates.Count);
+                    List<RelocatableBlock> chainable = new List<RelocatableBlock>();
+                    foreach (RelocatableBlock candidate in candidates)
+                    {
+                        if (candidate.ResetsCarry)
+                        {
+                            ordered.Add(candidate);
+                        }
+                        else
+                        {
+                            chainable.Add(candidate);
+                        }
+                    }
+
+                    // -1 means "a reset precedes this slot", so the first link is unconstrained:
+                    // either a ret/throw clone above, or the method's own terminator.
+                    int carried = -1;
+                    while (chainable.Count > 0)
+                    {
+                        int pick = -1;
+                        for (int k = 0; k < chainable.Count; k++)
+                        {
+                            if (carried < 0 || chainable[k].EntryDepth == carried)
+                            {
+                                pick = k;
+                                break;
+                            }
+                        }
+
+                        if (pick < 0)
+                        {
+                            break;      // nothing left fits the carry: leave the rest alone
+                        }
+
+                        ordered.Add(chainable[pick]);
+                        carried = chainable[pick].ExitDepth;
+                        chainable.RemoveAt(pick);
+                    }
+
+                    ILProcessor il = body.GetILProcessor();
+                    int done = 0;
+
+                    foreach (RelocatableBlock candidate in ordered)
+                    {
+                        List<Instruction> clone = new List<Instruction>();
+                        bool copyable = true;
+
+                        for (int k = candidate.Start; k <= candidate.End; k++)
+                        {
+                            Instruction copy = CloneInstruction(instructions[k]);
+                            if (copy == null)
+                            {
+                                copyable = false;
+                                break;
+                            }
+
+                            clone.Add(copy);
+                        }
+
+                        if (!copyable)
+                        {
+                            continue;
+                        }
+
+                        // Branches inside the block keep their original targets, which is correct:
+                        // the block has no internal entry point, so nothing needs remapping.
+                        Instruction tail = body.Instructions[body.Instructions.Count - 1];
+                        foreach (Instruction ins in clone)
+                        {
+                            il.InsertAfter(tail, ins);
+                            tail = ins;
+                        }
+
+                        Instruction head = instructions[candidate.Start];
+                        Instruction newHead = clone[0];
+                        HashSet<Instruction> cloned = new HashSet<Instruction>(clone);
+
+                        foreach (Instruction ins in body.Instructions)
+                        {
+                            if (cloned.Contains(ins))
+                            {
+                                continue;
+                            }
+
+                            if (ins.Operand is Instruction single)
+                            {
+                                if (single == head)
+                                {
+                                    ins.Operand = newHead;
+                                }
+                            }
+                            else if (ins.Operand is Instruction[] many)
+                            {
+                                bool changed = false;
+                                Instruction[] rebound = (Instruction[])many.Clone();
+                                for (int k = 0; k < rebound.Length; k++)
+                                {
+                                    if (rebound[k] == head)
+                                    {
+                                        rebound[k] = newHead;
+                                        changed = true;
+                                    }
+                                }
+
+                                if (changed)
+                                {
+                                    ins.Operand = rebound;
+                                }
+                            }
+                        }
+
+                        done++;
+                    }
+
+                    if (done > 0)
+                    {
+                        // A cloned short branch now sits far from its target, which the one-byte
+                        // form cannot encode (ILVerify: BadJumpTarget). Expand everything, then
+                        // let Cecil re-shorten whatever still fits.
+                        body.SimplifyMacros();
+                        body.OptimizeMacros();
+
+                        relocated += done;
+                        methodsTouched++;
+                    }
+                }
+            }
+
+            if (relocated > 0)
+            {
+                Log.Info(LogCategory.AppInstall,
+                    $"[mono-fixup] {moduleName}: relocated {relocated} block(s) across " +
+                    $"{methodsTouched} method(s) that MonoVM would refuse to compile.");
+            }
+        }
+
+        /// <summary>
+        /// One block <see cref="RelocateMonoStackConflictBlocks"/> intends to copy to the end of
+        /// its method: a start/end index pair into the ORIGINAL instruction list, plus whether
+        /// control leaves the block with the evaluation stack empty.
+        ///
+        /// <para>The depths are not decoration: they decide where the clone may be appended,
+        /// because a clone's terminator is carried into whatever is appended next. See the
+        /// ordering in the pass.</para>
+        /// </summary>
+        private readonly struct RelocatableBlock
+        {
+            public RelocatableBlock(int start, int end, bool resetsCarry, int entryDepth, int exitDepth)
+            {
+                Start = start;
+                End = end;
+                ResetsCarry = resetsCarry;
+                EntryDepth = entryDepth;
+                ExitDepth = exitDepth;
+            }
+
+            /// <summary>Index of the block's first instruction, inclusive.</summary>
+            public int Start { get; }
+
+            /// <summary>Index of the block's terminator (ret, throw or br), inclusive.</summary>
+            public int End { get; }
+
+            /// <summary>
+            /// True when the block ends in ret or throw, which ends the flow and so leaves
+            /// whatever is appended next unconstrained.
+            /// </summary>
+            public bool ResetsCarry { get; }
+
+            /// <summary>Stack depth the block's entrants arrive at.</summary>
+            public int EntryDepth { get; }
+
+            /// <summary>
+            /// Stack depth handed to the next appended clone, or -1 when
+            /// <see cref="ResetsCarry"/> makes the question moot.
+            /// </summary>
+            public int ExitDepth { get; }
+        }
+
+        /// <summary>
+        /// Entry stack depth for each instruction by abstract interpretation, or -1 where the
+        /// instruction is unreachable. It is used to tell "this br left the stack empty"
+        /// (harmless) from "it left something behind" (the defect above), both for the branch
+        /// that precedes a block and for the branch that ends one, so it deliberately does not
+        /// model types -- just how many slots are live.
+        /// </summary>
+        private static int[] ComputeEntryStackDepths(List<Instruction> instructions)
+        {
+            Dictionary<Instruction, int> index = new Dictionary<Instruction, int>(instructions.Count);
+            for (int i = 0; i < instructions.Count; i++)
+            {
+                index[instructions[i]] = i;
+            }
+
+            int[] depth = new int[instructions.Count];
+            for (int i = 0; i < depth.Length; i++)
+            {
+                depth[i] = -1;
+            }
+
+            Queue<KeyValuePair<int, int>> work = new Queue<KeyValuePair<int, int>>();
+            work.Enqueue(new KeyValuePair<int, int>(0, 0));
+
+            while (work.Count > 0)
+            {
+                KeyValuePair<int, int> item = work.Dequeue();
+                int at = item.Key;
+                int current = item.Value;
+
+                while (true)
+                {
+                    if (at < 0 || at >= instructions.Count || depth[at] >= 0)
+                    {
+                        break;
+                    }
+
+                    depth[at] = current;
+                    Instruction ins = instructions[at];
+
+                    current -= PopCount(ins, current);
+                    if (current < 0)
+                    {
+                        current = 0;
+                    }
+
+                    current += PushCount(ins);
+
+                    FlowControl flow = ins.OpCode.FlowControl;
+                    if (flow == FlowControl.Branch)
+                    {
+                        if (ins.Operand is Instruction target && index.TryGetValue(target, out int next))
+                        {
+                            at = next;
+                            continue;
+                        }
+
+                        break;
+                    }
+
+                    if (flow == FlowControl.Cond_Branch)
+                    {
+                        if (ins.Operand is Instruction[] cases)
+                        {
+                            foreach (Instruction c in cases)
+                            {
+                                if (index.TryGetValue(c, out int ci))
+                                {
+                                    work.Enqueue(new KeyValuePair<int, int>(ci, current));
+                                }
+                            }
+                        }
+                        else if (ins.Operand is Instruction conditional
+                                 && index.TryGetValue(conditional, out int ti))
+                        {
+                            work.Enqueue(new KeyValuePair<int, int>(ti, current));
+                        }
+
+                        at++;
+                        continue;
+                    }
+
+                    if (flow == FlowControl.Return || flow == FlowControl.Throw)
+                    {
+                        break;
+                    }
+
+                    at++;
+                }
+            }
+
+            return depth;
+        }
+
+        private static int PopCount(Instruction ins, int current)
+        {
+            switch (ins.OpCode.StackBehaviourPop)
+            {
+                case StackBehaviour.Pop0:
+                    return 0;
+
+                case StackBehaviour.Pop1:
+                case StackBehaviour.Popi:
+                case StackBehaviour.Popref:
+                    return 1;
+
+                case StackBehaviour.Pop1_pop1:
+                case StackBehaviour.Popi_pop1:
+                case StackBehaviour.Popi_popi:
+                case StackBehaviour.Popi_popi8:
+                case StackBehaviour.Popi_popr4:
+                case StackBehaviour.Popi_popr8:
+                case StackBehaviour.Popref_pop1:
+                case StackBehaviour.Popref_popi:
+                    return 2;
+
+                case StackBehaviour.Popi_popi_popi:
+                case StackBehaviour.Popref_popi_popi:
+                case StackBehaviour.Popref_popi_popi8:
+                case StackBehaviour.Popref_popi_popr4:
+                case StackBehaviour.Popref_popi_popr8:
+                case StackBehaviour.Popref_popi_popref:
+                    return 3;
+
+                case StackBehaviour.PopAll:
+                    return current;
+
+                case StackBehaviour.Varpop:
+                    if (ins.OpCode.Code == Code.Ret)
+                    {
+                        return current;
+                    }
+
+                    if (ins.Operand is MethodReference callee)
+                    {
+                        int popped = callee.Parameters.Count;
+                        if (callee.HasThis && ins.OpCode.Code != Code.Newobj)
+                        {
+                            popped++;
+                        }
+
+                        return popped;
+                    }
+
+                    return 0;
+
+                default:
+                    return 0;
+            }
+        }
+
+        private static int PushCount(Instruction ins)
+        {
+            switch (ins.OpCode.StackBehaviourPush)
+            {
+                case StackBehaviour.Push1:
+                case StackBehaviour.Pushi:
+                case StackBehaviour.Pushi8:
+                case StackBehaviour.Pushr4:
+                case StackBehaviour.Pushr8:
+                case StackBehaviour.Pushref:
+                    return 1;
+
+                case StackBehaviour.Push1_push1:
+                    return 2;
+
+                case StackBehaviour.Varpush:
+                    return ins.Operand is MethodReference callee
+                           && callee.ReturnType.FullName != "System.Void" ? 1 : 0;
+
+                default:
+                    return 0;
+            }
+        }
+
+        /// <summary>
+        /// A structural copy of one instruction. Returns null for an operand shape this pass does
+        /// not know how to reproduce exactly, which makes the caller leave that whole block alone
+        /// -- declining to copy costs one game one workaround, guessing would corrupt its IL.
+        /// </summary>
+        private static Instruction CloneInstruction(Instruction ins)
+        {
+            switch (ins.OpCode.OperandType)
+            {
+                case OperandType.InlineNone:
+                    return Instruction.Create(ins.OpCode);
+
+                case OperandType.InlineBrTarget:
+                case OperandType.ShortInlineBrTarget:
+                    return Instruction.Create(ins.OpCode, (Instruction)ins.Operand);
+
+                case OperandType.InlineSwitch:
+                    return Instruction.Create(ins.OpCode, (Instruction[])ins.Operand);
+
+                case OperandType.InlineField:
+                    return Instruction.Create(ins.OpCode, (FieldReference)ins.Operand);
+
+                case OperandType.InlineMethod:
+                    return Instruction.Create(ins.OpCode, (MethodReference)ins.Operand);
+
+                case OperandType.InlineType:
+                    return Instruction.Create(ins.OpCode, (TypeReference)ins.Operand);
+
+                // ldtoken: the operand may be a type, a field OR a method, so all three are
+                // handled rather than assuming the common case.
+                case OperandType.InlineTok:
+                    if (ins.Operand is TypeReference typeToken)
+                    {
+                        return Instruction.Create(ins.OpCode, typeToken);
+                    }
+
+                    if (ins.Operand is FieldReference fieldToken)
+                    {
+                        return Instruction.Create(ins.OpCode, fieldToken);
+                    }
+
+                    if (ins.Operand is MethodReference methodToken)
+                    {
+                        return Instruction.Create(ins.OpCode, methodToken);
+                    }
+
+                    return null;
+
+                case OperandType.InlineI:
+                    return Instruction.Create(ins.OpCode, (int)ins.Operand);
+
+                case OperandType.InlineI8:
+                    return Instruction.Create(ins.OpCode, (long)ins.Operand);
+
+                case OperandType.ShortInlineI:
+                    return ins.OpCode.Code == Code.Ldc_I4_S
+                        ? Instruction.Create(ins.OpCode, (sbyte)ins.Operand)
+                        : Instruction.Create(ins.OpCode, (byte)ins.Operand);
+
+                case OperandType.InlineR:
+                    return Instruction.Create(ins.OpCode, (double)ins.Operand);
+
+                case OperandType.ShortInlineR:
+                    return Instruction.Create(ins.OpCode, (float)ins.Operand);
+
+                case OperandType.InlineString:
+                    return Instruction.Create(ins.OpCode, (string)ins.Operand);
+
+                case OperandType.InlineVar:
+                case OperandType.ShortInlineVar:
+                    return Instruction.Create(ins.OpCode, (VariableDefinition)ins.Operand);
+
+                case OperandType.InlineArg:
+                case OperandType.ShortInlineArg:
+                    return Instruction.Create(ins.OpCode, (ParameterDefinition)ins.Operand);
+
+                default:
+                    return null;
+            }
+        }
+
         private static void RedirectIsolatedStorageOpens(ModuleDefinition module)
         {
             const string StoreTypeName = "System.IO.IsolatedStorage.IsolatedStorageFile";
@@ -2400,20 +3082,49 @@ namespace WPR
             resolver.AddSearchDirectory(Path.GetDirectoryName(modulePath)!);
             resolver.AddSearchDirectory(AppContext.BaseDirectory);
 
-            // ReadAssembly
-            AssemblyDefinition assemblyData =
-                Mono.Cecil.AssemblyDefinition.ReadAssembly(
-                    modulePath, new ReaderParameters { AssemblyResolver = resolver });
-
-            Mono.Cecil.ModuleDefinition module = assemblyData.MainModule;
-
-            assemblyData.Name.Name = AssemblyNameStandardization.Process(assemblyData.Name.Name);
-
             string modulePathNameStandardized = Path.Combine(
                 Path.GetDirectoryName(modulePath)!,
                AssemblyNameStandardization.Process(
                     Path.GetFileNameWithoutExtension(modulePath)) +
                 Path.GetExtension(modulePath));
+
+            // The pristine assembly is the INPUT, always. The first install renames the game's
+            // own .dll to .dll.original and patches from it; every later call must read that
+            // sidecar rather than the live, already-patched .dll — and must never overwrite it.
+            // Until 2026-09-20 this method read modulePath unconditionally and then did
+            // File.Move(modulePath, .original, overwrite: true), so any caller that did not
+            // restore the sidecar first (the Android launcher's "PatchedVersion is behind"
+            // repatch calls Patch() straight on the install folder) replaced the pristine
+            // original with the previous patched output and patched THAT again. Seven version
+            // bumps in, a phone's ".original" was the v27 output with every earlier pass baked
+            // in, and the real original was gone — recoverable only by reinstalling the XAP.
+            // Measured on the emulator: five of fifteen installs had a patched ".original".
+            string originalPath = modulePathNameStandardized + ".original";
+            bool hadOriginal = File.Exists(originalPath);
+            string sourcePath = hadOriginal ? originalPath : modulePath;
+
+            // ReadAssembly
+            AssemblyDefinition assemblyData =
+                Mono.Cecil.AssemblyDefinition.ReadAssembly(
+                    sourcePath, new ReaderParameters { AssemblyResolver = resolver });
+
+            Mono.Cecil.ModuleDefinition module = assemblyData.MainModule;
+
+            if (hadOriginal && module.AssemblyReferences.Any(r =>
+                    r.Name == "WPR.Framework.Xna" || r.Name == "WPR.Backend.FNA" ||
+                    r.Name == "WPR.Framework.Silverlight"))
+            {
+                // The sidecar is itself a patched output (see above). Nothing here can undo
+                // that; say so loudly, because the symptom downstream is a game that fails in
+                // ways no current patcher version produces.
+                Log.Warn(LogCategory.AppInstall,
+                    $"[patch] {Path.GetFileName(originalPath)} is NOT a pristine original — it " +
+                    "already references WPR assemblies, so an earlier repatch overwrote it with " +
+                    "patched output. Patching it again stacks passes; reinstall this game from " +
+                    "its XAP to recover the real original.");
+            }
+
+            assemblyData.Name.Name = AssemblyNameStandardization.Process(assemblyData.Name.Name);
 
             AssemblyNameReference? xnaGameServices = null;
             //RnD
@@ -2654,6 +3365,20 @@ namespace WPR
             // Game-specific IL fixups that don't fit the reference-redirect tables above.
             ApplyGameSpecificFixups(module);
 
+            // Make blocks MonoVM refuses to import reachable only from somewhere it accepts.
+            // Runs last of the IL passes: it reads the finished control flow, and it must see
+            // any block the fixups above introduced.
+            if (MonoRelocationDisabled)
+            {
+                Log.Info(LogCategory.AppInstall,
+                    $"[mono-fixup] {Path.GetFileName(modulePath)}: RelocateMonoStackConflictBlocks " +
+                    "SKIPPED (WPR_PATCHER_DISABLE_MONO_RELOCATION is set).");
+            }
+            else
+            {
+                RelocateMonoStackConflictBlocks(module, Path.GetFileName(modulePath));
+            }
+
             // Cecil resolves a constant's declared type while building the Constant table,
             // to learn the integer behind an enum. Prepare an answer for any that cannot be
             // found on disk — which on Android is all of ours. Must run here: the scope Cecil
@@ -2691,8 +3416,19 @@ namespace WPR
 
             assemblyData.Dispose();
 
-            // .dll -> .dll.original
-            File.Move(modulePath, modulePathNameStandardized + ".original", true);
+            if (!hadOriginal)
+            {
+                // First patch of this assembly: the game's own .dll becomes the sidecar.
+                // .dll -> .dll.original
+                File.Move(modulePath, originalPath, true);
+            }
+            else if (!string.Equals(modulePath, modulePathNameStandardized, StringComparison.OrdinalIgnoreCase)
+                     && File.Exists(modulePath))
+            {
+                // Repatch of a name-standardised assembly: the un-standardised live file is
+                // superseded by the standardised one written below. The sidecar is untouched.
+                File.Delete(modulePath);
+            }
 
             // .dll.new - > .dll
             File.Move(modulePath + ".new", modulePathNameStandardized, true);
