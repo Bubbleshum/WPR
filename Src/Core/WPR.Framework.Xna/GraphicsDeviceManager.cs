@@ -401,7 +401,12 @@ namespace Microsoft.Xna.Framework
 		{
 			GameWindow window = (sender as GameWindow);
 
-			Rectangle size = window.ClientBounds;
+			/* HostClientBounds, not ClientBounds: this is resizing the backbuffer to match the
+			 * window the user just dragged, so it wants real host pixels. ClientBounds answers
+			 * with WP7's fixed 480x800 portrait screen, which would flip a landscape game's
+			 * backbuffer to portrait on the first resize event.
+			 */
+			Rectangle size = window.HostClientBounds;
 			resizedBackBufferWidth = size.Width;
 			resizedBackBufferHeight = size.Height;
 

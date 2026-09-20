@@ -77,6 +77,49 @@ namespace Microsoft.Xna.Framework.Graphics
 
 		#endregion
 
+		#region Internal State-Object Binding
+
+		/// <summary>
+		/// Marks this resource as belonging to <paramref name="device"/>, the way XNA binds a state
+		/// object the first time it is assigned to a GraphicsDevice.
+		/// </summary>
+		/// <remarks>
+		/// <para>This exists because games branch on <c>GraphicsResource.GraphicsDevice</c> to decide
+		/// whether a state object is safe to mutate. XNA's rule is that an unbound state object is
+		/// mutable and a bound one is read-only, so the idiom is
+		/// <c>if (state.GraphicsDevice != null) state = state.Clone();</c> before writing to it. FNA
+		/// never bound state objects at all, so <c>GraphicsDevice</c> stayed null forever and that
+		/// test always chose "mutate in place" - on the shared <c>BlendState.Opaque</c> /
+		/// <c>DepthStencilState.Default</c> singletons every material starts out holding.</para>
+		///
+		/// <para><b>Kinectimals is the reference case.</b> Its material system
+		/// (<c>EffectPropertySet.Apply</c>, driven by <c>Content/Core/EffectProperties.xml</c>) writes
+		/// <c>DestinationBlend = InverseSourceAlpha</c> onto every material whose name contains
+		/// "alpha", and a default rule writes <c>DestinationBlend = Zero</c> onto everything. With no
+		/// clone, both rules landed on the same global object, so whichever model was applied last
+		/// won. The damage is invisible on opaque geometry - at alpha 1, InverseSourceAlpha and Zero
+		/// produce the same pixel - and shows only on alpha-blended parts, which then draw opaque.
+		/// Its leaf textures are premultiplied DXT5 whose transparent region is exactly (0,0,0,0),
+		/// so drawing them opaque paints solid black around every leaf. Identical on every driver,
+		/// which is what rules out the renderer.</para>
+		///
+		/// <para>This deliberately does <b>not</b> go through the <see cref="GraphicsDevice"/> setter.
+		/// That setter registers a resource reference, and the state singletons are process-lifetime
+		/// while a device is per game launch - registering them would let the first game's device
+		/// disposal take <c>BlendState.Opaque</c> down for every launch after it. Binding is also
+		/// one-way and first-writer-wins, matching XNA, where a bound state object never changes
+		/// owner.</para>
+		/// </remarks>
+		internal void BindToGraphicsDevice(GraphicsDevice device)
+		{
+			if (graphicsDevice == null)
+			{
+				graphicsDevice = device;
+			}
+		}
+
+		#endregion
+
 		#region Disposing Event
 
 		public event EventHandler<EventArgs> Disposing;

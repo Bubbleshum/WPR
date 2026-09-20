@@ -3,7 +3,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using WPR.Xna.Rhi;
 
-namespace WPR.Backend.FNA.Input
+namespace WPR.Engine.Input
 {
     /// <summary>
     /// XNA <see cref="DrawableGameComponent"/> that paints a simple tilt indicator over
@@ -16,9 +16,9 @@ namespace WPR.Backend.FNA.Input
     /// white texture. <c>DrawOrder = int.MaxValue</c> keeps the overlay above whatever
     /// the user game draws.
     ///
-    /// <para><b>Lives here, not in the head</b> (moved 2026-09-01, Stage 5) — same reason as
-    /// <see cref="TiltInputXnaComponent"/>: it derives from a spine type. The value it draws
-    /// comes from the head through <see cref="IKeyboardEmulationHost.ScreenAcceleration"/>.</para>
+    /// <para><b>Engine code, not backend code</b> — same reasoning as
+    /// <see cref="TiltInputXnaComponent"/>. The value it draws comes from the head's module
+    /// through <see cref="IKeyboardEmulationHost.ScreenAcceleration"/>.</para>
     /// </remarks>
     internal sealed class TiltOverlayXnaComponent : DrawableGameComponent
     {

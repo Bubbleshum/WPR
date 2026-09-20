@@ -1,6 +1,6 @@
 ﻿using Microsoft.Xna.Framework.Input.Touch;
-using WPR.Engine.Audio;
 using Microsoft.Xna.Framework;
+using WPR.Engine.GameLoop;
 using System.Reflection;
 using System.Runtime.Loader;
 using WPR.Models;
@@ -21,6 +21,23 @@ using System.Threading.Tasks;
 
 namespace WPR
 {
+    /// <summary>
+    /// The XNA game launch sequence: resolve the install folder, attach the per-game diagnostics,
+    /// load the game into a collectible <see cref="AssemblyLoadContext"/>, prime the WP7 lifecycle,
+    /// run the loop, and tear everything down in the one order that keeps the ALC-unload /
+    /// stuck-audio / duplicate-static regressions closed.
+    ///
+    /// <para><b>Engine code.</b> Lives in <c>WPR.Engine.GameLoop</c> beside the
+    /// <see cref="IGameHost"/> contract it drives (moved out of <c>WPR.Backend.FNA</c> on
+    /// 2026-09-20). Nothing in this file names a rendering backend: the few steps that need one
+    /// — the title location, decorating the window, the leaked-window check — arrive through
+    /// <see cref="IGameLaunchHooks"/>, which the FNA host implements. Everything else is host
+    /// coordination that was only ever in the backend because it was moved there verbatim.</para>
+    ///
+    /// <para><b>The order inside <see cref="Start"/> is load-bearing.</b> Read the remarks on each
+    /// step before moving one; most of them exist because a reorder produced a crash, a hang, or a
+    /// game that could not be launched twice in one session.</para>
+    /// </summary>
     public static class ApplicationLaunch
     {
         /// <summary>
@@ -269,8 +286,11 @@ namespace WPR
             };
         }
 
-        public static async Task Start(Application app, Action<DisplayOrientation>? requestOrientation = null, Action<Game>? onGameCreated = null)
+        public static async Task Start(Application app, IGameLaunchHooks hooks)
         {
+            if (app == null) throw new ArgumentNullException(nameof(app));
+            if (hooks == null) throw new ArgumentNullException(nameof(hooks));
+
             if (app.ApplicationType == ApplicationType.Silverlight)
             {
                 throw new NotSupportedException(
@@ -292,6 +312,12 @@ namespace WPR
                     $"Application runtime type '{app.ApplicationType}' is not supported.");
             }
 
+            // Framework-side per-launch hooks. The FNA host used to register these before calling
+            // in here, but every one of them names only WPR.Framework.Xna types, so they are launch
+            // work, not backend work. XnaBackend.Clear() — the host's finally — drops them again
+            // after this method returns. Registered before anything can construct a Game.
+            RegisterFrameworkHooks();
+
             // Setting game folder path
             WindowsCompability.Application.Current.ProductId = app.ProductId;
             // Same value on the neutral ambient holder. GamerServices reads it from here rather
@@ -304,7 +330,9 @@ namespace WPR
             string folderPath = ComputeCurrentProductFolder();
             _LaunchProductFolder = folderPath;
 
-            FNAPlatform.TitleLocation = folderPath;
+            // The backend's content root. FNA reads it through TitleContainer for every content
+            // stream, so it has to be set before the game constructs anything.
+            hooks.SetTitleLocation(folderPath);
             // Publish the install folder to the neutral ambient holder so low-level
             // shims (e.g. XElement2.Load) resolve bare relative data reads against it,
             // consistent with the Silverlight path. (The XNA loop also SetCurrentDirectory's
@@ -341,7 +369,7 @@ namespace WPR
                 // NoAudioHardwareException, and "media=" names who is actually playing songs.
                 WprTrace("[wpr-audio] " + WPR.Engine.Audio.AudioBackendRegistry.LastComposition);
                 InstallCrashHooks();
-                Backend.FNA.TeardownDiagnostics.RecordLaunchBaseline();
+                hooks.RecordLaunchBaseline();
                 TeardownLog($"===== launch: {app.Name} ({app.ProductId}) =====");
 
                 // Surface exceptions that game code swallows in broad catch(Exception){}
@@ -582,14 +610,17 @@ namespace WPR
                     string displayName = HardcodedAchievementCatalogue.GameName(app.ProductId) ?? app.Name;
                     obj!.Window.Title = $"{displayName} - {app.Author} (Publisher: {app.Publisher})";
 
-                    // Hook for the host to decorate the just-created SDL window (e.g. set the
-                    // game's icon via SDL_SetWindowIcon). Best-effort: a host that throws here
-                    // shouldn't prevent the game from running.
-                    if (onGameCreated != null)
-                    {
-                        try { onGameCreated(obj); }
-                        catch (Exception ex) { Log.Warn(LogCategory.AppList, $"onGameCreated hook threw: {ex.Message}"); }
-                    }
+                    // Backend decoration of the just-created window (the game's icon — on FNA that
+                    // is SDL_SetWindowIcon on the handle that now exists) and anything else that
+                    // needs the concrete Game. Best-effort: a backend that throws here shouldn't
+                    // prevent the game from running.
+                    try { hooks.OnGameCreated(obj); }
+                    catch (Exception ex) { Log.Warn(LogCategory.AppList, $"OnGameCreated hook threw: {ex.Message}"); }
+
+                    // Keyboard-driven tilt emulation, when a head registered one. Engine code, so it
+                    // is composed here rather than by the backend; a no-op on Android. Order kept
+                    // from the old host lambda: icon first, then the components.
+                    WPR.Engine.Input.KeyboardEmulation.AttachTo(obj);
 
                     // Re-affirm in case the user game's ctor reset these (it shouldn't, but
                     // the cost is one static field write).
@@ -597,7 +628,6 @@ namespace WPR
                     TouchPanel.MouseAsTouch = true;
 #endif
 
-                    WPR.Backend.FNA.Compat.GraphicsDeviceManager.RequestOrientation = requestOrientation;
                     GamerServicesDispatcher.WindowHandle = obj.Window.Handle;
 
                     // A handful of titles must not receive the synthetic cold-start Activated
@@ -633,17 +663,10 @@ namespace WPR
                         WprTrace("[wpr-ex] HandleApplicationStart priming threw: " + ex);
                     }
 
-                    GraphicsDeviceManager? manager = obj.Services.GetService(typeof(IGraphicsDeviceManager)) as GraphicsDeviceManager;
-                    if (manager != null)
-                    {
-                        manager.PreparingDeviceSettings += (obj, args) =>
-                        {
-                            WPR.Backend.FNA.Compat.GraphicsDeviceManager.RequestOrientationChange(
-                                args.GraphicsDeviceInformation.PresentationParameters.BackBufferWidth,
-                                args.GraphicsDeviceInformation.PresentationParameters.BackBufferHeight
-                            );
-                        };
-                    }
+                    // The last backend hook before Run. On FNA this is where the WP7 orientation
+                    // request is wired to GraphicsDeviceManager.PreparingDeviceSettings; the device
+                    // does not exist yet, so nothing fires until the game creates it.
+                    hooks.OnBeforeRun(obj);
 
                     try
                     {
@@ -751,12 +774,15 @@ namespace WPR
                     // still be on it.
                     try
                     {
-                        if (obj?.Window != null && Backend.FNA.TeardownDiagnostics.HasLiveSdlWindow())
+                        if (obj?.Window != null && hooks.HasLiveGameWindow())
                         {
                             TeardownLog("window leak: Game.Dispose left the SDL window alive — forcing DisposeWindow");
-                            FNAPlatform.DisposeWindow(obj.Window);
+                            // Through the platform seam rather than FNAPlatform: the same call (the
+                            // FNA IPlatformBackend forwards to it), and the seam is deliberately not
+                            // cleared while a backend is composed, so it is valid here.
+                            WPR.Xna.Rhi.XnaBackend.Platform.DisposeWindow(obj.Window);
                             TeardownLog("window leak: forced DisposeWindow done, stillAlive=" +
-                                        Backend.FNA.TeardownDiagnostics.HasLiveSdlWindow());
+                                        hooks.HasLiveGameWindow());
                         }
                     }
                     catch (Exception ex)
@@ -889,7 +915,7 @@ namespace WPR
                     // Close-failure investigation: WER reports an unresponsive TOP-LEVEL WINDOW long
                     // after this point, and FNA's SDL window lives in this process — so record what
                     // windows/threads survive the teardown.
-                    TeardownLog("post-teardown: " + Backend.FNA.TeardownDiagnostics.Describe());
+                    TeardownLog("post-teardown: " + hooks.DescribePostTeardown());
                     // Candidate ALC roots held by the WPR-owned XNA layer (the ALC still fails to
                     // unload even now the leaked window is gone — different cause, still open).
                     TeardownLog("post-teardown retained: " + WPR.Xna.Rhi.XnaRetainedState.Describe());
@@ -1308,6 +1334,11 @@ namespace WPR
 
             try { WPR.SilverlightCompability.Touch.ResetForNewLaunch(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"Touch reset threw: {ex.Message}"); }
+
+            // A wheel scroll still travelling when the player quits would otherwise be delivered
+            // into the next launch's first frames, as a finger drag nobody performed.
+            try { WPR.Xna.Rhi.WheelTouchScroll.Reset(); }
+            catch (Exception ex) { Log.Warn(LogCategory.AppList, $"WheelTouchScroll reset threw: {ex.Message}"); }
 
             try { GamerServicesDispatcher.ResetForNewLaunch(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"GamerServicesDispatcher reset threw: {ex.Message}"); }
@@ -1744,6 +1775,99 @@ namespace WPR
                 f.SetValue(null, Activator.CreateInstance(f.FieldType));
             }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"ResetNamedStaticFlag({typeName}.{fieldName}) threw: {ex.Message}"); }
+        }
+
+        /// <summary>
+        /// Registers the per-launch hooks on <see cref="WPR.Xna.Rhi.XnaBackend"/> whose
+        /// implementations are all framework types: the game-thread marshaller, the
+        /// focus-activation guard, and the presentation (backbuffer size + orientation) hook.
+        /// The FNA host registered these until 2026-09-20; nothing about them is FNA's.
+        /// <c>XnaBackend.Clear()</c>, which the host runs after <see cref="Start"/> returns,
+        /// drops them again.
+        /// </summary>
+        private static void RegisterFrameworkHooks()
+        {
+            // GamerServices builds achievement UI inside the EndGetAchievements callback and
+            // creates textures per row; graphics resource calls are thread-affine, so the callback
+            // has to reach the game thread. It goes through this slot rather than calling
+            // WprGameThread directly — the same inversion every other slot on XnaBackend uses.
+            WPR.Xna.Rhi.XnaBackend.SetGameThreadPost(WprGameThread.Post);
+            WPR.Xna.Rhi.XnaBackend.SetSuppressFocusActivation(WprActivationGuard.SuppressFocusActivation);
+
+            // TouchPanel's three Display* properties describe one thing — the WP7 display the game
+            // presents to — so they are set together, from one rule, in one place. On real XNA the
+            // framework maintained them; FNA leaves them to the game, and WP7 titles were written
+            // against the framework doing it.
+            //
+            // DisplayOrientation is NOT cosmetic: WP7's accelerometer axes are fixed to the device,
+            // never to the display, so a game that supports more than one orientation has to rotate
+            // every reading itself — and it reads TouchPanel.DisplayOrientation to know which way.
+            // Doodle Jump is the reference case: p_xna_AccelerometerReadingChanged stores the sample
+            // ONLY inside `if (DisplayOrientation == Portrait) … else if (LandscapeLeft) … else if
+            // (LandscapeRight)`, with no else. Left at Default(0) — which is what it was, because
+            // nothing in WPR ever assigned this property — every reading fell off the end of that
+            // chain and the game's acceleration stayed 0 for the whole session. Tilt did nothing,
+            // on either head, with a perfectly healthy sensor delivering samples behind it.
+            var lastPresentation = string.Empty;
+            WPR.Xna.Rhi.XnaBackend.SetBackBufferSizeHook((w, h, orientation) =>
+            {
+                Microsoft.Xna.Framework.Input.Mouse.INTERNAL_BackBufferWidth = w;
+                Microsoft.Xna.Framework.Input.Mouse.INTERNAL_BackBufferHeight = h;
+                TouchPanel.DisplayWidth = w;
+                TouchPanel.DisplayHeight = h;
+
+                DisplayOrientation resolved = ResolveDisplayOrientation(w, h, orientation);
+                TouchPanel.DisplayOrientation = resolved;
+
+                // One line per actual change (device create, ApplyChanges, a phone rotating), not
+                // per Reset — a game that resets every frame would otherwise bury the log. This is
+                // what a tilt report gets checked against first: it says whether the game is being
+                // told an orientation it can act on at all, and which one.
+                string presentation = $"{w}x{h} orientation={resolved}"
+                    + (orientation == DisplayOrientation.Default
+                        ? " (inferred from backbuffer)"
+                        : " (reported)");
+                if (presentation != lastPresentation)
+                {
+                    lastPresentation = presentation;
+                    Trace.WriteLine("[wpr-display] " + presentation);
+                }
+            });
+        }
+
+        /// <summary>
+        /// What orientation the game is presenting at, for <c>TouchPanel.DisplayOrientation</c>.
+        ///
+        /// <para><paramref name="reported"/> — <c>PresentationParameters.DisplayOrientation</c> —
+        /// wins whenever it names a real orientation, because it is the only source that can tell
+        /// LandscapeLeft from LandscapeRight. It is set by the platform from an SDL display-rotation
+        /// event, so in practice it is only ever populated on a phone, and only after the device
+        /// physically rotates: a desktop never rotates, and a phone whose activity locked its
+        /// orientation before the window existed produces no <em>change</em> to report.</para>
+        ///
+        /// <para>Otherwise infer from the backbuffer, using the same width-vs-height rule the rest
+        /// of the stack already agrees on — the backend's <c>GraphicsDeviceManager</c> override
+        /// (which is what actually asks the Android activity to go portrait or landscape),
+        /// <c>FNAWindow.EndScreenDeviceChange</c> and <c>TiltInputXnaComponent.ResolveOrientation</c>.
+        /// Landscape resolves to LandscapeRight to stay consistent with all three.</para>
+        /// </summary>
+        private static DisplayOrientation ResolveDisplayOrientation(
+            int width,
+            int height,
+            DisplayOrientation reported)
+        {
+            if (reported == DisplayOrientation.Portrait
+             || reported == DisplayOrientation.LandscapeLeft
+             || reported == DisplayOrientation.LandscapeRight)
+            {
+                return reported;
+            }
+
+            // A zero-sized backbuffer should not be reachable here (this fires from device
+            // create/reset), but Portrait is the safer guess for a WP7 title if it ever is.
+            return width > height
+                ? DisplayOrientation.LandscapeRight
+                : DisplayOrientation.Portrait;
         }
 
         private static string BuildDiagnostics(Game? obj, Exception ex)

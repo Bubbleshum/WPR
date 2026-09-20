@@ -67,7 +67,9 @@ namespace Microsoft.Xna.Framework.GamerServices
 
         public double GetValueDouble(string key) => this.GetTypedValue<double>(key);
 
-        public string GetValueString(string key) => Convert.ToString(this.GetProperty(key, false).GetValue(), (IFormatProvider)CultureInfo.InvariantCulture);
+        // Absent key -> Convert.ToString(null) -> "". See the note on GetValueStream for why
+        // every read here has to survive a key that was never populated.
+        public string GetValueString(string key) => Convert.ToString(this.GetProperty(key, false)?.GetValue(), (IFormatProvider)CultureInfo.InvariantCulture);
 
         public LeaderboardOutcome GetValueOutcome(string key) => (LeaderboardOutcome)this.GetValueInt32(key);
 
@@ -75,12 +77,60 @@ namespace Microsoft.Xna.Framework.GamerServices
 
         public TimeSpan GetValueTimeSpan(string key) => new TimeSpan(this.GetValueInt64(key));
 
-        public Stream GetValueStream(string key) => this.GetProperty(key, false).GetValue() as Stream;
+        /// <summary>
+        /// A leaderboard's blob column. Demand-creates, and hands back a real writable stream
+        /// rather than null.
+        /// </summary>
+        /// <remarks>
+        /// <para><b>Every column read here has to tolerate a key nobody populated, because under
+        /// WPR nobody ever does.</b> On Xbox LIVE this dictionary arrives pre-filled from the
+        /// leaderboard's published schema, so a game reading a column it declared could not miss.
+        /// WPR has no leaderboard service and <see cref="LeaderboardEntry"/> starts empty, so
+        /// <c>GetProperty(key, false)</c> returns null and the dereference that follows it was a
+        /// guaranteed <see cref="NullReferenceException"/> on the first read of any column.</para>
+        /// <para><b>This one demand-creates where the other readers do not, because an XNA stream
+        /// column is WRITTEN through its getter</b> — that is the whole reason XNA models a blob
+        /// as a <see cref="Stream"/> instead of a byte-array setter. Returning null would only
+        /// move the throw one frame out, to the caller's <c>.Write(...)</c>. Chickens Can't Fly is
+        /// the reference case: <c>ScoreSubmitter.SubmitLeaderboardEntry</c> does
+        /// <c>Columns.GetValueStream("ScoreBlob").Write(blob, 0, blob.Length)</c> guarded only by
+        /// <c>catch (IOException)</c>, so an NRE from either place escapes — and it is reached
+        /// from <c>GameplayScreen.OnLevelFinished()</c>, i.e. once per frame for as long as the
+        /// level-complete state is up. The player finishes a level and the results screen never
+        /// advances, while the game keeps drawing perfectly (692 identical <c>[wpr-fce]</c> in
+        /// one sitting, zero <c>Game.Draw threw</c>).</para>
+        /// <para>The bytes go nowhere, which is correct rather than a shortfall: there is no
+        /// service to upload them to, and nothing in WPR ever reads a leaderboard back. What the
+        /// game needed was for the question to be answerable — the same position
+        /// <see cref="Microsoft.Xna.Framework.Media.PlaylistCollection"/> and
+        /// <c>Microsoft.Phone.Shell.ShellTile</c> take.</para>
+        /// </remarks>
+        public Stream GetValueStream(string key)
+        {
+            PropertyValue property = this.GetProperty(key, true);
+            if (property.GetValue() is Stream existing)
+                return existing;
+
+            // SetValue rather than assigning through Add: the key may already hold a non-stream
+            // value (a game that wrote the column as something else first), and SetValue is what
+            // keeps IsChanged/changedPropertyCount consistent.
+            MemoryStream stream = new MemoryStream();
+            property.SetValue(stream);
+            return stream;
+        }
 
         private T GetTypedValue<T>(string key) where T : struct, IEquatable<T>
         {
             PropertyValue property = this.GetProperty(key, false);
-            return property is TypedPropertyValue<T> typedPropertyValue ? typedPropertyValue.GetTypedValue() : (T)Convert.ChangeType(property.GetValue(), typeof(T), (IFormatProvider)CultureInfo.InvariantCulture);
+            if (property is TypedPropertyValue<T> typedPropertyValue)
+                return typedPropertyValue.GetTypedValue();
+
+            // Absent key, or a property holding no value -> default(T). Convert.ChangeType would
+            // throw on null. See the note on GetValueStream.
+            object value = property?.GetValue();
+            return value == null
+                ? default(T)
+                : (T)Convert.ChangeType(value, typeof(T), (IFormatProvider)CultureInfo.InvariantCulture);
         }
 
         public void SetValue(string key, int value) => this.SetTypedValue<int>(key, value);
@@ -135,7 +185,10 @@ namespace Microsoft.Xna.Framework.GamerServices
 
         public object this[string key]
         {
-            get => this.GetProperty(key, false).GetValue();
+            // null rather than a throw for an absent key, matching TryGetValue and the typed
+            // readers above — see the note on GetValueStream. (Neither XNA's own NRE nor
+            // IDictionary's KeyNotFoundException is a useful answer to a game here.)
+            get => this.GetProperty(key, false)?.GetValue();
             set => this.SetUntypedValue(key, value);
         }
 

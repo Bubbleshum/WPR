@@ -21,6 +21,13 @@ namespace Microsoft.Xna.Framework.Graphics
 			}
 			set
 			{
+				if (value != null)
+				{
+					/* XNA binds a state object to the device on assignment; see
+					 * GraphicsResource.BindToGraphicsDevice for why that matters.
+					 */
+					value.BindToGraphicsDevice(device);
+				}
 				samplers[index] = value;
 				modifiedSamplers[index] = true;
 			}
@@ -32,15 +39,18 @@ namespace Microsoft.Xna.Framework.Graphics
 
 		private readonly SamplerState[] samplers;
 		private readonly bool[] modifiedSamplers;
+		private readonly GraphicsDevice device;
 
 		#endregion
 
 		#region Internal Constructor
 
 		internal SamplerStateCollection(
+			GraphicsDevice graphicsDevice,
 			int slots,
 			bool[] modSamplers
 		) {
+			device = graphicsDevice;
 			samplers = new SamplerState[slots];
 			modifiedSamplers = modSamplers;
 			for (int i = 0; i < samplers.Length; i += 1)

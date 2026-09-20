@@ -66,6 +66,7 @@ namespace WPR.Platform.Android.Native
 
             List<GameDiagnosticSection> sections = GameDiagnostics.Collect(productId);
             sections.Add(new GameDiagnosticSection("environment", Environment()));
+            sections.Add(new GameDiagnosticSection("graphics", Graphics()));
 
             _Adapter.SetItems(Flatten(sections));
 
@@ -83,6 +84,57 @@ namespace WPR.Platform.Android.Native
             new GameDiagnosticField("device", $"{Build.Manufacturer} {Build.Model}"),
             new GameDiagnosticField("abis", string.Join(", ", Build.SupportedAbis ?? new List<string>())),
         };
+
+        /// <summary>
+        /// What the device can actually do, as capabilities rather than as a driver name — plus the
+        /// two rows that say how it came to be on that driver, because a support screenshot
+        /// otherwise cannot tell "the user chose OpenGL" from "a launch died on Vulkan and we
+        /// demoted them", and those look identical from inside a game.
+        ///
+        /// <para><b>Everything here is measured, and nothing here is XNA's <c>ProfileCapabilities</c>.</b>
+        /// That type is hardcoded per <c>GraphicsProfile</c> and describes the contract a WP7 title
+        /// was compiled against, not this handset. Rows FNA3D cannot answer — GL/GLES version,
+        /// maximum texture size, multiple render targets — are deliberately absent instead of
+        /// being filled in with constants that would read as measurements.</para>
+        /// </summary>
+        private static List<GameDiagnosticField> Graphics()
+        {
+            var fields = new List<GameDiagnosticField>
+            {
+                new GameDiagnosticField("selection", WPR.Engine.Graphics.GraphicsDriverPreference.Describe()),
+                new GameDiagnosticField("probe", WPR.Engine.Graphics.GraphicsDriverProbe.Describe()),
+            };
+
+            WPR.Engine.Graphics.IGraphicsCapabilities? caps =
+                WPR.Engine.Graphics.GraphicsCapabilitiesStore.ReadLastMeasured();
+
+            if (caps == null)
+            {
+                // Distinct from "unsupported": no game has reached its first frame on this install
+                // yet, so there has been no device to ask.
+                fields.Add(new GameDiagnosticField("measured", "(no game has rendered yet)"));
+                return fields;
+            }
+
+            fields.Add(new GameDiagnosticField("backend", caps.Backend ?? "(automatic)"));
+            fields.Add(new GameDiagnosticField(
+                "off-thread loading", Tri(caps.SupportsOffThreadResourceCreation)));
+            fields.Add(new GameDiagnosticField("dxt1 textures", Mark(caps.SupportsDxt1)));
+            fields.Add(new GameDiagnosticField("dxt3/dxt5 textures", Mark(caps.SupportsS3tc)));
+            fields.Add(new GameDiagnosticField("bc7 textures", Mark(caps.SupportsBc7)));
+            fields.Add(new GameDiagnosticField("hardware instancing", Mark(caps.SupportsHardwareInstancing)));
+            fields.Add(new GameDiagnosticField("no-overwrite locks", Mark(caps.SupportsNoOverwrite)));
+            fields.Add(new GameDiagnosticField("srgb render targets", Mark(caps.SupportsSrgbRenderTargets)));
+            fields.Add(new GameDiagnosticField(
+                "texture slots", $"{caps.MaxTextureSlots} pixel / {caps.MaxVertexTextureSlots} vertex"));
+
+            return fields;
+        }
+
+        private static string Mark(bool value) => value ? "yes" : "no";
+
+        /// <summary>Null is "we were not told", which is a different answer from "no".</summary>
+        private static string Tri(bool? value) => value == null ? "unknown" : Mark(value.Value);
 
         /// <summary>Sections into flat list rows, with a trailing copy-everything row.</summary>
         private static List<InfoRow> Flatten(List<GameDiagnosticSection> sections)

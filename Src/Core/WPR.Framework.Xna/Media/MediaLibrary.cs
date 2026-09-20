@@ -3,12 +3,13 @@ using System.Collections.Generic;
 
 namespace Microsoft.Xna.Framework.Media
 {
-    public class MediaLibrary
+    public class MediaLibrary : IDisposable
     {
         private SongCollection _Songs;
         private ArtistCollection _Artists;
         private AlbumCollection _Albums;
         private PictureCollection _Pictures;
+        private PlaylistCollection _Playlists;
 
         public MediaLibrary(MediaSource source)
         {
@@ -16,6 +17,7 @@ namespace Microsoft.Xna.Framework.Media
             _Artists = new ArtistCollection();
             _Albums = new AlbumCollection();
             _Pictures = new PictureCollection();
+            _Playlists = new PlaylistCollection();
         }
 
         public MediaLibrary() : this(new MediaSource(MediaSourceType.LocalDevice)) { }
@@ -23,8 +25,22 @@ namespace Microsoft.Xna.Framework.Media
         public SongCollection Songs => _Songs;
         public ArtistCollection Artists => _Artists;
         public AlbumCollection Albums => _Albums;
+        public PlaylistCollection Playlists => _Playlists;
         public PictureCollection Pictures => _Pictures;
         public PictureCollection SavedPictures => _Pictures;
+
+        public bool IsDisposed { get; private set; }
+
+        /// <summary>
+        /// XNA's <c>MediaLibrary</c> is <see cref="IDisposable"/>, and games call this. There is
+        /// nothing here to release — every collection is a permanently empty list — but the method
+        /// has to exist: a game that opens a library, queries it and disposes it would otherwise
+        /// fail to resolve <c>Dispose</c> when its method is compiled, not when the call runs.
+        /// </summary>
+        public void Dispose()
+        {
+            IsDisposed = true;
+        }
 
         /// <summary>
         /// Save an image into the phone's Saved Pictures album. WPR has no gallery to write into,

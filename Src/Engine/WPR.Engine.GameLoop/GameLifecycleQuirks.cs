@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace WPR
+namespace WPR.Engine.GameLoop
 {
     /// <summary>
     /// Per-game deviations from the WP7 application lifecycle <see cref="ApplicationLaunch"/>
@@ -37,6 +37,26 @@ namespace WPR
                 // game thread, fatal when it happens on the loading thread: the process aborts
                 // ~18 frames in, on the second splash, on both heads.
                 "34e0f2e7-7bc7-41c0-9431-399e7ceddd2f",
+
+                // Chickens Can't Fly (bd6d46cf…). Unlike Doodle God this one is not about
+                // running init twice — it is about WHICH init runs. FallingGame.pas_Activated
+                // reads ActivatedEventArgs.IsApplicationInstancePreserved, which WPR reports as
+                // true at boot (deliberately — see HandleApplicationStart), and concludes it is
+                // resuming a fast-app-switch: it sets GameComponents.StartupMode to
+                // FastAppSwitching. LogoLoadingScreen.LoadGame() then takes the branch that
+                // skips GameComponents.LoadStateFromDisk(), so GameComponents.TombstonedState
+                // is still null when LoadContent() -> ReactivateStaticData() ->
+                // ValueItemId.OnActivated() dereferences it. The NRE unwinds
+                // LoadComponentsAndScreens(), the loading screen never finishes, and its own
+                // DrawingThread parks on a WaitHandle forever: a black window, a game loop
+                // still ticking, and nothing in the log after the first 30 traced ticks.
+                //
+                // Suppressing the boot Activated leaves StartupMode at its NewInstance field
+                // initialiser, which is the branch that loads the state this game then reads.
+                // Note the preserved=true flag this game trips over is the very thing
+                // Battlewagon needs, so the flag cannot be changed to !anew — the two titles
+                // want opposite answers from one signal, which is what this table is for.
+                "bd6d46cf-4177-4de0-93c3-610f450fc403",
             };
 
         /// <summary>

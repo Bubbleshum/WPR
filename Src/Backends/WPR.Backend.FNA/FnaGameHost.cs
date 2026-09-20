@@ -9,19 +9,23 @@ using WPR.Xna.Rhi;
 namespace WPR.Backend.FNA
 {
     /// <summary>
-    /// FNA implementation of <see cref="IGameHost"/> — the Stage-4 seam over the FNA game-loop
-    /// driver. It adapts the (still-static, verbatim-moved) <see cref="WPR.ApplicationLaunch"/>
-    /// to the <c>WPR.Engine.GameLoop</c> contract so launchers drive games through the abstraction
-    /// instead of a static call into the FNA layer.
+    /// FNA implementation of <see cref="IGameHost"/>: composes the FNA adapters into the RHI
+    /// seams for one game run, then hands the run to the engine's launch sequence
+    /// (<see cref="WPR.ApplicationLaunch"/>), supplying the four backend-specific steps that
+    /// sequence needs through <see cref="IGameLaunchHooks"/>.
     ///
-    /// <para>Deliberately thin for this step: <see cref="RunAsync"/> returns the <em>exact same
-    /// Task</em> the launchers used before (<c>ApplicationLaunch.Start</c>), so the async/threading
-    /// model and — critically — the load-bearing teardown ordering inside that method are byte-for-byte
-    /// unchanged (ADR Risk #1). Stage 5b promotes the static <c>ApplicationLaunch</c> body into this
-    /// instance and splits ALC/lifecycle coordination back into <c>WPR.Runtime</c> behind this
-    /// interface; only then do <see cref="Shutdown"/>/<see cref="Activated"/> gain real teardown-phase
-    /// and lifecycle wiring. Until then <see cref="Shutdown"/> == <see cref="RequestExit"/> (the
-    /// teardown still runs in <c>ApplicationLaunch</c>'s finally when the loop unwinds).</para>
+    /// <para><b>What is and is not here.</b> Everything in <see cref="RunAsync"/> before the
+    /// call into <c>ApplicationLaunch.Start</c> names an FNA type — that is the test for whether a
+    /// line belongs in this file. The launch sequence itself (install folder, the collectible ALC,
+    /// the WP7 lifecycle priming, the ordered teardown) is engine code and lived here only from
+    /// Stage 4 until 2026-09-20, when the last FNA references inside it had dwindled to the hooks
+    /// below. The framework-only hooks it used to register (game-thread post, focus guard, the
+    /// presentation hook) went with it.</para>
+    ///
+    /// <para><b>Still deliberately thin on the <see cref="IGameHost"/> side.</b>
+    /// <see cref="Shutdown"/> == <see cref="RequestExit"/>: the ordered teardown runs inside
+    /// <c>ApplicationLaunch.Start</c>'s finally as the loop unwinds, and <see cref="Activated"/> /
+    /// <see cref="Deactivated"/> are declared but not yet raised.</para>
     /// </summary>
     public sealed class FnaGameHost : IGameHost
     {
@@ -36,9 +40,8 @@ namespace WPR.Backend.FNA
         /// FNA's <c>Game</c> in the public signature, which is what kept BOTH platform heads in
         /// <c>KnownBackendLeaks</c> — the Windows head genuinely used it, and the Android head
         /// leaked purely because its call site named the full ctor signature while passing null.
-        /// Everything the hook used to do now happens inside this assembly: the icon is applied by
-        /// <see cref="GameWindowIcon.ApplyTo"/> and the tilt emulator is attached by
-        /// <see cref="Input.KeyboardEmulation.AttachTo"/>.
+        /// The icon is applied by <see cref="GameWindowIcon.ApplyTo"/> from
+        /// <see cref="LaunchHooks.OnGameCreated"/>.
         /// </param>
         public FnaGameHost(
             Application app,
@@ -52,36 +55,47 @@ namespace WPR.Backend.FNA
 
         public GameHostState State => _state;
 
-        // Declared by the contract; not yet raised. Wired in 5b when ApplicationLaunch's
+        // Declared by the contract; not yet raised. Wired when ApplicationLaunch's
         // Game.Activated / PhoneApplicationService hooks move onto this instance.
         public event Action? Activated;
         public event Action? Deactivated;
 
         /// <summary>
         /// Runs the game loop and completes when the game exits. This is the launchers' entry point;
-        /// the returned Task is identical to the legacy <c>ApplicationLaunch.Start</c> call, so nothing
-        /// about the run/teardown behaviour changes.
+        /// the returned Task is the launch sequence's own, so nothing about the run/teardown
+        /// behaviour differs from calling <c>ApplicationLaunch.Start</c> directly.
         /// </summary>
         public async Task RunAsync()
         {
             _state = GameHostState.Running;
 
-            // 5c-0 (Plans/STAGE5C-SCOPE.md): publish the FNA graphics RHI so the WPR-owned XNA
-            // runtime (WPR.Framework.Xna) can reach the GPU through IGraphicsBackend without
-            // referencing FNA. Registered here — before the game constructs its GraphicsDevice —
-            // and cleared in finally (a backend registry must not outlive the run; ADR Risk #1).
-            // No consumer yet: GraphicsDevice/Texture2D/… start routing through it in 5c-1/5c-2.
             // Apply the platform's declared graphics driver BEFORE anything creates a device:
             // FNA3D reads the force hint exactly once, inside FNA3D_PrepareWindowAttributes.
             // Nothing happens when no platform declared one — GraphicsDriver.Unspecified means
             // "leave the lever alone", which is not the same instruction as "clear it" and is what
             // keeps the desktop on the D3D11 path it never had to ask for.
+            string? requestedDriver = null;
             if (WPR.Engine.Graphics.GraphicsDriverPreference.HasPreference)
             {
-                GraphicsDriverSelection.Apply(
-                    WPR.Engine.Graphics.GraphicsDriverPreference.ResolveDriverName());
+                requestedDriver = WPR.Engine.Graphics.GraphicsDriverPreference.ResolveDriverName();
+                GraphicsDriverSelection.Apply(requestedDriver);
             }
 
+            // Drop the crash breadcrumb here and nowhere earlier: this is the last instruction
+            // before anything can reach the driver, and the first call into it (PrepareWindowAttributes)
+            // already builds a throwaway device to test the waters — so a hostile driver can take
+            // the process down well before FNA3D_CreateDevice, with no exception and no log. It is
+            // retired at the first presented frame in FnaGraphicsBackend.SwapBuffers, so the
+            // pending window is device creation plus one frame rather than a play session.
+            // Inert on a platform whose head never configured the probe (Windows declares no
+            // driver at all), which is the usual absent-means-unavailable rule.
+            WPR.Engine.Graphics.GraphicsDriverProbe.MarkAttempting(requestedDriver);
+
+            // 5c-0 (Plans/STAGE5C-SCOPE.md): publish the FNA graphics RHI so the WPR-owned XNA
+            // runtime (WPR.Framework.Xna) can reach the GPU through IGraphicsBackend without
+            // referencing FNA. Registered here — before the game constructs its GraphicsDevice —
+            // and the per-launch hooks are cleared in finally (a backend registry must not outlive
+            // the run; ADR Risk #1).
             XnaBackend.SetGraphics(new FnaGraphicsBackend());
             // Spine relocation step 1: Game and GraphicsDeviceManager reach the window and the
             // event pump through this instead of naming FNAPlatform. Registered FIRST — Game's
@@ -89,16 +103,10 @@ namespace WPR.Backend.FNA
             XnaBackend.SetPlatform(new FnaPlatformBackend());
             // Synthetic touch is layered over the real input backend rather than beside it: the
             // injector has to be the last writer inside UpdateTouchPanelState, which only a
-            // decorator can guarantee. See SyntheticTouchInputBackend for why a GameComponent
-            // cannot do this. With no emulation host (Android) or no bindings, the plain backend
-            // is registered and the touch pipeline behaves exactly as it always has.
-            IInputBackend input = new FnaInputBackend();
-            IKeyboardEmulationHost? keyboardHost = XnaBackend.KeyboardEmulation;
-            if (keyboardHost != null)
-            {
-                input = new Input.SyntheticTouchInputBackend(input, keyboardHost);
-            }
-            XnaBackend.SetInput(input);
+            // decorator can guarantee. The engine decides whether to wrap (a head registered a
+            // keyboard-emulation host) — with none (Android) or no bindings, the plain backend is
+            // registered and the touch pipeline behaves exactly as it always has.
+            XnaBackend.SetInput(WPR.Engine.Input.KeyboardEmulation.WrapInput(new FnaInputBackend()));
             XnaBackend.SetStorage(new FnaStorageBackend());
             XnaBackend.SetTitleLocation(() => Microsoft.Xna.Framework.TitleLocation.Path);
             XnaBackend.SetLogInfo(msg => Microsoft.Xna.Framework.FNALoggerEXT.LogInfo?.Invoke(msg));
@@ -129,106 +137,19 @@ namespace WPR.Backend.FNA
             AudioBackendRegistry.SetBase(new WPR.Audio.FAudio.FAudioModule());
             string audioComposition = AudioBackendRegistry.Compose();
             Microsoft.Xna.Framework.FNALoggerEXT.LogInfo?.Invoke("[wpr-audio] " + audioComposition);
-            // GamerServices lives in WPR.Framework.Xna since patcher version 19, so it can no
-            // longer call FNA's WprGameThread / WprActivationGuard directly (FNA.Core references
-            // WPR.Framework.Xna, so a reference back would be circular). It goes through these
-            // two hooks instead — the same inversion every other slot on XnaBackend uses.
-            XnaBackend.SetGameThreadPost(Microsoft.Xna.Framework.WprGameThread.Post);
-            XnaBackend.SetSuppressFocusActivation(
-                Microsoft.Xna.Framework.WprActivationGuard.SuppressFocusActivation);
-            // TouchPanel's three Display* properties describe one thing — the WP7 display the game
-            // presents to — so they are set together, from one rule, in one place. On real XNA the
-            // framework maintained them; FNA leaves them to the game, and WP7 titles were written
-            // against the framework doing it.
-            //
-            // DisplayOrientation is NOT cosmetic: WP7's accelerometer axes are fixed to the device,
-            // never to the display, so a game that supports more than one orientation has to rotate
-            // every reading itself — and it reads TouchPanel.DisplayOrientation to know which way.
-            // Doodle Jump is the reference case: p_xna_AccelerometerReadingChanged stores the sample
-            // ONLY inside `if (DisplayOrientation == Portrait) … else if (LandscapeLeft) … else if
-            // (LandscapeRight)`, with no else. Left at Default(0) — which is what it was, because
-            // nothing in WPR ever assigned this property — every reading fell off the end of that
-            // chain and the game's acceleration stayed 0 for the whole session. Tilt did nothing,
-            // on either head, with a perfectly healthy sensor delivering samples behind it.
-            var lastPresentation = string.Empty;
-            XnaBackend.SetBackBufferSizeHook((w, h, orientation) =>
-            {
-                Microsoft.Xna.Framework.Input.Mouse.INTERNAL_BackBufferWidth = w;
-                Microsoft.Xna.Framework.Input.Mouse.INTERNAL_BackBufferHeight = h;
-                Microsoft.Xna.Framework.Input.Touch.TouchPanel.DisplayWidth = w;
-                Microsoft.Xna.Framework.Input.Touch.TouchPanel.DisplayHeight = h;
 
-                Microsoft.Xna.Framework.DisplayOrientation resolved =
-                    ResolveDisplayOrientation(w, h, orientation);
-                Microsoft.Xna.Framework.Input.Touch.TouchPanel.DisplayOrientation = resolved;
-
-                // One line per actual change (device create, ApplyChanges, a phone rotating), not
-                // per Reset — a game that resets every frame would otherwise bury the log. This is
-                // what a tilt report gets checked against first: it says whether the game is being
-                // told an orientation it can act on at all, and which one.
-                string presentation = $"{w}x{h} orientation={resolved}"
-                    + (orientation == Microsoft.Xna.Framework.DisplayOrientation.Default
-                        ? " (inferred from backbuffer)"
-                        : " (reported)");
-                if (presentation != lastPresentation)
-                {
-                    lastPresentation = presentation;
-                    System.Diagnostics.Trace.WriteLine("[wpr-display] " + presentation);
-                }
-            });
+            // The framework-side hooks (game-thread post, focus-activation guard, the presentation
+            // hook that feeds Mouse/TouchPanel) are registered by ApplicationLaunch itself now —
+            // they name only WPR.Framework.Xna types. XnaBackend.Clear() below still drops them.
             try
             {
-                // The per-Game setup the launcher used to inject as a hook. Both steps need the
-                // Game instance and both are backend work (an SDL window handle; FNA GameComponents),
-                // so they live here rather than in a head. Order matches the old lambda.
-                await WPR.ApplicationLaunch.Start(_app, _requestOrientation, game =>
-                {
-                    _windowIcon?.ApplyTo(game);
-                    Input.KeyboardEmulation.AttachTo(game);
-                });
+                await WPR.ApplicationLaunch.Start(_app, new LaunchHooks(this));
             }
             finally
             {
                 XnaBackend.Clear();
                 _state = GameHostState.Stopped;
             }
-        }
-
-        /// <summary>
-        /// What orientation the game is presenting at, for
-        /// <c>TouchPanel.DisplayOrientation</c>.
-        ///
-        /// <para><paramref name="reported"/> — <c>PresentationParameters.DisplayOrientation</c> —
-        /// wins whenever it names a real orientation, because it is the only source that can tell
-        /// LandscapeLeft from LandscapeRight. It is set by
-        /// <c>SDL2_FNAPlatform.INTERNAL_HandleOrientationChange</c> from an SDL display-rotation
-        /// event, so in practice it is only ever populated on a phone, and only after the device
-        /// physically rotates: a desktop never rotates, and a phone whose activity locked its
-        /// orientation before the window existed produces no <em>change</em> to report.</para>
-        ///
-        /// <para>Otherwise infer from the backbuffer, using the same width-vs-height rule the rest
-        /// of the stack already agrees on — <c>Compat.GraphicsDeviceManager.RequestOrientationChange</c>
-        /// (which is what actually asks the Android activity to go portrait or landscape),
-        /// <c>FNAWindow.EndScreenDeviceChange</c> and <c>TiltInputXnaComponent.ResolveOrientation</c>.
-        /// Landscape resolves to LandscapeRight to stay consistent with all three.</para>
-        /// </summary>
-        private static Microsoft.Xna.Framework.DisplayOrientation ResolveDisplayOrientation(
-            int width,
-            int height,
-            Microsoft.Xna.Framework.DisplayOrientation reported)
-        {
-            if (reported == Microsoft.Xna.Framework.DisplayOrientation.Portrait
-             || reported == Microsoft.Xna.Framework.DisplayOrientation.LandscapeLeft
-             || reported == Microsoft.Xna.Framework.DisplayOrientation.LandscapeRight)
-            {
-                return reported;
-            }
-
-            // A zero-sized backbuffer should not be reachable here (this fires from device
-            // create/reset), but Portrait is the safer guess for a WP7 title if it ever is.
-            return width > height
-                ? Microsoft.Xna.Framework.DisplayOrientation.LandscapeRight
-                : Microsoft.Xna.Framework.DisplayOrientation.Portrait;
         }
 
         /// <summary><see cref="IGameHost.Run"/> — synchronous blocking conformance. Launchers use
@@ -252,13 +173,69 @@ namespace WPR.Backend.FNA
 
         /// <summary>
         /// Idempotent. Signals exit; the ordered teardown (StopAudio → ClearContentCaches →
-        /// DisposeGame, plus ALC unload) currently executes in <c>ApplicationLaunch</c>'s finally as
-        /// the loop unwinds — preserved verbatim. Becomes an explicit <see cref="TeardownPhase"/>
-        /// sequence here in 5b.
+        /// DisposeGame, plus ALC unload) executes in <c>ApplicationLaunch</c>'s finally as the
+        /// loop unwinds — preserved verbatim.
         /// </summary>
         public void Shutdown() => RequestExit();
 
-        // Suppress "event never used" until 5b wires them; keeps the public surface honest.
+        // Suppress "event never used" until the lifecycle events are wired; keeps the public surface honest.
         private void TouchEvents() { Activated?.Invoke(); Deactivated?.Invoke(); }
+
+        /// <summary>
+        /// The FNA-specific steps of the launch sequence. Each member is called at a fixed point
+        /// inside <c>ApplicationLaunch.Start</c>; see <see cref="IGameLaunchHooks"/> for where.
+        /// Every line in here names an FNA or SDL type, which is exactly why these four steps are
+        /// the ones that stayed in the backend.
+        /// </summary>
+        private sealed class LaunchHooks : IGameLaunchHooks
+        {
+            private readonly FnaGameHost _owner;
+
+            public LaunchHooks(FnaGameHost owner) => _owner = owner;
+
+            /// <summary>FNA's content root: TitleContainer opens every content stream under it.</summary>
+            public void SetTitleLocation(string installFolder) => FNAPlatform.TitleLocation = installFolder;
+
+            public void RecordLaunchBaseline() => TeardownDiagnostics.RecordLaunchBaseline();
+
+            /// <summary>
+            /// The window exists: put the per-game icon on it (SDL_SetWindowIcon needs the handle),
+            /// and hand the head's orientation callback to the WP7 <c>GraphicsDeviceManager</c>
+            /// override games bind. The static assignment used to sit a few statements later in
+            /// the launch sequence; nothing reads it before <c>ApplyChanges</c>, so the move is
+            /// behaviour-neutral.
+            /// </summary>
+            public void OnGameCreated(Game game)
+            {
+                _owner._windowIcon?.ApplyTo(game);
+                Compat.GraphicsDeviceManager.RequestOrientation = _owner._requestOrientation;
+            }
+
+            /// <summary>
+            /// Route the backbuffer the game is about to create into the orientation request —
+            /// the same width-vs-height rule <c>ApplyChanges</c> applies, for games that size the
+            /// device through <c>PreparingDeviceSettings</c> instead.
+            /// </summary>
+            public void OnBeforeRun(Game game)
+            {
+                GraphicsDeviceManager? manager =
+                    game.Services.GetService(typeof(IGraphicsDeviceManager)) as GraphicsDeviceManager;
+                if (manager != null)
+                {
+                    manager.PreparingDeviceSettings += (_, args) =>
+                    {
+                        Compat.GraphicsDeviceManager.RequestOrientationChange(
+                            args.GraphicsDeviceInformation.PresentationParameters.BackBufferWidth,
+                            args.GraphicsDeviceInformation.PresentationParameters.BackBufferHeight
+                        );
+                    };
+                }
+            }
+
+            /// <summary>An SDL_app top-level window still alive in this process.</summary>
+            public bool HasLiveGameWindow() => TeardownDiagnostics.HasLiveSdlWindow();
+
+            public string DescribePostTeardown() => TeardownDiagnostics.Describe();
+        }
     }
 }

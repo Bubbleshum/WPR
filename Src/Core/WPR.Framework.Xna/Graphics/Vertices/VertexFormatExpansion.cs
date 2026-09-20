@@ -30,13 +30,33 @@ namespace Microsoft.Xna.Framework.Graphics
 	/// one- and four-bone variants is correct, and the bone matrices arrive intact.
 	/// </para>
 	/// <para>
-	/// <b>Why unconditionally, rather than only where unsupported.</b> Expanding to
-	/// float is lossless and lands on formats every device supports, so doing it
-	/// always is correct everywhere and needs no per-device capability query — which
-	/// would otherwise mean a new FNA3D vtable entry, a P/Invoke, and a seam member,
-	/// for a decision about three rarely-used formats. The cost is a wider buffer on
-	/// devices that would have coped; WP7-era meshes make that immaterial. If it ever
-	/// stops being immaterial, add the query and gate <see cref="NeedsExpansion"/>.
+	/// <b>It is gated on the VULKAN driver, and that gate is the point.</b> The defect
+	/// is Vulkan's alone: only Vulkan maps these three to <c>*_SCALED</c> types, and only
+	/// <c>*_SCALED</c> is optional for vertex buffers. D3D11 takes <c>Byte4</c> as
+	/// <c>DXGI_FORMAT_R8G8B8A8_UINT</c> and OpenGL as an unnormalised
+	/// <c>GL_UNSIGNED_BYTE</c>, both universally supported — so on those drivers this
+	/// rewrite fixes nothing and is pure risk. It ran unconditionally from 2026-09-07,
+	/// when Android moved to Vulkan, until 2026-09-20, which silently rewrote the vertex
+	/// layout of every affected game on the DESKTOP head too, for an Adreno bug no
+	/// desktop GPU has.
+	/// </para>
+	/// <para>
+	/// Within Vulkan it is still unconditional, because narrowing to "devices that
+	/// actually reject the format" needs a real
+	/// <c>vkGetPhysicalDeviceFormatProperties</c> query, and that means a new FNA3D
+	/// vtable entry, a P/Invoke, a seam member and a rebuild of the four prebuilt
+	/// binaries. Expanding to float is lossless and lands on formats every device
+	/// supports, so over-applying it within Vulkan costs only a wider buffer, which
+	/// WP7-era meshes make immaterial. That query is the remaining correct fix if a
+	/// Vulkan device is ever found this transform makes worse.
+	/// </para>
+	/// <para>
+	/// <b>Scope, measured 2026-09-20.</b> Three of the 36 installed titles construct a
+	/// <c>Byte4</c>/<c>Short2</c>/<c>Short4</c> vertex element at all — Mirror's Edge,
+	/// Kinectimals and citizen12. For every other game <see cref="TryTranslate"/> returns
+	/// null and none of this executes on any driver, so this pass is never the
+	/// explanation for a game with no such element: read the declaration before
+	/// suspecting it.
 	/// </para>
 	/// <para>
 	/// The game keeps seeing the <see cref="VertexDeclaration"/> it created. Only the
@@ -46,6 +66,76 @@ namespace Microsoft.Xna.Framework.Graphics
 	/// </remarks>
 	internal static class VertexFormatExpansion
 	{
+		#region Driver Gate
+
+		/* One flag per format, because the device answers per format — it is not a
+		 * single "this GPU is bad" fact. Defaulting every one of them to "expand" is
+		 * deliberate: until the device has been asked we cannot prove a format works,
+		 * and being wrong that way costs a wider vertex buffer while being wrong the
+		 * other way costs a character stuck in bind pose.
+		 */
+		private static bool expandByte4 = true;
+		private static bool expandShort2 = true;
+		private static bool expandShort4 = true;
+
+		/// <summary>
+		/// True when at least one format still needs rewriting on this device, so the
+		/// common "nothing to do" case costs one bool rather than a scan.
+		/// </summary>
+		internal static bool Enabled
+		{
+			get { return expandByte4 || expandShort2 || expandShort4; }
+		}
+
+		/// <summary>
+		/// Records what the device said. Called by the graphics backend from the same
+		/// call that creates the device — after the driver has come up, so there is a
+		/// real device to ask, and before any <see cref="VertexBuffer"/> can exist.
+		/// </summary>
+		/// <param name="byte4Supported">
+		/// Whether the device accepts the format in a vertex buffer. A format it
+		/// supports is left exactly as the game declared it.
+		/// </param>
+		internal static void SetDeviceSupport(
+			bool byte4Supported,
+			bool short2Supported,
+			bool short4Supported,
+			string detail
+		) {
+			expandByte4 = !byte4Supported;
+			expandShort2 = !short2Supported;
+			expandShort4 = !short4Supported;
+
+			/* One line per launch, unconditionally including the "nothing to expand"
+			 * case: "this rewrite did not run" and "this rewrite ran and did nothing"
+			 * are otherwise indistinguishable from inside a game, and the whole point
+			 * of asking the device is that the answer can be read rather than guessed.
+			 */
+			XnaBackend.LogInfo(
+				"[wpr-vfmt] device vertex formats — Byte4=" + Describe(byte4Supported) +
+				" Short2=" + Describe(short2Supported) +
+				" Short4=" + Describe(short4Supported) +
+				" (" + detail + "); expansion " +
+				(Enabled ? "ENABLED" : "not needed")
+			);
+		}
+
+		private static string Describe(bool supported)
+		{
+			return supported ? "ok" : "UNSUPPORTED";
+		}
+
+		/// <summary>Restores the defaults on device teardown, so one game run cannot
+		/// leave the next launch in this process trusting a previous device's answer.</summary>
+		internal static void ClearDeviceSupport()
+		{
+			expandByte4 = true;
+			expandShort2 = true;
+			expandShort4 = true;
+		}
+
+		#endregion
+
 		#region Format Facts
 
 		/// <summary>Bytes one element of this format occupies in a vertex.</summary>
@@ -76,9 +166,13 @@ namespace Microsoft.Xna.Framework.Graphics
 		/// </summary>
 		internal static bool NeedsExpansion(VertexElementFormat format)
 		{
-			return	format == VertexElementFormat.Byte4 ||
-				format == VertexElementFormat.Short2 ||
-				format == VertexElementFormat.Short4;
+			switch (format)
+			{
+				case VertexElementFormat.Byte4:		return expandByte4;
+				case VertexElementFormat.Short2:	return expandShort2;
+				case VertexElementFormat.Short4:	return expandShort4;
+				default:							return false;
+			}
 		}
 
 		/// <summary>The float format carrying the same component count.</summary>
@@ -103,7 +197,7 @@ namespace Microsoft.Xna.Framework.Graphics
 		/// </summary>
 		internal static VertexDeclaration TryTranslate(VertexDeclaration original)
 		{
-			if (original == null)
+			if (original == null || !Enabled)
 			{
 				return null;
 			}

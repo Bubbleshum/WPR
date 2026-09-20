@@ -42,7 +42,12 @@ namespace Microsoft.Xna.Framework
 			}
 		}
 
-		public override Rectangle ClientBounds
+		/* The real host window. GameWindow.ClientBounds does NOT return this -- on WP7 the
+		 * window is the phone screen, so the base class answers that instead and this is
+		 * what WPR internals use when they genuinely mean the OS window. See the remarks
+		 * on GameWindow.ClientBounds.
+		 */
+		internal override Rectangle HostClientBounds
 		{
 			get
 			{

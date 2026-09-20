@@ -32,10 +32,10 @@ public enum TeardownPhase
 }
 
 /// <summary>
-/// Hosts and drives a game's run loop. This is the contract that lets the FNA
-/// game-loop driver (today inlined in <c>ApplicationLaunch.cs</c>) move into
-/// WPR.Backend.FNA (Stage 5b) while Runtime keeps only assembly-load-context and
-/// lifecycle coordination — expressed here, not against FNA's <c>Game</c>.
+/// Hosts and drives a game's run loop. Implemented by <c>WPR.Backend.FNA.FnaGameHost</c>,
+/// which composes the FNA adapters and then hands the run to <c>ApplicationLaunch</c> in
+/// this same project — the assembly-load-context and lifecycle coordination, which since
+/// 2026-09-20 lives beside this contract rather than inside the backend.
 ///
 /// Implementations MUST honour <see cref="TeardownPhase"/> ordering in
 /// <see cref="Shutdown"/>; getting it wrong silently regresses the bugs that

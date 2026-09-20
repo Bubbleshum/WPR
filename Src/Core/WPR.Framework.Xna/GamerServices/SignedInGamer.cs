@@ -249,6 +249,22 @@ namespace Microsoft.Xna.Framework.GamerServices
 
                 if (achievements.Count != 0)
                 {
+                    /* Only a row that was NOT already earned produces a toast.
+                     *
+                     * Re-awarding an achievement the player already holds is normal, not a
+                     * game bug: WP7 titles routinely re-assert their whole unlocked set when
+                     * they load a save, and progression checks fire AwardAchievement on every
+                     * evaluation rather than only on the transition. The flip loop below has
+                     * always skipped those rows — but the notification used to sit outside it
+                     * and fired whenever ANY row matched the key, so every launch replayed the
+                     * toasts for achievements earned in an earlier session.
+                     *
+                     * The toast also has to describe the achievement that was actually earned,
+                     * not achievements[0]: when a key matches more than one row (the data
+                     * defect warned about above) the first row may be the already-earned one.
+                     */
+                    Achievement? newlyEarned = null;
+
                     foreach (Achievement achievement in achievements)
                     {
                         if (achievement.IsEarned)
@@ -259,27 +275,42 @@ namespace Microsoft.Xna.Framework.GamerServices
                         achievement.IsEarned = true;
                         achievement.EarnedOnline = true;
                         achievement.EarnedDateTime = DateTime.Now;
+
+                        newlyEarned ??= achievement;
                     }
 
-                    try
+                    if (newlyEarned == null)
                     {
-                        // The desktop toast momentarily steals the game window's focus, which
-                        // SDL reports as FOCUS_LOST/GAINED → FNA flips Game.IsActive →
-                        // OnDeactivated/OnActivated mid-tick. Some WP7 ports throw in those
-                        // overrides (Fruit Ninja 2013 surfaces a bogus "memory error" and exits).
-                        // Tell FNA to ignore the focus blip for a short window around the toast.
-                        WPR.Xna.Rhi.XnaBackend.SuppressFocusActivation(TimeSpan.FromSeconds(8));
-
-                        await NotificationBackend.Manager.ShowNotification(new Notification()
+                        // Trace rather than Log: WPR.Common.Log writes to stdout, which a WinExe
+                        // discards, while Trace reaches the per-game wpr_game_debug.log. This is
+                        // the line that says a toast was deliberately withheld — otherwise a
+                        // suppressed re-award and a notification manager that silently failed
+                        // look identical from inside a game.
+                        Trace.WriteLine($"[wpr-achievement] '{achievementKey}' already earned for product " +
+                            $"'{productId}' — re-award ignored, no notification.");
+                    }
+                    else
+                    {
+                        try
                         {
-                            Title = Properties.Resources.AchievementUnlocked,
-                            Body = $"{achievements[0].GamerScore}G - {achievements[0].Name}",
-                            ImagePath = Configuration.Current!.DataPath(achievements[0]._IconPath),
-                            SoundUri = "AchievementUnlocked"
-                        }, DateTime.Now + TimeSpan.FromDays(1));
-                    } catch (Exception ex)
-                    {
-                        Log.Error(LogCategory.GamerServices, $"Fail to display Achievement notification with exception:\n {ex}");
+                            // The desktop toast momentarily steals the game window's focus, which
+                            // SDL reports as FOCUS_LOST/GAINED → FNA flips Game.IsActive →
+                            // OnDeactivated/OnActivated mid-tick. Some WP7 ports throw in those
+                            // overrides (Fruit Ninja 2013 surfaces a bogus "memory error" and exits).
+                            // Tell FNA to ignore the focus blip for a short window around the toast.
+                            WPR.Xna.Rhi.XnaBackend.SuppressFocusActivation(TimeSpan.FromSeconds(8));
+
+                            await NotificationBackend.Manager.ShowNotification(new Notification()
+                            {
+                                Title = Properties.Resources.AchievementUnlocked,
+                                Body = $"{newlyEarned.GamerScore}G - {newlyEarned.Name}",
+                                ImagePath = Configuration.Current!.DataPath(newlyEarned._IconPath),
+                                SoundUri = "AchievementUnlocked"
+                            }, DateTime.Now + TimeSpan.FromDays(1));
+                        } catch (Exception ex)
+                        {
+                            Log.Error(LogCategory.GamerServices, $"Fail to display Achievement notification with exception:\n {ex}");
+                        }
                     }
                 }
 

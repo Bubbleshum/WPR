@@ -149,7 +149,9 @@ namespace WPR.Platform.Android.Native
                 ? errorText.Substring(0, 3500) + "\n…(truncated)"
                 : errorText;
 
-            ShowError(host, dialogMessage, onErrorAcknowledged);
+            // Hint FIRST. A managed failure dumps a stack trace long enough to fill several
+            // screens of a scrolling dialog, and anything appended after it is never read.
+            ShowError(host, GraphicsDriverHint() + dialogMessage, onErrorAcknowledged);
         }
 
         /// <summary>
@@ -223,6 +225,33 @@ namespace WPR.Platform.Android.Native
         {
             Log.Warn(LogCategory.AppList, $"Unity port '{app.Name}': {message}");
             ShowError(host, message);
+        }
+
+        /// <summary>
+        /// The one line that turns a graphics-driver failure from unrecoverable into a two-tap fix,
+        /// shown above every failed run's detail.
+        ///
+        /// <para>Unconditional rather than matched against a recognised exception type, because the
+        /// worst case carries no exception at all: a driver that dies inside
+        /// <c>FNA3D_CreateDevice</c>, or natively below it, reaches this method as "the game process
+        /// exited unexpectedly" with nothing to match on. Naming the driver that was actually used
+        /// also puts it in the screenshot people attach to a bug report, which is the fact that was
+        /// missing from every "black screen then crash" report so far. The advice half is phrased
+        /// conditionally so it does not claim a cause for a failure that has nothing to do with
+        /// graphics.</para>
+        ///
+        /// <para>Says nothing when the platform declared no driver — that is a process which never
+        /// composed one, and a wrong claim about the setup is worse than no claim.</para>
+        /// </summary>
+        private static string GraphicsDriverHint()
+        {
+            if (!WPR.Engine.Graphics.GraphicsDriverPreference.HasPreference) return "";
+
+            string driver = WPR.Engine.Graphics.GraphicsDriverPreference.ResolveDriverName() ?? "automatic";
+
+            return "graphics driver: " + driver
+                + " — if this game never starts on this device, try the other one under"
+                + " settings → graphics.\n\n";
         }
 
         private static void ShowError(Activity host, string message, Action? onDismissed = null)

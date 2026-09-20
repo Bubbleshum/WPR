@@ -4,7 +4,7 @@ using Microsoft.Xna.Framework.Input;
 using Microsoft.Xna.Framework.Input.Touch;
 using WPR.Xna.Rhi;
 
-namespace WPR.Backend.FNA.Input
+namespace WPR.Engine.Input
 {
     /// <summary>
     /// Wraps the real <see cref="IInputBackend"/> and writes a synthesised finger into the touch
@@ -69,7 +69,18 @@ namespace WPR.Backend.FNA.Input
             _inner.UpdateTouchPanelState();
 
             int slot = TouchPanel.FirstReservedFingerSlot;
+
+            // Two producers share the one reserved slot: a keyboard binding and the mouse wheel.
+            // The keyboard wins, because it is a gesture the player deliberately bound, and a
+            // wheel roll arriving mid-tap would otherwise move the finger somewhere the binding
+            // never asked for. In practice they never overlap — you are not rolling the wheel and
+            // holding a bound key at the same time — so this is an ordering rule, not arbitration
+            // anyone will feel.
             SyntheticTouchSample sample = _host.AdvanceSyntheticTouch();
+            if (!sample.Active)
+            {
+                sample = WheelTouchScroll.Advance();
+            }
 
             // Stay out of the way of a real touch. GestureDetector promotes any second finger to a
             // Pinch, so overlapping would emit gestures the user never performed. A gesture already
@@ -93,7 +104,21 @@ namespace WPR.Backend.FNA.Input
             }
 
             // --- state channel ---
-            TouchPanel.SetFinger(slot, SyntheticFingerId, sample.Position);
+            // A JustReleased sample must write NO_FINGER, not the finger: SetFinger turns that into
+            // a Released TouchLocation at the PREVIOUS position, which is exactly what GetState()
+            // has to show for a lift. Writing the finger again here leaves it down for ever —
+            // nothing else clears a reserved slot, because the platform drain is told to skip it.
+            // The symptom is a game that behaves as though you never let go: a list dragged past
+            // its end stays over-scrolled instead of springing back, and the next tap is treated as
+            // a continuation of the old gesture.
+            if (sample.JustReleased)
+            {
+                TouchPanel.SetFinger(slot, TouchPanel.NO_FINGER, Vector2.Zero);
+            }
+            else
+            {
+                TouchPanel.SetFinger(slot, SyntheticFingerId, sample.Position);
+            }
 
             // --- gesture channel ---
             // INTERNAL_onTouchEvent takes NORMALISED coordinates and scales them by

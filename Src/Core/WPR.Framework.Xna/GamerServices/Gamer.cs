@@ -15,11 +15,30 @@ namespace Microsoft.Xna.Framework.GamerServices
         private LeaderboardWriter _LeaderboardWriter;
         private String _GamerTag;
 
+        /// <summary>
+        /// The tag a signed-in gamer falls back to when the host has none configured. XNA has no
+        /// concept of a signed-in gamer without a tag, so this must never be null or empty.
+        /// </summary>
+        private const string DefaultGamerTag = "HarryDirk";
+
         internal Gamer()
         {
             _LeaderboardWriter = new LeaderboardWriter();
-            _GamerTag = Configuration.Current.GamerTag ?? "HarryDirk";
+            _GamerTag = Normalise(Configuration.Current.GamerTag);
         }
+
+        /// <summary>
+        /// An unset gamertag is EMPTY on some hosts and NULL on others, and both mean the same
+        /// thing — so a bare <c>?? default</c> is not enough. The Android head writes
+        /// <c>"GamerTag":""</c> into config.json while the Windows head omits the key entirely,
+        /// which is exactly how Brain Challenge came to render its main menu on Android while
+        /// throwing out of Game.Draw on every frame: it does
+        /// <c>ay.q[0] = v.a(gamer.Gamertag)</c> and then indexes that byte[], so a zero-length
+        /// tag is an IndexOutOfRangeException rather than a blank name. A real signed-in gamer
+        /// always has a tag, so normalising here is what the API actually guarantees.
+        /// </summary>
+        private static string Normalise(string tag) =>
+            string.IsNullOrWhiteSpace(tag) ? DefaultGamerTag : tag;
 
         static Gamer()
         {
@@ -121,7 +140,9 @@ namespace Microsoft.Xna.Framework.GamerServices
         public string Gamertag
         {
             get => _GamerTag;
-            set => _GamerTag = value;
+            // Normalised on the way in as well: the Windows settings page assigns straight from a
+            // text box, so clearing it would otherwise reintroduce the empty tag at runtime.
+            set => _GamerTag = Normalise(value);
         }
 
         public string DisplayName => _GamerTag;

@@ -70,6 +70,37 @@ namespace Microsoft.Xna.Framework.Media
 			}
 		}
 
+		/* WP7 added Album/Artist/Genre to Song; desktop XNA has none of them, so FNA never
+		 * carried them and neither did this shim. A game reading the metadata of a track it
+		 * found in the media library needs them to resolve even though the library is always
+		 * empty here, so they hand back the same "Unknown" placeholders Album and Artist already
+		 * describe rather than null — a caller that reaches one of these is walking a song it
+		 * believes exists, and would dereference the result.
+		 */
+		public Album Album
+		{
+			get
+			{
+				return album ?? (album = new Album());
+			}
+		}
+
+		public Artist Artist
+		{
+			get
+			{
+				return artist ?? (artist = new Artist());
+			}
+		}
+
+		public Genre Genre
+		{
+			get
+			{
+				return genre ?? (genre = new Genre());
+			}
+		}
+
 		#endregion
 
 		#region Public IDisposable Properties
@@ -85,6 +116,10 @@ namespace Microsoft.Xna.Framework.Media
 		#region Internal Variables
 
 		internal string handle;
+
+		private Album album;
+		private Artist artist;
+		private Genre genre;
 
 		#endregion
 

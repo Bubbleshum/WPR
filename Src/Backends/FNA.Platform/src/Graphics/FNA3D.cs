@@ -158,6 +158,60 @@ namespace Microsoft.Xna.Framework.Graphics
 
 		#endregion
 
+		#region System Renderer Interop (EXT)
+
+		/* WPR addition. FNA3D_GetSysRendererEXT hands back the native objects the driver
+		 * is actually using, which is the only way to ask the REAL device a question
+		 * FNA3D itself has no entry point for. It is used to ask Vulkan whether it
+		 * accepts the *_SCALED vertex formats on this GPU; see VertexFormatExpansion.
+		 *
+		 * The export is present in every binary shipped here (verified with llvm-nm on
+		 * all three libFNA3D.so and llvm-objdump on FNA3D.dll), so this needs no native
+		 * rebuild — which matters, because the vendored C under lib/ is not compiled by
+		 * any build in this repo.
+		 */
+
+		/* FNA3D_GetSysRendererEXT returns WITHOUT WRITING ANYTHING unless version matches,
+		 * and it reports nothing when it does so. The caller must set it, and must not
+		 * read the result without first checking the driver actually filled it in.
+		 */
+		public const uint FNA3D_SYSRENDERER_VERSION_EXT = 0;
+
+		public enum FNA3D_SysRendererTypeEXT
+		{
+			FNA3D_RENDERER_TYPE_OPENGL_EXT,
+			FNA3D_RENDERER_TYPE_VULKAN_EXT,
+			FNA3D_RENDERER_TYPE_D3D11_EXT,
+			FNA3D_RENDERER_TYPE_METAL_EXT
+		}
+
+		/* Mirrors FNA3D_SysRendererEXT's header and its VULKAN arm. The union's other
+		 * arms are all smaller (two pointers at most), so reading the Vulkan layout is
+		 * safe on any driver as long as rendererType is checked first — which is why
+		 * that check is not optional at the call site. Pointer-sized fields keep this
+		 * correct on armeabi-v7a as well as the 64-bit ABIs.
+		 */
+		[StructLayout(LayoutKind.Sequential)]
+		public struct FNA3D_SysRendererEXT
+		{
+			public uint version;
+			public FNA3D_SysRendererTypeEXT rendererType;
+			public IntPtr instance;		/* VkInstance */
+			public IntPtr physicalDevice;	/* VkPhysicalDevice */
+			public IntPtr logicalDevice;	/* VkDevice */
+			public uint queueFamilyIndex;
+		}
+
+		/* ref, not out: version is an INPUT the caller has to set, and an out parameter
+		 * would zero it on the way in with nothing to say it had been ignored. */
+		[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
+		public static extern void FNA3D_GetSysRendererEXT(
+			IntPtr device,
+			ref FNA3D_SysRendererEXT sysrenderer
+		);
+
+		#endregion
+
 		#region Driver Functions
 
 		[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]

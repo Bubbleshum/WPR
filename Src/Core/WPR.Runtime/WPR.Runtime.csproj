@@ -3,10 +3,11 @@
   <!--
     WPR.Runtime — application launch / lifecycle / host coordination
     (Plans/ARCHITECTURE-MIGRATION.md, Stage 2). Upper layer of the split from the old
-    `WPR` core; depends on WPR.Loader (one-way). Still references FNA + the XNA facades
-    because the game-loop host (ApplicationLaunch.cs) drives them directly — that
-    coupling is removed in Stage 5b when ApplicationLaunch moves behind IGameHost into
-    WPR.Backend.FNA. Types remain in `namespace WPR` so consumers compile unchanged.
+    `WPR` core; depends on WPR.Loader (one-way). The XNA game-loop host (ApplicationLaunch)
+    left this project in Stage 4; it now lives in WPR.Engine.GameLoop beside IGameHost
+    (2026-09-20), and what remains here is the Silverlight boot (SilverlightAppHost) and the
+    GameMaker launcher/achievement bridge. Types remain in `namespace WPR` so consumers
+    compile unchanged.
   -->
 
   <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">

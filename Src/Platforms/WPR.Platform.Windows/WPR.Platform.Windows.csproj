@@ -132,6 +132,33 @@
          throw PlatformNotSupportedException without a runtimeconfig switch, and 7.0+ dropped
          non-Windows support outright. 5.0.3 is the smallest change that closes the CVE. -->
     <PackageReference Include="System.Drawing.Common" Version="5.0.3" />
+    <!-- WCF client, for GAMES rather than for this head: ApplicationPatcher unconditionally
+         rewrites every WP7 `System.ServiceModel` reference to `System.ServiceModel.Primitives`
+         and adds a `System.ServiceModel.Http` reference to every patched assembly, so a title
+         that touches WCF needs both on disk beside the exe or it dies with a
+         FileNotFoundException the moment the type is loaded. The Android head has carried them
+         since it was written; this head never did, which is why such a game worked there and
+         crashed here. 5 of the 35 games installed locally reference System.ServiceModel
+         (Minesweeper, Cro-Mag Rally, geoDefense Swarm, Chickens Can't Fly, Crimson Dragon),
+         so this is not one title's problem.
+
+         Versions match the Android head deliberately — the two heads load the same patched game
+         IL, and a split would make "works on one platform" reports meaningless. The two security
+         pins below travel with these for the same reason they do there. -->
+    <PackageReference Include="System.ServiceModel.Http" Version="4.10.0" />
+    <PackageReference Include="System.ServiceModel.Primitives" Version="4.10.0" />
+    <!-- CVE-2024-38095 / GHSA-447r-wph3-92pm (High, CVSS 8.7): System.Formats.Asn1 through 6.0.0
+         (and 8.0.0) burns excessive CPU parsing a malicious X.509 certificate — denial of service.
+         Reached here at 5.0.0 via System.ServiceModel.* -> System.Private.ServiceModel 4.10.0 ->
+         System.Security.Cryptography.Pkcs 5.0.0. Pinned to 8.0.1, the fix in the 8.x band that
+         matches this head's TFM. -->
+    <PackageReference Include="System.Formats.Asn1" Version="8.0.1" />
+    <!-- CVE-2022-34716 / GHSA-vh55-786g-wjwj (Moderate, CVSS 5.9): System.Security.Cryptography.Xml
+         5.0.0-6.0.0 can disclose privileged information (XML signature verification). Reached at
+         5.0.0 via System.ServiceModel.* -> System.Private.ServiceModel 4.10.0. Pinned to 8.0.4 —
+         NOT 8.0.0, which carries eight High advisories of its own (incl. CVE-2026-33116, patched
+         8.0.3). -->
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="8.0.4" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Runtime\WPR.Runtime.csproj" />
