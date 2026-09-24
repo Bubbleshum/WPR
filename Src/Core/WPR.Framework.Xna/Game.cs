@@ -347,7 +347,32 @@ namespace Microsoft.Xna.Framework
 
 		~Game()
 		{
-			Dispose(false);
+			// A finalizer must NEVER throw. An exception that escapes one is unhandled by
+			// definition, and CoreCLR answers that by aborting the process — "Unhandled
+			// exception ... at System.GC.RunFinalizers() ... Aborting process." MonoVM swallowed
+			// it, which is the only reason this survived until the Android head moved to CoreCLR
+			// (2026-09-23); nothing about it was ever Android-specific.
+			//
+			// The concrete case: ApplicationLaunch's teardown detaches the user ALC's Resolving
+			// handler BEFORE running the GC.WaitForPendingFinalizers rounds that unload the ALC.
+			// So a game whose Dispose(bool) is the first thing to touch a type from an
+			// as-yet-unloaded assembly raises a FileNotFoundException that nothing can satisfy.
+			// The Treasures of Montezuma does exactly that — Alawar...Game.Dispose reaches
+			// YF.Framework.Render — and took the whole :game process down on every launch.
+			//
+			// Swallowing is the right answer here rather than keeping the resolver alive longer:
+			// by the time a finalizer runs the object is already garbage, the run is already
+			// best-effort, and the game is already being torn down. Failing to release something
+			// at that point costs nothing; killing the process costs the launch.
+			try
+			{
+				Dispose(false);
+			}
+			catch
+			{
+				// Deliberately swallowed — see above. Nothing is logged: the trace listener may
+				// already be closed by teardown, and reporting from a finalizer can allocate.
+			}
 		}
 
 		#endregion
@@ -871,6 +896,20 @@ namespace Microsoft.Xna.Framework
 					catch (Exception ex)
 					{
 						WprDebugTrace.WriteLine("[wpr-ex] Game.Update (fixed timestep) threw: " + ex);
+
+						/* WP7 Silverlight titles quit by THROWING — there was no exit API, so they
+						 * raise a private exception, do their save-on-close work in
+						 * Application.UnhandledException, and leave e.Handled false so the shell
+						 * terminates them. Offer it to the game's handler and honour that answer.
+						 *
+						 * Deliberately NOT applied to the Draw catch below. This is the path a
+						 * quit is raised from, and Draw throwing every frame is a documented
+						 * diagnostic shape here (a game that renders nothing but is otherwise
+						 * alive), which should stay inspectable rather than exiting.
+						 *
+						 * A pure XNA title registers no reporter, so Report returns true and this
+						 * is exactly the swallow-and-continue it has always been. */
+						WPR.Xna.Rhi.GameUnhandledException.Report(ex);
 					}
 				}
 
@@ -947,6 +986,18 @@ namespace Microsoft.Xna.Framework
 					Exit();
                 }
             }
+
+			/* Acted on here, after both timestep branches, rather than at the throw site: a
+			 * mixed-mode title's update runs under GameTimer.RaiseUpdate, which catches before
+			 * this loop ever sees the exception. Every site reports to the same place and this is
+			 * the one that acts, so the game's UnhandledException handler is never raised twice
+			 * for one throw and there is a single Exit(). */
+			if (WPR.Xna.Rhi.GameUnhandledException.TerminationRequested)
+			{
+				// Not logged here: Report already wrote the [wpr-quit] line, and that one survives
+				// a Release build where WprDebugTrace does not.
+				Exit();
+			}
 
 			// Draw unless the update suppressed it.
 			if (suppressDraw)
@@ -1249,15 +1300,29 @@ namespace Microsoft.Xna.Framework
                 Debug.WriteLine("[ex] Game - Components clear: " + ex.Message);
             }
 
-			try
+			// Suppressed only by the mixed-mode host, which owns the pump itself because the
+			// app it hosts already has one of its own (a GameTimer.FrameAction that calls
+			// FrameworkDispatcher.Update, which is how the WP7 template pumps an app with no
+			// Game). Pumping here as well is the double-pump described at the top of Tick:
+			// touches never report Pressed and every tap is silently swallowed.
+			if (!SuppressFrameworkDispatcherUpdate)
 			{
-				FrameworkDispatcher.Update();
+				try
+				{
+					FrameworkDispatcher.Update();
+				}
+				catch (Exception ex)
+				{
+					Debug.WriteLine("[ex] Game - FrameworkDispatcher Update : " + ex.Message);
+				}
 			}
-			catch (Exception ex)
-            {
-                Debug.WriteLine("[ex] Game - FrameworkDispatcher Update : " + ex.Message);
-            }
 		}
+
+		/// <summary>
+		/// Set by the mixed-mode host so <see cref="Update"/> updates components without pumping
+		/// <see cref="FrameworkDispatcher"/>. Always false for an ordinary XNA game.
+		/// </summary>
+		internal bool SuppressFrameworkDispatcherUpdate;
 
 		protected virtual void OnExiting(object sender, EventArgs args)
 		{

@@ -31,5 +31,18 @@ namespace WPR.SilverlightCompability
         public void GoForward() => _frame.GoForward();
 
         public void StopLoading() => _frame.StopLoading();
+
+        /// <summary>
+        /// Drops the most recent back-stack entry, so Back skips the page the app has just
+        /// finished with.
+        /// </summary>
+        /// <remarks>
+        /// The standard WP7 idiom for a splash or sign-in page: navigate away from it and then
+        /// remove it, so Back from the next page leaves the app rather than returning to a
+        /// screen that would immediately navigate forward again. Returns the entry removed, or
+        /// null when the stack is empty — which is not an error, and is the normal case for the
+        /// first page of a run.
+        /// </remarks>
+        public JournalEntry? RemoveBackEntry() => _frame.RemoveBackEntry();
     }
 }

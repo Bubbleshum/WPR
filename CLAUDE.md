@@ -418,6 +418,58 @@ so it returns early below 23 and the switch keeps the platform's own colours.
 No `ApplicationPatcher.Version` bump and no reinstall — no patcher table changed and no IL is
 rewritten. Games pick this up on next launch.
 
+### WP7 launchers leave the game through `IUriLauncher` (2026-09-24)
+
+`Microsoft.Phone.Tasks.WebBrowserTask.Show()` was an empty method, so every link a WP7 title opened
+did nothing. **Cut the Rope is the reference case**: its Cartoons are not in-game video at all —
+each episode is a `WebBrowserTask` to `vnd.youtube:<id>` (Youku on Chinese locales), and on a first
+run *Play* opens episode 1 before the level select. The tap did nothing while the game still marked
+the episode watched.
+
+Same three-part shape as vibration:
+
+* **Contract** — `WPR.Engine.Launchers.IUriLauncher` (`bool TryOpen(Uri)`, must not throw). Speaks
+  `System.Uri` only; "Launchers" is WP7's own word for the tasks that leave the app.
+* **Registry** — `WPR.Engine.Launchers.LauncherBackend.Uri`, filled through `caps.UriLauncher(...)`.
+  Process-lifetime, push-only, nothing to reset. Null means every launcher stays a no-op.
+* **Implementations** — `Src/Modules/Launchers/`: `WPR.Launchers.ShellExecute` (Windows,
+  `Process.Start` with `UseShellExecute`) and `WPR.Launchers.AndroidIntent` (`ACTION_VIEW` +
+  `NEW_TASK` on the application context, so a youtube.com link lands in the YouTube app). No
+  manifest change: `ACTION_VIEW` needs no permission, and `resolveActivity` is deliberately not
+  called, which keeps Android 11 package visibility out of it.
+
+**Policy lives in the shim, not the launcher**, because only the WP7 side knows it
+(`WebBrowserTask.Normalise`, unit-tested in `WPR.SilverlightCompability.Tests`):
+`vnd.youtube:<id>` becomes `https://www.youtube.com/watch?v=<id>` (nothing on a desktop claims the
+WP7 scheme, and Android still routes the https form to the YouTube app); a bare `www.` host gets
+`http://`; and **only http and https are ever opened**. The URI is game-supplied data, and on
+Android any other scheme is an intent any installed app may claim.
+
+Read it out of the log: `launcher=` and `share=` joined the `[wpr-platform]` line, and every attempt writes
+`[wpr-launch] opened …` / `refused …` / `no launcher on this platform` through `Trace`. Verified on
+the S24: Cut the Rope → YouTube app on the episode → back to the game's "Episode 1: Replay / Share"
+screen. The first frame after returning fails to acquire a swapchain image, and that is normal
+resume behaviour.
+
+**Sharing is a second slot, not a second member**: `IShareSheet` (`TryShare(subject, text)`),
+`LauncherBackend.Share`, `caps.ShareSheet(...)`. Opening a link and sharing one are different OS
+facilities, and the desktop has the first but not the second. `ShareTaskBase.Show()` asks the
+concrete task to `Describe` itself: `ShareLinkTask` shares `Message + " " + link`, with `Title` as
+the subject, and its link goes through the same `WebBrowserTask.Normalise` rewrite so a
+`vnd.youtube:` link is shared as youtube.com. A link that `Normalise` refuses is still shared,
+verbatim, because here it is only text the player chooses to send. `ShareStatusTask` shares
+`Status`. Android is `WPR.Launchers.AndroidIntent.AndroidShareSheet`, an `ACTION_SEND text/plain`
+wrapped in `createChooser`; `NEW_TASK` has to go on the **chooser** intent, since that is the one
+started from a non-activity context. **Windows declares none**: its share UI is WinRT
+`DataTransferManager`, bound to a window handle, so the task logs `no share sheet on this platform`.
+Verified on the S24: Cut the Rope's Share button opens the system chooser showing "Cut the Rope
+Cartoons: Episode 1 https://www.youtube.com/watch?v=bj3cbCE56wQ"; Back returns to the game.
+
+**Next callers, not yet wired:** `EmailComposeTask` (`mailto:` would need adding to the allowed
+schemes) and `BingMapsTask`. `MarketplaceDetailTask` stays empty on purpose (see its remarks).
+
+No `ApplicationPatcher.Version` bump and no reinstall — shim behaviour, picked up on next launch.
+
 ### Home-screen game shortcuts go through a trampoline, not GameActivity (2026-09-05)
 
 WP7's "pin to start" for the Android home screen: long-press a game in the games list →
@@ -1098,10 +1150,16 @@ and nothing outside the table moved** — verify any repeat with a byte diff, no
 i.e. the libs had drifted, and Android had a `Bgra4444` defect Windows did not. `{G,R,A,B}` is
 independently the right answer (`VK_FORMAT_B4G4R4A4_UNORM_PACK16` decodes XNA's A/R/G/B nibbles as
 B/G/R/A, so the hardware's R is the real G, its G the real R, its B the real A, its A the real B),
-so Android and the `.c` were brought into line with it. **It is unverified at runtime**, because
-`Bgra4444` renders solid black in the harness on *both* Vulkan and OpenGL, before and after the
-change alike. That is a separate, pre-existing problem and nobody should read the black as a
-regression from this edit — but do not assume `Bgra4444` works.
+so Android and the `.c` were brought into line with it. **It was unverified at runtime**, because
+`Bgra4444` rendered solid black in the harness on *both* Vulkan and OpenGL, before and after the
+change alike.
+
+> **Both halves of that are now settled (2026-09-21).** The black was **managed**, not a driver
+> problem: an `//Experimental! RnD / TEMP` block in `Texture2D`'s constructor rewrote `Bgra4444` to
+> `Color` without converting a pixel, so `SetData`'s `requiredBytes` check measured the game's
+> 2 bytes-per-pixel data against `Color`'s 4 and uploaded **nothing** — see the GLES texture
+> section below. With that removed, `{G,R,A,B}` is **verified correct**: texel `0xFF00` reads back
+> `R=255 G=0 B=0` on forced Vulkan, identical to D3D11. `Bgra4444` works.
 
 **Unrelated bug noticed in passing:** forcing D3D11 *by name* is rejected. The ladder in
 `SDL2_FNAPlatform.PrepareWindowAttributesWithFallback` exempts a zero return only when the
@@ -1246,6 +1304,58 @@ with `scratchpad/patch-swizzle.ps1 -WhatIfOnly`, which reports "already correct"
 binary — the shipped `.so` were binary-patched for that fix, so a rebuild is only safe while the
 source carries it too (it does).
 
+### FNA3D's Vulkan `passLock` was held for a whole render pass, and that deadlocks two drawing threads (2026-09-24)
+
+**Plants vs. Zombies** (`706f822a-a47e-e011-986b-78e7d1fa76f8`, PopCap) sat on its PopCap logo for
+ever on Android: no crash, ~0% CPU, nothing in logcat, and the per-game log simply stopped once the
+loading thread finished its particle definitions. Windows plays it on D3D11 **and** on forced Vulkan,
+and pushing the desktop's byte-identical patched `LAWN.dll` to the phone changed nothing, so it was
+never the patcher.
+
+**The cause is upstream FNA3D's "long-term lock".** `VULKAN_INTERNAL_BeginRenderPass` took
+`renderer->passLock` and did not release it until the pass ended (`MaybeEndRenderPass` held the
+matching unlock). So the thread with a pass open owned the whole renderer until its next target
+switch or swap: every other thread's GPU call blocked on `passLock`, however long the owner then
+spent in application code. PvZ draws from two threads — its loading thread renders into render
+targets while the game thread draws the frame — and coordinates them with its own
+`ResourceManager.DrawLocker`, which `Main.Draw` also takes. Measured: one thread inside
+`FNA3D_ApplyEffect` waiting for `passLock`, the other holding it with a pass open and waiting on
+`DrawLocker`. D3D11 serialises per call (as WP7's device did), which is why only Vulkan hung.
+
+**The fix is in the vendored driver: `passLock` is now held per CALL.** `VULKAN_INTERNAL_LockPass`
+replaces every `SDL_LockMutex(renderer->passLock)`; `BeginRenderPass` records the opening thread in
+`renderPassThread` and releases the lock on return; and when a *different* thread takes the lock
+while that pass is open, the pass is ended rather than waited on. The owner's next draw sees
+`needNewRenderPass` and begins a fresh pass with LOAD semantics, so nothing is lost. `Clear` and the
+three draw entry points now take the lock too, so command recording stays serialised — upstream only
+got that serialisation as a side effect of the long-term hold.
+
+Things worth knowing:
+
+- **`libFNA3D.so` was rebuilt for all three ABIs** with the NDK recipe below (configure from **bash**,
+  not PowerShell — the PowerShell invocation failed `CMAKE_C_COMPILER not set` even as the first cmake
+  call), and all three still pass `scratchpad/patch-swizzle.ps1 -WhatIfOnly`. **The Windows
+  `FNA3D.dll` was NOT rebuilt** (no MSVC build here), so forced Vulkan on the desktop still has the
+  upstream behaviour. The desktop default is D3D11, where none of this applies.
+- **The OpenGL driver hangs this game even earlier**, on frame 2 — the `ForceToMainThread` queue from
+  the graphics section above. So the Settings picker is no escape hatch for PvZ, and the probe
+  cannot help either: the game presents plenty of frames before it stops.
+- **Deferring WPR's post-Present `DiscardBackbufferContents` clear was tried and does not fix it.** It
+  looked like the culprit (it opens a pass right after the swap), but the loader's own render-target
+  `Clear` opens one just as well. Reverted.
+- **How it was found, since the usual tools failed.** A Release APK is not debuggable, so no
+  `run-as`/`debuggerd`, and `DOTNET_DiagnosticPorts` + `dotnet-dsrouter` never got a connection from
+  the CoreCLR-on-Android runtime, even with the env var verifiably baked into the APK. What worked was
+  a throwaway per-thread breadcrumb table (last GPU call per managed thread id) dumped by a
+  background watchdog every 4 s into the per-game log. Two runs pinned both threads. Cheap to rebuild
+  if another "silent hang, low CPU" shows up.
+
+Verified on a Galaxy S24 Ultra, clean Release APK: logo → title → main menu → Level 1-1 and 1-2 played,
+progress saved. Chickens Can't Fly and Cut the Rope still run on the new binary.
+
+No `ApplicationPatcher.Version` bump and no reinstall. **A native binary changed**, so Android needs
+the APK repackaged.
+
 ### State objects were never bound to the device, so games mutated the shared statics (2026-09-18)
 
 `GraphicsDevice.BlendState`'s setter was a bare `nextBlend = value;`, and nothing in the repo ever
@@ -1334,6 +1444,150 @@ matter here, because Adreno/Mali support no BC format at all, so `Texture2DReade
 No `ApplicationPatcher.Version` bump and no reinstall — this is shim behaviour in
 `WPR.Framework.Xna`, so games pick it up on next launch. No manifest or native change either, so
 Android needs a managed rebuild only.
+
+### On OpenGL ES, half of FNA3D's texture surface is a desktop-only lie (2026-09-21)
+
+Android defaults to Vulkan, but three things put a device on the **OpenGL** driver — the Settings
+GRAPHICS picker, the `GraphicsDriverProbe` demotion, and `fna3d_driver.txt` — and on Android that
+driver is **always an ES3 context** (`FNA3D_Driver_OpenGL.c` forces `forceES3` by platform name).
+Two whole classes of defect live on that path, and neither is Android-specific in origin: they are
+desktop-GL assumptions in tables and entry points that nobody had re-read against the ES spec.
+Found while investigating issue #43 (Asphalt 5 on a Mali GPU). **Neither is Asphalt 5's problem
+alone** — one of them is breaking textures on the desktop today.
+
+**Reproduce the whole GLES path on Windows. This is the finding that makes the rest cheap.**
+FNA3D reads `FNA3D_OPENGL_FORCE_ES3` through `SDL_GetHintBoolean` and derives `useES3` from
+`SDL_GL_GetAttribute(SDL_GL_CONTEXT_PROFILE_MASK)` on the context it just created, so
+
+```powershell
+$env:FNA3D_FORCE_DRIVER = "OpenGL"; $env:FNA3D_OPENGL_FORCE_ES3 = "1"
+```
+
+drives the exact `useES3` code path with no phone, no APK and no NDK. Verified on the Intel iGPU:
+`MojoShader Profile: glsles`, `OpenGL ES 3.0`. **Use this before reaching for a device** for
+anything GLES-shaped.
+
+#### Defect 1 — `Bgra5551` / `Bgra4444` / `Bgr565` / `ColorBgraEXT` cannot be uploaded as mapped
+
+`XNAToGL_TextureFormat[]` maps the two BGRA shorts to `GL_BGRA` and `XNAToGL_TextureDataType[]` to
+`GL_UNSIGNED_SHORT_*_REV`; neither exists in any version of OpenGL ES, and
+`GL_EXT_texture_format_BGRA8888` covers 8888 only. `Bgr565` is subtler and just as broken: internal
+format `GL_RGB8` with type `GL_UNSIGNED_SHORT_5_6_5` — each legal on its own, the **pairing** not,
+because ES3 admits that type only against `GL_RGB565`. There is **no extension check anywhere in
+the driver**, so `glTexImage2D` never allocates storage and `glTexSubImage2D` is rejected too.
+
+**Measured: with the conversion disarmed, a `Bgra4444` texture kills the process.** The harness
+exits `0xC0000005` (access violation) on the first such texture under forced GLES3 — this is not
+"wrong colours", it is the "game process exited unexpectedly" class.
+
+**And a much bigger one was hiding above it, on every platform.** `Texture2D`'s constructor carried
+
+```csharp
+//Experimental! RnD / TEMP
+if (format == SurfaceFormat.Bgra4444) { format = SurfaceFormat.Color; }
+```
+
+which changed `Format` without converting a single pixel. `SetData` then computed
+`requiredBytes = w*h*GetFormatSize(Format)` = 4 bytes/px against the game's 2, tripped its own
+guard and **returned without uploading**, behind a `Debug.WriteLine` invisible in a release build.
+So every `Bgra4444` texture was blank on D3D11, Vulkan, desktop GL and Android alike. That is what
+the "renders solid black on both Vulkan and OpenGL, cause unknown" note above was seeing — and with
+it gone, FNA3D's `Bgra4444 = {G,R,A,B}` Vulkan swizzle is **verified correct** rather than assumed.
+
+The fix is `Microsoft.Xna.Framework.Graphics.TextureFormatShim`: store as `Color` when the device
+cannot take the requested format, converting both ways. Three things about it:
+
+- **`Texture2D.Format` keeps reporting what the game asked for**, and `storageFormat` on `Texture`
+  is what the driver sees. This is the opposite of `Texture2DReader`'s DXT-to-`Color` substitution,
+  deliberately: that reader owns the whole lifecycle of a content texture, while a game-built one
+  has the game sizing its own arrays from `Format`. Reporting the substitute is exactly what the
+  TEMP block did, and exactly why it dropped every upload.
+- **Round-trip is bit-exact** — 4-bit channels expand by `n*17` (`n<<4|n`, so `>>4` recovers `n`),
+  5-bit by `x<<3|x>>2`, 1-bit alpha to 0/255 — because a game that reads a texture, edits it and
+  writes it back must get its own bits.
+- **Both write paths are hooked**, `SetData<T>` *and* `SetDataPointerEXT`. The latter is what
+  `Texture2D.FromStream` and `TextureCube.DDSFromStreamEXT` use; missing it would leave every
+  stream-loaded texture undefined.
+
+#### Defect 2 — `GetData` on GLES is a NULL call, a silent no-op, or a heap overrun
+
+`glGetTexImage` is `GL_PROC(NonES3, ...)` so its pointer stays NULL, and the only guard is an
+`SDL_assert` compiled out of the release `.so`. But the crash surface is **narrower than that
+suggests**, and there is something worse beside it — `OPENGL_GetTextureData2D` diverts `level == 0`
+into `OPENGL_INTERNAL_ReadTargetIfApplicable`, which opens with
+`if (texUnbound && !renderer->useES3) return 0;` and therefore **never declines on ES**:
+
+| call | GLES behaviour |
+| --- | --- |
+| `GetData(level 0)`, 32-bit colour | **works** — FBO + `glReadPixels`, never reaches `glGetTexImage` |
+| `GetData(level 0)`, narrower format | `glReadPixels` is hardcoded `GL_RGBA, GL_UNSIGNED_BYTE` and **ignores `dataLength`**, so it writes `w*h*4` into the pinned managed array. **Silent heap corruption** |
+| `GetData(level > 0)` | NULL `glGetTexImage` — SIGSEGV at pc 0, no log |
+| `TextureCube.GetData`, any level | no diversion at all, so the NULL call is unconditional |
+| `Texture3D.GetData` | already a clean `FNA3D_LogError` into a managed throw |
+
+`TextureReadback` refuses what the driver cannot answer, zero-fills and logs. **Zeros, not
+fall-through — the opposite of `GpuBufferShadow`**, whose comment reasons that falling back "is no
+worse than the behaviour it replaces". Here it is strictly worse: the alternative is a SIGSEGV or a
+corrupted heap. XNA leaves a never-written texture undefined anyway, so zeros are within contract.
+
+**Blast radius, measured: 15 of the 38 installed titles call `Texture2D.GetData`** — Mirror's Edge,
+Kinectimals, NFS: Undercover, Skulls of the Shogun, Fragger, iGotham, MonstaFish, Monsters, Dream
+Track Nation, G-Switch, Contre Jour, Fast and Furious: Adrenaline, Star Wars: The Battle for Hoth
+and two more — plus Asphalt 5 (`bq::a`, twice). None calls `TextureCube.GetData` or
+`GetBackBufferData`. That NFS: Undercover is on the list is worth holding against issue #40 ("stuck
+at the loading screen on Android below 10", i.e. where Vulkan is least likely to be available).
+
+**The CPU mirror was deliberately NOT built.** The texture twin of `GpuBufferShadow` is the obvious
+fix and the economics are inverted: a buffer mirror is cheap and its crash was broad, whereas a
+texture mirror roughly doubles a title's texture memory — the bulk of a WP7 game's footprint — on
+precisely the devices that fell back to OpenGL because their Vulkan driver was misbehaving, to
+serve a call most titles never make. Build it when a title proves it needs its pixels back; the
+shape is recorded in `TextureReadback`'s doc comment.
+
+#### Both facts come from one probe, and it measures rather than sniffs
+
+`WPR.Backend.FNA.GlContextProbe`, called from `CreateDevice` beside `VulkanVertexFormatSupport`.
+**Do not derive this from the driver name**: `SDL2_FNAPlatform.SelectedDriverName` is null under
+automatic selection, and `"OpenGL"` does not distinguish desktop GL from GLES, which is the entire
+question. Reading `SDL_GL_GetAttribute(SDL_GL_CONTEXT_PROFILE_MASK)` gives a bit-identical answer to
+the driver's own `useES3` with no FNA3D change and no native rebuild.
+
+**The two answers have opposite safe directions and the asymmetry is load-bearing.** Converting a
+format that did not need it is lossless, so an unproven answer converts; refusing a readback that
+would have worked returns zeros where a game expected pixels, so the guard arms **only on a positive
+identification** of GLES — never on a probe failure, never on `#if ANDROID`.
+
+Read it out of the log; both lines appear every launch including the no-op case, through
+`XnaBackend.LogInfo` so they survive a Release build:
+
+```
+[wpr-texfmt] device texture formats - packed 16-bit (Bgr565/Bgra5551/Bgra4444)=UNSUPPORTED BGRA8888=ok (OpenGL ES (OpenGL ES 3.0 ...)); conversion ENABLED
+[wpr-texget] texture readback - LIMITED (OpenGL ES (OpenGL ES 3.0 ...)); guard ENABLED
+```
+
+**Measured across all four configurations, identical numbers everywhere** (`scratchpad/texfmt`,
+which round-trips texels *and* reads them back off the backbuffer — the two fail independently):
+
+| | D3D11 | Vulkan | desktop GL | forced GLES3 |
+| --- | --- | --- | --- | --- |
+| `Bgra4444`/`Bgra5551`/`Bgr565` round trip | exact | exact | exact | exact |
+| texel `0xF800` (`Bgr565` red) on screen | `255,0,0` | `255,0,0` | `255,0,0` | `255,0,0` |
+| `GetData` level 1 | real pixels | real pixels | real pixels | refused, zeros, warned |
+| `Alpha8` `GetData` | real pixels | real pixels | real pixels | refused, zeros, warned |
+
+**The vendored `.c` was annotated, not changed.** Comments only — 44 insertions, 0 deletions, still
+ASCII — at the two asserts, the `GL_RGBA /* FIXME: Assumption! */`, and the format tables. The
+managed guard makes the native one unreachable, and turning the assert into a real
+`FNA3D_LogError` would need a rebuild `FNA3D.dll` cannot have on this machine *and* would arrive in
+managed code as a thrown `InvalidOperationException` that WP7 titles do not catch. **Source and
+binary still agree behaviourally** — do not read these comments as a pending native fix.
+
+**Also fixed in passing:** `Texture2D.SaveAsJpeg`/`SaveAsPng` sized their buffer from `Height` but
+read back the caller's *output* `height`, so a scaled thumbnail encoded uninitialised heap below the
+last row read. The only in-repo caller passes the texture's own size, so it was benign.
+
+No `ApplicationPatcher.Version` bump, no reinstall, no manifest change and no native binary change —
+shim behaviour in `WPR.Framework.Xna`, so games pick it up on next launch.
 
 ### The Vulkan validation layer is NOT shipped, on purpose (2026-09-05)
 
@@ -1543,7 +1797,7 @@ log — grep `error reflecting type` there before concluding a stuck game is a t
 
 **This was a patcher table change (v22), and affected games must be repatched.** Unlike v21 it is
 not identity-binding — a v21 install still launches, it just keeps failing to build the affected
-serializer — so `--repatch-installed` is enough. **The current version is 29**; see the next
+serializer — so `--repatch-installed` is enough. **The current version is 36**; see the next
 section.
 
 ### Windows path separators in game file I/O (patcher v23), a patch that silently skipped (v24), and a game-specific IL guard (v25)
@@ -1967,6 +2221,242 @@ across 310 methods): **"All Classes and Methods Verified"** both before and afte
 **Patcher table change (v27), so affected games must be repatched** — `--repatch-installed` is
 enough. It rewrites game IL, so a v26 install keeps the old bodies and keeps throwing; it is not
 identity-binding, so a v26 install still launches.
+
+### Cecil does not preserve TypeDef row ids, and an obfuscator keys on them (patcher v33, 2026-09-22)
+
+`ApplicationPatcher` re-emits every assembly through Cecil, and **Cecil renumbers the TypeDef
+table**: it writes types depth first, each one immediately followed by its nested types, so an
+assembly whose original table interleaved them any other way comes back with different metadata
+tokens even though not one type changed. Measured on The Treasures of Montezuma
+(`56a2bd8b-af90-4575-b25f-97b31a179422`, Alawar) — the obfuscator's helper type moved from
+`0x02000007` to `0x0200000b`, and eleven of its twenty-one types shifted.
+
+**Ordinary game code cannot tell. Eazfuscator.NET can, and it turns the difference into a file
+offset.** Its string decryptor hashes the assembly's public key token, its simple name and the
+**`MetadataToken` of four of its own helper types**, then uses the result to seek the encrypted
+string blob it loaded with `GetManifestResourceStream`. A renumbered table yields a wrong key, and
+the game dies on the very first string it decrypts:
+
+```
+System.ArgumentOutOfRangeException: value ('-180695550') must be a non-negative value.
+   at System.IO.UnmanagedMemoryStream.set_Position(Int64 value)
+   at .(Int32 )
+   at Alawar.TheTreasuresOfMontezuma.Game..ctor()
+```
+
+**The value is deterministic and byte-identical on both heads** — it is a property of the patched
+file, not of the run — which is the cheapest way to tell this apart from anything environmental.
+Reported from a phone, reproduced unchanged on Windows at the first attempt.
+
+**The fix is `PreserveOriginalMetadataTokens`**: it records every TypeDef's pristine token in an
+embedded resource (`WPR.OriginalMetadataTokens`) and retargets every `get_MetadataToken` call site
+to `WPR.WindowsCompability.OriginalMetadataTokens.Resolve`, which reads it. `callvirt` becomes
+`call` with the instance as argument zero — the same call-site shape `RedirectIsolatedStorageCalls`
+uses, so the evaluation stack is untouched.
+
+Four things are deliberate:
+
+- **Keyed by NAME, not by the new token**, so the pass never has to predict what Cecil will do. A
+  type whose token did not move is simply absent from the table and falls through to its real one.
+  Recording all of them costs nothing here — the largest affected assembly has 571 types, about
+  10 KB.
+- **Types only.** MethodDef and FieldDef rows are renumbered by the same rewrite; nothing in the
+  library keys on them, and a table covering them would dwarf the assembly. A non-`Type` member
+  falls through unchanged, which is the behaviour that was already there.
+- **A module that also calls `Module.Resolve*` is skipped entirely.** Such a module feeds tokens
+  back to the runtime, and half a remap is worse than none. Measured across all 307 XAPs: every
+  `Module.Resolve*` call site in the library is in **UnityEngine.dll** and nowhere else.
+- **A torn or missing table degrades to the real token** rather than throwing.
+
+**Blast radius, measured: exactly two games ask for a metadata token at all** outside UnityEngine —
+this one and **Farm Frenzy 2**, the same Alawar/YF engine, eight obfuscated assemblies each. The
+repatch log is the check, and it says nothing for the other 46 installed titles:
+
+```
+[token-fixup] YF.Framework.Render.dll: 1 get_MetadataToken call site(s) now read the pristine token of 99 type(s).
+```
+
+**Patcher table change (v33), so affected games must be repatched** — `--repatch-installed` on the
+desktop, automatic on next launch on Android. It rewrites game IL and embeds a resource, so a v32
+install keeps the broken key and keeps throwing; not identity-binding, so a v32 install still
+launches.
+
+**The general lesson is worth more than the fix.** Anything a game reads that describes *the shape
+of its own assembly* — metadata tokens, table counts, an image checksum, an MVID — is something the
+patcher may have changed, and none of it produces a diagnosable error: it comes back as a wrong
+number that some later arithmetic turns into a crash somewhere unrelated. **An unprintable frame
+like `at .(Int32 )` next to a `System.Reflection` or `GetManifestResourceStream` call means
+"obfuscator", and the first question is what it is hashing.**
+
+### The same obfuscator also checks WHO CALLS IT, and CoreCLR-on-Android fails that (patcher v35, 2026-09-24)
+
+`X0X` is not a string. It is Eazfuscator.NET's tamper sentinel, hardcoded in the string
+decryptor:
+
+```csharp
+if (m_\u0006 == 43962)                                   // 0xABBA
+    return new string(new char[3] { 'X', '0', 'X' });
+```
+
+Once that flag is set **every** string in the assembly decrypts to it. The Treasures of Montezuma
+died in `Game..ctor` with `ArgumentException: An item with the same key has already been added.
+Key: X0X` — `MouseDevice..ctor` registers two axes under two different string ids, both came back
+`X0X`, and the second `Dictionary.Add` threw. **The duplicate key is three layers below the
+actual fault; do not start debugging at the dictionary.**
+
+**The protection is a caller-identity check, and there are two of them.** Each walks
+`new StackTrace()` to a **fixed frame index** and demands that frame's declaring type live in the
+decryptor's own assembly:
+
+```
+frame.DeclaringType == typeof(RuntimeMethodHandle) -> flags |= 4    (called via reflection)
+frame.DeclaringType == null                        -> flags |= 1
+frame.DeclaringType.Assembly != mine               -> flags |= 2
+else                                               -> flags |= 16   <- the only good outcome
+```
+
+The sentinel fires unless bit `16` is set. **The second check is the one that matters most**, and
+it is easy to miss: a parameterless `static bool` using `GetFrame(3)` whose result is XORed into
+the **decryption key**. So suppressing only the sentinel is *worse than doing nothing* — the
+poison stops, the key is still wrong, and the blob reader dies with
+`EndOfStreamException: Attempted to read past the end of the stream`. Measured, in that order,
+while chasing this.
+
+**This is NOT the v33 bug, despite the same obfuscator and the same game.** v33 repairs an input
+*WPR itself perturbs* (Cecil renumbers the TypeDef table). This is a check WPR does not touch at
+all: **the patched bytes are irrelevant**. Proven by pushing the desktop's byte-identical patched
+assemblies onto the phone — desktop plays, phone still poisons. What differs is the managed stack
+the runtime reports.
+
+**Eliminated by measurement — do not re-walk these:**
+
+| hypothesis | result |
+| --- | --- |
+| the phone's patched bytes differ (it repatches on-device) | they did; pushing desktop's exact bytes **failed identically** |
+| the assembly is loaded twice, so the two `Assembly` instances differ | each game assembly is probed **exactly once** in logcat |
+| JIT inlining moves the frames | marking **all 8,993** methods across its 14 assemblies `NoInlining` **changed nothing** |
+
+So it is the stack walk itself: CoreCLR-on-Android does not hand back the frame Eazfuscator
+expects. That is also why it only appeared with the .NET 10 move — desktop (.NET 8, x64) satisfies
+the check and always did.
+
+**The fix is `ApplicationPatcher.NeutraliseObfuscatorStackIdentityChecks`**: force both checks to
+their **trusted** outcome — the answer the runtime was going to give on desktop anyway, which is
+what makes it safe there. The parameterless `static bool` becomes `return true`; the
+`caller.Assembly == mine` test becomes `pop; pop; br <equal path>` (both operands are on the stack,
+so the branch cannot merely be deleted).
+
+Three things are load-bearing:
+
+- **The predicate needs all three signals** — a `StackTrace.GetFrame` call, a
+  `typeof(RuntimeMethodHandle)` comparison and a `Type.Assembly` read. Any one alone is something
+  ordinary code does; a logger that walks frames has the first and neither of the others.
+- **Cecil's `Replace` does not repoint branches at the instruction it removed**, and an obfuscated
+  method is nothing but jumps. `RepointBranches` fixes every branch, switch case and exception
+  handler bound. Skip it and you write a body that fails verification rather than throwing at
+  patch time.
+- **`SimplifyMacros` / `OptimizeMacros` around the edit**, same reason as
+  `RelocateMonoStackConflictBlocks`: the rewrite grows the body and a short branch elsewhere may
+  no longer reach its target.
+
+**Scope, measured: 1 of 48 installed titles.** Nine of Montezuma's assemblies carry the check
+(`ldc.i4 43962` = bytes `20 BA AB 00 00`, which is how to scan for it). Farm Frenzy 2 is the likely
+second, being the same Alawar/YF engine. The pass logs `[eaz-fixup]` per assembly and says nothing
+for everything else.
+
+**ILVerify is the check after any change here**, as with the Mono relocation pass: all 14 of the
+game's assemblies verify clean **both before and after**, and only a baseline *diff* means
+anything (about 32 assemblies in the library fail verification already).
+
+Verified end to end: Montezuma reaches a live match-3 board on the phone with patcher-produced
+bytes, and the same rewritten assemblies still run on Windows.
+
+**Patcher table change (v35), so affected games must be repatched** — `--repatch-installed` on the
+desktop, automatic on next launch on Android. Rewrites game IL, so a v34 install keeps the poisoned
+strings; not identity-binding, so a v34 install still launches.
+
+### Cecil needs FNA.dll as a FILE, and .NET 10 stopped shipping one (2026-09-24)
+
+`ApplicationPatcher` reads the assembly it is patching from a stream, but Cecil's
+`BaseAssemblyResolver` only finds **real files** in its search directories — and inside an APK the
+runtime's assemblies are not files. `WprStartup.SetupDllPatchForCecil` exists to put `FNA.dll` on
+disk and make that folder the process CWD.
+
+It used to get those bytes back out of the APK's own assembly packaging: a
+`assemblies/FNA.dll` zip entry in Debug, `AssemblyStoreExplorer` in Release. **That packaging is
+not a stable contract.** Under .NET 10 assemblies live in `lib/<abi>/libassembly-store.so`, and
+`_AndroidUseAssemblyStore` is force-set true whenever `EmbedAssembliesIntoApk` is, so it cannot be
+turned off. The reader found nothing and logged
+
+```
+[Android] Fail to copy DLL $FNA to patch assembly folder (entry not found)!
+```
+
+**The failure is quiet, and that is the point.** Patching still "succeeds" — the game launches,
+it just binds against an assembly Cecil could not resolve. So every install and repatch performed
+**on the device** was suspect, while the same game patched on the desktop was fine. That is why
+the phone's copies of a game are byte-different from the desktop's despite identical pristine
+originals.
+
+`FNA.dll` is now shipped as a plain **`AndroidAsset`** (`assets/PatchAssemblies/FNA.dll`, wired by
+the `_WprStageFnaAssetForCecil` target) and copied out like the seed databases. Nothing parses the
+APK's internals any more, so no future change to assembly packaging can break it.
+
+Four details worth keeping:
+
+- **Sourced from `@(ReferencePath)`, not a hardcoded bin path**, so it follows configuration and
+  TFM — and the target `<Error>`s if FNA ever stops being referenced, rather than silently
+  shipping no asset. It is the **implementation** assembly (232,960 bytes), not the 184,320-byte
+  ref assembly; a ref assembly would resolve types but is not what the patcher should see.
+- **One code path for Debug and Release.** The old `#if DEBUG` split meant the configuration most
+  testing happens in exercised different code from the one that ships — the same trap as the
+  interpreter-vs-JIT split.
+- **Copied unconditionally, not only when absent.** The staging folder is in external files and
+  outlives the install, so a skip-if-present would leave the *previous* APK's FNA.dll behind after
+  an update and patch games against the wrong build.
+- **`assembly-store-reader` is no longer referenced** by the Android head. The project is still in
+  the tree and the solution; delete it once it is clear nothing wants it back.
+
+No `ApplicationPatcher.Version` bump for this half. **A manifest/asset change**, so Android needs
+the APK repackaged rather than just a managed rebuild.
+
+### WP7 effect blobs may NAME a stock effect instead of containing one (2026-09-22)
+
+With the tokens fixed, Montezuma got as far as `GraphicsDeviceManager.CreateDevice` and died there
+on `MOJOSHADER_compileEffect Error: Unexpected EOF`, out of `Effect..ctor(GraphicsDevice, byte[])`.
+The blob is **20 bytes**:
+
+```
+cf 0b f0 bc   0xBCF00BCF   the XNA4 container MojoShader already knows to skip
+0c 00 00 00   12           offset of the payload
+00 00 00 00
+01 09 ff fe   0xFEFF0901   D3DX9 effect magic
+73 70 72 69   "spri"       <- where a real effect has the offset of its body
+```
+
+`MOJOSHADER_parseEffect` reads those last four bytes as that offset, finds `offset > len` and
+reports `Unexpected EOF`. It is not a truncated effect: **XNA 4.0 on Windows Phone supported no
+custom shaders at all**, so `Effect(GraphicsDevice, byte[])` could only ever name a built-in, and
+this is the reference — container, magic, four-character tag. In the game's PE the tag is followed
+by a length-prefixed `"Windows Phone.v4.0R1.Reach"` and then the obfuscator's encrypted blob, with
+no shader bytecode anywhere near it.
+
+`Microsoft.Xna.Framework.Graphics.StockEffectStub` recognises that shape and substitutes the bytes
+WPR already ships in `Resources`. It identifies a reference **positively** — container magic, then
+D3DX magic at the stated payload offset, then four bytes that are ASCII letters *and* do not
+address a body inside the blob — so a genuine XNA4-wrapped effect returns null and compiles exactly
+as before. **Only `spri` is attested**; the other five tags are inferred from the same four-letter
+rule and simply will not match if that rule is wrong, which leaves the original error in place
+rather than substituting the wrong shader.
+
+Verified end to end on Windows after both fixes: boot, PLAY menu, CONTINUE, and a live level 1-1
+board with the timer running — zero `Game.Draw threw`, zero `[wpr-ex]`, and the only first-chance
+exception left is .NET's own probe for a neutral-culture satellite assembly the game does not ship.
+Mirror's Edge, Angry Birds and Kinectimals still launch clean, which is what says the stub check
+does not misfire on a real effect.
+
+Shim behaviour in `WPR.Framework.Xna`, so no patcher bump and no reinstall for this half — but the
+game needs the v33 repatch above before it gets far enough to matter.
 
 ### An empty gamertag is not the same as no gamertag (2026-09-19)
 
@@ -2429,7 +2919,7 @@ Four things that will bite if you touch this:
 `GraphicsDeviceInformation` and `PreparingDeviceSettingsEventArgs` now live in
 `WPR.Framework.Xna` and are rescoped there by `ApplicationPatcher.WprFrameworkXnaTypes`.
 **This bumped `ApplicationPatcher.Version` to 21, and every game installed before it must be
-repatched or reinstalled** (the current version is 29) —
+repatched or reinstalled** (the current version is 36) —
 a v20 install carries IL naming `[FNA]Microsoft.Xna.Framework.Game`, FNA no longer defines it, and
 the game will TypeLoadException at launch. `--repatch-installed` is enough.
 
@@ -2598,7 +3088,7 @@ progress".
 `[iso-fixup] redirected N … call(s)` is written to the install log per assembly, so the count says
 whether a given game used this path at all.
 
-**This was a patcher table change (v20).** The current version is **27** — see "Windows path
+**This was a patcher table change (v20).** The current version is **36** — see "Windows path
 separators in game file I/O" above for the most recent bumps; this paragraph describes what v20
 itself changed. Unlike v19 it is not identity-binding — a v19 install still launches, it
 just keeps the exclusive share and keeps failing to save. `--repatch-installed` is enough (it
@@ -3134,6 +3624,164 @@ is precisely why the seam above exists rather than a plain project move.
   **reinstalled** to pick up new redirects. The user knows this; I should say
   "reinstall <game>" rather than "rebuild" when the fix lands in
   `ApplicationPatcher.cs`.
+
+### A WP7 Silverlight game quits by THROWING, and WPR was swallowing it (2026-09-24)
+
+WP7 Silverlight had no public exit API. The universal idiom is therefore:
+
+```csharp
+public static void Quit() => throw new QuitException();   // a private type
+// ... Application.UnhandledException:
+//     if (e.ExceptionObject is QuitException) Application_Closing(null, null);
+//     and DELIBERATELY no e.Handled = true, so the shell terminates the app.
+```
+
+WPR declared `Application.UnhandledException` and **never raised it**, so the throw met the game
+loop's catch-all, was logged through `WprDebugTrace` — which is `[Conditional("DEBUG")]` — and
+vanished. In a Release build that is a completely silent no-op. **The symptom is a quit
+confirmation whose "Yes" does nothing**, reported against Cut the Rope.
+
+**This only became visible when Back started reaching the game.** Before the predictive-back fix
+(see the manifest note) the system finished `GameActivity` itself, so Back always ended the game
+and nothing ever asked the game to quit. Fixing Back exposed a second, older gap behind it — worth
+expecting whenever a regression fix restores a path that had been dead.
+
+**The catch that matters is NOT the one in `Game.Tick`.** A mixed-mode title's update runs under
+`GameTimer.RaiseUpdate`, which has its own `try`/`catch` around the `Update` and `FrameAction`
+handlers, so the loop's catch never sees the exception at all. Hooking only `Game.cs` changes
+nothing — measured. Both sites now report to one place.
+
+**The shape**: `WPR.Xna.Rhi.GameUnhandledException` holds a `Reporter` slot and a
+`TerminationRequested` flag; `WPR.WindowsCompability.Application`'s constructor fills the slot and
+`ResetCurrent` clears it. Every catch calls `Report`, and `Game.Tick` acts on the flag once per
+tick. A flag rather than an immediate `Exit()` because none of the catch sites holds the `Game`,
+and because it guarantees the game's handler is raised exactly once per throw and there is exactly
+one `Exit`.
+
+The slot lives in `WPR.Framework.Xna` because `WPR.Framework.Silverlight` references it and not the
+reverse — the same constraint that produced `XamlReader.ApplicationResourceLookup`. It names only
+`Exception`, so no vocabulary leaks either way.
+
+**Three gates, and each one exists to stop this becoming a behaviour change for everything else:**
+
+- **No reporter → swallow.** Only a Silverlight or mixed-mode title constructs an `Application`, so
+  a pure XNA game is untouched. That matters: several titles throw out of `Update` on every frame
+  and stay playable or at least diagnosable precisely because WPR swallows it (Feed Me Oil,
+  Chickens Can't Fly, Brain Challenge).
+- **No `UnhandledException` subscriber → swallow.**
+- **Subscriber left it unhandled, but the exception type is NOT defined by the game → swallow.**
+  This one is the important one and is not obvious. The stock WP7 project template subscribes the
+  event with a body that does nothing but `if (Debugger.IsAttached) Debugger.Break();`, and
+  **all twelve** Silverlight titles installed here carry that subscription — so honouring WP7
+  literally would let one stray `NullReferenceException` start closing games that currently limp
+  along. A quit is always signalled with a *game-defined* exception type (you cannot express "the
+  user chose to exit" with an NRE), so that is the discriminator. It is tested by load context —
+  game code lives in `ApplicationLaunch`'s own `AssemblyLoadContext` — which beats matching names,
+  and anything uncertain answers "not the game", i.e. swallow.
+
+**Read it out of the log.** `[wpr-quit]` lines go through `XnaBackend.LogInfo`, so unlike the rest
+of this path they survive a Release build — without them "the game asked to quit and we ignored it"
+and "nothing was thrown" are indistinguishable:
+
+```
+[wpr-quit] ctre_wp7.App+QuitException escaped the game loop; unhandled — exiting, as WP7 would.
+```
+
+Shim behaviour, so no `ApplicationPatcher.Version` bump and no reinstall; games pick it up on next
+launch.
+
+### The Silverlight overlay is rasterised on the CPU (2026-09-22, patcher v32)
+
+A mixed-mode title's page is a real Silverlight visual tree, and the game gets at it through
+`UIElementRenderer`: it rasterises that tree into a `Texture2D` the game then blits with its own
+`SpriteBatch`. WPR's was a stub that handed back a correctly-sized transparent texture — enough to
+turn a `TypeLoadException` at page construction into a game that runs, and no more.
+
+**The overlay is not always an overlay, which is why "transparent" was not good enough.**
+Rabbids Go Phone's `GamePage.OnDraw` draws it *before* `screenManager.Draw`, so for that game it is
+the **background**: its entire main menu — the blue scribbled city — is one `ImageBrush` on the
+page's root `Canvas`, set from `RenderBlueBG`. The 3D logo and labels drew perfectly on black, which
+reads as a texture or blend-state fault and is neither. **Two games composite this texture in
+opposite directions; do not assume either.**
+
+`SoftwareVisualRasteriser` (`Src/Core/WPR.Framework.Silverlight/`) is the painter. Four things
+about it are deliberate:
+
+- **CPU, not Avalonia.** `SilverlightRenderer` beside it draws into an Avalonia `DrawingContext`,
+  and the mixed-mode host never initialises Avalonia — that is what lets these titles run on
+  Android at all. So this is a second renderer over the same tree, on purpose.
+- **Output is premultiplied RGBA packed as XNA's `Color`** (R in the low byte). Games blit it with
+  a default `SpriteBatch.Begin()`, which is `BlendState.AlphaBlend`, i.e. premultiplied; a
+  straight-alpha buffer fringes every edge.
+- **It paints only what the tree asks for**, with no page backdrop — unlike
+  `SilverlightRenderer.RenderPage`, which fills black first. An unrequested fill here would hide
+  the game rather than the missing overlay.
+- **Text is not drawn.** It needs a glyph rasteriser, which is a different and much larger job.
+  Gradients, `RenderTransform` and popups are also absent. Every unsupported thing it meets is
+  reported once by name as `[wpr-uirender]`, so a blank region has a reason in the log instead of
+  being indistinguishable from a bug.
+
+**`Render()` runs once per frame from a game's draw, so it is gated twice.** First a hash of
+everything the rasteriser would look at (`SoftwareVisualRasteriser.Signature` — rects, visibility,
+opacity, brush identity, plus a decode generation counter); then a comparison of the composed
+pixels against what was last uploaded. A WP7 page is static in the steady state, so this costs a
+walk of a handful of nodes and no GPU traffic. Without the first gate a full-screen
+clear-and-recomposite would run sixty times a second for ever. **The generation counter is not
+decoration**: when an image finally resolves, nothing in the tree changes, so without it the frame
+that could first paint the picture would compare equal and never be drawn.
+
+**The image is usually not a file, and that is the part that catches you out.**
+`ImageSource="LoadingScreen.png"` names an entry in `RabbidsGoPhone.g.resources` — the Silverlight
+`Resource` build action — and there is no such file anywhere in the install.
+`SilverlightImageDecoder` therefore tries, in order: the path as given, the path under
+`HostContext.CurrentInstallFolder` (separators normalised, the `ContentPaths` trap), and then
+`Application.GetResourceStream` against `HostContext.UserAssembly`, which already knows both a
+plain manifest resource and a `.g.resources` bundle entry. A resolver that only looked at the
+filesystem finds nothing and the page paints empty, which looks exactly like "this brush is not
+supported yet".
+
+Two things about that decoder are load-bearing rather than tidy:
+
+- **It decodes through `BitmapSource.SetSource`**, so there is one image-decode path in the
+  assembly and, when the source really is a `BitmapSource`, the pixels land on the game's own
+  object — a title that later reads `PixelWidth`/`Pixels` off the bitmap it handed us gets real
+  numbers instead of the 1x1 placeholder.
+- **`ResetForNewLaunch` is required for correctness, not just to give memory back.** The path cache
+  is keyed by the relative name a page asked for, and two games share one process on the desktop
+  head, so without it the next title's `LoadingScreen.png` would be the last one's.
+  `ApplicationLaunch` calls it beside the other singleton resets.
+
+**`UIElementCollection` had to gain a base class, and that was a real latent bug.** Silverlight
+declares `Add`/`Clear`/`Remove` on `PresentationFrameworkCollection<UIElement>` and
+`UIElementCollection` redeclares none of them, so ordinary game code — `LayoutRoot.Children.Add(x)`
+— compiles to a callvirt on `PresentationFrameworkCollection<UIElement>::Add`. WPR's was a bare
+`IList<UIElement>`, so that call had nowhere to land. The remarks on the base class already warned
+that concrete collections must really inherit from it; this one did not. Verified afterwards that
+Minesweeper's panorama dashboard still builds, since every Silverlight title goes through this.
+
+**`System.Windows.Controls.ProgressBar` and its `RangeBase` are the patcher change (v32).** A WP7
+loading screen routinely builds one, and a missing type resolves when the method naming it is
+*compiled* — so the whole of `RabbidsHD.Screens.Loading.LoadContent` failed, the screen was never
+added, and tapping **My Rabbid** on the main menu did nothing with nothing on screen to say why.
+The properties live on `RangeBase` because that is where Silverlight declares them: `bar.Value = 50`
+compiles to `callvirt RangeBase::set_Value`, and a hierarchy that puts the setter on the wrong
+class does not resolve at JIT time. `SilverlightRenderer.DrawProgressBar` now matches our shim's
+own FullName as well as the two WP7 ones — matching only the WP7 name would have stopped
+recognising it the moment the type existed.
+
+**Not identity-binding, so `--repatch-installed` is enough and nothing needs a reinstall.** The
+rasteriser itself is shim behaviour and needs neither.
+
+**How to recognise this class of fault.** A mixed-mode title that renders its own content
+correctly on a flat black (or otherwise empty) ground is an unrasterised Silverlight layer, not a
+renderer bug — check whether the page has a `Background` brush before suspecting the GPU. And a
+menu that takes taps and does nothing is, as ever, a missing member inside the handler: dump the
+failing method's member references with Cecil and look for the ones still scoped to
+`System.Windows` or `Microsoft.Phone`.
+
+Verified on Windows: Rabbids Go Phone menu with its background, into **My Rabbid** and a live 3D
+Rabbid; Sid Meier's Pirates! now paints its 2K Games logo page, which was blank; Cut the Rope and
+Little Acorns unaffected (Little Acorns reaches a level).
 
 ### When I touch a shim type
 

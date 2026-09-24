@@ -7,16 +7,22 @@ namespace WPR.SilverlightCompability
     /// is hosted directly; any other value is wrapped in a TextBlock at render time.
     /// </summary>
     [ContentProperty(nameof(Content))]
-    public class ContentControl : FrameworkElement
+    /// <remarks>
+    /// Derives from <see cref="Control"/>, as Silverlight does. It was a direct
+    /// <c>FrameworkElement</c> subclass, which made <c>Control</c> a SIBLING rather than an
+    /// ancestor — so <c>IsEnabled</c>, <c>Padding</c>, <c>BorderBrush</c> and
+    /// <c>BorderThickness</c>, all declared on Control, were unreachable from a Button or a
+    /// ContentControl. A game writing <c>IsEnabled="{Binding …}"</c> on a button got
+    /// "requires a DependencyProperty" and lost the element.
+    /// <para>It also means <c>(Control)somePage</c> now succeeds: <c>Page</c> reaches Control
+    /// through <c>UserControl → ContentControl</c>, and <c>VisualStateManager.GoToState</c> takes
+    /// a Control.</para>
+    /// </remarks>
+    public class ContentControl : Control
     {
         public static readonly DependencyProperty ContentProperty =
             DependencyProperty.Register(nameof(Content), typeof(object), typeof(ContentControl),
                 new PropertyMetadata((object?)null, OnContentChanged));
-
-        // Alias of FrameworkElement.BackgroundProperty — see FrameworkElement.cs
-        // for why every Background field shares one DP slot. The CLR Background
-        // property is inherited from FrameworkElement.
-        public static readonly DependencyProperty BackgroundProperty = FrameworkElement.BackgroundProperty;
 
         public object? Content
         {

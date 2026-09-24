@@ -291,11 +291,29 @@ namespace WPR
             if (app == null) throw new ArgumentNullException(nameof(app));
             if (hooks == null) throw new ArgumentNullException(nameof(hooks));
 
+            // A Silverlight/XNA MIXED-MODE title also declares RuntimeType="Silverlight", but it
+            // is not a Silverlight UI app at all: it has no Game subclass, renders entirely with
+            // XNA, and drives itself from a GameTimer on its page. MixedModeGame hosts those, so
+            // they take the XNA path from here on and only a genuine UI app is refused.
+            bool isMixedMode = false;
             if (app.ApplicationType == ApplicationType.Silverlight)
             {
-                throw new NotSupportedException(
-                    "Silverlight UI runtime is not yet implemented. " +
-                    "This XAP installs successfully but cannot be launched yet.");
+                isMixedMode = MixedModeDetection.IsMixedMode(
+                    Path.Combine(
+                        Configuration.Current!.DataPath(Application.DataStoreFolder),
+                        app.ProductId!),
+                    app.Assembly,
+                    // Lambda, not a method group: WprTrace is [Conditional("DEBUG")] and cannot
+                    // be converted to a delegate. Wrapping it keeps the Debug-only behaviour —
+                    // in Release the call inside the lambda is erased and this is a no-op.
+                    msg => WprTrace(msg));
+
+                if (!isMixedMode)
+                {
+                    throw new NotSupportedException(
+                        "Silverlight UI runtime is not yet implemented. " +
+                        "This XAP installs successfully but cannot be launched yet.");
+                }
             }
 
             if (app.ApplicationType == ApplicationType.ModernNative)
@@ -306,7 +324,7 @@ namespace WPR
                     "this CLR-based runner without a native loader and a WinRT reimplementation.");
             }
 
-            if (app.ApplicationType != ApplicationType.XNA)
+            if (app.ApplicationType != ApplicationType.XNA && !isMixedMode)
             {
                 throw new NotSupportedException(
                     $"Application runtime type '{app.ApplicationType}' is not supported.");
@@ -362,8 +380,7 @@ namespace WPR
                 sw.WriteLine();
                 debugListener = new TextWriterTraceListener(sw, "wpr_game_debug");
                 Trace.Listeners.Add(debugListener);
-                WprTrace("[wpr-trace] ApplicationLaunch: trace listener attached (smoke test)");
-                // Which module ended up on each audio seam. Reported here rather than where it is
+                WprTrace("[wpr-trace] ApplicationLaunch: trace listener attached (smoke test)");                // Which module ended up on each audio seam. Reported here rather than where it is
                 // decided (FnaGameHost, before this file exists) so it lands in the per-game log
                 // beside the failures it explains — "sound=none" is the answer to a game throwing
                 // NoAudioHardwareException, and "media=" names who is actually playing songs.
@@ -599,7 +616,41 @@ namespace WPR
                 Game? obj = null;
                 try
                 {
-                    obj = Activator.CreateInstance(mainType!) as Game;
+                    if (isMixedMode)
+                    {
+                        // No Game to instantiate: mainType is the game's Silverlight Application
+                        // subclass. MixedModeGame owns it — it builds the device first, then boots
+                        // the app and navigates to its page, which is what starts the GameTimer.
+                        obj = new MixedModeGame(
+                            folderPath,
+                            assem,
+                            app.EntryPoint,
+                            appInstance =>
+                            {
+                                // The WP7 cold-start signal, fired here rather than at the priming
+                                // call below: that runs before Game.Run, and in mixed mode the
+                                // app's own PhoneApplicationService does not exist until App.xaml
+                                // has been parsed — which is what just happened. Navigation, and
+                                // with it the page's OnNavigatedTo, comes next.
+                                bool raiseActivated = !GameLifecycleQuirks.SuppressesBootActivated(app.ProductId);
+                                WprTrace($"[wpr-mixed] app created ({appInstance.GetType().FullName}); " +
+                                         $"HandleApplicationStart(true, raiseActivated: {raiseActivated})");
+                                try
+                                {
+                                    PhoneApplicationService.Current?.HandleApplicationStart(true, raiseActivated);
+                                }
+                                catch (Exception ex)
+                                {
+                                    WprTrace("[wpr-ex] mixed-mode HandleApplicationStart threw: " + ex);
+                                }
+                            },
+                            // See the IsMixedMode call above: WprTrace is [Conditional("DEBUG")].
+                            msg => WprTrace(msg));
+                    }
+                    else
+                    {
+                        obj = Activator.CreateInstance(mainType!) as Game;
+                    }
                 try
                 {
                     CurrentGame = obj;
@@ -1332,8 +1383,45 @@ namespace WPR
             try { WPR.SilverlightCompability.CompositionTarget.ResetForNewLaunch(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"CompositionTarget reset threw: {ex.Message}"); }
 
+            // Running storyboards hold the game's own page objects, and the desktop host outlives
+            // a game — leaving them registered would pin the collectible load context and keep
+            // ticking a dead page's animations into the next launch.
+            try { WPR.SilverlightCompability.AnimationClock.ResetForNewLaunch(); }
+            catch (Exception ex) { Log.Warn(LogCategory.AppList, $"AnimationClock reset threw: {ex.Message}"); }
+
             try { WPR.SilverlightCompability.Touch.ResetForNewLaunch(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"Touch reset threw: {ex.Message}"); }
+
+            // The three mixed-mode singletons. All are static registries holding objects that
+            // belong to the launch — a timer the game never stopped, a device manager bound to a
+            // device that is about to be disposed, a MediaElement left mid-transition by a game
+            // closed during a cutscene. Each one would otherwise keep the page alive, and the
+            // page keeps the user ALC alive: the 2026-08-08 leak shape.
+            try { Microsoft.Xna.Framework.GameTimer.ResetForNewLaunch(); }
+            catch (Exception ex) { Log.Warn(LogCategory.AppList, $"GameTimer reset threw: {ex.Message}"); }
+
+            try { Microsoft.Xna.Framework.SharedGraphicsDeviceManager.ResetForNewLaunch(); }
+            catch (Exception ex) { Log.Warn(LogCategory.AppList, $"SharedGraphicsDeviceManager reset threw: {ex.Message}"); }
+
+            try { WPR.SilverlightCompability.MediaElement.ResetForNewLaunch(); }
+            catch (Exception ex) { Log.Warn(LogCategory.AppList, $"MediaElement reset threw: {ex.Message}"); }
+
+            // Keyed by the relative name a page asked for, and two games share this process on
+            // the desktop head — so without this the next title's LoadingScreen.png would be the
+            // last one's.
+            try { WPR.SilverlightCompability.SilverlightImageDecoder.ResetForNewLaunch(); }
+            catch (Exception ex) { Log.Warn(LogCategory.AppList, $"SilverlightImageDecoder reset threw: {ex.Message}"); }
+
+            // Rasterised glyphs and the parsed font. Memory rather than correctness — the cache is
+            // keyed on glyph and size, not on anything belonging to a game — but it is the largest
+            // thing the text path holds, and the desktop head runs two games in one process.
+            try { WPR.SilverlightCompability.TextRasteriser.ResetForNewLaunch(); }
+            catch (Exception ex) { Log.Warn(LogCategory.AppList, $"TextRasteriser reset threw: {ex.Message}"); }
+
+            // An interaction still open when the player quits holds the hit chain, and through it
+            // the page and that launch's assembly load context.
+            try { Microsoft.Phone.Controls.SilverlightTouchRouter.ResetForNewLaunch(); }
+            catch (Exception ex) { Log.Warn(LogCategory.AppList, $"SilverlightTouchRouter reset threw: {ex.Message}"); }
 
             // A wheel scroll still travelling when the player quits would otherwise be delivered
             // into the next launch's first frames, as a finger drag nobody performed.

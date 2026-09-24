@@ -18,8 +18,8 @@
   -->
 
   <PropertyGroup>
-    <TargetFramework>net8.0-android</TargetFramework>
-    <SupportedOSPlatformVersion>21.0</SupportedOSPlatformVersion>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
     <CheckEolWorkloads>false</CheckEolWorkloads>
     <AssemblyName>WPR.Notifications.AndroidChannel</AssemblyName>
     <RootNamespace>WPR.Notifications.AndroidChannel</RootNamespace>

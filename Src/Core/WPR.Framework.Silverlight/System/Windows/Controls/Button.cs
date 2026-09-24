@@ -2,15 +2,12 @@ using System;
 
 namespace WPR.SilverlightCompability
 {
-    public class Button : ContentControl
+    /// <remarks>
+    /// <c>Click</c>, <c>RaiseClick</c> and <c>ClickMode</c> live on <see cref="ButtonBase"/>,
+    /// which is where Silverlight declares them and therefore what game IL names.
+    /// </remarks>
+    public class Button : ButtonBase
     {
-        public event RoutedEventHandler? Click;
-
-        /// <summary>Invoked by the host when this button has been hit-tested as the target of a press.</summary>
-        internal void RaiseClick()
-        {
-            Click?.Invoke(this, new RoutedEventArgs { OriginalSource = this });
-        }
 
         /// <summary>
         /// Pad the Content's natural size out to WP7's button minimum

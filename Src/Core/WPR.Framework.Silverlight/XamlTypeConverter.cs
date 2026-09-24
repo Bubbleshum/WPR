@@ -70,6 +70,21 @@ namespace WPR.SilverlightCompability
             }
             if (targetType == typeof(float)) return float.Parse(s, CultureInfo.InvariantCulture);
 
+            // Relative by default. Every Uri a WP7 page writes — a merged ResourceDictionary's
+            // Source, a NavigationService target, an image path — is relative to the XAP root, and
+            // parsing those as absolute throws.
+            //
+            // Its absence was not a missing conversion so much as a missing FEATURE: with no Uri
+            // case, `<ResourceDictionary Source="themes/generic.xaml"/>` could not be assigned at
+            // all, so every merged theme dictionary in every Silverlight app stayed empty and each
+            // {StaticResource} naming one silently missed. Carcassonne merges five of them.
+            if (targetType == typeof(Uri))
+            {
+                return Uri.TryCreate(s, UriKind.RelativeOrAbsolute, out Uri? uri)
+                    ? uri
+                    : new Uri(s, UriKind.Relative);
+            }
+
             if (targetType == typeof(Color)) return ParseColor(s);
             if (targetType == typeof(Thickness)) return ParseThickness(s);
             if (targetType == typeof(CornerRadius)) return ParseCornerRadius(s);

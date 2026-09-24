@@ -26,6 +26,12 @@ because several of those sections are cited by name from source comments.
 
 **Start here:** `ARCHITECTURE-MIGRATION.md` §5, "What is left".
 
+## Host convergence
+
+| Doc | What it covers |
+| --- | --- |
+| [SILVERLIGHT-XNA-CONVERGENCE.md](SILVERLIGHT-XNA-CONVERGENCE.md) | Collapsing the Avalonia Silverlight host into the FNA/XNA one. Measured finding: the current `ApplicationType` split is drawn in the wrong place — Carcassonne and Galactic Reign are on the XNA host and need *more* Silverlight rendering than Flowerz, which is on the Silverlight host. Four stages, renderer-merge last. Unlocks the 97 pure-Silverlight titles that cannot run on Android today. |
+
 ## Feasibility studies
 
 Scoping work on game families that can't simply be hosted in-process — and, for WP8

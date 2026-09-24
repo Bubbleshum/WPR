@@ -37,7 +37,7 @@
        to net10 + Avalonia 12 (Avalonia.Android skipped .NET 9 entirely), so
        this stays 34 until that migration happens. -->
   <PropertyGroup>
-    <WprAndroidApiLevel Condition=" '$(WprAndroidApiLevel)' == '' ">34</WprAndroidApiLevel>
+    <WprAndroidApiLevel Condition=" '$(WprAndroidApiLevel)' == '' ">36</WprAndroidApiLevel>
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(IncludeAndroidTargets)' == '' ">
@@ -121,7 +121,7 @@
           Condition=" '$(MSBuildProjectName)' == 'WPR.Platform.Windows' ">
     <Message Importance="high"
              Condition=" '$(IncludeAndroidTargets)' != 'true' "
-             Text="WPR: .NET Android workload for API $(WprAndroidApiLevel) not detected - net8.0-android targets skipped (desktop build unaffected). To build Android: run 'dotnet workload install android' from the repo root, so global.json pins it to the $(NETCoreSdkVersion) band. To override: -p:IncludeAndroidTargets=true" />
+             Text="WPR: .NET Android workload for API $(WprAndroidApiLevel) not detected - net*-android targets skipped (desktop build unaffected). To build Android: run 'dotnet workload install android' from the repo root, so global.json pins it to the $(NETCoreSdkVersion) band. To override: -p:IncludeAndroidTargets=true" />
     <Message Importance="normal"
              Condition=" '$(IncludeAndroidTargets)' == 'true' "
              Text="WPR: .NET Android workload detected - net8.0-android targets included." />

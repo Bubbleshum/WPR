@@ -87,6 +87,19 @@ namespace WPR.Engine
         IPlatformCapabilities Notifications(INotificationManager manager);
 
         /// <summary>
+        /// How to open a link outside the game - the browser, or whichever app claims it. This is
+        /// what WP7's launchers (<c>WebBrowserTask</c> first) go through. Omit it and every
+        /// launcher stays a no-op.
+        /// </summary>
+        IPlatformCapabilities UriLauncher(WPR.Engine.Launchers.IUriLauncher launcher);
+
+        /// <summary>
+        /// How to share text through the OS's share UI - what WP7's <c>ShareLinkTask</c> and
+        /// <c>ShareStatusTask</c> go through. Omit it and both stay no-ops.
+        /// </summary>
+        IPlatformCapabilities ShareSheet(WPR.Engine.Launchers.IShareSheet sheet);
+
+        /// <summary>
         /// This platform emulates tilt from the keyboard. Declared only by heads that have a
         /// keyboard and no real sensor; the game host attaches the XNA components when it sees one.
         /// </summary>

@@ -50,6 +50,9 @@ namespace GameRun
             Console.Error.WriteLine($"[gamerun] launching {app.Name} ({app.ProductId}) patched=v{app.PatchedVersion}");
             Console.Error.WriteLine($"[gamerun] FNA3D_FORCE_DRIVER={Environment.GetEnvironmentVariable("FNA3D_FORCE_DRIVER")}");
 
+            WPR.Xna.Rhi.XnaBackend.SetAchievements(new WPR.Database.Achievements.EfAchievementStore());
+            Console.Error.WriteLine("[gamerun] achievement store registered");
+
             var host = new FnaGameHost(app);
             if (exitAfter > 0)
             {

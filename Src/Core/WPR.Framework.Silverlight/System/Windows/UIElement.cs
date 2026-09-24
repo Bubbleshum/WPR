@@ -130,11 +130,45 @@ namespace WPR.SilverlightCompability
         public event EventHandler<ManipulationStartedEventArgs>? ManipulationStarted;
         public event EventHandler<ManipulationDeltaEventArgs>? ManipulationDelta;
         public event EventHandler<ManipulationCompletedEventArgs>? ManipulationCompleted;
-        public event MouseButtonEventHandler? MouseLeftButtonDown;
-        public event MouseButtonEventHandler? MouseLeftButtonUp;
         public event KeyEventHandler? KeyDown;
         public event KeyEventHandler? KeyUp;
 #pragma warning restore CS0067
+
+        public event MouseButtonEventHandler? MouseLeftButtonDown;
+        public event MouseButtonEventHandler? MouseLeftButtonUp;
+
+        /// <summary>Delivers a press to this element. Returns true if a handler marked it handled.</summary>
+        /// <remarks>
+        /// The mouse pair is what a WP7 page hooks when it wants raw presses rather than a
+        /// <c>Button.Click</c> or a toolkit gesture — a game board, a custom control, a page that
+        /// dismisses itself on any tap. The host input router raises these on the way up the hit
+        /// chain, so a handler on an ancestor sees a press on a child, which is what "routed"
+        /// means.
+        /// <para>A throwing handler is swallowed: it is the game's, and losing the rest of the
+        /// bubble (or the frame) over it would be worse than losing the one notification.</para>
+        /// </remarks>
+        internal bool RaiseMouseLeftButtonDown(Point pagePosition)
+        {
+            MouseButtonEventHandler? handler = MouseLeftButtonDown;
+            if (handler == null) return false;
+
+            var args = new MouseButtonEventArgs { OriginalSource = this, PagePosition = pagePosition };
+            try { handler(this, args); }
+            catch { return false; }
+            return args.Handled;
+        }
+
+        /// <summary>Delivers a release to this element. Returns true if a handler marked it handled.</summary>
+        internal bool RaiseMouseLeftButtonUp(Point pagePosition)
+        {
+            MouseButtonEventHandler? handler = MouseLeftButtonUp;
+            if (handler == null) return false;
+
+            var args = new MouseButtonEventArgs { OriginalSource = this, PagePosition = pagePosition };
+            try { handler(this, args); }
+            catch { return false; }
+            return args.Handled;
+        }
 
         /// <summary>Stub for <c>UIElement.ReleaseMouseCapture()</c> — no capture model yet.</summary>
         public void ReleaseMouseCapture() { }

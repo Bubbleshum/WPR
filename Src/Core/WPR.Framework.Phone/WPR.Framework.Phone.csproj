@@ -1,11 +1,11 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
     <CheckEolWorkloads>false</CheckEolWorkloads>
-    <TargetFrameworks>net8.0;net8.0-android</TargetFrameworks>
+    <TargetFrameworks>net8.0;net10.0-android</TargetFrameworks>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(OS)' == 'Windows_NT' ">
     <CheckEolWorkloads>false</CheckEolWorkloads>
-    <TargetFrameworks>net8.0;net8.0-windows10.0.17763.0;net8.0-android</TargetFrameworks>
+    <TargetFrameworks>net8.0;net8.0-windows10.0.17763.0;net10.0-android</TargetFrameworks>
   </PropertyGroup>
   <PropertyGroup>
     <CheckEolWorkloads>false</CheckEolWorkloads>
@@ -39,6 +39,9 @@
          way: Microsoft.Phone -> WPR.Engine.Vibration. That project has no net8.0-windows leg and
          needs none — this project's desktop leg resolves its plain net8.0 one. -->
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Vibration\WPR.Engine.Vibration.csproj" />
+    <!-- The IUriLauncher seam the WP7 launchers (WebBrowserTask first) leave the game through.
+         Speaks System.Uri only, so the edge is one way: Microsoft.Phone -> WPR.Engine.Launchers. -->
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Launchers\WPR.Engine.Launchers.csproj" />
   </ItemGroup>
 
   <!-- The test project reaches PhoneApplicationFrameView.ConvertBrush (internal). -->

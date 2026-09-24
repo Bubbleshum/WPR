@@ -10,7 +10,7 @@ export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 SOLUTION_DIR="$ROOT/Src"
 PROJECT="$SOLUTION_DIR/Platforms/WPR.Platform.Android/WPR.Platform.Android.csproj"
-FRAMEWORK="${1:-net8.0-android34.0}"
+FRAMEWORK="${1:-net10.0-android36.0}"
 
 dotnet build "$PROJECT" \
   -p:SolutionDir="$SOLUTION_DIR/" \

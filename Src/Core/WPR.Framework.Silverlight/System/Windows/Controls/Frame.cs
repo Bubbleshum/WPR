@@ -165,6 +165,22 @@ namespace WPR.SilverlightCompability
         protected Page ResolvePage(Uri source)
         {
             string key = source.OriginalString.Trim();
+
+            // The QUERY STRING is not part of the page's identity. WP7's standard way to pass
+            // parameters is "/Page.xaml?mode=offline", read back through
+            // NavigationContext.QueryString — which is populated from the FULL uri in DoNavigate,
+            // so nothing is lost by cutting it here.
+            //
+            // Without this, any parameterised navigation failed outright: Carcassonne's main menu
+            // navigates to "/Views/Menu/NewGameMenu.xaml?mode=offline", which resolved to no page
+            // and threw, so the first button anyone presses went nowhere. Passing state this way
+            // is idiomatic WP7, not unusual, so expect it to have blocked other titles too.
+            int query = key.IndexOf('?');
+            if (query >= 0) key = key.Substring(0, query);
+
+            int fragment = key.IndexOf('#');
+            if (fragment >= 0) key = key.Substring(0, fragment);
+
             if (key.StartsWith("/", StringComparison.Ordinal))
                 key = key.Substring(1);
             if (key.EndsWith(".xaml", StringComparison.OrdinalIgnoreCase))
@@ -176,7 +192,9 @@ namespace WPR.SilverlightCompability
 
             // Standard WP behaviour: navigate by XAML resource URI. Locate the embedded XAML
             // resource in the user assembly, read its x:Class to find the page type, instantiate.
-            Page? page = TryResolveFromXamlResource(source);
+            // The cleaned key, not the raw uri — a resource lookup with "?mode=offline" appended
+            // matches nothing either.
+            Page? page = TryResolveFromXamlResource(new Uri(key + ".xaml", UriKind.Relative));
             if (page != null) return page;
 
             throw new InvalidOperationException($"No page registered for navigation key '{key}' (Uri: {source})");
@@ -365,34 +383,47 @@ namespace WPR.SilverlightCompability
             _currentPage = newPage;
             _currentUri = newUri;
             newPage.NavigationService = NavigationService;
+            // Before OnNavigatedTo, which is where a page reads its parameters.
+            newPage.NavigationContext.Populate(newUri);
 
-            // If OnNavigatedTo throws (e.g., the page's override calls a method
-            // our shims don't yet expose — Minesweeper's HelpOptionsPage hit
-            // MissingMethodException on Control.set_IsEnabled), don't leave the
-            // frame half-committed: every subsequent tap on the still-visible
-            // old page would otherwise see `_currentPage` pointing at the
-            // broken new page and crash all over again. Roll the page pointer
-            // back to the previous state and rethrow so the host handler logs
-            // the original exception.
+            // A page's OnNavigatedTo may throw — its override reaches a shim gap (Minesweeper's
+            // HelpOptionsPage hit MissingMethodException on Control.set_IsEnabled) or simply
+            // NullReferences on state the game expects to exist.
+            //
+            // THE NAVIGATION STILL COMMITS, and Navigated is still raised. This used to roll the
+            // frame back to the previous page and rethrow, on the reasoning that a half-committed
+            // frame would crash again on the next tap. That is not what WP7 does — there the page
+            // has already become the content and the exception goes to
+            // Application.UnhandledException — and rolling back is much worse in practice, because
+            // it makes the page PERMANENTLY unreachable: the app returns to the previous screen,
+            // whatever sent it here fires again, and it loops.
+            //
+            // Carcassonne is the measured case. Its MainMenu.SetPageState() NREs inside
+            // OnNavigatedTo, so the rollback left the game on its splash screen for ever,
+            // re-navigating and re-constructing the menu ~25 times a run. Worse, the throw escaped
+            // BEFORE Navigated was raised, so the mixed-mode host never learned the page had
+            // changed, never ran a layout pass for it, and every element kept a zero-sized
+            // ArrangedRect — the whole menu rasterised to nothing and the screen was black, with
+            // no failed navigation anywhere in the log to say why.
+            //
+            // The exception is still rethrown, so what the CALLER sees is unchanged.
+            Exception? navigatedToFailure = null;
             try
             {
                 newPage.OnNavigatedTo(new NavigationEventArgs(newPage, newUri, mode));
             }
-            catch
+            catch (Exception ex)
             {
-                _currentPage = oldPage;
-                _currentUri = oldUri;
-                newPage.NavigationService = null;
-                if (oldPage != null) oldPage.NavigationService = NavigationService;
-                if (pushCurrentToBack && oldUri != null && _backStack.Count > 0)
-                {
-                    // Undo the back-stack push we did earlier so the journal
-                    // doesn't list a page we never actually displayed.
-                    _backStack.Pop();
-                }
-                throw;
+                navigatedToFailure = ex;
+                System.Diagnostics.Trace.WriteLine(
+                    $"[wpr-nav] {newPage.GetType().Name}.OnNavigatedTo threw ({ex.GetType().Name}: {ex.Message}); " +
+                    "the navigation still committed.");
             }
+
             Navigated?.Invoke(this, new NavigationEventArgs(newPage, newUri, mode));
+
+            if (navigatedToFailure != null)
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(navigatedToFailure).Throw();
 
             // Fire Loaded on the new page's tree. Real SL fires this once the
             // element has entered the visual tree and the first layout pass has

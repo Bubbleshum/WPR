@@ -78,8 +78,22 @@ namespace WPR.SilverlightCompability
             string text = Text ?? string.Empty;
             if (text.Length == 0) return Size.Empty;
 
-            // Try Avalonia's text measurement; fall back to a heuristic if the font subsystem
-            // isn't initialized (e.g. unit tests not running inside an Avalonia app).
+            // WPR's own rasteriser first, because on the mixed-mode host it is what actually draws
+            // this text — measuring with anything else guarantees layout and rendering disagree.
+            // It also works where Avalonia does not (the Android head initialises none), which is
+            // where the heuristic below used to be silently in charge of every WP7 page.
+            if (TextRasteriser.IsAvailable)
+            {
+                double wrapWidth = TextWrapping == TextWrapping.Wrap
+                    ? availableSize.Width
+                    : double.PositiveInfinity;
+
+                TextRasteriser.Measure(text, FontSize, out double tw, out double th, wrapWidth);
+                if (th > 0) return new Size(tw, th);
+            }
+
+            // Avalonia's measurement, for the Avalonia-hosted Silverlight renderer when no system
+            // font was found; then a crude heuristic if its font subsystem is not initialised.
             try
             {
                 var typeface = new AvTypeface(FontFamily ?? "Segoe UI");

@@ -25,8 +25,25 @@ namespace WPR.WindowsCompability
     /// <summary>Stub for Silverlight's <c>System.Windows.Interop.Content</c>.</summary>
     public sealed class SilverlightHostContent
     {
-        public double ActualWidth { get; internal set; }
-        public double ActualHeight { get; internal set; }
+        /// <summary>
+        /// The WP7 screen: a fixed 480x800 WVGA panel, in portrait.
+        /// </summary>
+        /// <remarks>
+        /// <b>These default to the screen size, not to zero.</b> This is the Silverlight way of
+        /// asking how big the screen is — the counterpart of <c>GameWindow.ClientBounds</c>,
+        /// which returns the same 480x800 for the same reason (see its own remarks: on WP7 the
+        /// window IS the screen, and it never rotates). They were 0 until 2026-09-21, and a
+        /// game that sizes its own layout from them divided by, scaled against, or laid out
+        /// inside nothing. <b>Little Acorns</b> is the measured case: its menu rendered, at the
+        /// wrong scale, with the edges off-screen.
+        ///
+        /// <para>Zero is never a plausible answer to "how big is the display", so there is no
+        /// reading under which the old default was the safe one.</para>
+        /// </remarks>
+        public double ActualWidth { get; internal set; } = 480;
+
+        /// <inheritdoc cref="ActualWidth"/>
+        public double ActualHeight { get; internal set; } = 800;
         public double ZoomFactor { get; internal set; } = 1.0;
 
         /// <summary>WP devices report a per-resolution scale factor (e.g. 100 for WVGA).</summary>

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <AssemblyName>scrollprobe</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Src\Core\WPR.Framework.Silverlight\WPR.Framework.Silverlight.csproj" />
+    <ProjectReference Include="..\..\Src\Core\WPR.Framework.Phone\WPR.Framework.Phone.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,28 +1,14 @@
-using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Reflection;
-using System.Threading.Tasks;
-
 namespace WPR.SilverlightCompability
 {
     /// <summary>Shim for <c>System.Windows.Controls.CheckBox</c>.</summary>
-    public class CheckBox : ContentControl
+    /// <remarks>
+    /// Everything it has — <c>IsChecked</c>, <c>Checked</c>, <c>Unchecked</c>,
+    /// <c>Indeterminate</c> — is declared on <see cref="ToggleButton"/> in Silverlight, so it is
+    /// inherited rather than redeclared. A redeclared member is not merely duplication here: game
+    /// IL naming <c>ToggleButton::set_IsChecked</c> would bind to a DIFFERENT property from the one
+    /// the XAML set, and the two would silently disagree.
+    /// </remarks>
+    public class CheckBox : ToggleButton
     {
-        public static readonly DependencyProperty IsCheckedProperty =
-            DependencyProperty.Register(nameof(IsChecked), typeof(bool?), typeof(CheckBox),
-                new PropertyMetadata((object?)false));
-
-        public bool? IsChecked
-        {
-            get => (bool?)GetValue(IsCheckedProperty);
-            set => SetValue(IsCheckedProperty, value);
-        }
-
-#pragma warning disable CS0067
-        public event RoutedEventHandler? Checked;
-        public event RoutedEventHandler? Unchecked;
-        public event RoutedEventHandler? Indeterminate;
-#pragma warning restore CS0067
     }
 }

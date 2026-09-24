@@ -16,14 +16,20 @@ namespace WPR.SilverlightCompability
         public static readonly DependencyProperty ZIndexProperty = DependencyProperty.RegisterAttached(
             "ZIndex", typeof(int), typeof(Canvas), new PropertyMetadata(0));
 
-        public static double GetLeft(DependencyObject element) => (double)element.GetValue(LeftProperty)!;
-        public static void SetLeft(DependencyObject element, double value) => element.SetValue(LeftProperty, value);
+        // UIElement, not DependencyObject — that is Silverlight's signature, and a parameter type
+        // is part of the method signature a game's IL binds. These took DependencyObject until
+        // 2026-09-21, which compiled fine and passed the unit tests below (every caller here
+        // happens to pass a UIElement) while being unresolvable from any game that positions a
+        // child itself: Cut the Rope's IL names SetLeft(UIElement, float64) and got a
+        // MissingMethodException. Widening a shim's parameter is not a safe generalisation.
+        public static double GetLeft(UIElement element) => (double)element.GetValue(LeftProperty)!;
+        public static void SetLeft(UIElement element, double value) => element.SetValue(LeftProperty, value);
 
-        public static double GetTop(DependencyObject element) => (double)element.GetValue(TopProperty)!;
-        public static void SetTop(DependencyObject element, double value) => element.SetValue(TopProperty, value);
+        public static double GetTop(UIElement element) => (double)element.GetValue(TopProperty)!;
+        public static void SetTop(UIElement element, double value) => element.SetValue(TopProperty, value);
 
-        public static int GetZIndex(DependencyObject element) => (int)element.GetValue(ZIndexProperty)!;
-        public static void SetZIndex(DependencyObject element, int value) => element.SetValue(ZIndexProperty, value);
+        public static int GetZIndex(UIElement element) => (int)element.GetValue(ZIndexProperty)!;
+        public static void SetZIndex(UIElement element, int value) => element.SetValue(ZIndexProperty, value);
 
         protected override Size MeasureOverride(Size availableSize)
         {

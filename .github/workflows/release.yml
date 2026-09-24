@@ -2,7 +2,7 @@
 # GitHub Release:
 #
 #   * Windows - self-contained x64 payload wrapped in an Inno Setup installer
-#   * Android - signed APK (net8.0-android34.0 / API 34)
+#   * Android - signed APK (net10.0-android36.0 / API 36)
 #
 # Manual dispatch only: Actions -> Release -> Run workflow, then type the version.
 name: Release
@@ -166,12 +166,12 @@ jobs:
       - name: Install .NET Android workload
         run: dotnet workload install android
 
-      # net8.0-android* maps to API 34 only; the runner image's default platform
+      # net10.0-android* maps to API 36 only; the runner image's default platform
       # set moves over time, so pin what we need explicitly.
       - name: Ensure Android SDK platform 34
         run: |
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-            "platforms;android-34" "build-tools;34.0.0"
+            "platforms;android-36" "build-tools;36.0.0"
 
       # Optional real signing key. Without these secrets .NET Android falls back
       # to a debug keystore generated fresh on each runner, which means every
@@ -209,7 +209,7 @@ jobs:
           # A plain Release *build* stops short of packaging, hence SignAndroidPackage.
           dotnet build Src/Platforms/WPR.Platform.Android/WPR.Platform.Android.csproj \
             -c Release \
-            -f net8.0-android34.0 \
+            -f net10.0-android36.0 \
             -t:SignAndroidPackage \
             -p:SolutionDir="$GITHUB_WORKSPACE/Src/" \
             -p:IncludeAndroidTargets=true \
@@ -227,7 +227,7 @@ jobs:
           VERSION: ${{ needs.validate.outputs.version }}
         run: |
           mkdir -p dist
-          BIN=Src/Platforms/WPR.Platform.Android/bin/Release/net8.0-android34.0
+          BIN=Src/Platforms/WPR.Platform.Android/bin/Release/net10.0-android36.0
           APK=$(ls "$BIN"/*-Signed.apk 2>/dev/null | head -1)
           if [[ -z "$APK" ]]; then
             echo "::error::no signed APK produced in $BIN"

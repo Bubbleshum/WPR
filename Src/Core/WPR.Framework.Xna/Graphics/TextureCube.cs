@@ -88,9 +88,13 @@ namespace Microsoft.Xna.Framework.Graphics
 				Format = format;
 			}
 
+			/* What the device is actually given; Format stays the game's view. See
+			 * TextureFormatShim, and Texture2D's constructor for the same pair. */
+			storageFormat = TextureFormatShim.StorageFormatFor(Format);
+
 			texture = XnaBackend.Graphics.CreateTextureCube(
 				GraphicsDevice.GLDevice,
-				Format,
+				storageFormat,
 				Size,
 				LevelCount,
 				(byte) ((this is IRenderTarget) ? 1 : 0)
@@ -162,6 +166,26 @@ namespace Microsoft.Xna.Framework.Graphics
 
 			int elementSizeInBytes = Marshal.SizeOf(typeof(T));
 			GCHandle handle = GCHandle.Alloc(data, GCHandleType.Pinned);
+
+			IntPtr source = handle.AddrOfPinnedObject() + startIndex * elementSizeInBytes;
+			int sourceLength = elementCount * elementSizeInBytes;
+
+			/* Same conversion as Texture2D.SetData, for the same reason. */
+			GCHandle staging = default(GCHandle);
+			if (storageFormat != Format)
+			{
+				byte[] converted = new byte[width * height * GetFormatSize(storageFormat)];
+				staging = GCHandle.Alloc(converted, GCHandleType.Pinned);
+				TextureFormatShim.Encode(
+					Format,
+					source,
+					staging.AddrOfPinnedObject(),
+					width * height
+				);
+				source = staging.AddrOfPinnedObject();
+				sourceLength = converted.Length;
+			}
+
 			XnaBackend.Graphics.SetTextureDataCube(
 				GraphicsDevice.GLDevice,
 				texture,
@@ -171,9 +195,13 @@ namespace Microsoft.Xna.Framework.Graphics
 				height,
 				cubeMapFace,
 				level,
-				handle.AddrOfPinnedObject() + startIndex * elementSizeInBytes,
-				elementCount * elementSizeInBytes
+				source,
+				sourceLength
 			);
+			if (staging.IsAllocated)
+			{
+				staging.Free();
+			}
 			handle.Free();
 		}
 
@@ -203,6 +231,39 @@ namespace Microsoft.Xna.Framework.Graphics
 				yOffset = 0;
 				width = Math.Max(1, Size >> level);
 				height = Math.Max(1, Size >> level);
+			}
+
+			/* Same conversion as the SetData<T> above; this is the path DDSFromStreamEXT takes. */
+			if (storageFormat != Format)
+			{
+				byte[] converted = new byte[width * height * GetFormatSize(storageFormat)];
+				GCHandle staging = GCHandle.Alloc(converted, GCHandleType.Pinned);
+				try
+				{
+					TextureFormatShim.Encode(
+						Format,
+						data,
+						staging.AddrOfPinnedObject(),
+						width * height
+					);
+					XnaBackend.Graphics.SetTextureDataCube(
+						GraphicsDevice.GLDevice,
+						texture,
+						xOffset,
+						yOffset,
+						width,
+						height,
+						cubeMapFace,
+						level,
+						staging.AddrOfPinnedObject(),
+						converted.Length
+					);
+				}
+				finally
+				{
+					staging.Free();
+				}
+				return;
 			}
 
 			XnaBackend.Graphics.SetTextureDataCube(
@@ -291,20 +352,75 @@ namespace Microsoft.Xna.Framework.Graphics
 			int elementSizeInBytes = Marshal.SizeOf(typeof(T));
 			ValidateGetDataFormat(Format, elementSizeInBytes);
 
+			/* On OpenGL ES this entry point is a NULL call unconditionally — unlike the 2D one it
+			 * has no render-target diversion to fall into. See TextureReadback. */
+			if (!TextureReadback.CanServeCube())
+			{
+				Array.Clear(data, startIndex, elementCount);
+				TextureReadback.ReportRefusal(
+					"TextureCube " + Size + " " + Format + " face " + cubeMapFace +
+					" level " + level
+				);
+				return;
+			}
+
 			GCHandle handle = GCHandle.Alloc(data, GCHandleType.Pinned);
-			XnaBackend.Graphics.GetTextureDataCube(
-				GraphicsDevice.GLDevice,
-				texture,
-				subX,
-				subY,
-				subW,
-				subH,
-				cubeMapFace,
-				level,
-				handle.AddrOfPinnedObject() + (startIndex * elementSizeInBytes),
-				elementCount * elementSizeInBytes
-			);
-			handle.Free();
+			try
+			{
+				if (storageFormat != Format)
+				{
+					byte[] stored = new byte[subW * subH * GetFormatSize(storageFormat)];
+					GCHandle staging = GCHandle.Alloc(stored, GCHandleType.Pinned);
+					try
+					{
+						XnaBackend.Graphics.GetTextureDataCube(
+							GraphicsDevice.GLDevice,
+							texture,
+							subX,
+							subY,
+							subW,
+							subH,
+							cubeMapFace,
+							level,
+							staging.AddrOfPinnedObject(),
+							stored.Length
+						);
+						int pixels = Math.Min(
+							subW * subH,
+							(elementCount * elementSizeInBytes) / GetFormatSize(Format)
+						);
+						TextureFormatShim.Decode(
+							Format,
+							staging.AddrOfPinnedObject(),
+							handle.AddrOfPinnedObject() + (startIndex * elementSizeInBytes),
+							pixels
+						);
+					}
+					finally
+					{
+						staging.Free();
+					}
+				}
+				else
+				{
+					XnaBackend.Graphics.GetTextureDataCube(
+						GraphicsDevice.GLDevice,
+						texture,
+						subX,
+						subY,
+						subW,
+						subH,
+						cubeMapFace,
+						level,
+						handle.AddrOfPinnedObject() + (startIndex * elementSizeInBytes),
+						elementCount * elementSizeInBytes
+					);
+				}
+			}
+			finally
+			{
+				handle.Free();
+			}
 		}
 
 		#endregion

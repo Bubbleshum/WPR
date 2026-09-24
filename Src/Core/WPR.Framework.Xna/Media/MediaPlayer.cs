@@ -199,10 +199,13 @@ namespace Microsoft.Xna.Framework.Media
 				return;
 			}
 
-			AudioBackendRegistry.Media.PauseSong();
-			timer.Stop();
+			lock (songGate)
+			{
+				AudioBackendRegistry.Media.PauseSong();
+				timer.Stop();
 
-			State = MediaState.Paused;
+				State = MediaState.Paused;
+			}
 		}
 
 		/// <summary>
@@ -211,7 +214,10 @@ namespace Microsoft.Xna.Framework.Media
 		/// </summary>
 		public static void Play(Song song)
 		{
-			Song previousSong = Queue.Count > 0 ? Queue[0] : null;
+			// One atomic read, not Count-then-index: a worker thread calling Stop()/Play() on the
+			// same queue clears it between the two, and this method is reached from a ThreadPool
+			// work item in real titles. See the remarks on MediaQueue.
+			Song previousSong = Queue.FirstOrNull();
 
 			Queue.Clear();
 			numSongsInQueuePlayed = 0;
@@ -253,9 +259,12 @@ namespace Microsoft.Xna.Framework.Media
 				return;
 			}
 
-			AudioBackendRegistry.Media.ResumeSong();
-			timer.Start();
-			State = MediaState.Playing;
+			lock (songGate)
+			{
+				AudioBackendRegistry.Media.ResumeSong();
+				timer.Start();
+				State = MediaState.Playing;
+			}
 		}
 
 		public static void Stop()
@@ -265,13 +274,16 @@ namespace Microsoft.Xna.Framework.Media
 				return;
 			}
 
-			AudioBackendRegistry.Media.StopSong();
-			timer.Stop();
-			timer.Reset();
-
-			for (int i = 0; i < Queue.Count; i += 1)
+			lock (songGate)
 			{
-				Queue[i].PlayCount = 0;
+				AudioBackendRegistry.Media.StopSong();
+				timer.Stop();
+				timer.Reset();
+			}
+
+			foreach (Song queued in Queue.Snapshot())
+			{
+				queued.PlayCount = 0;
 			}
 
 			State = MediaState.Stopped;
@@ -406,7 +418,10 @@ namespace Microsoft.Xna.Framework.Media
 				);
 			}
 
-			Song nextSong = Queue[Queue.ActiveSongIndex];
+			// AtOrNull, so the null branch below is actually reachable. On an empty queue the
+			// Clamp above yields -1 and the shuffle branch yields random.Next(0) == 0, so the
+			// plain indexer threw here on a single thread — MoveNext() with nothing queued.
+			Song nextSong = Queue.AtOrNull(Queue.ActiveSongIndex);
 			if (nextSong != null)
 			{
 				PlaySong(nextSong);
@@ -446,12 +461,57 @@ namespace Microsoft.Xna.Framework.Media
 			}
 		}
 
+		/// <summary>
+		/// Serialises every call into the media backend's SONG api.
+		/// </summary>
+		/// <remarks>
+		/// <para>FAudio's song player is a set of file-static variables — <c>songAudio</c>,
+		/// <c>songMaster</c> and a single decode cache in <c>XNA_Song.c</c> — with no locking of its
+		/// own. Two threads inside <c>XNA_PlaySong</c> corrupt it and the process dies with an
+		/// <c>AccessViolationException</c> that no managed frame can catch.</para>
+		///
+		/// <para>That is reachable from ordinary game code: WP7 titles start music from worker
+		/// threads, and Carcassonne queues a <c>MediaPlayer.Stop()</c>+<c>Play()</c> pair onto a
+		/// <c>ThreadPool</c> work item from several call sites at once.</para>
+		///
+		/// <para><b>Nothing raises a game event under this lock.</b> The <c>State</c> setter only
+		/// flags <c>INTERNAL_mediaStateChanged</c>; the events themselves are raised from
+		/// <c>PumpUpdate</c> on the game thread, outside it. Keep it that way — a game's
+		/// <c>MediaStateChanged</c> handler commonly calls straight back into <c>Play</c>.</para>
+		/// </remarks>
+		private static readonly object songGate = new object();
+
 		private static void PlaySong(Song song)
 		{
+			if (song == null)
+			{
+				// Reachable now that the queue answers null for an index that addresses nothing
+				// (Play(SongCollection, index) hands us Queue.ActiveSong directly). Nothing to
+				// start, and the previous behaviour here was an NRE.
+				return;
+			}
+
+			lock (songGate)
+			{
 			if (!initialized)
 			{
-				AudioBackendRegistry.Media.SongInit();
-				initialized =  true;
+				/* Double-checked under the SAME gate SoundEffect.Device() uses. Both sides end in
+				 * FAudioCreate (XNA_SongInit calls it into its own file-static), and concurrent
+				 * SDL audio init is an AccessViolationException on a thread with no managed
+				 * handler — process gone, no [wpr-fce], nothing in the log.
+				 *
+				 * A plain bool could not have held: PlaySong is reached from ThreadPool work items
+				 * in real titles (Carcassonne queues Stop()+Play() from several call sites), so two
+				 * workers both read false and both initialised.
+				 */
+				lock (Audio.SoundEffect.createLock)
+				{
+					if (!initialized)
+					{
+						AudioBackendRegistry.Media.SongInit();
+						initialized = true;
+					}
+				}
 			}
 
 			if (!IsSupportedSongPath(song.handle))
@@ -468,6 +528,7 @@ namespace Microsoft.Xna.Framework.Media
 			song.Duration = TimeSpan.FromSeconds(AudioBackendRegistry.Media.PlaySong(song.handle));
 			timer.Start();
 			State = MediaState.Playing;
+			}
 		}
 
 		#endregion

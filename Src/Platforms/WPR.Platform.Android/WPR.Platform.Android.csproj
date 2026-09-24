@@ -2,7 +2,7 @@
   <PropertyGroup>
     <CheckEolWorkloads>false</CheckEolWorkloads>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0-android34.0</TargetFramework>
+    <TargetFramework>net10.0-android36.0</TargetFramework>
     <RootNamespace>WPR.Platform.Android</RootNamespace>
     <!-- Assembly name follows the project name (renamed from WPR.UI.Android on 2026-08-29,
          alongside the Windows head). Stated explicitly rather than left to default because
@@ -17,13 +17,38 @@
          Note ApplicationId below (com.MediaExplorer.WPR) still does not match the manifest
          package - pre-existing, the manifest wins. -->
     <AssemblyName>WPR.Platform.Android</AssemblyName>
-    <!-- 21 (Android 5.0) matches the TargetPlatformVersion that the
-         installed .NET 10 Android workload (android 36.1.43/10.0.100)
-         assigns to net8.0-android* — it has no net8.0-android manifest,
-         so it falls back to 21. Higher SOSV triggers NETSDK1135. -->
-    <SupportedOSPlatformVersion>21.0</SupportedOSPlatformVersion>
+    <!-- 24 (Android 7.0). The .NET 10 Android workload declares a floor of 21 for every ABI, so
+         24 is a product decision rather than a toolchain limit: the lowest version anyone has
+         reported against is 10 (issue #40), and nothing below that has ever been tested. Must
+         stay <= TargetPlatformVersion or NETSDK1135 fires. -->
+    <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
     <Nullable>enable</Nullable>
-    <AvaloniaVersion>11.3.9</AvaloniaVersion>
+    <!--
+      CoreCLR instead of MonoVM. This is the whole reason for the net10/API36 move.
+
+      MonoVM's IL importer refuses a shape WP7 obfuscators emit constantly: it does not import
+      unreachable instructions, so the evaluation-stack state carried into a branch target comes
+      from the nearest *reachable* predecessor — looking straight past the obfuscator's dead code
+      — and a `pop` there then underflows. The whole of ApplicationPatcher's
+      RelocateMonoStackConflictBlocks exists to rewrite game IL around it, across 5,000+ blocks in
+      32 assemblies, and it has shipped three regressions (v27/v28/v29).
+
+      Measured 2026-09-23 with a 20-instruction repro carrying the exact shape, same app, same
+      device, same .NET 10.0.11 — only the runtime differing:
+          MonoVM  -> InvalidProgramException: Invalid IL code ... IL_001c: pop
+          CoreCLR -> accepted, ran
+      Upgrading and staying on Mono does NOT fix it: the newest Mono still refuses it.
+
+      The APK ships libcoreclr.so + libclrjit.so and no libmonosgen-2.0.so; the JIT is required
+      and non-negotiable, because WPR loads patched game IL at runtime through
+      AssemblyLoadContext.LoadFromStream. That is also why PublishAot must never be turned on
+      here — NativeAOT has no JIT and cannot execute IL that was not compiled ahead of time.
+    -->
+    <UseMonoRuntime>false</UseMonoRuntime>
+    <!-- Avalonia 11.x has no net10.0-android asset; 12.x is the first that does. Nothing in this
+         head initialises Avalonia — the package is referenced only so MyTheme.NoActionBar has the
+         AndroidX AppCompat resources to parent onto. -->
+    <AvaloniaVersion>12.1.3</AvaloniaVersion>
     <ApplicationId>com.MediaExplorer.WPR</ApplicationId>
     <!-- Android versionCode. Must strictly increase between releases or a device refuses the
          sideload as a downgrade, so it is bumped per release independently of the version NAME
@@ -33,7 +58,34 @@
     <ApplicationDisplayVersion>$(WprVersion)</ApplicationDisplayVersion>
     <AndroidPackageFormat>apk</AndroidPackageFormat>
     <EmbedAssembliesIntoApk>True</EmbedAssembliesIntoApk>
-    <PublishTrimmed>False</PublishTrimmed>
+    <!--
+      TRIMMING IS FORCED ON BY CoreCLR, AND EVERY WPR ASSEMBLY MUST BE ROOTED BELOW.
+
+      This used to be False. Under CoreCLR it cannot be: the CoreCLR runtime pack ships the BCL as
+      ReadyToRun images (native code alongside IL), and with PublishTrimmed != true the Android SDK
+      runs _LinkAssembliesNoShrink, which Cecil-rewrites every resolved assembly and dies on the
+      first R2R one with "XALNS7015: Writing mixed-mode assemblies is not supported". Setting it
+      true skips that target entirely and uses ILLink instead.
+
+      TrimMode=partial so only assemblies that opt in (the BCL) are trimmed at all — but that is
+      NOT sufficient on its own. WPR's shim assemblies exist solely to be bound by PATCHED GAME IL
+      loaded from disk at runtime, which ILLink cannot see, so anything it does prune is exactly
+      what a game needs. Every assembly a game can bind is therefore rooted whole.
+    -->
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
+    <!-- ReadyToRun OFF. The CoreCLR Android build otherwise AOT-compiles every app assembly into
+         obj/.../R2R/, producing mixed-mode images (native + IL) that the Android SDK's own
+         AssemblyModifierPipeline then cannot Cecil-rewrite — the same XALNS7015 as above, just
+         from a later stage. WPR needs a JIT at runtime regardless (game IL arrives from disk), so
+         precompiling only the shell buys little, and startup here is dominated by content loading
+         rather than JIT. -->
+    <PublishReadyToRun>false</PublishReadyToRun>
+    <!-- Keep real exception messages. Trimming defaults UseSystemResourceKeys to true, which
+         replaces every BCL message with its resource key — a launch failure then reads
+         "ArgumentNull_Generic Arg_ParamName_Name, type" instead of naming the parameter, which
+         makes the per-game log and the user-facing error dialog close to useless. -->
+    <UseSystemResourceKeys>false</UseSystemResourceKeys>
     <!-- android-arm (32-bit ARM, RID linux-bionic-arm) dropped: Google Play
          has required 64-bit since 2019, and the 32-bit ARM runtime pack is
          not installed on this machine (NU1101 for
@@ -118,9 +170,10 @@
     <PackageReference Include="MessageBox.Avalonia" Version="2.2.0" />
     <!-- Backs the staged Notifications/AndroidNotificationManager.cs (NotificationManagerCompat,
          IconCompat). Kept so the file compiles even though the wiring in MainActivity is
-         currently commented out. Pinned to 1.12.0.2 to match the version Avalonia.Android
-         already pulls in transitively (a lower version triggers NU1605 downgrade-as-error). -->
-    <PackageReference Include="Xamarin.AndroidX.Core" Version="1.12.0.2" />
+         currently commented out. Pinned to match the version Avalonia.Android already pulls in
+         transitively (a lower version triggers NU1605 downgrade-as-error), so this tracks the
+         Avalonia bump: 11.3.9 wanted 1.12.0.2, 12.1.3 -> AppCompat 1.7.1.3 -> 1.17.0.2. -->
+    <PackageReference Include="Xamarin.AndroidX.Core" Version="1.17.0.2" />
     <!-- Bumped 2.0.6 -> 2.1.13 alongside the SQLitePCLRaw.bundle_e_sqlite3 pin in WPR.Loader /
          GamerServices (CVE-2025-6965). Keeping the explicit provider ref on the same version as
          the bundle avoids a split graph where the android leg loads a 2.0.x provider against a
@@ -163,7 +216,13 @@
          API: the binding project targeted plain net8.0, so class-parse never ran and it produced an
          assembly with no types in it. Fixed in the same change. -->
     <ProjectReference Include="$(SolutionDir)\JavaBindings\com.arthenica.ffmpegkit\com.arthenica.ffmpegkit.csproj" />
-    <ProjectReference Include="$(SolutionDir)\ThirdParty\assembly-store-reader\assembly-store-reader.csproj" />
+    <!-- assembly-store-reader is deliberately NOT referenced any more. It existed so
+         WprStartup could pull FNA.dll back out of the APK's own assembly packaging; under
+         .NET 10 that packaging is lib/<abi>/libassembly-store.so and the reader found
+         nothing, which silently broke on-device patching. FNA.dll is now shipped as a plain
+         asset (see _WprStageFnaAssetForCecil at the end of this file), so nothing needs to
+         parse the APK's internals. The project is still in the tree and the solution; delete
+         it once it is clear nothing wants it back. -->
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Runtime\WPR.Runtime.csproj" />
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Loader\WPR.Loader.csproj" />
     <!-- FNA game-loop host driver (ApplicationLaunch + FnaGameHost/IGameHost) — Stage 4. -->
@@ -184,9 +243,84 @@
          android.permission.VIBRATE in AndroidManifest.xml — a normal, install-time permission, so
          there is nothing to request at runtime. -->
     <ProjectReference Include="..\..\Modules\Vibration\WPR.Vibration.AndroidVibrator\WPR.Vibration.AndroidVibrator.csproj" />
+    <!-- Links a game opens (WebBrowserTask), declared through caps.UriLauncher(...). No manifest
+         change: ACTION_VIEW needs no permission. -->
+    <ProjectReference Include="..\..\Modules\Launchers\WPR.Launchers.AndroidIntent\WPR.Launchers.AndroidIntent.csproj" />
   </ItemGroup>
-</Project>
-  
-  
 
-  
+  <!--
+    Trimmer roots. Everything a patched game can bind, kept whole.
+
+    Game IL is loaded from disk at runtime through AssemblyLoadContext.LoadFromStream, so ILLink
+    sees no reference to any of it. Without these, a shim type survives only if some WPR code path
+    happens to use it too, and the symptom is not a link error: Assembly.GetType(entryPoint)
+    silently returns NULL (a type whose base type cannot be resolved does not throw), and the
+    launch dies with ArgumentNullException out of Activator.CreateInstance(null).
+
+    Add a row whenever a new assembly joins ApplicationPatcher's redirect tables.
+  -->
+  <ItemGroup>
+    <TrimmerRootAssembly Include="FNA" />
+    <TrimmerRootAssembly Include="Microsoft.Devices.Sensors" />
+    <TrimmerRootAssembly Include="Microsoft.Phone" />
+    <TrimmerRootAssembly Include="System.Device" />
+    <TrimmerRootAssembly Include="WPR.Framework.Xna" />
+    <TrimmerRootAssembly Include="WPR.Framework.Silverlight" />
+    <TrimmerRootAssembly Include="WPR.Backend.FNA" />
+    <TrimmerRootAssembly Include="WPR.Common" />
+    <TrimmerRootAssembly Include="WPR.Runtime" />
+    <TrimmerRootAssembly Include="WPR.Loader" />
+    <TrimmerRootAssembly Include="WPR.Database" />
+    <TrimmerRootAssembly Include="WPR.Shell" />
+    <TrimmerRootAssembly Include="WPR.Engine" />
+    <TrimmerRootAssembly Include="WPR.Engine.Audio" />
+    <TrimmerRootAssembly Include="WPR.Engine.Content" />
+    <TrimmerRootAssembly Include="WPR.Engine.GameLoop" />
+    <TrimmerRootAssembly Include="WPR.Engine.Graphics" />
+    <TrimmerRootAssembly Include="WPR.Engine.Input" />
+    <TrimmerRootAssembly Include="WPR.Engine.Notifications" />
+    <TrimmerRootAssembly Include="WPR.Engine.Sensors" />
+    <TrimmerRootAssembly Include="WPR.Engine.Vibration" />
+    <TrimmerRootAssembly Include="WPR.Engine.Launchers" />
+    <TrimmerRootAssembly Include="WPR.Audio.FAudio" />
+    <TrimmerRootAssembly Include="WPR.Audio.AndroidMediaPlayer" />
+    <TrimmerRootAssembly Include="WPR.Input.AndroidSensor" />
+    <TrimmerRootAssembly Include="WPR.Notifications.AndroidChannel" />
+    <TrimmerRootAssembly Include="WPR.Vibration.AndroidVibrator" />
+    <TrimmerRootAssembly Include="WPR.Launchers.AndroidIntent" />
+  </ItemGroup>
+
+
+  <!--
+    Stage FNA.dll into the APK as a plain asset, for ApplicationPatcher.
+
+    Cecil reads the assembly being patched from a stream, but its BaseAssemblyResolver only
+    finds REAL FILES in its search directories — and inside an APK the runtime's own
+    assemblies are not files. WprStartup.SetupDllPatchForCecil copies this asset out to
+    PatchAssemblies/ and makes that folder the process CWD, which is what puts it on Cecil's
+    search path.
+
+    It is shipped as an asset rather than read back out of the APK's own assembly packaging,
+    because that packaging is not a stable contract. .NET 8 kept assemblies as plain
+    "assemblies/<name>.dll" zip entries; .NET 10 packs them into
+    lib/<abi>/libassembly-store.so and force-enables that whenever EmbedAssembliesIntoApk is
+    true, so it cannot be turned off. The old reader found nothing, logged
+    "Fail to copy DLL $FNA to patch assembly folder (entry not found)", and every install or
+    repatch ON THE DEVICE silently produced an unpatched or mis-patched assembly. An asset is
+    just a file we put there, so no future change to assembly packaging can break it.
+
+    Sourced from @(ReferencePath) rather than a hardcoded bin path so it follows the
+    configuration and TFM, and the build fails loudly if FNA ever stops being referenced.
+  -->
+  <Target Name="_WprStageFnaAssetForCecil"
+          BeforeTargets="_ComputeAndroidAssetsPaths"
+          DependsOnTargets="ResolveReferences">
+    <ItemGroup>
+      <_WprFnaReference Include="@(ReferencePath)" Condition=" '%(Filename)' == 'FNA' " />
+      <AndroidAsset Include="@(_WprFnaReference)" Link="PatchAssemblies\FNA.dll" />
+    </ItemGroup>
+    <Error Condition=" '@(_WprFnaReference)' == '' "
+           Text="FNA.dll was not found in @(ReferencePath), so it cannot be staged for Cecil. On-device patching would silently produce broken assemblies; see WprStartup.SetupDllPatchForCecil." />
+  </Target>
+
+</Project>

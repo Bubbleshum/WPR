@@ -121,31 +121,24 @@ namespace Microsoft.Xna.Framework.Graphics
 			}
 			else
 			{
-				//Experimental! RnD / TEMP
+				Format = format;
+			}
 
-				
-
-				if (format == SurfaceFormat.Bgra4444)
-				{
-                    format = SurfaceFormat.Color;
-                }
-
-				//if (format != SurfaceFormat.Color)
-				//{
-				//format = SurfaceFormat.Dxt5;//.NormalizedByte2;
-                //}
-
-                //TEST: Low-memory devices
-                //format = SurfaceFormat.Dxt5;
-
-                Format = format;
-            }
+			/* What the device is actually given. Format above stays whatever the game asked for,
+			 * because the game sizes its own arrays from it; this is the one the driver sees.
+			 *
+			 * This replaced an "Experimental! RnD / TEMP" block that rewrote Bgra4444 to Color
+			 * without converting a single pixel. Because it changed Format itself, SetData's
+			 * requiredBytes check then measured the game's 2-bytes-per-pixel data against Color's
+			 * 4 and bailed out — so every Bgra4444 texture was silently never uploaded, on both
+			 * platforms and all three drivers. See TextureFormatShim. */
+			storageFormat = TextureFormatShim.StorageFormatFor(Format);
 
 			try
 			{
 				texture = XnaBackend.Graphics.CreateTexture2D(
 					GraphicsDevice.GLDevice,
-					Format,
+					storageFormat,
 					Width,
 					Height,
 					LevelCount,
@@ -249,6 +242,29 @@ namespace Microsoft.Xna.Framework.Graphics
 				// 1. try to alloc mem...
                 GCHandle handle = GCHandle.Alloc(data, GCHandleType.Pinned);
 
+                IntPtr source = handle.AddrOfPinnedObject() + startIndex * elementSize;
+                int sourceLength = elementCount * elementSize;
+
+                /* This device may be storing the texture in a format wider than the one the game
+                 * asked for, in which case its pixels have to be converted on the way in. The
+                 * staging buffer is sized from the rect rather than the whole surface, so a
+                 * partial SetData(level, rect, ...) needs no special handling — the destination
+                 * rect is untouched. See TextureFormatShim. */
+                GCHandle staging = default(GCHandle);
+                if (storageFormat != Format)
+                {
+                    byte[] converted = new byte[w * h * GetFormatSize(storageFormat)];
+                    staging = GCHandle.Alloc(converted, GCHandleType.Pinned);
+                    TextureFormatShim.Encode(
+                        Format,
+                        source,
+                        staging.AddrOfPinnedObject(),
+                        w * h
+                    );
+                    source = staging.AddrOfPinnedObject();
+                    sourceLength = converted.Length;
+                }
+
 				// 2. try to set texture 2D-data...
                 try
                 {
@@ -260,8 +276,8 @@ namespace Microsoft.Xna.Framework.Graphics
                     w,
                     h,
                     level,
-                    handle.AddrOfPinnedObject() + startIndex * elementSize,
-                    elementCount * elementSize
+                    source,
+                    sourceLength
                 );
                 }
                 catch (Exception ex2)
@@ -270,6 +286,10 @@ namespace Microsoft.Xna.Framework.Graphics
                 }
 
 				// 3. free mem...
+                if (staging.IsAllocated)
+                {
+                    staging.Free();
+                }
                 handle.Free();
 
 
@@ -309,6 +329,40 @@ namespace Microsoft.Xna.Framework.Graphics
 				y = 0;
 				w = Math.Max(Width >> level, 1);
 				h = Math.Max(Height >> level, 1);
+			}
+
+			/* Same conversion as SetData<T>: this is the path Texture2D.FromStream takes, so
+			 * leaving it out would make every stream-loaded texture of a substituted format an
+			 * undefined surface. See TextureFormatShim. */
+			if (storageFormat != Format)
+			{
+				byte[] converted = new byte[w * h * GetFormatSize(storageFormat)];
+				GCHandle staging = GCHandle.Alloc(converted, GCHandleType.Pinned);
+				try
+				{
+					TextureFormatShim.Encode(
+						Format,
+						data,
+						staging.AddrOfPinnedObject(),
+						w * h
+					);
+					XnaBackend.Graphics.SetTextureData2D(
+						GraphicsDevice.GLDevice,
+						texture,
+						x,
+						y,
+						w,
+						h,
+						level,
+						staging.AddrOfPinnedObject(),
+						converted.Length
+					);
+				}
+				finally
+				{
+					staging.Free();
+				}
+				return;
 			}
 
 			XnaBackend.Graphics.SetTextureData2D(
@@ -391,40 +445,128 @@ namespace Microsoft.Xna.Framework.Graphics
 			int elementSizeInBytes = Marshal.SizeOf(typeof(T));
 			ValidateGetDataFormat(Format, elementSizeInBytes);
 
+			/* Some drivers cannot answer this read at all, and the way they fail is not a
+			 * throw — it is a NULL call or an overrun of the array pinned below. Refuse first.
+			 * See TextureReadback. */
+			if (!TextureReadback.CanServe2D(storageFormat, level))
+			{
+				Array.Clear(data, startIndex, elementCount);
+				TextureReadback.ReportRefusal(
+					"Texture2D " + Width + "x" + Height + " " + Format + " level " + level
+				);
+				return;
+			}
+
 			GCHandle handle = GCHandle.Alloc(data, GCHandleType.Pinned);
-			XnaBackend.Graphics.GetTextureData2D(
-				GraphicsDevice.GLDevice,
-				texture,
-				subX,
-				subY,
-				subW,
-				subH,
-				level,
-				handle.AddrOfPinnedObject() + (startIndex * elementSizeInBytes),
-				elementCount * elementSizeInBytes
-			);
-			handle.Free();
+			try
+			{
+				if (storageFormat != Format)
+				{
+					/* Stored wider than the game asked for, so read the stored pixels into a
+					 * staging buffer and convert back. Round-trip is bit-exact, so a game that
+					 * reads, edits and writes again sees exactly what it wrote. */
+					byte[] stored = new byte[subW * subH * GetFormatSize(storageFormat)];
+					GCHandle staging = GCHandle.Alloc(stored, GCHandleType.Pinned);
+					try
+					{
+						XnaBackend.Graphics.GetTextureData2D(
+							GraphicsDevice.GLDevice,
+							texture,
+							subX,
+							subY,
+							subW,
+							subH,
+							level,
+							staging.AddrOfPinnedObject(),
+							stored.Length
+						);
+
+						/* Never decode more pixels than the caller has room for — elementCount
+						 * is the game's promise about its own array, and the rect is ours. */
+						int pixels = Math.Min(
+							subW * subH,
+							(elementCount * elementSizeInBytes) / GetFormatSize(Format)
+						);
+						TextureFormatShim.Decode(
+							Format,
+							staging.AddrOfPinnedObject(),
+							handle.AddrOfPinnedObject() + (startIndex * elementSizeInBytes),
+							pixels
+						);
+					}
+					finally
+					{
+						staging.Free();
+					}
+				}
+				else
+				{
+					XnaBackend.Graphics.GetTextureData2D(
+						GraphicsDevice.GLDevice,
+						texture,
+						subX,
+						subY,
+						subW,
+						subH,
+						level,
+						handle.AddrOfPinnedObject() + (startIndex * elementSizeInBytes),
+						elementCount * elementSizeInBytes
+					);
+				}
+			}
+			finally
+			{
+				handle.Free();
+			}
 		}
 
 		#endregion
 
 		#region Public Texture2D Save Methods
 
-		public void SaveAsJpeg(Stream stream, int width, int height)
+		/// <summary>
+		/// Reads level 0 of the whole surface into <paramref name="data"/>, in whatever format the
+		/// device stores it. False when this driver cannot serve the read, in which case nothing
+		/// has been written and the caller must not encode the buffer — the image writers take a
+		/// raw pointer, so handing them an unwritten allocation would encode uninitialised heap.
+		/// </summary>
+		private bool ReadWholeSurface(IntPtr data, int length)
 		{
-			int len = Width * Height * GetFormatSize(Format);
-			IntPtr data = Marshal.AllocHGlobal(len);
+			if (!TextureReadback.CanServe2D(storageFormat, 0))
+			{
+				TextureReadback.ReportRefusal(
+					"Texture2D " + Width + "x" + Height + " " + Format + " (SaveAs*)"
+				);
+				return false;
+			}
+
 			XnaBackend.Graphics.GetTextureData2D(
 				GraphicsDevice.GLDevice,
 				texture,
 				0,
 				0,
 				Width,
-				height,
+				Height,
 				0,
 				data,
-				len
+				length
 			);
+			return true;
+		}
+
+		public void SaveAsJpeg(Stream stream, int width, int height)
+		{
+			/* The source read is the whole texture; width/height are the size to ENCODE at and
+			 * belong to WriteJPGStream alone. Passing the caller's height to the readback (which
+			 * this used to do) sized the buffer from Height and read `height` rows into it, so a
+			 * scaled thumbnail encoded uninitialised heap below the last row read. */
+			int len = Width * Height * GetFormatSize(storageFormat);
+			IntPtr data = Marshal.AllocHGlobal(len);
+			if (!ReadWholeSurface(data, len))
+			{
+				Marshal.FreeHGlobal(data);
+				return;
+			}
 
 			XnaBackend.Graphics.WriteJPGStream(
 				stream,
@@ -441,20 +583,14 @@ namespace Microsoft.Xna.Framework.Graphics
 
 		public void SaveAsPng(Stream stream, int width, int height)
 		{
-			int len = Width * Height * GetFormatSize(Format);
+			/* See SaveAsJpeg: the readback is always the whole surface. */
+			int len = Width * Height * GetFormatSize(storageFormat);
 			IntPtr data = Marshal.AllocHGlobal(len);
-			XnaBackend.Graphics.GetTextureData2D(
-				GraphicsDevice.GLDevice,
-				texture,
-				0,
-				0,
-				Width,
-				height,
-				0,
-				data,
-				len
-			);
-
+			if (!ReadWholeSurface(data, len))
+			{
+				Marshal.FreeHGlobal(data);
+				return;
+			}
 
 			XnaBackend.Graphics.WritePNGStream(
 				stream,

@@ -73,6 +73,18 @@ namespace WPR.Backend.FNA
 			Microsoft.Xna.Framework.Graphics.VertexFormatExpansion.SetDeviceSupport(
 				byte4, short2, short4, detail);
 
+			/* Same shape, same reasons, for textures: ask the context whether it is OpenGL ES,
+			 * because three of FNA3D's texture-format table entries name GL enums that exist only
+			 * on the desktop, and its two texture-readback entry points reach a glGetTexImage that
+			 * is never resolved under ES. One probe answers both. See GlContextProbe. */
+			bool isGles, packedBgraUsable, bgra8888Usable;
+			string glDetail;
+			GlContextProbe.Query(
+				created, out isGles, out packedBgraUsable, out bgra8888Usable, out glDetail);
+			Microsoft.Xna.Framework.Graphics.TextureFormatShim.SetDeviceSupport(
+				packedBgraUsable, bgra8888Usable, glDetail);
+			Microsoft.Xna.Framework.Graphics.TextureReadback.SetDeviceSupport(isGles, glDetail);
+
 			return created;
 		}
 
@@ -81,6 +93,8 @@ namespace WPR.Backend.FNA
 			F3D.FNA3D_DestroyDevice(device);
 			OffThreadGpuCalls.ClearDeviceThread();
 			Microsoft.Xna.Framework.Graphics.VertexFormatExpansion.ClearDeviceSupport();
+			Microsoft.Xna.Framework.Graphics.TextureFormatShim.ClearDeviceSupport();
+			Microsoft.Xna.Framework.Graphics.TextureReadback.ClearDeviceSupport();
 		}
 
 		// ---- Presentation ----

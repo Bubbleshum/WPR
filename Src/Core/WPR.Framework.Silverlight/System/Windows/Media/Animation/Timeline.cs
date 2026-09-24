@@ -78,6 +78,17 @@ namespace WPR.SilverlightCompability
 
         public string? Name { get; set; }
 
+        /// <summary>
+        /// The element whose name scope this timeline's <c>Storyboard.TargetName</c> resolves
+        /// against — normally the page it was parsed in. Set by <c>XamlReader.LoadComponent</c>.
+        /// </summary>
+        /// <remarks>
+        /// A storyboard lives in a page's <c>Resources</c> and points at elements in that page by
+        /// name, but it is not itself in the visual tree, so there is nothing to walk up from.
+        /// Recording the scope at parse time is what makes <c>TargetName</c> resolvable at all.
+        /// </remarks>
+        internal object? ScopeOwner { get; set; }
+
         public event EventHandler? Completed;
 
         /// <summary>Raised by <see cref="Storyboard.Begin"/> so user code that waits

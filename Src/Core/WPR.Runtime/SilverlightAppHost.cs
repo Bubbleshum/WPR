@@ -82,6 +82,51 @@ namespace WPR
             };
 
             Assembly userAsm = alc.LoadFromAssemblyPath(asmPath);
+            HostResult booted = BootLoadedAssembly(installFolder, userAsm, entryPointTypeName, null);
+            booted.LoadContext = alc;
+            return booted;
+        }
+
+        /// <summary>
+        /// Boots an app whose assembly is ALREADY loaded, in a context the caller owns.
+        /// </summary>
+        /// <param name="afterAppCreated">
+        /// Run after the <c>Application</c> subclass has been constructed (so its App.xaml has
+        /// been parsed and <c>PhoneApplicationService.Current</c> exists) but BEFORE the first
+        /// navigation. That gap is where the WP7 <c>Launching</c> signal belongs, and it is the
+        /// whole reason this overload takes a callback: navigation runs the page's
+        /// <c>OnNavigatedTo</c>, which is where a mixed-mode title starts its game loop, so a
+        /// caller that fired the lifecycle afterwards would have the game running before it was
+        /// told the app had launched.
+        /// </param>
+        /// <remarks>
+        /// Used by the mixed-mode host, which cannot call <see cref="Boot"/>: that creates an
+        /// assembly load context of its own, and <c>ApplicationLaunch</c> has already built one
+        /// and loaded the game into it. Two contexts would mean two copies of every game type.
+        /// </remarks>
+        public static HostResult BootInContext(
+            string installFolder,
+            Assembly userAssembly,
+            string entryPointTypeName,
+            Action<object>? afterAppCreated = null)
+        {
+            if (installFolder == null) throw new ArgumentNullException(nameof(installFolder));
+            if (userAssembly == null) throw new ArgumentNullException(nameof(userAssembly));
+            if (entryPointTypeName == null) throw new ArgumentNullException(nameof(entryPointTypeName));
+
+            EnsureXnaSettingsFiles(installFolder);
+            WPR.SilverlightCompability.HostContext.CurrentInstallFolder = installFolder;
+            WPR.Common.WprHostEnvironment.CurrentInstallFolder = installFolder;
+
+            return BootLoadedAssembly(installFolder, userAssembly, entryPointTypeName, afterAppCreated);
+        }
+
+        private static HostResult BootLoadedAssembly(
+            string installFolder,
+            Assembly userAsm,
+            string entryPointTypeName,
+            Action<object>? afterAppCreated)
+        {
             HostContext.UserAssembly = userAsm;
             Type? appType = userAsm.GetType(entryPointTypeName, throwOnError: false);
             if (appType == null)
@@ -102,6 +147,28 @@ namespace WPR
             }
             if (appInstance == null)
                 throw new InvalidOperationException($"Activator.CreateInstance returned null for '{entryPointTypeName}'.");
+
+            // Silverlight's own Startup, before WP7's Launching and before any navigation. A
+            // title may use either to do its first-run setup — Little Acorns uses this one — and
+            // the phone raised both, in this order.
+            try
+            {
+                (SLApplication.Current as SLApplication)?.RaiseStartup();
+            }
+            catch (Exception ex)
+            {
+                // A throwing Startup handler is the app's own bug; it should not prevent the
+                // navigation that follows, which is what puts something on screen.
+                System.Diagnostics.Trace.WriteLine("[wpr-mixed] Application.Startup threw: " + ex);
+            }
+
+            // The App exists and its App.xaml has been parsed, so PhoneApplicationService.Current
+            // and any SharedGraphicsDeviceManager it declared are live — but nothing has been
+            // navigated to yet. See the parameter docs: this is where Launching belongs.
+            if (afterAppCreated != null)
+            {
+                afterAppCreated(appInstance);
+            }
 
             UIElement? rootVisual = SLApplication.Current.RootVisual;
             PhoneApplicationFrame? rootFrame = rootVisual as PhoneApplicationFrame;
@@ -147,7 +214,9 @@ namespace WPR
                 RootFrame = rootFrame,
                 StartPageUri = startPage,
                 UserAssembly = userAsm,
-                LoadContext = alc,
+                // LoadContext is the CALLER's to fill: Boot creates one and assigns it on the way
+                // out, while BootInContext is handed an assembly whose context it does not own
+                // (ApplicationLaunch owns it, and unloads it at teardown) and leaves it null.
             };
         }
 

@@ -27,7 +27,7 @@
         never reference back.
       * WPR.Database (the Application row) and WPR.Loader (AssemblyNameStandardization,
         HardcodedAchievementCatalogue) are why the TFM list mirrors WPR.Backend.FNA rather than
-        the plain net8.0;net8.0-android of the other engine projects: on Windows WPR.Database has
+        the plain net8.0;net10.0-android of the other engine projects: on Windows WPR.Database has
         no plain net8.0 leg, so a bare net8.0 here would fail restore with NU1201.
       * WPR.Engine.Input - the keyboard-driven tilt/touch emulation components are attached to
         the freshly created Game from here, exactly where the backend used to do it.
@@ -47,24 +47,29 @@
 
   <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
     <CheckEolWorkloads>false</CheckEolWorkloads>
-    <TargetFrameworks>net8.0;net8.0-android</TargetFrameworks>
+    <TargetFrameworks>net8.0;net10.0-android</TargetFrameworks>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(OS)' == 'Windows_NT' ">
     <CheckEolWorkloads>false</CheckEolWorkloads>
-    <TargetFrameworks>net8.0-windows10.0.17763.0;net8.0-android</TargetFrameworks>
+    <TargetFrameworks>net8.0-windows10.0.17763.0;net10.0-android</TargetFrameworks>
   </PropertyGroup>
   <PropertyGroup>
     <CheckEolWorkloads>false</CheckEolWorkloads>
     <AssemblyName>WPR.Engine.GameLoop</AssemblyName>
     <RootNamespace>WPR.Engine.GameLoop</RootNamespace>
     <Nullable>enable</Nullable>
-    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net8.0-android'">21.0</SupportedOSPlatformVersion>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net10.0-android'">24.0</SupportedOSPlatformVersion>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="$(SolutionDir)Core\WPR.Common\WPR.Common.csproj" />
     <ProjectReference Include="$(SolutionDir)Core\WPR.Database\WPR.Database.csproj" />
     <ProjectReference Include="$(SolutionDir)Core\WPR.Loader\WPR.Loader.csproj" />
+    <!-- SilverlightAppHost, for the mixed-mode path only: MixedModeGame boots a Silverlight
+         Application over the XNA loop and reuses that boot rather than carrying a second copy.
+         One-way — WPR.Runtime does not reference this project (the game-loop host moved OUT of
+         it in Stage 4), so there is no cycle. -->
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Runtime\WPR.Runtime.csproj" />
     <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Xna\WPR.Framework.Xna.csproj" />
     <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Phone\WPR.Framework.Phone.csproj" />
     <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Silverlight\WPR.Framework.Silverlight.csproj" />

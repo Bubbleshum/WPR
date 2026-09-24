@@ -120,6 +120,13 @@ namespace WPR.Platform.Android
                 // Windows declares no counterpart — a desktop PC has no motor, and the seam degrades
                 // to silence rather than throwing.
                 caps.Vibration(new WPR.Vibration.AndroidVibrator.AndroidVibratorProvider(_context));
+
+                // Links a game opens (WebBrowserTask) go out as ACTION_VIEW, so Android picks the
+                // handler — a YouTube link lands in the YouTube app, as it did on the phone.
+                caps.UriLauncher(new WPR.Launchers.AndroidIntent.AndroidIntentUriLauncher(_context));
+
+                // ShareLinkTask / ShareStatusTask go to the system chooser (ACTION_SEND).
+                caps.ShareSheet(new WPR.Launchers.AndroidIntent.AndroidShareSheet(_context));
             }
 
             caps.Achievements(new WPR.Database.Achievements.EfAchievementStore());

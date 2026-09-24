@@ -51,6 +51,8 @@
     <ProjectReference Include="$(SolutionDir)Engine/WPR.Engine.Notifications/WPR.Engine.Notifications.csproj" />
     <!-- Notification module: INotificationManager over the Windows toast API. -->
     <ProjectReference Include="$(SolutionDir)Modules/Notifications/WPR.Notifications.WindowsToast/WPR.Notifications.WindowsToast.csproj" />
+    <!-- IUriLauncher over the shell, declared through caps.UriLauncher(...). -->
+    <ProjectReference Include="$(SolutionDir)Modules/Launchers/WPR.Launchers.ShellExecute/WPR.Launchers.ShellExecute.csproj" />
   </ItemGroup>
 
   <!-- Avalonia assets. The brand logo is a linked resource sourced from the repo-root

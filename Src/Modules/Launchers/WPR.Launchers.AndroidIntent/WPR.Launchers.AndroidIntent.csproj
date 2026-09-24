@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Launchers.AndroidIntent - IUriLauncher over an ACTION_VIEW Intent, i.e. whichever app has
+    claimed the link (the browser, or the YouTube app for a youtube.com URL).
+
+    A MODULE: it implements a contract owned by WPR.Engine.Launchers and is plugged in by the
+    Android head declaring caps.UriLauncher(...). Named for the TECHNOLOGY (an Android Intent), per
+    the naming note in CLAUDE.md.
+
+    Android-only, so the TFM is singular <TargetFramework>; WPR.Windows.slnf keeps it out of a
+    desktop build (Src/Directory.Build.targets never strips a singular TFM).
+
+    No manifest change is needed. Starting ACTION_VIEW needs no permission, and the one thing
+    Android 11+ package visibility would restrict - asking resolveActivity() first - is
+    deliberately not done: StartActivity throws ActivityNotFoundException instead, which is caught.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <AssemblyName>WPR.Launchers.AndroidIntent</AssemblyName>
+    <RootNamespace>WPR.Launchers.AndroidIntent</RootNamespace>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Launchers\WPR.Engine.Launchers.csproj" />
+  </ItemGroup>
+
+</Project>

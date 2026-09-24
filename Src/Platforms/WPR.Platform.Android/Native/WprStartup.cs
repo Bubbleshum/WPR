@@ -6,11 +6,6 @@ using Android.Content;
 
 using WPR.Common;
 
-#if !DEBUG
-using Xamarin.Android.AssemblyStore;
-#else
-using System.IO.Compression;
-#endif
 
 namespace WPR.Platform.Android.Native
 {
@@ -93,99 +88,57 @@ namespace WPR.Platform.Android.Native
                 Log.Warn(LogCategory.Startup, $"Startup achievement reconcile failed (non-fatal): {ex.Message}");
             }
         }
-
         /// <summary>
-        /// Extract the assemblies in <see cref="CopyAssemblyList"/> out of the APK onto
-        /// disk. Cecil reads assemblies from streams, but its resolver only looks at real
-        /// files in its search directories, and inside an APK the runtime's assemblies are
-        /// not files. Also sets the process current directory to the staging folder, which
-        /// is what puts it on Cecil's search path.
+        /// Copy the assemblies in <see cref="CopyAssemblyList"/> out of the APK's assets onto
+        /// disk. Cecil reads the assembly being patched from a stream, but its
+        /// <c>BaseAssemblyResolver</c> only finds real FILES in its search directories, and
+        /// inside an APK the runtime's assemblies are not files. Also sets the process current
+        /// directory to the staging folder, which is what puts it on Cecil's search path.
+        ///
+        /// <para><b>Reads an ASSET, not the APK's assembly packaging.</b> This used to open the
+        /// APK and pull "assemblies/FNA.dll" out of it (Debug) or walk the assembly store with
+        /// <c>AssemblyStoreExplorer</c> (Release). Both are hostage to how the .NET Android SDK
+        /// happens to package managed code, and that changed under .NET 10: assemblies now live
+        /// in <c>lib/&lt;abi&gt;/libassembly-store.so</c>, and <c>_AndroidUseAssemblyStore</c> is
+        /// force-set true whenever <c>EmbedAssembliesIntoApk</c> is, so it cannot be turned off.
+        /// The store reader found nothing, logged "entry not found", and returned — leaving Cecil
+        /// unable to resolve FNA for every install and repatch performed ON THE DEVICE, which is
+        /// the quiet kind of failure: the game still launches, it just binds the wrong types
+        /// later. The csproj now ships FNA.dll as a plain asset, so nothing about future assembly
+        /// packaging can break this again.</para>
+        ///
+        /// <para>Deliberately ONE code path for Debug and Release. The previous split meant the
+        /// configuration most testing happens in exercised different code from the one that
+        /// ships — see the interpreter-vs-JIT note in CLAUDE.md for what that costs.</para>
         /// </summary>
         public static void SetupDllPatchForCecil(Context context)
         {
             string basePath = PatchAssembliesDirectory(context);
             Directory.CreateDirectory(basePath);
 
-            string? apkPath = global::Android.App.Application.Context.ApplicationInfo?.PublicSourceDir;
-            if (apkPath == null)
+            foreach (string dll in CopyAssemblyList)
             {
-                Log.Warn(LogCategory.Android, "Unable to copy DLLs needed for patching! Some games may fail to patch!");
-                return;
-            }
-
-#if DEBUG
-            using (ZipArchive archive = ZipFile.Open(apkPath, ZipArchiveMode.Read))
-            {
-                foreach (var dll in CopyAssemblyList)
+                // Must keep the ".dll" extension: Cecil's BaseAssemblyResolver looks for
+                // "<name>.dll" in its search directories, so a file written as bare "FNA" is
+                // invisible to it and every patch that needs FNA fails.
+                string destination = Path.Combine(basePath, $"{dll}.dll");
+                try
                 {
-                    ZipArchiveEntry? entry = archive.GetEntry($"assemblies/{dll}.dll");
-                    if (entry == null)
-                    {
-                        Log.Warn(LogCategory.Android, $"Fail to copy DLL ${dll} to patch assembly folder!");
-                    }
-                    else
-                    {
-                        // Must keep the ".dll" extension. Cecil's BaseAssemblyResolver looks
-                        // for "<name>.dll" in its search directories (this folder is the CWD,
-                        // set at the end of this method), so a file written as bare "FNA" is
-                        // invisible to it and every patch that needs FNA fails.
-                        entry.ExtractToFile(Path.Combine(basePath, $"{dll}.dll"), true);
-                    }
+                    // Copied unconditionally rather than only when absent. The staging folder is
+                    // in external files and outlives the install, so a skip-if-present would
+                    // leave the PREVIOUS APK's FNA.dll in place after an update and patch games
+                    // against the wrong build. The file is ~1 MB and this runs once per process.
+                    Filesystem.CopyFileFromAssets(context.Assets!, $"PatchAssemblies/{dll}.dll", destination);
+                }
+                catch (Exception ex)
+                {
+                    // Non-fatal by design: the launcher must still start. What is lost is the
+                    // ability to patch, so say so in those terms rather than naming the file.
+                    Log.Warn(LogCategory.Android,
+                        $"Could not stage {dll}.dll for patching ({ex.GetType().Name}: {ex.Message}). " +
+                        "Installing or repatching a game will fail on this device.");
                 }
             }
-#else
-            AssemblyStoreExplorer explorer = new AssemblyStoreExplorer(apkPath, keepStoreInMemory: true);
-            foreach (var dll in CopyAssemblyList)
-            {
-                string filename = $"{dll}.dll.comp";
-                string filenameAuth = $"{dll}.dll";
-
-                if (explorer.AssembliesByName.ContainsKey(dll))
-                {
-                    explorer.AssembliesByName[dll].ExtractImage(basePath, filename);
-                }
-                else
-                {
-                    Log.Warn(LogCategory.Android, $"Fail to copy DLL ${dll} to patch assembly folder (entry not found)!");
-                    continue;
-                }
-
-                bool fileShouldMove = false;
-
-                using (FileStream stream = new FileStream(Path.Combine(basePath, filename), FileMode.Open, FileAccess.Read))
-                {
-                    if (AssemblyDecompressor.IsCompressed(stream))
-                    {
-                        stream.Seek(0, SeekOrigin.Begin);
-
-                        using (FileStream streamAuth = new FileStream(Path.Combine(basePath, filenameAuth), FileMode.OpenOrCreate, FileAccess.Write))
-                        {
-                            if (!AssemblyDecompressor.Work(stream, streamAuth))
-                            {
-                                Log.Warn(LogCategory.Android, $"Fail to decompress DLL ${dll} to patch assembly folder (entry not found)!");
-                            }
-                        }
-                    }
-                    else
-                    {
-                        fileShouldMove = true;
-                    }
-                }
-
-                if (fileShouldMove)
-                {
-                    // overwrite: true is load-bearing. PatchAssemblies lives in the app's
-                    // external files dir, so FNA.dll survives the process — every launch
-                    // after the first found it already there and the 2-arg File.Move threw
-                    // IOException("...FNA.dll already exists") straight out of OnCreate.
-                    File.Move(Path.Combine(basePath, filename), Path.Combine(basePath, filenameAuth), true);
-                }
-                else
-                {
-                    File.Delete(Path.Combine(basePath, filename));
-                }
-            }
-#endif
 
             Directory.SetCurrentDirectory(basePath);
         }

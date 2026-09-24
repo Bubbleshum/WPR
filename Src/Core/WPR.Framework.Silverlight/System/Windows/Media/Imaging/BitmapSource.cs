@@ -53,6 +53,16 @@ namespace WPR.WindowsCompability
         /// </summary>
         internal int[]? PixelBuffer => _pixels;
 
+        /// <summary>
+        /// The decoded size, or zero when nothing has been decoded or sized. Deliberately NOT
+        /// <see cref="get_PixelWidth"/>, which answers 1 in that case because games divide by it —
+        /// a rasteriser needs to be able to tell "one pixel wide" from "no pixels at all".
+        /// </summary>
+        internal int DecodedWidth => _pixelWidth;
+
+        /// <summary>See <see cref="DecodedWidth"/>.</summary>
+        internal int DecodedHeight => _pixelHeight;
+
         public BitmapSource()
         {
         }

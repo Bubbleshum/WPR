@@ -91,15 +91,21 @@ namespace WPR.Core
                     return;
                 }
 
-                if (!File.Exists(filename + ".xnb") && !File.Exists(Path.ChangeExtension(filename, ".xnb")))
-                {
-                    // No Song stub references this file, so nothing will ever ask MediaPlayer for
-                    // it. Leave it alone.
-                    countSoFar++;
-                    progressReport((int)(countSoFar * 100.0 / totalCount));
-
-                    continue;
-                }
+                // NO LONGER SKIPPED when there is no .xnb Song stub beside the file.
+                //
+                // The old rule was "no stub means nothing will ever ask MediaPlayer for it", and
+                // that is false for any title that builds a Song from a path rather than through
+                // the ContentManager. Sid Meier's Pirates! is the measured case: 86 .wma files
+                // under Content/AssetsWP/sounds/, not one with a stub, and the game asks
+                // MediaPlayer for them by name — 225 "Skipping unsupported MediaPlayer song" lines
+                // in a 25-second run.
+                //
+                // That is not just silence. MediaPlayer reports a song it cannot decode as
+                // PLAYING, so the queue immediately ends it, and a game that starts the next track
+                // from MediaStateChanged spins — which is exactly the loop that made Carcassonne's
+                // own PlayNextSong race its playlist index and kill the process.
+                //
+                // The cost is transcoding tracks nothing happens to play, once, at install.
 
                 // ASF/WMA container magic. A `using` here rather than the hand-rolled Dispose calls
                 // this method used to carry: the old code leaked the handle on every file whose

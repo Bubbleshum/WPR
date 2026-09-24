@@ -114,13 +114,49 @@ namespace WPR.SilverlightCompability
             }
         }
 
+        /// <summary>
+        /// The image's natural pixel size, resolved WITHOUT Avalonia where possible.
+        /// </summary>
+        /// <remarks>
+        /// <para><b>The decoder is asked first because the Avalonia path does not exist on every
+        /// host.</b> A mixed-mode title runs under <c>MixedModeGame</c>, which never initialises
+        /// Avalonia — so <c>new Avalonia.Media.Imaging.Bitmap(...)</c> throws "Unable to locate
+        /// 'Avalonia.Platform.IPlatformRenderInterface'". <see cref="TryLoadBitmap"/> catches that,
+        /// which is why it never showed up as a failure; the damage was that every
+        /// <see cref="Image"/> then measured to <see cref="Size.Empty"/>, so it was arranged into a
+        /// zero-sized slot and the rasteriser had nothing to draw. A page of images rendered as
+        /// nothing at all, with only first-chance exceptions in the log to say why.</para>
+        ///
+        /// <para><see cref="SilverlightImageDecoder"/> is the right source anyway: it is what
+        /// <c>SoftwareVisualRasteriser</c> paints from, so measure and paint now agree on the
+        /// image — and it resolves <c>.g.resources</c> bundle entries, which the filesystem-only
+        /// Avalonia path never could.</para>
+        /// </remarks>
+        private bool TryGetNaturalSize(out double width, out double height)
+        {
+            width = height = 0;
+
+            if (SilverlightImageDecoder.TryGetPixels(Source, out _, out int dw, out int dh)
+                && dw > 0 && dh > 0)
+            {
+                width = dw;
+                height = dh;
+                return true;
+            }
+
+            // Avalonia fallback, for the Avalonia-hosted renderer and for an ImageSource that
+            // carries an already-loaded NativeBitmap the decoder cannot see.
+            AvBitmap? bmp = GetAvaloniaBitmap();
+            if (bmp == null) return false;
+
+            width = bmp.Size.Width;
+            height = bmp.Size.Height;
+            return width > 0 && height > 0;
+        }
+
         protected override Size MeasureOverride(Size availableSize)
         {
-            AvBitmap? bmp = GetAvaloniaBitmap();
-            if (bmp == null) return Size.Empty;
-
-            double naturalW = bmp.Size.Width;
-            double naturalH = bmp.Size.Height;
+            if (!TryGetNaturalSize(out double naturalW, out double naturalH)) return Size.Empty;
 
             // If parent provides finite bounds and stretch is set, the parent will give us
             // the slot — return natural for now and let arrange handle final fit.

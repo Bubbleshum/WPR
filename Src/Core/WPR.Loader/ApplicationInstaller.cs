@@ -430,8 +430,24 @@ namespace WPR
                     return ApplicationInstallError.Canceled;
                 }
 
-                // 20% for converting audio to unified support
-                if (app.ApplicationType == ApplicationType.XNA)
+                // 20% for converting audio to unified support.
+                //
+                // NOT gated on ApplicationType any more. It used to run only for ApplicationType.XNA,
+                // on the reasoning that a Silverlight app does not use XNA's MediaPlayer — but a
+                // Silverlight/XNA MIXED-MODE title does, and all twelve of them in the library
+                // declare RuntimeType="Silverlight", so every one had its soundtrack skipped at
+                // install AND at repatch. Carcassonne is the measured case, and the cost was not
+                // merely silence: MediaPlayer skips a song whose container it cannot decode and
+                // reports it as playing, so the queue ends it immediately, the game's
+                // MediaStateChanged handler starts the next track, and its PlayNextSong queues a
+                // fresh ThreadPool work item every frame. Those race their own playlist index and
+                // one eventually throws IndexOutOfRange on a thread-pool thread — unhandled, so
+                // the process dies several minutes in with nothing in the log to connect it to
+                // audio.
+                //
+                // Safe to widen: ScanWmaAndConvert returns immediately when the package has no
+                // .wma at all (most Silverlight titles), and skips any .wma with no .xnb Song stub
+                // beside it, so a title that merely ships one as a loose asset is untouched.
                 {
                     try
                     {
@@ -600,7 +616,11 @@ namespace WPR
                 //     NON-FATAL, unlike the install path. Repatch's contract is "re-apply the
                 //     current patcher", and that has already succeeded by this point; a head with
                 //     no transcoder composed in should not lose its IL repatch over the audio.
-                if (app.ApplicationType == ApplicationType.XNA)
+                //
+                //     Like the install path, NO LONGER gated on ApplicationType.XNA — mixed-mode
+                //     titles declare RuntimeType="Silverlight" and still use XNA's MediaPlayer.
+                //     That gate is why a repatch could not rescue their audio either. See the long
+                //     note at the install call site.
                 {
                     try
                     {

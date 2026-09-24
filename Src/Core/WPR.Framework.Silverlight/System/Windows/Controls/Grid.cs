@@ -275,7 +275,22 @@ namespace WPR.SilverlightCompability
                     double maxH = 0;
                     foreach (UIElement child in Children)
                     {
-                        child.Measure(new Size(_columnWidths[0], double.PositiveInfinity));
+                        // EACH CHILD GETS ITS OWN COLUMN'S WIDTH. This used to hand every child
+                        // _columnWidths[0], which is only right for a single-column grid. In the
+                        // common "icon | text" layout the first column is Auto-sized to the icon,
+                        // so the text was measured against the ICON's width — perhaps 64px — wrapped
+                        // to five or six lines, and reported a height several times its real one.
+                        //
+                        // That height then propagated up as the row height and back down as a
+                        // finite available height, so the whole control measured to the wrong size:
+                        // Carcassonne's menu buttons came out 186px tall instead of ~88, and two of
+                        // them no longer fitted their slot, which is why the third overlapped the
+                        // toolbar beneath it.
+                        int col = Clamp(GetColumn(child), 0, Math.Max(0, _columnWidths.Length - 1));
+                        int colSpan = Math.Max(1, GetColumnSpan(child));
+                        double childWidth = SumExtents(_columnWidths, col, colSpan);
+
+                        child.Measure(new Size(childWidth, double.PositiveInfinity));
                         if (child.DesiredSize.Height > maxH) maxH = child.DesiredSize.Height;
                     }
                     _rowHeights[0] = maxH;

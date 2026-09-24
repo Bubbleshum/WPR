@@ -3,6 +3,8 @@ using System.IO.IsolatedStorage;
 using System.Threading;
 using System.Threading.Tasks;
 
+using WPR.Engine.Content;
+
 namespace WPR.WindowsCompability
 {
     /// <summary>
@@ -83,12 +85,12 @@ namespace WPR.WindowsCompability
         private volatile bool _closed;
 
         public SharedIsolatedStorageFileStream(string path, FileMode mode, IsolatedStorageFile isf)
-            : base(EnsureParentDirectory(path, mode, isf), mode, DefaultAccess(mode), FileShare.ReadWrite, isf)
+            : base(PrepareStorePath(path, mode, isf), mode, DefaultAccess(mode), FileShare.ReadWrite, isf)
         {
         }
 
         public SharedIsolatedStorageFileStream(string path, FileMode mode, FileAccess access, IsolatedStorageFile isf)
-            : base(EnsureParentDirectory(path, mode, isf), mode, access, FileShare.ReadWrite, isf)
+            : base(PrepareStorePath(path, mode, isf), mode, access, FileShare.ReadWrite, isf)
         {
         }
 
@@ -98,20 +100,32 @@ namespace WPR.WindowsCompability
             => mode == FileMode.Append ? FileAccess.Write : FileAccess.ReadWrite;
 
         /// <summary>
-        /// Best-effort <c>mkdir -p</c> of <paramref name="path"/>'s parent for the modes that can
-        /// create a file, returning <paramref name="path"/> untouched so it can be used directly
-        /// as the base constructor's first argument. See the note on the type.
+        /// Turns the path the game asked for into the one the base constructor should open:
+        /// separators translated to the platform's own, and — for the modes that can create a
+        /// file — a best-effort <c>mkdir -p</c> of its parent. See the note on the type.
         /// </summary>
         /// <remarks>
-        /// Deliberately silent on failure: the very next thing that happens is the real open, so
-        /// a genuine problem surfaces there as the exception the caller already expects, with the
-        /// path it already names. Throwing a different one from here would only obscure it.
+        /// <para><b>Normalisation runs for every mode, including the read ones.</b> A WP7 title
+        /// built on Windows may spell a store path <c>"dir\file"</c>, and on Android the backslash
+        /// is an ordinary filename character — so without this, a read looks for a file that does
+        /// not exist and a write creates one called <c>dir\file</c> at the store root, invisible to
+        /// any later directory enumeration. <c>ContentPaths.Normalize</c> is a no-op on Windows, so
+        /// the desktop head is unchanged. <c>SharedIsolatedStorage</c> carries the full account,
+        /// including the game this was found on.</para>
+        /// <para>Directory creation is deliberately silent on failure: the very next thing that
+        /// happens is the real open, so a genuine problem surfaces there as the exception the
+        /// caller already expects, with the path it already names. Throwing a different one from
+        /// here would only obscure it.</para>
         /// <para><see cref="FileMode.Truncate"/> is excluded with the read modes — it requires the
         /// file to exist, so a missing directory is a real error there, not a missing folder WP7
         /// would have had.</para>
         /// </remarks>
-        private static string EnsureParentDirectory(string path, FileMode mode, IsolatedStorageFile isf)
+        private static string PrepareStorePath(string path, FileMode mode, IsolatedStorageFile isf)
         {
+            // Before anything reads the path apart, so the directory computed below and the path
+            // handed to the base constructor are the same shape.
+            path = ContentPaths.Normalize(path)!;
+
             if (mode != FileMode.Create && mode != FileMode.CreateNew &&
                 mode != FileMode.OpenOrCreate && mode != FileMode.Append)
             {

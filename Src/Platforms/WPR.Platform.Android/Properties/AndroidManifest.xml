@@ -46,6 +46,29 @@
 	     (mipmap-anydpi-v26) on API 26+ and to the per-density bitmaps below that.
 	     @drawable/icon is still the splash centre image (Resources/drawable/splash_screen.xml).
 	-->
-	<application android:label="WPR" android:icon="@mipmap/ic_launcher">
+	<!--
+	     enableOnBackInvokedCallback="false" is REQUIRED, and only became required when this head
+	     moved to targetSdk 36 (the .NET 10 migration, 2026-09-23). From Android 16 an app that
+	     targets 36 gets the predictive-back system animation ON BY DEFAULT, and the price of that
+	     is that the legacy back dispatch stops: Activity.OnBackPressed is NEVER CALLED.
+
+	     GameActivity.OnBackPressed is how a Back press becomes one frame of GamePad.Buttons.Back,
+	     and it is also what stops the activity finishing itself. With predictive back on, the
+	     system finished GameActivity directly instead — so the activity returned its default
+	     Result.Canceled, never the Result.Ok that the clean-exit path sets, and GameLauncher
+	     reported "the game process exited unexpectedly" over a game that had exited perfectly
+	     normally. The symptom is an error dialog on Back, NOT a crash: the :game process was still
+	     alive when the launcher declared it dead, and the SIGKILL in the log arrives ~4s later from
+	     OnDestroy, which is the normal teardown.
+
+	     It only reproduced on titles that ignore Buttons.Back (Cut the Rope). A game that quits
+	     itself on Back — iStunt 2 — wins the race and sets Result.Ok before the system finishes the
+	     activity, so it looked fine and hid the bug.
+
+	     Removing this attribute means migrating GameActivity to OnBackInvokedCallback /
+	     OnBackPressedDispatcher first. Google will eventually drop the opt-out, so that migration
+	     is owed; this keeps the shipped behaviour correct until it happens.
+	-->
+	<application android:label="WPR" android:icon="@mipmap/ic_launcher" android:enableOnBackInvokedCallback="false">
 	</application>
 </manifest>
