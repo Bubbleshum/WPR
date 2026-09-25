@@ -55,10 +55,59 @@ namespace WPR.Platform.Android
         {
             base.OnCreate(savedInstanceState);
 
-            WprStartup.EnsureInitialized(this);
-
+            // ONLY THE CHEAP WORK BELONGS HERE, and that is about how long the screen stays
+            // black. Android paints nothing until OnCreate RETURNS, so anything slow in it is
+            // time the user spends looking at the splash — adding views earlier cannot help,
+            // because none of them are drawn until the method is done.
+            //
+            // Measured on a Galaxy S24 Ultra before this was split: process start to first frame
+            // 2.24 s, of which ~1.9 s was WprStartup.EnsureInitialized seeding the databases and
+            // reconciling the achievement catalogues. The intro clip then started at 2.31 s —
+            // i.e. the startup work ran BEFORE the thing whose whole job is to cover it.
             SetContentView(Resource.Layout.activity_start);
             WpTheme.ApplySystemBars(this);
+
+            // Over the top of the Start screen, which carries on building underneath. Once per
+            // process, so returning here from a game does not replay it — see IntroVideo.
+            IntroVideo.PlayOnce(this);
+
+            // Everything past this point needs the database, and the seeding is the ~1.9 s that
+            // used to be in front of the first frame. It runs on a WORKER now, not merely later
+            // on the UI thread.
+            //
+            // That distinction was measured, and posting alone is a trap: it got the first frame
+            // down to 353 ms but pushed the first frame OF THE CLIP out to 2.74 s, WORSE than
+            // before. VideoView prepares asynchronously and then calls start() back on the main
+            // thread, so a main thread busy seeding delays the very thing the work is meant to
+            // hide. Only the disk and database half goes to the worker; everything that touches
+            // views or registries comes back — see FinishStartupOnUiThread.
+            _ = System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    WprStartup.EnsureInitialized(this);
+                }
+                catch (Exception ex)
+                {
+                    global::Android.Util.Log.Error("WPR", $"start-up initialisation failed: {ex}");
+                }
+
+                RunOnUiThread(FinishStartupOnUiThread);
+            });
+        }
+
+        /// <summary>
+        /// The half of start-up that must touch views and registries, run once
+        /// <c>WprStartup.EnsureInitialized</c> has finished on a worker.
+        /// </summary>
+        /// <remarks>
+        /// Split out of <see cref="OnCreate"/> so the intro clip is on screen while the databases
+        /// are seeded rather than after — see the note there, which carries the measurements.
+        /// </remarks>
+        private void FinishStartupOnUiThread()
+        {
+            // The worker outlives a fast Back: the activity can be gone by the time it returns.
+            if (IsFinishing || IsDestroyed) return;
 
             // Guide.ShowMessageBox / ShowInputBox are installed process-wide by ServicesSetup
             // and dispatch onto MessageBoxUtils.MainActivity. GameActivity redoes both in its

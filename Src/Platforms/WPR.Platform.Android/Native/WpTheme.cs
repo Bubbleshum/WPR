@@ -8,6 +8,8 @@ using Android.Graphics.Drawables;
 using Android.Views;
 using Android.Widget;
 
+using AndroidX.Core.View;
+
 using WPR.Common;
 
 // Android.Content.Res exports a Configuration type too; the shell always means WPRs.
@@ -172,6 +174,76 @@ namespace WPR.Platform.Android.Native
         }
 
         /// <summary>
+        /// Insets a page's content so the status and navigation bars never sit on top of it.
+        /// </summary>
+        /// <remarks>
+        /// <para><b>This is not chrome polish; without it the games page's app bar is
+        /// unusable.</b> From targetSdk 35 Android draws every app edge to edge and stops
+        /// insetting the window for the system bars, so whatever occupies the bottom of a layout
+        /// ends up underneath the navigation bar — on the games page that is the
+        /// add / achievements / refresh row. It arrived with the targetSdk 36 move, not with any
+        /// layout change, which is why no layout looks wrong on its own.</para>
+        ///
+        /// <para><b>It answers "are the navigation buttons showing?" for free</b>, which is why
+        /// this is an inset listener and not a dimension: three-button navigation reports a tall
+        /// bottom inset, gesture navigation reports the thin grab-handle one, and a hidden bar
+        /// reports zero. One path covers all of them, and it re-runs whenever the bars change
+        /// rather than only at create — switching navigation mode with the app open re-lays it
+        /// out correctly.</para>
+        ///
+        /// <para><b>Applied to the ACTIVITY'S CONTENT ROOT, not to named views in each layout.</b>
+        /// Every page already calls this one method, so doing it here fixes all six at once and a
+        /// seventh gets it by construction. It also restores exactly the pre-edge-to-edge
+        /// geometry — the window is inset for the bars, which is what fitsSystemWindows used to
+        /// do — rather than inventing a new one per page.</para>
+        ///
+        /// <para><b>Left and right insets are deliberately ignored.</b> Every activity here is
+        /// locked to portrait, where those are zero; honouring them would only matter in
+        /// landscape, and applying them blind would inset against a cutout that is not there.</para>
+        ///
+        /// <para>The insets are returned rather than consumed, so anything nested that listens
+        /// still receives them.</para>
+        /// </remarks>
+        private static void KeepContentClearOfSystemBars(global::Android.App.Activity activity)
+        {
+            View? content = activity.FindViewById(global::Android.Resource.Id.Content);
+            if (content == null) return;
+
+            ViewCompat.SetOnApplyWindowInsetsListener(content, new SystemBarPadding(content));
+
+            // A view already attached has had its one dispatch; ask for another.
+            ViewCompat.RequestApplyInsets(content);
+        }
+
+        private sealed class SystemBarPadding : Java.Lang.Object, IOnApplyWindowInsetsListener
+        {
+            private readonly int _Left;
+            private readonly int _Top;
+            private readonly int _Right;
+            private readonly int _Bottom;
+
+            public SystemBarPadding(View view)
+            {
+                // Captured once, from the layout. The listener runs repeatedly — every bar
+                // change, every rotation — and reading the CURRENT padding would add the inset
+                // on top of the previous inset each time, walking the content down the screen.
+                _Left = view.PaddingLeft;
+                _Top = view.PaddingTop;
+                _Right = view.PaddingRight;
+                _Bottom = view.PaddingBottom;
+            }
+
+            public WindowInsetsCompat OnApplyWindowInsets(View view, WindowInsetsCompat insets)
+            {
+                global::AndroidX.Core.Graphics.Insets bars =
+                    insets.GetInsets(WindowInsetsCompat.Type.SystemBars());
+
+                view.SetPadding(_Left, _Top + bars.Top, _Right, _Bottom + bars.Bottom);
+                return insets;
+            }
+        }
+
+        /// <summary>
         /// Tint a switch with the live accent: accent thumb on a muted accent track when on,
         /// white thumb on chrome when off. WP7 had no switch of this shape — its ToggleSwitch was
         /// a rectangular slab — but the stock widget with the right two colours reads as part of
@@ -215,6 +287,10 @@ namespace WPR.Platform.Android.Native
             Color background = Color.Black;
             window.SetStatusBarColor(background);
             window.SetNavigationBarColor(background);
+
+            // Colouring the bars is not enough from targetSdk 35 — they stop reserving space and
+            // start sitting on top of the page. See the remarks on this method.
+            KeepContentClearOfSystemBars(activity);
         }
     }
 }

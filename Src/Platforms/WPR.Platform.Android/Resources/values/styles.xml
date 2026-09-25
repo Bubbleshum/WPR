@@ -33,6 +33,19 @@
     <item name="android:textColorPrimary">@color/wp_foreground</item>
     <item name="android:textColorSecondary">@color/wp_subtle</item>
     <item name="android:alertDialogTheme">@style/WprDialog</item>
+
+    <!-- The system splash screen, made invisible so the intro clip is the first thing seen.
+         From Android 12 EVERY app gets one whether it asks or not: the launcher icon inside a
+         rounded container over the theme background, drawn before the activity has rendered a
+         frame. It cannot be switched off — but it can be told to draw black with no icon, which
+         leaves it indistinguishable from the black the clip starts on.
+
+         These attributes are API 31+. Older devices simply do not understand them and ignore
+         them, which is why this lives here rather than in a values-v31 copy of the whole theme;
+         compileSdk resolves the names either way. -->
+    <item name="android:windowSplashScreenBackground">#FF000000</item>
+    <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
+    <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
   </style>
 
   <style name="WprDialog" parent="@android:style/Theme.Material.Dialog.Alert">
