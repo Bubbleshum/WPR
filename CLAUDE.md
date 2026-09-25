@@ -65,6 +65,37 @@ Verified on the day: desktop head 0 errors, Android head 0 errors (Release), all
 `scratchpad` probes ALL PASS, and Carcassonne, Galactic Reign, Cut the Rope and Sonic 4 all
 run with the same draw counts they had on net8.
 
+**A RID-specific publish of the Windows head MUST pass `-p:IncludeAndroidTargets=false`**, and
+this is not the same thing as the auto-detection in `Src/Directory.Build.targets`. It bit the
+release workflow immediately after the move:
+
+```
+error NU1102: Unable to find package Microsoft.NETCore.App.Runtime.Mono.win-x64
+              with version (= 10.0.12)
+  - Found 122 version(s) in nuget.org [ Nearest version: 9.0.0-preview.7.24405.7 ]
+```
+
+`--self-contained -r win-x64` propagates `RuntimeIdentifier=win-x64` into **every TFM of every
+project reference**, the `net10.0-android` legs included. Those use the Mono runtime, so they ask
+for `Microsoft.NETCore.App.Runtime.Mono.win-x64` — **a package Microsoft stopped publishing after
+the 9.0 previews.** Under net8 it resolved and nobody noticed; under net10 there is nothing to
+resolve and restore dies.
+
+Three things make this hard to recognise:
+
+- **A plain `dotnet build` never reproduces it.** No RID, no runtime pack, no failure — so the
+  whole migration can look green and the release job still fail.
+- **The failing set is the tell**: all 21 projects that multi-target `net10.0;net10.0-android` fail
+  at once, while every single-TFM project (`WPR.Framework.Xna`, `FNA.Core`,
+  `WPR.Backend.Direct3D11`, the modules) restores fine. If a restore failure splits that way, this
+  is it.
+- **It reads as a workload problem and is not one.** The android workload being present or absent
+  changes nothing; the RID is what does it.
+
+`build-desktop.ps1` passes the flag for both its paths, and the release workflow passes it on the
+publish, each with the reasoning inline. The Android job is unaffected — it builds
+`-f net10.0-android36.0` with no `-r`.
+
 **Avalonia is still split — 11.3.9 on desktop, 12.1.3 on android — and that is NOT because
 the TFM blocked it.** net10 removes the *restore* obstacle, and the desktop could take 12.1.3
 tomorrow; what stops it is four migrations riding along behind the version number, chief among

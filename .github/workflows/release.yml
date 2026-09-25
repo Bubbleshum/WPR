@@ -82,6 +82,19 @@ jobs:
       # Directory.Build.props shadows the Src/ one that defines it (nearest-wins,
       # no parent import), so FNA.Core can't resolve WPR.Framework.Xna without it.
       # Trailing forward slash - a trailing backslash would escape the quote.
+      #
+      # -p:IncludeAndroidTargets=false is NOT redundant with the auto-detection in
+      # Src/Directory.Build.targets, and leaving it off breaks this job outright.
+      # `--self-contained -r win-x64` propagates RuntimeIdentifier=win-x64 into EVERY TFM of
+      # every project reference, including the net10.0-android legs. Those use the Mono
+      # runtime, so they then ask for Microsoft.NETCore.App.Runtime.Mono.win-x64 - a package
+      # Microsoft STOPPED PUBLISHING AFTER 9.0 PREVIEWS ("Nearest version:
+      # 9.0.0-preview.7.24405.7"). Under net8 it resolved and nobody noticed; under net10 the
+      # restore dies with NU1102 on all 21 multi-targeting projects at once, while every
+      # single-TFM project restores fine - which is the tell.
+      #
+      # A plain `dotnet build` does not reproduce it: no RID, no runtime pack, no failure. Only
+      # this publish does. The android leg is built by the android job, which has the workload.
       - name: Publish (self-contained win-x64)
         shell: pwsh
         run: >
@@ -93,6 +106,7 @@ jobs:
           -o publish/desktop
           -p:SolutionDir=${{ github.workspace }}/Src/
           -p:Version=${{ needs.validate.outputs.version }}
+          -p:IncludeAndroidTargets=false
           -maxcpucount:1
           -nodeReuse:false
           --nologo
@@ -207,6 +221,23 @@ jobs:
           fi
 
           # A plain Release *build* stops short of packaging, hence SignAndroidPackage.
+          #
+          # DO NOT re-add -p:AndroidEnableAssemblyCompression=false. It shipped a release APK
+          # that could not start AT ALL on 0.1.06 — before a line of managed code ran:
+          #
+          #   java.lang.UnsatisfiedLinkError: dlopen failed: cannot locate symbol
+          #     "compressed_assembly_count" referenced by ".../lib/arm64/libmonodroid.so"
+          #
+          # The generated libxamarin-app.so defines compressed_assembly_count /
+          # compressed_assembly_descriptors only when compression is ON, but the shipped
+          # libmonodroid.so imports them UNCONDITIONALLY, so turning compression off leaves two
+          # undefined symbols and the process dies in the Java bootstrap. Verified by pulling the
+          # installed APK off the device: its libxamarin-app.so defines neither, while a Release
+          # build without this flag defines both.
+          #
+          # The csproj sets it for DEBUG only, deliberately. This flag was the workflow copying a
+          # Debug setting onto Release, and it went unnoticed because a plain `dotnet build -c
+          # Release` (what anyone tests locally) does not pass it.
           dotnet build Src/Platforms/WPR.Platform.Android/WPR.Platform.Android.csproj \
             -c Release \
             -f net10.0-android36.0 \
@@ -216,7 +247,6 @@ jobs:
             -p:ApplicationDisplayVersion="$VERSION" \
             -p:ApplicationVersion="$VERSION_CODE" \
             -p:EmbedAssembliesIntoApk=true \
-            -p:AndroidEnableAssemblyCompression=false \
             -maxcpucount:1 \
             -nodeReuse:false \
             --nologo \

@@ -6,7 +6,7 @@
     Wraps the CLI build recipe documented in CLAUDE.md:
       * explicit TFM so the broken Android leg is never touched
       * -maxcpucount:1 -nodeReuse:false to dodge the MSBuild CS0006 race
-      * uses the system .NET at "C:\Program Files\dotnet" (repo global.json pins the 8.0 band)
+      * uses the system .NET at "C:\Program Files\dotnet" (repo global.json pins the 10.0 band)
 
     By default it runs `dotnet publish` into Artifacts\desktop\<Configuration>, then
     copies Src\Core\WPR.Database\Data\** alongside the exe. That copy is needed because the
@@ -78,7 +78,7 @@ if (-not (Test-Path $Project)) {
 $Dotnet = Join-Path $env:ProgramFiles 'dotnet\dotnet.exe'
 if (-not (Test-Path $Dotnet)) {
     $cmd = Get-Command dotnet -ErrorAction SilentlyContinue
-    if ($null -eq $cmd) { throw 'dotnet not found. Install the .NET 8 SDK or add dotnet to PATH.' }
+    if ($null -eq $cmd) { throw 'dotnet not found. Install the .NET 10 SDK or add dotnet to PATH.' }
     $Dotnet = $cmd.Source
 }
 
@@ -86,8 +86,8 @@ Push-Location $Root
 try {
     $sdkVersion = & $Dotnet --version
     Write-Host "SDK           : $sdkVersion  ($Dotnet)" -ForegroundColor DarkGray
-    if ($sdkVersion -notlike '8.*') {
-        Write-Warning "global.json pins the .NET 8.0 band but the resolved SDK is $sdkVersion. Install the .NET 8 SDK: https://dotnet.microsoft.com/download/dotnet/8.0"
+    if ($sdkVersion -notlike '10.*') {
+        Write-Warning "global.json pins the .NET 10.0 band but the resolved SDK is $sdkVersion. Install the .NET 10 SDK: https://dotnet.microsoft.com/download/dotnet/10.0"
     }
 
     if ($NoPublish) {
@@ -114,6 +114,14 @@ try {
 
     # Shared MSBuild flags. -maxcpucount:1/-nodeReuse:false avoid the parallel-build
     # "metadata file not found" (CS0006) race this repo hits under default settings.
+    #
+    # IncludeAndroidTargets=false is required for the -SelfContained path and harmless
+    # otherwise, so it is set for both. `--self-contained -r win-x64` propagates
+    # RuntimeIdentifier=win-x64 into every TFM of every project reference, including the
+    # net10.0-android legs; those use the Mono runtime and then ask for
+    # Microsoft.NETCore.App.Runtime.Mono.win-x64, which Microsoft stopped publishing after 9.0
+    # previews. The restore dies with NU1102 on all 21 multi-targeting projects at once. This is
+    # a desktop script - it has no business building an android leg either way.
     $common = @(
         '-c', $Configuration
         '-f', $Tfm
@@ -121,6 +129,7 @@ try {
         '-nodeReuse:false'
         '--nologo'
         "-p:SolutionDir=$SolutionDir"
+        '-p:IncludeAndroidTargets=false'
     )
 
     if ($NoPublish) {
