@@ -320,6 +320,26 @@ typedef struct OpenGLRenderer /* Cast from FNA3D_Renderer* */
 
 /* XNA->OpenGL Translation Arrays */
 
+/* WPR: three entries in these three tables are desktop-GL only and there is no extension
+ * check anywhere in this driver, so on OpenGL ES they fail silently -- the texture never
+ * gets storage at glTexImage2D, and glTexSubImage2D is rejected too.
+ *
+ *   Bgra5551 / Bgra4444  GL_BGRA plus GL_UNSIGNED_SHORT_*_REV. Neither the format nor the
+ *                        packed types exist in any version of ES;
+ *                        GL_EXT_texture_format_BGRA8888 covers 8888 only.
+ *   Bgr565               internal format GL_RGB8 with type GL_UNSIGNED_SHORT_5_6_5. Each is
+ *                        legal in ES3 but the PAIRING is not: ES3 admits that type only
+ *                        against GL_RGB565.
+ *   ColorBgraEXT         GL_BGRA + GL_UNSIGNED_BYTE, which needs the extension above.
+ *
+ * The desktop mappings below are correct and are deliberately left alone.
+ * Microsoft.Xna.Framework.Graphics.TextureFormatShim stores these as Color on a GLES
+ * context instead, converting the game's pixels both ways. Fixing it here would mean
+ * GL_RGBA + the non-_REV packed types (a 16-bit rotate away in component order: rotl 4 for
+ * 4444, rotl 1 for 5551), conditional on renderer->useES3, plus staging buffers this
+ * upload path does not have -- and FNA3D.dll cannot be rebuilt on the maintainer's machine
+ * while libFNA3D.so can, so the two platforms would run different control flow.
+ */
 static int32_t XNAToGL_TextureFormat[] =
 {
 	GL_RGBA,			/* SurfaceFormat.Color */
@@ -3277,6 +3297,15 @@ static uint8_t OPENGL_INTERNAL_ReadTargetIfApplicable(
 	/* glReadPixels should be faster than reading
 	 * back from the render target if we are already bound.
 	 */
+	/* WPR: that FIXME is load-bearing on OpenGL ES, where the early return above never
+	 * fires. GL_RGBA + GL_UNSIGNED_BYTE is four bytes per pixel whatever the texture's
+	 * real format is, and dataLength is not passed down here to bound it -- so reading a
+	 * 16-bit or 8-bit texture writes twice or four times what the caller allocated, into
+	 * a pinned managed array. That is silent heap corruption rather than a crash, which
+	 * is why Microsoft.Xna.Framework.Graphics.TextureReadback refuses a readback on GLES
+	 * unless the STORED format is genuinely 32-bit colour, and not merely because the
+	 * level is 0.
+	 */
 	renderer->glReadPixels(
 		subX,
 		subY,
@@ -4149,6 +4178,12 @@ static void OPENGL_GetTextureData2D(
 	uint8_t *dataPtr = (uint8_t*) data;
 	FNA3D_Command cmd;
 
+	/* WPR: see the note on OPENGL_GetTextureDataCube. This assert is compiled out of
+	 * the release .so and glGetTexImage is NULL under OpenGL ES, but only the
+	 * level > 0 path reaches it -- level 0 is diverted into
+	 * OPENGL_INTERNAL_ReadTargetIfApplicable just below, which never declines on ES.
+	 * Microsoft.Xna.Framework.Graphics.TextureReadback refuses both the level > 0
+	 * case and the narrow-format case above the seam. */
 	SDL_assert(renderer->supports_NonES3);
 
 	if (renderer->threadID != SDL_ThreadID())
@@ -4281,6 +4316,15 @@ static void OPENGL_GetTextureDataCube(
 	uint8_t *dataPtr = (uint8_t*) data;
 	FNA3D_Command cmd;
 
+	/* WPR: this assert is compiled out of the release libFNA3D.so we ship, and
+	 * glGetTexImage is declared GL_PROC(NonES3, ...) so its pointer is NULL under
+	 * OpenGL ES -- this call is then a jump to address 0. Unlike GetTextureData2D
+	 * below there is no ReadTargetIfApplicable escape here, so on GLES it is
+	 * unconditional. Nothing reaches it any more: Microsoft.Xna.Framework.Graphics.
+	 * TextureReadback refuses the read above the seam and returns zeros with a
+	 * [wpr-texget] warning. Left as an assert deliberately -- turning it into a real
+	 * runtime check would need a rebuild, and FNA3D_LogError arrives in managed code
+	 * as a thrown InvalidOperationException, which WP7 titles do not catch. */
 	SDL_assert(renderer->supports_NonES3);
 
 	if (renderer->threadID != SDL_ThreadID())

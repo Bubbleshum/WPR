@@ -18,12 +18,12 @@
     <CheckEolWorkloads>false</CheckEolWorkloads>
   </PropertyGroup>
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net8.0-android</TargetFrameworks>
+    <TargetFrameworks>net10.0;net10.0-android</TargetFrameworks>
     <CheckEolWorkloads>false</CheckEolWorkloads>
     <AssemblyName>WPR.Engine</AssemblyName>
     <RootNamespace>WPR.Engine</RootNamespace>
     <Nullable>enable</Nullable>
-    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net8.0-android'">21.0</SupportedOSPlatformVersion>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net10.0-android'">24.0</SupportedOSPlatformVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -32,6 +32,7 @@
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Audio\WPR.Engine.Audio.csproj" />
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Sensors\WPR.Engine.Sensors.csproj" />
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Vibration\WPR.Engine.Vibration.csproj" />
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Launchers\WPR.Engine.Launchers.csproj" />
     <!-- Registries not yet pulled into a subsystem project: XnaBackend's launcher-lifetime slots
          (achievements, tilt emulation) and NativeUI.NotificationManager. -->
     <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Xna\WPR.Framework.Xna.csproj" />

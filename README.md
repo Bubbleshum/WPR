@@ -23,6 +23,12 @@ WPR brings them back. Point it at a game file you already own, click **Install**
 and it appears in your library ready to play — with its Xbox achievements
 intact.
 
+Dozens play end to end today, among them *ilomilo*, *Mirror's Edge*, *Plants vs.
+Zombies*, *Fruit Ninja*, *Kinectimals*, *Skulls of the Shogun*, *PAC-MAN* and
+*Sonic the Hedgehog 4*. The
+[compatibility list](https://bubbleshum.github.io/WPR/) tracks every game that's
+been tried, and how far it gets.
+
 It isn't an emulator in the usual sense. It doesn't pretend to be a phone;
 instead it takes the game's original program files and rewires the parts that ask
 for Windows Phone features so they talk to modern replacements instead. The game
@@ -60,62 +66,30 @@ will be familiar if you ever owned one:
   <img src="Images/screenshot-android-achievements.png" width="30%" alt="Achievements on Android" />
 </p>
 
-## What's new in 0.1.04
-
-- **Games now fill the whole Android screen.** 14 games ran in a shrunken box
-  with the status bar, the navigation buttons and black borders around them.
-- **3D characters animate again on Android.** They used to stand frozen in a
-  T-pose, arms out, sliding around a level that moved perfectly well without
-  them. Mirror's Edge is the obvious one.
-- **Games that stopped part-way through loading now finish,** and coming back to
-  a game after a call no longer leaves you on a black screen. Both came out of
-  changing the way Android draws games.
-- **Games stuck on their splash screen now start** — they were waiting for a
-  first menu that could never load. Fight Game: Rivals, and any game built the
-  same way.
-- **Five more games play that did not before:** Doodle God, which closed itself
-  a second in; Fable: Coin Golf, where every course was a black screen;
-  Battlewagon, which drew its scenery and never put a menu on it; Contre Jour,
-  which died before its first frame and again whenever you looked away; and Feed
-  Me Oil, which drew a perfect picture and stopped taking taps.
-- **WPR can read images now.** The picture loader was never written, and games
-  that build level data out of a PNG — collision masks and the like — were being
-  handed a blank one pixel wide.
-- **Installing a game on Android no longer silently skips part of it,** which
-  could leave a game half-converted and unable to start at all.
-- **Games no longer quietly fail to find their own files on Android.** 7 of 26
-  games checked name at least one file the Windows way; most got away with it,
-  and the ones that didn't failed silently.
-- **The Android download is about 14 MB smaller.**
-
-> **Updating on Android? Uninstall WPR first, just this once.** Every release up
-> to 0.1.03 was signed with a throwaway key, so 0.1.04 will not install over
-> them — Android turns it away as *"App not installed"*. You will lose your
-> installed games and need to add them again. **This is the last time:** from
-> 0.1.04 onward updates install straight over the top, library intact.
->
-> After that there is nothing to do. Some fixes need a repatch, and on Android
-> that happens by itself the first time you open each game; on Windows, press
-> **Repatch** on a game's page.
-
-Full notes for this release are in
-[`Docs/ReleaseNotes/0.1.04.md`](Docs/ReleaseNotes/0.1.04.md); earlier ones sit
-beside it, and older changes are on the
-[Update History wiki page](https://github.com/Bubbleshum/WPR/wiki/Update-History).
-
 ## Features
 
 | | |
 | --- | --- |
 | 🎮 **Runs the original games** | Unmodified Windows Phone 7/8 game files — no patched or repacked copies needed |
-| 🏆 **Xbox achievements** | 277 games ship with full achievement catalogues; unlocks are saved between sessions, with a pop-up when you earn one |
+| 🏆 **Xbox achievements** | 277 games ship with full achievement catalogues. Unlocks are saved between sessions and pop up as you earn them, on Windows and Android alike |
+| 📌 **Pin a game to your home screen** | On Android, long-press a game in your library and it gets its own launcher icon, with that game's tile art — tapping it goes straight into the game |
+| 🎵 **The original soundtracks** | Phone games shipped their music in a format nothing else plays. WPR converts it as you install, so games that would otherwise be silent keep their soundtrack |
+| 📱 **Tilt controls** | On Android, the phone's real accelerometer. On a PC, bind the four tilt directions to keys, with adjustable strength, a live preview and an optional on-screen dial |
+| 👆 **Touch games, on a keyboard** | Draw a tap or a swipe on a to-scale phone outline, bind it to a key, and play a touch-only game on a desktop. Set per game, and it works before you've even launched it |
+| 🖱️ **The mouse wheel scrolls** | Long lists in phone games expect a flick. The wheel now does it, instead of a short drag being read as a tap |
+| 📳 **Rumble** | Games that buzzed on the phone buzz again on Android, with a switch in settings to turn it off |
 | 🖥️ **Windows and Android** | Runs on a desktop PC and on an Android phone or tablet |
 | 🗂️ **A real library** | Box art, publisher, search, and install / repatch / uninstall per game |
 | 👤 **A gamer profile** | Set a gamertag, a gamer picture and an accent colour — games that ask for them get real answers instead of blanks |
-| ⌨️ **Tilt on a keyboard** | Bind the four tilt directions to keys, with adjustable strength, a live preview and an optional in-game overlay |
-| 🕹️ **Several game types** | XNA games (the main path), Silverlight games (experimental), GameMaker exports, and a rail for launching rebuilt native ports |
+| 🔄 **The right way up** | Landscape games get a landscape screen and fill it, rather than being squeezed upright into a letterboxed box |
+| 🕹️ **Several kinds of game** | XNA games (the best supported), Silverlight games, games that mix the two, GameMaker exports, and a rail for launching rebuilt native ports |
+| 🛟 **Gets itself out of trouble** | If a game on Android dies before it draws anything, WPR notices and quietly starts the next one on a safer graphics mode — and you can pick one yourself in settings |
 | 📝 **Diagnostics that help** | A per-game log written on every launch, so problems can actually be reported |
 | 📦 **Nothing else to install** | The Windows installer bundles the .NET runtime and every native library the games need |
+
+What changed in each release is in [`Docs/ReleaseNotes/`](Docs/ReleaseNotes), and older
+history is on the
+[Update History wiki page](https://github.com/Bubbleshum/WPR/wiki/Update-History).
 
 ## Getting WPR
 
@@ -128,11 +102,29 @@ If a release has been published, the
   you don't need to install anything else first.
 - `WPR-<version>.apk` — Android, for sideloading.
 
-You'll need **Windows 10 (version 1809) or newer**, or **Android 5.0 or newer**.
+### Will it run on my device?
+
+| | Works on | Won't run on |
+| --- | --- | --- |
+| **Windows** | Windows 10 version 1809 (October 2018) or newer, and Windows 11 — **64-bit Intel or AMD** | 32-bit Windows, and Windows on ARM (no ARM build yet) |
+| **Android** | **Android 7.0 (Nougat) or newer**, on a **64-bit** device — in practice anything from about 2016 onward | Android 6.0 and older; 32-bit-only phones |
+
+**Almost every Android phone and tablet made since 2016 qualifies** — 64-bit chips
+were standard well before then. The awkward case is a very cheap phone, where
+32-bit-only chips lingered for years after that. On one of those the app refuses
+to install rather than installing and then misbehaving, so you'll know straight
+away rather than wondering.
+
+Intel Android devices (some Chromebooks, and the Android emulator) are supported
+too.
+
+**Still on Android 5 or 6?** Stay on
+[0.1.05](https://github.com/Bubbleshum/WPR/releases) — it keeps working. Newer
+releases run on a .NET engine that isn't offered for those versions.
 
 ### Build it yourself
 
-You need the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) —
+You need the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) —
 that's it for the desktop app. Then:
 
 ```bash
@@ -170,10 +162,12 @@ There's a searchable, sortable
 **[compatibility list](https://bubbleshum.github.io/WPR/)** with box art, showing
 what's known to run and what isn't.
 
-Broadly: XNA games are the best-supported and most work. Silverlight games are
-experimental and hit-and-miss. Unity games can't be run directly at all — they
-need a one-off rebuild first, and only a couple exist. Later Windows Phone 8 apps
-written in C++ aren't supported and won't be.
+Broadly: XNA games are the best-supported and most work. Silverlight games, and
+games that mix Silverlight with XNA, are newer ground — several play properly now
+and the rest get further than they used to, but it's still the rougher half of the
+library. Unity games can't be run directly at all; they need a one-off rebuild
+first, and only a couple exist. Later Windows Phone 8 apps written in C++ aren't
+supported and won't be.
 
 ## Things to know
 
@@ -194,6 +188,7 @@ written in C++ aren't supported and won't be.
 
 | Where | What's in it |
 | --- | --- |
+| [Docs/ReleaseNotes/](Docs/ReleaseNotes) | What changed in each release, in plain language |
 | [Docs/](Docs/README.md) | Technical reference — [how it works](Docs/ARCHITECTURE.md), [building](Docs/BUILDING.md), [releasing](Docs/RELEASING.md) |
 | [Plans/](Plans/README.md) | Design work in progress — the architecture migration, stage scopes, feasibility studies, TODO lists |
 | [CLAUDE.md](CLAUDE.md) | Working conventions and gotchas for anyone editing the code |

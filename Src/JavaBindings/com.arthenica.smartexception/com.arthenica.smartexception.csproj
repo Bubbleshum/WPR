@@ -5,9 +5,9 @@
          android TFM: on plain net8.0 the EmbeddedJar item is inert, class-parse
          never runs, and the project builds a 4 KB assembly with no types in it.
          See com.arthenica.ffmpegkit.csproj for what that cost. -->
-    <TargetFramework>net8.0-android</TargetFramework>
+    <TargetFramework>net10.0-android</TargetFramework>
     <!-- 21.0, matching Org.Libsdl.App. Higher trips NETSDK1135. -->
-    <SupportedOSPlatformVersion>21.0</SupportedOSPlatformVersion>
+    <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsBindingProject>true</IsBindingProject>

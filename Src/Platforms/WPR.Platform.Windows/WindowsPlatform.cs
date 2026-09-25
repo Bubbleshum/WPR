@@ -49,6 +49,11 @@ namespace WPR.Platform.Windows
             // is correct on desktop — its once-per-second song stutter only bites on a phone.
             .AudioTranscoder(new Audio.FFMpegCoreAudioTranscoder())
 
+            // Links a game opens (WebBrowserTask) go to the default browser via the shell.
+            // Deliberately no ShareSheet yet: the Windows share UI is WinRT DataTransferManager
+            // bound to a window handle, so ShareLinkTask stays a logged no-op on the desktop.
+            .UriLauncher(new WPR.Launchers.ShellExecute.ShellExecuteUriLauncher())
+
             .Achievements(new WPR.Database.Achievements.EfAchievementStore());
     }
 }

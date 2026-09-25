@@ -218,6 +218,15 @@ namespace Microsoft.Xna.Framework.Graphics
 		{
 			GraphicsDevice = graphicsDevice;
 
+			/* WP7 supported no custom shaders, so a game's effect blob may be a short reference
+			 * NAMING a stock effect rather than carrying any bytecode. MojoShader reads the tag
+			 * as a body offset and reports "Unexpected EOF"; hand it the real bytes instead. */
+			byte[] stock = StockEffectStub.TryResolve(effectCode);
+			if (stock != null)
+			{
+				effectCode = stock;
+			}
+
 			// Send the blob to the GLDevice to be parsed/compiled
 			IntPtr effectData;
 			XnaBackend.Graphics.CreateEffect(

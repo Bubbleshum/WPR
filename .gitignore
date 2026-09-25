@@ -46,3 +46,4 @@ Research/Wp8Native/unicorn.dll
 *.keystore
 *.jks
 *.p12
+/scratchpad/

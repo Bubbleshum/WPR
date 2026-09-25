@@ -2,16 +2,40 @@
 
   <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
     <CheckEolWorkloads>false</CheckEolWorkloads>
-    <TargetFrameworks>net8.0;net8.0-android</TargetFrameworks>
+    <TargetFrameworks>net10.0;net10.0-android</TargetFrameworks>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(OS)' == 'Windows_NT' ">
     <CheckEolWorkloads>false</CheckEolWorkloads>
-    <TargetFrameworks>net8.0;net8.0-windows10.0.17763.0;net8.0-android</TargetFrameworks>
+    <TargetFrameworks>net10.0;net10.0-windows10.0.17763.0;net10.0-android</TargetFrameworks>
   </PropertyGroup>
   <PropertyGroup>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <AvaloniaVersion>11.3.9</AvaloniaVersion>
+    <!-- Avalonia 11.x ships no net10.0-android asset (it skipped .NET 9 entirely and 12.x is the
+         first build with one), so the android leg has to take 12.x or restore fails NU1202. The
+         desktop leg deliberately stays on 11.3.9 — WPR.Platform.Windows is a full Avalonia app
+         and moving IT to 12 is a separate piece of work. Only the android leg moves, because only
+         the android leg had to.
+
+         THE COST OF UNIFYING THEM WAS MEASURED ON 2026-09-25, so it does not have to be guessed
+         again. Moving the desktop to 12.1.3 is not a version bump; it is four migrations:
+           * Avalonia.ReactiveUI STOPS AT 11.3.9. Avalonia 12 moved the integration out of the
+             Avalonia repo and it is now ReactiveUI.Avalonia (namespace ReactiveUI.Avalonia).
+           * That package pulls REACTIVEUI 24.2.0, which replaced System.Reactive.Unit with its
+             own RxVoid — so every ReactiveCommand<Unit, Unit> in the head changes type. 5 files,
+             ~25 sites, two of which are the view-models most often under edit.
+           * Avalonia.Diagnostics also stops at 11.3.x (it can simply go: nothing ever called
+             AttachDevTools).
+           * Avalonia 12 DROPPED netstandard2.0, so the vendored Projektanker.Icons.Avalonia
+             projects must retarget; MessageBox.Avalonia becomes 12.0.0 with the namespace
+             MsBox.Avalonia and GetMessageBoxStandardWindow -> GetMessageBoxStandard returning a
+             box with ShowWindowDialogAsync/ShowWindowAsync; DialogHost.Avalonia needs 0.12.3;
+             and Tmds.DBus.Protocol's security pin has to rise from 0.21.3 to 0.94.1.
+         A trial run reached 84 compile errors with more behind them, and XAML/theme breaks in
+         Avalonia 12 do not surface at compile time at all. Worth doing deliberately, not
+         alongside other work. -->
+    <AvaloniaVersion Condition=" '$(TargetFramework)' == 'net10.0-android' ">12.1.3</AvaloniaVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 

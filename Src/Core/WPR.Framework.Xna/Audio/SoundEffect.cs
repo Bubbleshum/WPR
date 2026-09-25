@@ -599,7 +599,19 @@ namespace Microsoft.Xna.Framework.Audio
 			}
 		}
 
-		private static readonly object createLock = new object();
+		/// <summary>
+		/// Serialises creation of an FAudio instance across the WHOLE assembly, not just this type.
+		/// <see cref="Microsoft.Xna.Framework.Media.MediaPlayer"/> takes it too, because
+		/// <c>XNA_SongInit</c> and <see cref="FAudioContext.Create"/> both land in
+		/// <c>FAudioCreate</c>, which initialises the SDL audio subsystem — and two threads inside
+		/// that at once is an <c>AccessViolationException</c> that takes the process down with no
+		/// managed frame to catch. Carcassonne reaches it every launch: it loads sound effects from
+		/// <c>Application_Launching</c> on the game thread while its <c>MusicPlayer</c> starts a
+		/// song from a <c>ThreadPool</c> work item.
+		/// <para>Lock order is this gate innermost — nothing taken while holding it acquires
+		/// another WPR lock, and no game callback runs under it.</para>
+		/// </summary>
+		internal static readonly object createLock = new object();
 		internal static FAudioContext Device()
 		{
 			/* Ideally the device has been made, just return it. */

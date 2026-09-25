@@ -134,8 +134,12 @@ namespace WPR.SilverlightCompability
                 DrawPanoramaItemLike(ctx, element, bounds);
                 return;
             }
+            // The third name is our own shim's: patched game IL binds
+            // WPR.SilverlightCompability.ProgressBar, so matching only the WP7 name would have
+            // stopped recognising it the moment the type actually existed.
             if (typeName == "Microsoft.Phone.Controls.PerformanceProgressBar" ||
-                typeName == "System.Windows.Controls.ProgressBar")
+                typeName == "System.Windows.Controls.ProgressBar" ||
+                typeName == "WPR.SilverlightCompability.ProgressBar")
             {
                 DrawProgressBar(ctx, element, bounds);
                 return;
@@ -178,6 +182,26 @@ namespace WPR.SilverlightCompability
                 // is applied instead of falling through to bare Content paint.
                 case Button btn:
                     DrawButton(ctx, btn, bounds);
+                    break;
+
+                // Before the general ContentControl case it derives from. Since ScrollViewer began
+                // arranging its content at full extent (so it has something to scroll through),
+                // this renderer has to show a window onto it like the CPU rasteriser does —
+                // otherwise a long list draws its whole extent straight over everything below it.
+                case ScrollViewer scroller:
+                    PaintBrush(ctx, scroller.Background, bounds);
+                    if (scroller.Presenter != null)
+                    {
+                        using (ctx.PushClip(bounds))
+                        {
+                            var scrolled = new global::Avalonia.Rect(
+                                bounds.X - scroller.HorizontalOffset,
+                                bounds.Y - scroller.VerticalOffset,
+                                bounds.Width,
+                                bounds.Height);
+                            Render(ctx, scroller.Presenter, OffsetTo(scroller.Presenter.ArrangedRect, scrolled));
+                        }
+                    }
                     break;
 
                 // ContentControl / PhoneApplicationPage all share: paint Background, then render Presenter.
@@ -893,6 +917,64 @@ namespace WPR.SilverlightCompability
                 var avColor = global::Avalonia.Media.Color.FromArgb(c.A, c.R, c.G, c.B);
                 return new global::Avalonia.Media.SolidColorBrush(avColor, solid.Opacity);
             }
+            // Gradients, so this renderer agrees with the CPU rasteriser rather than falling
+            // through to "unsupported" and painting nothing where the other one paints a fade.
+            // Avalonia's own brushes take the same relative 0..1 geometry Silverlight uses.
+            if (brush is GradientBrush gradient)
+            {
+                var stops = new global::Avalonia.Media.GradientStops();
+                foreach (GradientStop stop in gradient.GradientStops)
+                {
+                    if (stop == null) continue;
+                    Color sc = stop.Color;
+                    stops.Add(new global::Avalonia.Media.GradientStop(
+                        global::Avalonia.Media.Color.FromArgb(sc.A, sc.R, sc.G, sc.B),
+                        stop.Offset));
+                }
+
+                if (stops.Count == 0) return null;
+
+                var spread = gradient.SpreadMethod switch
+                {
+                    GradientSpreadMethod.Reflect => global::Avalonia.Media.GradientSpreadMethod.Reflect,
+                    GradientSpreadMethod.Repeat => global::Avalonia.Media.GradientSpreadMethod.Repeat,
+                    _ => global::Avalonia.Media.GradientSpreadMethod.Pad,
+                };
+
+                if (gradient is LinearGradientBrush linear)
+                {
+                    return new global::Avalonia.Media.LinearGradientBrush
+                    {
+                        StartPoint = new global::Avalonia.RelativePoint(
+                            linear.StartPoint.X, linear.StartPoint.Y,
+                            global::Avalonia.RelativeUnit.Relative),
+                        EndPoint = new global::Avalonia.RelativePoint(
+                            linear.EndPoint.X, linear.EndPoint.Y,
+                            global::Avalonia.RelativeUnit.Relative),
+                        SpreadMethod = spread,
+                        GradientStops = stops,
+                        Opacity = gradient.Opacity,
+                    };
+                }
+
+                if (gradient is RadialGradientBrush radial)
+                {
+                    return new global::Avalonia.Media.RadialGradientBrush
+                    {
+                        Center = new global::Avalonia.RelativePoint(
+                            radial.Center.X, radial.Center.Y, global::Avalonia.RelativeUnit.Relative),
+                        GradientOrigin = new global::Avalonia.RelativePoint(
+                            radial.GradientOrigin.X, radial.GradientOrigin.Y,
+                            global::Avalonia.RelativeUnit.Relative),
+                        SpreadMethod = spread,
+                        GradientStops = stops,
+                        Opacity = gradient.Opacity,
+                    };
+                }
+
+                return null;
+            }
+
             if (brush is ImageBrush ib && ib.ImageSource != null)
             {
                 // Resolve via the same path Image uses — if the source has a cached native

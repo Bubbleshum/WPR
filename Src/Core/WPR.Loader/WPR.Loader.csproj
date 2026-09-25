@@ -11,15 +11,15 @@
 
   <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
     <CheckEolWorkloads>false</CheckEolWorkloads>
-    <TargetFrameworks>net8.0;net8.0-android</TargetFrameworks>
+    <TargetFrameworks>net10.0;net10.0-android</TargetFrameworks>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(OS)' == 'Windows_NT' ">
     <CheckEolWorkloads>false</CheckEolWorkloads>
-    <TargetFrameworks>net8.0-windows10.0.17763.0;net8.0-android</TargetFrameworks>
+    <TargetFrameworks>net10.0-windows10.0.17763.0;net10.0-android</TargetFrameworks>
   </PropertyGroup>
   <PropertyGroup>
     <CheckEolWorkloads>false</CheckEolWorkloads>
-    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net8.0-android'">21.0</SupportedOSPlatformVersion>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net10.0-android'">24.0</SupportedOSPlatformVersion>
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
@@ -34,15 +34,14 @@
          the one place this dependency cannot live, because it also ships it inside the APK.
          System.Drawing.Common went with it — nothing in this project uses it directly, it existed
          purely to lift FFMpegCore's transitive 5.0.2 off CVE-2021-24112. -->
-    <!-- CVE-2024-43485 / GHSA-8g4q-xg66-9fp4 (High, CVSS 8.8): System.Text.Json 6.0.0-6.0.9 —
-         algorithmic-complexity DoS on models with a [JsonExtensionData] property. This pin arrived
-         to cover FFMpegCore 4.8.0's transitive 6.0.2, but it STAYS now that FFMpegCore has left:
-         HardcodedAchievementCatalogue.cs uses System.Text.Json directly, so this is a first-party
-         dependency rather than a transitive lift. The windows leg is incidentally lifted to 8.0.6
-         by the vendored Projektanker.Icons.Avalonia.FontAwesome, but android does not reference
-         that project, so without this reference android would resolve whatever the SDK's own
-         baseline gives it. Fix landed in 8.0.5. -->
-    <PackageReference Include="System.Text.Json" Version="8.0.6" />
+    <!-- The System.Text.Json pin retired with the move to net10 (2026-09-25). It existed for
+         CVE-2024-43485 / GHSA-8g4q-xg66-9fp4 (High, CVSS 8.8) in 6.0.0-6.0.9, and the reason it
+         survived FFMpegCore's departure was that ANDROID does not reference the vendored
+         Projektanker.Icons.Avalonia.FontAwesome that incidentally lifted the windows leg — so
+         without it android resolved whatever the SDK's baseline gave. From net10 the package is
+         part of the shared framework on BOTH heads, so the asymmetry is gone and an explicit
+         8.0.6 would now pin an assembly OLDER than the runtime's own. NU1510 says so. The
+         first-party use (HardcodedAchievementCatalogue.cs) is unchanged — do not re-add. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="$(EFVersion)" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="$(EFVersion)" />
     <!-- CVE-2025-6965 / GHSA-2m69-gcr7-jv3q (High, CVSS 7.2): the native SQLite bundled by

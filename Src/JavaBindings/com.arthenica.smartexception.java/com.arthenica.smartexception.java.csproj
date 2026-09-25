@@ -3,8 +3,8 @@
     <CheckEolWorkloads>false</CheckEolWorkloads>
     <!-- See the sibling com.arthenica.smartexception.csproj: an android TFM is
          what makes this a binding project rather than an empty assembly. -->
-    <TargetFramework>net8.0-android</TargetFramework>
-    <SupportedOSPlatformVersion>21.0</SupportedOSPlatformVersion>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsBindingProject>true</IsBindingProject>

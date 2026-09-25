@@ -8,14 +8,14 @@ next stage begins. A stage is not "done" until this checklist is green.
 
 Built in the IDE (Rider) as normal, plus a headless confirmation:
 
-- **Desktop:** the Windows head builds for `net8.0-windows10.0.17763.0`.
+- **Desktop:** the Windows head builds for `net10.0-windows10.0.17763.0`.
   `-p:SolutionDir=` is mandatory (many csprojs resolve `ProjectReference`s through it —
   see CLAUDE.md).
   ```bash
-  dotnet build Src/Platforms/WPR.Platform.Windows/WPR.Platform.Windows.csproj -c Debug -f net8.0-windows10.0.17763.0 -maxcpucount:1 -nodeReuse:false --nologo -p:SolutionDir=<repo>/Src/
+  dotnet build Src/Platforms/WPR.Platform.Windows/WPR.Platform.Windows.csproj -c Debug -f net10.0-windows10.0.17763.0 -maxcpucount:1 -nodeReuse:false --nologo -p:SolutionDir=<repo>/Src/
   ```
   Add `-p:IncludeAndroidTargets=false` for a desktop-only loop — otherwise the multi-targeting
-  dependencies also compile their `net8.0-android` leg. `build-desktop.ps1` wraps all of this.
+  dependencies also compile their `net10.0-android` leg. `build-desktop.ps1` wraps all of this.
 - **Android:** `Src/Platforms/WPR.Platform.Android` builds per the CLAUDE.md recipe (ANDROID_HOME /
   JAVA_HOME env + `-p:AndroidSdkDirectory`).
 

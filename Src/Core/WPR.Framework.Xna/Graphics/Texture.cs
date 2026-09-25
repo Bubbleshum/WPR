@@ -36,6 +36,19 @@ namespace Microsoft.Xna.Framework.Graphics
 
 		internal IntPtr texture;
 
+		/// <summary>
+		/// The format the device was actually created with, which differs from
+		/// <see cref="Format"/> only when <see cref="TextureFormatShim"/> had to substitute one
+		/// this device can take.
+		/// </summary>
+		/// <remarks>
+		/// Every constructor sets this, so it is never a guess. Keep the two apart:
+		/// <see cref="Format"/> is the game's view and is what sizes its arrays, while this is
+		/// what the driver sees and what decides whether a readback is serviceable. Conflating
+		/// them is exactly the bug <see cref="TextureFormatShim"/> replaced.
+		/// </remarks>
+		internal SurfaceFormat storageFormat;
+
 		#endregion
 
 		#region Destructor

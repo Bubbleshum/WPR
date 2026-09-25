@@ -13,7 +13,7 @@
 
   <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
     <CheckEolWorkloads>false</CheckEolWorkloads>
-    <TargetFrameworks>net8.0;net8.0-android</TargetFrameworks>
+    <TargetFrameworks>net10.0;net10.0-android</TargetFrameworks>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(OS)' == 'Windows_NT' ">
     <CheckEolWorkloads>false</CheckEolWorkloads>
@@ -24,7 +24,7 @@
          Costs nothing: every source file in this project is portable — no Windows API, no
          conditional compilation — which is exactly why the non-Windows list above already
          builds net8.0. Sensors does NOT need this; nothing references it from a net8.0 leg. -->
-    <TargetFrameworks>net8.0;net8.0-windows10.0.17763.0;net8.0-android</TargetFrameworks>
+    <TargetFrameworks>net10.0;net10.0-windows10.0.17763.0;net10.0-android</TargetFrameworks>
   </PropertyGroup>
   <PropertyGroup>
     <CheckEolWorkloads>false</CheckEolWorkloads>
@@ -32,7 +32,7 @@
     <Version>2.0.5.0</Version>
     <AssemblyName>System.Device</AssemblyName>
     <RootNamespace>System.Device</RootNamespace>
-    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net8.0-android'">21.0</SupportedOSPlatformVersion>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net10.0-android'">24.0</SupportedOSPlatformVersion>
   </PropertyGroup>
 
 </Project>

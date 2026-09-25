@@ -19,7 +19,7 @@
   -->
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>WPR.Framework.Xna</AssemblyName>
     <RootNamespace>Microsoft.Xna.Framework</RootNamespace>
     <Nullable>disable</Nullable>
@@ -99,11 +99,12 @@
     If something in this project needs persistence, extend IAchievementStore (or add a sibling
     seam) and implement it in WPR.Database instead.
   -->
-  <ItemGroup>
-    <!-- Retained: the hardcoded achievement catalogues under WPR.Database/Data/Achievements are
-         JSON, and GamerServices deserialises them. Pinned to 8.0.6 for CVE-2024-43485. -->
-    <PackageReference Include="System.Text.Json" Version="8.0.6" />
-  </ItemGroup>
+  <!-- System.Text.Json is deliberately NOT referenced, and on net10 that is correct rather than
+       an omission. The hardcoded achievement catalogues under WPR.Database/Data/Achievements are
+       JSON and GamerServices deserialises them, so this is a first-party dependency — but from
+       net10 the package is part of the shared framework, so a PackageReference only earns NU1510
+       and, pinned at the old 8.0.6 (CVE-2024-43485), would pin an OLDER assembly than the one the
+       runtime already supplies. Do not re-add it. -->
 
   <ItemGroup>
     <!-- For Configuration / WprHostEnvironment.CurrentProductId, which is how GamerServices now

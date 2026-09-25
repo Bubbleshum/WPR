@@ -1,6 +1,9 @@
 // System.Windows.Media.Imaging "imitation"
 
 using System;
+// UIElement and Transform live in the sibling namespace; Render's signature has to name them
+// because that is what the patcher rescopes a game's System.Windows.* typerefs to.
+using WPR.SilverlightCompability;
 
 namespace WPR.WindowsCompability
 {
@@ -57,6 +60,24 @@ namespace WPR.WindowsCompability
         {
             EnsureBuffer();
             return _pixels ?? Array.Empty<Int32>();
+        }
+
+        /// <summary>
+        /// Rasterises a UIElement into this bitmap. <b>A no-op here, deliberately.</b>
+        /// </summary>
+        /// <remarks>
+        /// Silverlight's <c>Render</c> walks a live visual tree through the compositor. WPR has
+        /// no such rasteriser on any path a game reaches — and on the mixed-mode path there is
+        /// nothing to rasterise in the first place: those titles render entirely with XNA and
+        /// their visual tree holds a MediaElement and nothing else.
+        ///
+        /// <para>Leaving the buffer untouched is the honest outcome, and it is what Silverlight
+        /// itself produced for an element that was not in the tree. A game that renders and then
+        /// reads gets the transparent bitmap it started with rather than a wrong picture. Cut the
+        /// Rope calls this and needs it only to resolve.</para>
+        /// </remarks>
+        public void Render(UIElement element, Transform transform)
+        {
         }
 
     }

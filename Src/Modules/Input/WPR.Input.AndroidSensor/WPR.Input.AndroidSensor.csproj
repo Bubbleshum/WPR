@@ -29,7 +29,7 @@
     XamarinGoogleGuavaListenableFutureOptOut if a duplicate ever reappears - see the long comment in
     WPR.Platform.Android.csproj; those opt-outs SIGSEGV the launcher seconds after start.)
 
-    net8.0-android only. Spelled as a singular <TargetFramework> deliberately -
+    net10.0-android only. Spelled as a singular <TargetFramework> deliberately -
     Src/Directory.Build.targets only strips android legs from a plural <TargetFrameworks>, so the
     singular form is what keeps an android-only project intact on a machine without the workload,
     and WPR.Windows.slnf is the mechanism that keeps it out of a desktop build.
@@ -38,8 +38,8 @@
   -->
 
   <PropertyGroup>
-    <TargetFramework>net8.0-android</TargetFramework>
-    <SupportedOSPlatformVersion>21.0</SupportedOSPlatformVersion>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
     <CheckEolWorkloads>false</CheckEolWorkloads>
     <AssemblyName>WPR.Input.AndroidSensor</AssemblyName>
     <RootNamespace>WPR.Input.AndroidSensor</RootNamespace>

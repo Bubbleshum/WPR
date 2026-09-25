@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Launchers.ShellExecute - IUriLauncher over the OS shell (Process.Start with
+    UseShellExecute), i.e. "open this link the way double-clicking it would".
+
+    A MODULE: it implements a contract owned by WPR.Engine.Launchers and is plugged in by the
+    Windows head declaring caps.UriLauncher(...). Named for the TECHNOLOGY, per the naming note in
+    CLAUDE.md. Plain net8.0 because nothing here is Windows-only API - shell execution of a URL
+    also works on macOS and most Linux desktops - so this is not tied to one head by construction.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <AssemblyName>WPR.Launchers.ShellExecute</AssemblyName>
+    <RootNamespace>WPR.Launchers.ShellExecute</RootNamespace>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Launchers\WPR.Engine.Launchers.csproj" />
+  </ItemGroup>
+
+</Project>

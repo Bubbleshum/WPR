@@ -1406,6 +1406,10 @@ typedef struct VulkanRenderer
 	VkShaderModule currentFragShader;
 
 	uint8_t renderPassInProgress;
+	/* WPR: the thread whose calls opened the render pass in progress. See
+	 * VULKAN_INTERNAL_LockPass for why passLock is no longer held for the life of a pass.
+	 */
+	SDL_threadID renderPassThread;
 	uint8_t needNewRenderPass;
 	uint8_t renderTargetBound;
 	uint8_t needNewPipeline;
@@ -1910,6 +1914,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(VulkanRenderer* ren
 static void VULKAN_INTERNAL_RecreateSwapchain(VulkanRenderer *renderer, void *windowHandle);
 
 static void VULKAN_INTERNAL_MaybeEndRenderPass(VulkanRenderer *renderer);
+static void VULKAN_INTERNAL_LockPass(VulkanRenderer *renderer);
 
 static void VULKAN_INTERNAL_FlushCommands(VulkanRenderer *renderer, uint8_t sync);
 
@@ -4720,7 +4725,7 @@ static void VULKAN_INTERNAL_BufferMemoryBarrier(
 		return;
 	}
 
-	SDL_LockMutex(renderer->passLock);
+	VULKAN_INTERNAL_LockPass(renderer);
 
 	memoryBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
 	memoryBarrier.pNext = NULL;
@@ -4805,7 +4810,7 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 		return;
 	}
 
-	SDL_LockMutex(renderer->passLock);
+	VULKAN_INTERNAL_LockPass(renderer);
 
 	memoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
 	memoryBarrier.pNext = NULL;
@@ -5400,7 +5405,7 @@ static ShaderResources *ShaderResources_Init(
 	 * Lock to prevent mojoshader resources
 	 * from being overwritten during initialization
 	 */
-	SDL_LockMutex(renderer->passLock);
+	VULKAN_INTERNAL_LockPass(renderer);
 
 	shaderResources->samplerLayout = VULKAN_INTERNAL_FetchSamplerDescriptorSetLayout(renderer, shader, shaderStageFlag);
 	shaderResources->samplerCount = MOJOSHADER_vkGetShaderParseData(shader)->sampler_count;
@@ -6545,7 +6550,7 @@ static void VULKAN_INTERNAL_FlushCommands(VulkanRenderer *renderer, uint8_t sync
 {
 	VkResult result;
 
-	SDL_LockMutex(renderer->passLock);
+	VULKAN_INTERNAL_LockPass(renderer);
 	SDL_LockMutex(renderer->commandLock);
 	SDL_LockMutex(renderer->transferLock);
 
@@ -6574,7 +6579,7 @@ static void VULKAN_INTERNAL_FlushCommandsAndPresent(
 	FNA3D_Rect *destinationRectangle,
 	void* overrideWindowHandle
 ) {
-	SDL_LockMutex(renderer->passLock);
+	VULKAN_INTERNAL_LockPass(renderer);
 	SDL_LockMutex(renderer->commandLock);
 	SDL_LockMutex(renderer->transferLock);
 
@@ -7216,7 +7221,7 @@ static void VULKAN_INTERNAL_SetBufferData(
 
 		VULKAN_INTERNAL_MaybeEndRenderPass(renderer);
 
-		SDL_LockMutex(renderer->passLock);
+		VULKAN_INTERNAL_LockPass(renderer);
 		SDL_LockMutex(renderer->transferLock);
 
 		VULKAN_INTERNAL_CopyToTransferBuffer(
@@ -7518,7 +7523,7 @@ static void VULKAN_INTERNAL_GetTextureData(
 
 	VULKAN_INTERNAL_MaybeEndRenderPass(renderer);
 
-	SDL_LockMutex(renderer->passLock);
+	VULKAN_INTERNAL_LockPass(renderer);
 	SDL_LockMutex(renderer->transferLock);
 
 	VULKAN_INTERNAL_PrepareCopyFromTransferBuffer(
@@ -8852,11 +8857,45 @@ static void VULKAN_INTERNAL_MaybeEndRenderPass(
 		renderer->currentPipeline = VK_NULL_HANDLE;
 		renderer->needNewPipeline = 1;
 
-		/* Unlocking long-term lock */
-		SDL_UnlockMutex(renderer->passLock);
+		/* WPR: there is no long-term lock to release any more - see
+		 * VULKAN_INTERNAL_LockPass.
+		 */
 	}
 
 	SDL_UnlockMutex(renderer->passLock);
+}
+
+/* WPR: passLock is held for ONE CALL, not for the life of a render pass.
+ *
+ * Upstream took passLock in BeginRenderPass and kept it until the pass ended (the
+ * "long-term lock" that MaybeEndRenderPass used to release). That makes the thread with a
+ * pass open the owner of the whole renderer until its NEXT frame boundary or target switch:
+ * every other thread's GPU call blocks on passLock in the meantime, however long the owner
+ * spends in application code between calls. When that application code waits on a lock the
+ * blocked thread holds, both stop for ever - no crash, no CPU, nothing logged.
+ *
+ * Plants vs. Zombies does exactly that on Android. Its loading thread draws into render
+ * targets while the game thread draws the frame, and the two coordinate through the game's
+ * own ResourceManager.DrawLocker, which Main.Draw also takes. Measured: one thread sat in
+ * FNA3D_ApplyEffect waiting for passLock while the other held it with a render pass open and
+ * waited on DrawLocker. D3D11 serialises per call, which is what WP7's device did and what
+ * the game was written against.
+ *
+ * So: take passLock per call, remember which thread opened the pass, and when a DIFFERENT
+ * thread needs the renderer while that pass is open, end the pass rather than wait for its
+ * owner. The owner's next draw sees needNewRenderPass and begins a fresh pass with LOAD
+ * semantics, so no pixels are lost. Everything that used to take passLock goes through
+ * here, and the draw entry points now take it too, so command recording stays serialised.
+ */
+static void VULKAN_INTERNAL_LockPass(VulkanRenderer *renderer)
+{
+	SDL_LockMutex(renderer->passLock);
+
+	if (	renderer->renderPassInProgress &&
+		renderer->renderPassThread != SDL_ThreadID()	)
+	{
+		VULKAN_INTERNAL_MaybeEndRenderPass(renderer);
+	}
 }
 
 static void VULKAN_INTERNAL_BeginRenderPass(
@@ -8878,7 +8917,7 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 
 	VULKAN_INTERNAL_MaybeEndRenderPass(renderer);
 
-	SDL_LockMutex(renderer->passLock);
+	VULKAN_INTERNAL_LockPass(renderer);
 
 	renderer->renderPass = VULKAN_INTERNAL_FetchRenderPass(renderer);
 	framebuffer = VULKAN_INTERNAL_FetchFramebuffer(
@@ -8990,6 +9029,7 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	));
 
 	renderer->renderPassInProgress = 1;
+	renderer->renderPassThread = SDL_ThreadID();
 
 	VULKAN_INTERNAL_SetViewportCommand(renderer);
 	VULKAN_INTERNAL_SetScissorRectCommand(renderer);
@@ -9027,6 +9067,9 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	renderer->shouldClearColorOnBeginPass = 0;
 	renderer->shouldClearDepthOnBeginPass = 0;
 	renderer->shouldClearStencilOnBeginPass = 0;
+
+	/* WPR: released here rather than held until the pass ends. See VULKAN_INTERNAL_LockPass. */
+	SDL_UnlockMutex(renderer->passLock);
 }
 
 static void VULKAN_INTERNAL_BeginRenderPassClear(
@@ -9682,6 +9725,11 @@ static void VULKAN_Clear(
 	uint8_t clearDepth = (options & FNA3D_CLEAROPTIONS_DEPTHBUFFER) == FNA3D_CLEAROPTIONS_DEPTHBUFFER;
 	uint8_t clearStencil = (options & FNA3D_CLEAROPTIONS_STENCIL) == FNA3D_CLEAROPTIONS_STENCIL;
 
+	/* WPR: serialised per call, and a foreign thread's open pass is ended first, so a mid-pass
+	 * clear can only ever land in a pass this thread opened. See VULKAN_INTERNAL_LockPass.
+	 */
+	VULKAN_INTERNAL_LockPass(renderer);
+
 	if (renderer->renderPassInProgress && renderer->drawCallMadeThisPass && !renderer->needNewRenderPass)
 	{
 		VULKAN_INTERNAL_MidRenderPassClear(
@@ -9706,6 +9754,8 @@ static void VULKAN_Clear(
 			clearStencil
 		);
 	}
+
+	SDL_UnlockMutex(renderer->passLock);
 }
 
 static void VULKAN_DrawInstancedPrimitives(
@@ -9728,6 +9778,12 @@ static void VULKAN_DrawInstancedPrimitives(
 	uint32_t dynamicOffsets[2];
 
 	/* Note that minVertexIndex/numVertices are NOT used! */
+
+	/* WPR: a draw records into the render pass, so it must not interleave with another
+	 * thread's calls, and must not land in a pass another thread opened. See
+	 * VULKAN_INTERNAL_LockPass.
+	 */
+	VULKAN_INTERNAL_LockPass(renderer);
 
 	VULKAN_INTERNAL_BufferMemoryBarrier(
 		renderer,
@@ -9812,6 +9868,8 @@ static void VULKAN_DrawInstancedPrimitives(
 	));
 
 	renderer->drawCallMadeThisPass = 1;
+
+	SDL_UnlockMutex(renderer->passLock); /* WPR: see VULKAN_INTERNAL_LockPass */
 }
 
 static void VULKAN_DrawIndexedPrimitives(
@@ -9850,6 +9908,9 @@ static void VULKAN_DrawPrimitives(
 	MOJOSHADER_vkShader *vertShader, *fragShader;
 	ShaderResources *vertShaderResources, *fragShaderResources;
 	uint32_t dynamicOffsets[2];
+
+	/* WPR: see the matching note in VULKAN_DrawInstancedPrimitives. */
+	VULKAN_INTERNAL_LockPass(renderer);
 
 	if (primitiveType != renderer->currentPrimitiveType)
 	{
@@ -9915,6 +9976,8 @@ static void VULKAN_DrawPrimitives(
 	));
 
 	renderer->drawCallMadeThisPass = 1;
+
+	SDL_UnlockMutex(renderer->passLock); /* WPR: see VULKAN_INTERNAL_LockPass */
 }
 
 /* Mutable Render States */
@@ -10850,7 +10913,7 @@ static void VULKAN_INTERNAL_SetTextureData(
 
 	VULKAN_INTERNAL_MaybeEndRenderPass(renderer);
 
-	SDL_LockMutex(renderer->passLock);
+	VULKAN_INTERNAL_LockPass(renderer);
 	SDL_LockMutex(renderer->transferLock);
 
 	VULKAN_INTERNAL_CopyToTransferBuffer(
@@ -11031,7 +11094,7 @@ static void VULKAN_SetTextureDataYUV(
 
 	VULKAN_INTERNAL_MaybeEndRenderPass(renderer);
 
-	SDL_LockMutex(renderer->passLock);
+	VULKAN_INTERNAL_LockPass(renderer);
 	SDL_LockMutex(renderer->transferLock);
 
 	VULKAN_INTERNAL_CopyToTransferBuffer(
@@ -11816,7 +11879,7 @@ static void VULKAN_ApplyEffect(
 	 * Lock to prevent mojoshader from overwriting resource data
 	 * while resources are initialized
 	 */
-	SDL_LockMutex(renderer->passLock);
+	VULKAN_INTERNAL_LockPass(renderer);
 
 	renderer->vertexSamplerDescriptorSetDataNeedsUpdate = 1;
 	renderer->fragSamplerDescriptorSetDataNeedsUpdate = 1;

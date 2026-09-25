@@ -77,6 +77,8 @@ namespace WPR.Engine
             private WPR.Xna.Achievements.IAchievementStore? _achievements;
             private INotificationManager? _notifications;
             private IKeyboardEmulationHost? _tilt;
+            private WPR.Engine.Launchers.IUriLauncher? _uriLauncher;
+            private WPR.Engine.Launchers.IShareSheet? _shareSheet;
 
             public IPlatformCapabilities Accelerometer(IAccelerometerProvider provider)
             {
@@ -136,6 +138,18 @@ namespace WPR.Engine
                 return this;
             }
 
+            public IPlatformCapabilities UriLauncher(WPR.Engine.Launchers.IUriLauncher launcher)
+            {
+                _uriLauncher = launcher ?? throw new ArgumentNullException(nameof(launcher));
+                return this;
+            }
+
+            public IPlatformCapabilities ShareSheet(WPR.Engine.Launchers.IShareSheet sheet)
+            {
+                _shareSheet = sheet ?? throw new ArgumentNullException(nameof(sheet));
+                return this;
+            }
+
             internal void Commit()
             {
                 if (_accelerometer != null) WPR.Engine.Sensors.SensorBackend.SetAccelerometer(_accelerometer);
@@ -158,6 +172,8 @@ namespace WPR.Engine
                 if (_achievements != null) XnaBackend.SetAchievements(_achievements);
                 if (_notifications != null) NotificationBackend.SetManager(_notifications);
                 if (_tilt != null) XnaBackend.SetKeyboardEmulation(_tilt);
+                if (_uriLauncher != null) WPR.Engine.Launchers.LauncherBackend.SetUriLauncher(_uriLauncher);
+                if (_shareSheet != null) WPR.Engine.Launchers.LauncherBackend.SetShareSheet(_shareSheet);
             }
 
             internal string Summarise()
@@ -172,6 +188,8 @@ namespace WPR.Engine
                 parts.Add("achievements=" + Name(_achievements));
                 parts.Add("notifications=" + Name(_notifications));
                 parts.Add("tilt=" + Name(_tilt));
+                parts.Add("launcher=" + Name(_uriLauncher));
+                parts.Add("share=" + Name(_shareSheet));
                 return string.Join(" ", parts);
             }
 

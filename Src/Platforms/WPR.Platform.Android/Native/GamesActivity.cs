@@ -153,6 +153,7 @@ namespace WPR.Platform.Android.Native
             if (GameShortcuts.IsSupported(this)) actions.Add("pin to start");
 
             actions.Add("re-patch");
+            actions.Add("clear data");
             actions.Add("uninstall");
 
             int choice = await WpDialogs.ChooseAsync(this, entry.Name, actions.ToArray());
@@ -189,9 +190,44 @@ namespace WPR.Platform.Android.Native
                     await RepatchAsync(entry);
                     break;
 
+                case "clear data":
+                    await ClearDataAsync(entry);
+                    break;
+
                 case "uninstall":
                     await UninstallAsync(entry);
                     break;
+            }
+        }
+
+        /// <summary>
+        /// Erase every file this game has saved, after a warning. The escape hatch for a game that
+        /// no longer starts because of something in its saves — see
+        /// <see cref="WPR.WindowsCompability.PerGameIsolatedStorage.ClearGameData"/>. No
+        /// repatch-first check, unlike the desktop: a game patched before v38 is repatched by
+        /// <see cref="GameLauncher.Launch"/> on its next start, before it can open a store.
+        /// </summary>
+        private async Task ClearDataAsync(GameEntry entry)
+        {
+            bool confirmed = await WpDialogs.ConfirmAsync(
+                this,
+                "clear data",
+                $"permanently delete ALL save data for {entry.Name}? progress, high scores, settings "
+                    + "and unlocked content will be lost, and this cannot be undone. achievements are kept.");
+
+            if (!confirmed) return;
+
+            try
+            {
+                string installsRoot = Configuration.Current!.DataPath(WPR.Models.Application.DataStoreFolder);
+                await Task.Run(() =>
+                    WPR.WindowsCompability.PerGameIsolatedStorage.ClearGameData(entry.ProductId, installsRoot));
+                Toast.MakeText(this, $"save data for {entry.Name} deleted", ToastLength.Short)?.Show();
+            }
+            catch (Exception ex)
+            {
+                Log.Error(LogCategory.AppList, $"Clearing data failed for {entry.Name}:\n{ex}");
+                WpDialogs.Error(this, "clear data failed", ex.Message);
             }
         }
 
@@ -237,16 +273,46 @@ namespace WPR.Platform.Android.Native
 
         private async Task UninstallAsync(GameEntry entry)
         {
-            bool confirmed = await WpDialogs.ConfirmAsync(
-                this,
-                "uninstall",
-                $"remove {entry.Name} and everything it has saved on this device?");
+            // Dispatch on the label, as the long-press menu does. Dismissing the list cancels.
+            const string KeepSaves = "uninstall, keep save data";
+            const string DeleteSaves = "uninstall and delete save data";
+            string[] options = { KeepSaves, DeleteSaves };
 
-            if (!confirmed) return;
+            int choice = await WpDialogs.ChooseAsync(this, $"uninstall {entry.Name}?", options);
+            if (choice < 0 || choice >= options.Length) return;
+
+            bool deleteSaves = options[choice] == DeleteSaves;
+            if (deleteSaves)
+            {
+                bool confirmed = await WpDialogs.ConfirmAsync(
+                    this,
+                    "delete save data",
+                    $"permanently delete ALL save data for {entry.Name}? progress, high scores and "
+                        + "settings will be lost, and this cannot be undone. achievements are kept.");
+                if (!confirmed) return;
+            }
 
             try
             {
                 await ApplicationInstaller.UninstallAsync(entry.Model);
+
+                // After the uninstall, so a failed uninstall never costs the player their saves.
+                // Kept saves come straight back on a reinstall.
+                if (deleteSaves)
+                {
+                    try
+                    {
+                        string installsRoot = Configuration.Current!.DataPath(WPR.Models.Application.DataStoreFolder);
+                        await Task.Run(() =>
+                            WPR.WindowsCompability.PerGameIsolatedStorage.ClearGameData(entry.ProductId, installsRoot));
+                    }
+                    catch (Exception ex)
+                    {
+                        // The game IS uninstalled; say only what failed, and still retire the tile.
+                        Log.Error(LogCategory.AppList, $"Uninstalled {entry.Name} but could not delete its save data:\n{ex}");
+                        WpDialogs.Error(this, "save data not deleted", ex.Message);
+                    }
+                }
 
                 // A pinned shortcut outlives the game it points at — the home screen owns it and
                 // this app cannot delete it — so retire it here rather than leaving a live tile

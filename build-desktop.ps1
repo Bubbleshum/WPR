@@ -58,7 +58,7 @@ $Project = Join-Path $Root 'Src\Platforms\WPR.Platform.Windows\WPR.Platform.Wind
 # centralised into its own project. Kept in step with the same path in
 # .github\workflows\release.yml ("Stage pre-made database").
 $DatabaseDir = Join-Path $Root 'Src\Core\WPR.Database\Data'
-$Tfm = 'net8.0-windows10.0.17763.0'
+$Tfm = 'net10.0-windows10.0.17763.0'
 
 # Passed as an MSBuild *global* property so it reaches every transitive
 # ProjectReference, mirroring what Rider/VS do from the .sln. Src\Directory.Build.props

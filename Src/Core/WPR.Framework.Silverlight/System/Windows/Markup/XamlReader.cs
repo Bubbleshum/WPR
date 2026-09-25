@@ -128,13 +128,30 @@ namespace WPR.SilverlightCompability
             ProcessElement(doc.Root, ctx);
             WireFields(component, ctx);
 
+            // Now that the tree is parented, re-resolve every binding in it. A binding created
+            // during parsing refreshed against an element with no Parent, so anything taking its
+            // source from an inherited DataContext resolved to nothing — see
+            // FrameworkElement.RefreshBindingsTree.
+            if (component is UIElement rootElement)
+                FrameworkElement.RefreshBindingsTree(rootElement);
+
             // Hand the name table to the component so its FrameworkElement.FindName
             // lookups (called by the auto-generated InitializeComponent right after
             // us) resolve from this authoritative table instead of walking the
             // logical tree — which can't always reach into ItemsControl-derived
             // containers like Panorama that don't expose their items via Children.
             if (component is FrameworkElement fe)
+            {
                 fe._nameScope = ctx.NameScope;
+
+                // A Storyboard resolves Storyboard.TargetName against the scope it was declared
+                // in, and it is not in the visual tree, so there is nothing for it to walk up
+                // from at Begin() time. Record the owner here, where the scope is in hand. Only
+                // named storyboards are reachable this way, which is exactly the ones a page can
+                // Begin() by field name.
+                foreach (object? named in ctx.NameScope.Values)
+                    if (named is Timeline timeline) timeline.ScopeOwner = fe;
+            }
 
             // DIAGNOSTIC: dump the registered names + their types so it's visible at runtime
             // which x:Name'd elements actually made it through parsing — silent skips on
@@ -161,6 +178,25 @@ namespace WPR.SilverlightCompability
 
             /// <summary>True for the very first call into ProcessElement only.</summary>
             public bool IsRoot { get; set; } = true;
+
+            /// <summary>
+            /// The elements currently being built, outermost first — the resource scope a
+            /// <c>{StaticResource}</c> should see while parsing.
+            /// </summary>
+            /// <remarks>
+            /// <b>Necessary because an element is not parented while its own attributes are being
+            /// applied.</b> <see cref="ResolveResource"/> normally walks <c>Parent</c> to find an
+            /// ancestor's <c>Resources</c>, and during parsing that chain does not exist yet — the
+            /// child is attached to its parent only after it has been fully built. So a resource
+            /// declared on a page and used by anything inside it resolved to null, and every
+            /// binding, brush or style that named one was silently dropped.
+            /// <para>Carcassonne's MainMenu is the measured case: it declares
+            /// <c>LocalizedStringsDataSource</c> in <c>&lt;PhoneApplicationPage.Resources&gt;</c>
+            /// and its layout root binds <c>DataContext</c> to it, which is what every localised
+            /// label on the page then reads its text through. The resource was there and in scope
+            /// by document order; it was simply unreachable.</para>
+            /// </remarks>
+            public List<FrameworkElement> ResourceScopes { get; } = new List<FrameworkElement>();
         }
 
         private static void WireFields(object component, ParseContext ctx)
@@ -217,6 +253,20 @@ namespace WPR.SilverlightCompability
                 }
             }
 
+            // In scope for resource lookups from here until this element is finished. Pushed
+            // BEFORE Pass 1 so the element's own attributes can name its own resources, and popped
+            // in the finally below so a throw part-way cannot leave the stack skewed for the rest
+            // of the document.
+            bool pushedScope = false;
+            if (instance is FrameworkElement scopeElement)
+            {
+                ctx.ResourceScopes.Add(scopeElement);
+                pushedScope = true;
+            }
+
+            try
+            {
+
             // Pass 1: attributes (skip xmlns declarations, x: directives handled inline).
             // A single problematic attribute — a property-changed handler that JIT-fails
             // because of an un-shimmed type, a missing converter, or anything else — must
@@ -249,6 +299,21 @@ namespace WPR.SilverlightCompability
                 return instance;
             }
 
+            // A ControlTemplate is deferred for the same reason, and its contents are the more
+            // dangerous of the two to parse eagerly: a template body is full of TemplateBinding,
+            // VisualStateManager and parts that only mean anything once applied to a control, so
+            // walking it here produces a cascade of failures for a tree WPR never renders.
+            if (instance is ControlTemplate ct)
+            {
+                XElement? templateRoot = null;
+                foreach (XNode node in element.Nodes())
+                {
+                    if (node is XElement el) { templateRoot = el; break; }
+                }
+                ct.VisualTree = templateRoot;
+                return instance;
+            }
+
             // Pass 2: child elements — property element syntax + content children.
             foreach (XNode node in element.Nodes())
             {
@@ -271,6 +336,12 @@ namespace WPR.SilverlightCompability
             }
 
             return instance;
+
+            }
+            finally
+            {
+                if (pushedScope) ctx.ResourceScopes.RemoveAt(ctx.ResourceScopes.Count - 1);
+            }
         }
 
         private static void ApplyAttribute(object instance, Type type, XAttribute attr, ParseContext ctx)
@@ -314,7 +385,7 @@ namespace WPR.SilverlightCompability
             // {Binding ...} and other markup extensions
             if (MarkupExtensionParser.IsMarkupExtension(attr.Value))
             {
-                if (TryApplyMarkupExtension(instance, type, local, attr.Value))
+                if (TryApplyMarkupExtension(instance, type, local, attr.Value, ctx))
                     return;
             }
 
@@ -426,7 +497,7 @@ namespace WPR.SilverlightCompability
             return lambda.Compile();
         }
 
-        private static bool TryApplyMarkupExtension(object instance, Type type, string memberName, string raw)
+        private static bool TryApplyMarkupExtension(object instance, Type type, string memberName, string raw, ParseContext ctx)
         {
             var parsed = MarkupExtensionParser.Parse(raw);
 
@@ -439,7 +510,7 @@ namespace WPR.SilverlightCompability
                 string key = parsed.PositionalArgs.Count > 0
                     ? parsed.PositionalArgs[0]
                     : parsed.NamedArgs.TryGetValue("ResourceKey", out var k) ? k : "";
-                object? resolved = ResolveResource(instance, key);
+                object? resolved = ResolveResource(instance, key, ctx);
                 if (resolved == null) return false; // fall through to permissive null assignment
 
                 // Find the DP or CLR property and assign — same lookup SetMember uses but with
@@ -491,7 +562,7 @@ namespace WPR.SilverlightCompability
                         {
                             string key = inner.PositionalArgs.Count > 0 ? inner.PositionalArgs[0]
                                 : inner.NamedArgs.TryGetValue("ResourceKey", out var k) ? k : "";
-                            binding.Source = ResolveResource(fe, key);
+                            binding.Source = ResolveResource(fe, key, ctx);
                         }
                     }
                     else
@@ -499,10 +570,51 @@ namespace WPR.SilverlightCompability
                         binding.Source = src;
                     }
                 }
-                // ElementName="Foo" — Source resolves to the element registered under that name.
+                // ElementName="Foo" — the source is the element carrying that x:Name.
+                //
+                // THE PARSE CONTEXT'S NAME SCOPE FIRST, and that is the whole fix: this used to
+                // ask fe.FindName, which searches the element's own name table and then walks
+                // DOWNWARDS through its children. The element a binding names is almost always an
+                // ANCESTOR — most often the UserControl root, which names itself so its inner
+                // parts can reach its properties — and that direction was unreachable, so every
+                // such binding resolved to null.
+                //
+                // ctx.NameScope holds every x:Name registered so far in this document, which is
+                // precisely the scope XAML resolves ElementName against. The root is registered
+                // during its own attribute pass, before any child exists, so a child naming it
+                // always finds it.
+                //
+                // Carcassonne's MenuButton is the measured case: its label binds
+                // {Binding Title, ElementName=MyControl}, so with this unresolved every menu
+                // button on the main menu drew its icon and no text.
                 if (parsed.NamedArgs.TryGetValue("ElementName", out var elemName))
                 {
-                    binding.Source = fe.FindName(elemName);
+                    binding.ElementName = elemName;
+                    binding.Source = ctx.NameScope.TryGetValue(elemName, out object? named)
+                        ? named
+                        : fe.FindName(elemName);
+                }
+
+                // RelativeSource={RelativeSource Self} — the source is the element the binding is
+                // applied to. Only Self is honoured: TemplatedParent needs control templates,
+                // which WPR does not apply, and answering it with the wrong object would be worse
+                // than leaving the binding unresolved.
+                if (parsed.NamedArgs.TryGetValue("RelativeSource", out var relSrc))
+                {
+                    string relativeMode = relSrc;
+                    if (MarkupExtensionParser.IsMarkupExtension(relSrc))
+                    {
+                        var relInner = MarkupExtensionParser.Parse(relSrc);
+                        relativeMode = relInner.PositionalArgs.Count > 0
+                            ? relInner.PositionalArgs[0]
+                            : relInner.NamedArgs.TryGetValue("Mode", out var relModeArg) ? relModeArg : "";
+                    }
+
+                    if (string.Equals(relativeMode, "Self", StringComparison.OrdinalIgnoreCase))
+                    {
+                        binding.RelativeSource = new RelativeSource(RelativeSourceMode.Self);
+                        binding.Source = instance;
+                    }
                 }
 
                 fe.SetBinding(dp, binding);
@@ -526,15 +638,32 @@ namespace WPR.SilverlightCompability
         /// each ancestor's Resources → Application.Current.Resources (via
         /// <see cref="ApplicationResourceLookup"/>). First hit wins.
         /// </summary>
-        internal static object? ResolveResource(object? scopeStart, string key)
+        internal static object? ResolveResource(object? scopeStart, string key, ParseContext? ctx = null)
         {
             if (string.IsNullOrEmpty(key)) return null;
 
             // Element-local + ancestor scope.
             for (var fe = scopeStart as FrameworkElement; fe != null; fe = fe.Parent as FrameworkElement)
             {
-                if (fe.HasResources && fe.Resources.TryGetValue(key, out var localHit) && localHit != null)
+                // TryGetDeep, not the base Dictionary lookup: a StaticResource naming a style that
+                // lives in a merged theme file is the common case, and the base only sees keys
+                // declared inline.
+                if (fe.HasResources && fe.Resources.TryGetDeep(key, out var localHit) && localHit != null)
                     return localHit;
+            }
+
+            // Elements still being parsed, innermost first. The walk above cannot reach them: a
+            // child is parented only after it is fully built, so while its attributes are applied
+            // its Parent is null and its page's Resources are invisible to it. See
+            // ParseContext.ResourceScopes.
+            if (ctx != null)
+            {
+                for (int i = ctx.ResourceScopes.Count - 1; i >= 0; i--)
+                {
+                    FrameworkElement scope = ctx.ResourceScopes[i];
+                    if (scope.HasResources && scope.Resources.TryGetDeep(key, out var scopeHit) && scopeHit != null)
+                        return scopeHit;
+                }
             }
 
             // Application-wide scope, via the registered callback.
@@ -560,8 +689,29 @@ namespace WPR.SilverlightCompability
                 return;
             }
 
-            FieldInfo? dpField = FindStaticField(ownerType, propName + "Property");
-            if (dpField?.GetValue(null) is not DependencyProperty dp)
+            // Reading the static field runs the owner's static constructor, which for a
+            // game-bundled toolkit may throw. Same guard, same reasoning as the element form in
+            // ApplyChildElement — and this is the site that matters most, because the attribute
+            // form is how a page sets toolkit attached properties on its ROOT element. Carcassonne
+            // could not construct its MainMenu at all until this was caught: the throw escaped
+            // LoadComponent, Activator.CreateInstance failed, the frame never completed the
+            // navigation, so no layout pass ran and the whole menu rasterised as nothing.
+            object? dpValue;
+            try
+            {
+                FieldInfo? dpField = FindStaticField(ownerType, propName + "Property");
+                dpValue = dpField?.GetValue(null);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[XamlReader] Skipping attached property '{ownerLocal}.{propName}' " +
+                    $"(owner '{ownerType.FullName}' failed to initialise: " +
+                    $"{(ex as TargetInvocationException)?.InnerException?.Message ?? ex.Message})");
+                return;
+            }
+
+            if (dpValue is not DependencyProperty dp)
             {
                 System.Diagnostics.Debug.WriteLine(
                     $"[XamlReader] Skipping attached property '{ownerLocal}.{propName}' (no '{propName}Property' on '{ownerType.FullName}').");
@@ -606,12 +756,45 @@ namespace WPR.SilverlightCompability
                 }
                 if (attachedOwner != null && attachedOwner != type)
                 {
-                    FieldInfo? dpField = FindStaticField(attachedOwner, propName + "Property");
-                    if (dpField?.GetValue(null) is DependencyProperty attachedDp
+                    // Reading a static DP field runs the owner's static constructor, and a
+                    // third-party owner's may throw — the Blend behaviours SDK
+                    // (System.Windows.Interactivity.Interaction, bundled by the game) is the case
+                    // that found this. That cost the WHOLE PAGE: the throw escaped LoadComponent,
+                    // failed Activator.CreateInstance on the page, and the app could not navigate
+                    // to its start page at all. One un-initialisable attached property is worth
+                    // exactly that property, which is how every other unresolved thing here
+                    // behaves.
+                    object? dpValue = null;
+                    try
+                    {
+                        FieldInfo? dpField = FindStaticField(attachedOwner, propName + "Property");
+                        dpValue = dpField?.GetValue(null);
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine(
+                            $"[XamlReader] Skipping attached property '{local}' " +
+                            $"(owner '{attachedOwner.FullName}' failed to initialise: " +
+                            $"{(ex as TargetInvocationException)?.InnerException?.Message ?? ex.Message})");
+                        return;
+                    }
+
+                    if (dpValue is DependencyProperty attachedDp
                         && instance is DependencyObject parentDo)
                     {
-                        // Materialize the inner value: text content for primitive
-                        // DPs, the (single) child element for ref-typed DPs.
+                        // Materialize the inner value: text content for a primitive DP, the child
+                        // element(s) for a ref-typed one.
+                        //
+                        // ALL of the children, not just the first. An attached DP whose type is a
+                        // collection is the normal shape, and the commonest instance of it —
+                        // VisualStateManager.VisualStateGroups — routinely holds several groups.
+                        // Taking valueElements[0] kept the first and silently dropped the rest,
+                        // along with every x:Name inside them, so FindName answered null for
+                        // states that are plainly in the XAML.
+                        //
+                        // Carcassonne's MainMenu declares FOUR groups; three were discarded, and
+                        // its MainMenu.SetPageState() then NREd on `FullVersion.Name` inside
+                        // OnNavigatedTo — a null generated field for a state visible in the markup.
                         object? attachedVal;
                         if (valueElements.Count == 0)
                         {
@@ -619,9 +802,27 @@ namespace WPR.SilverlightCompability
                         }
                         else
                         {
-                            attachedVal = ProcessElement(valueElements[0], ctx);
-                            if (attachedVal is string s)
-                                attachedVal = XamlTypeConverter.Convert(s, attachedDp.PropertyType);
+                            var materialised = new List<object?>(valueElements.Count);
+                            foreach (XElement ve in valueElements)
+                            {
+                                object? item = ProcessElement(ve, ctx);
+                                if (item is string itemText)
+                                    item = XamlTypeConverter.Convert(itemText, attachedDp.PropertyType);
+                                materialised.Add(item);
+                            }
+
+                            // A single child already of the DP's own type wins outright — that is
+                            // the <Owner.Prop><TheCollection>…</TheCollection></Owner.Prop> form,
+                            // and wrapping it would nest a collection inside a collection.
+                            if (materialised.Count == 1 && attachedDp.PropertyType.IsInstanceOfType(materialised[0]))
+                            {
+                                attachedVal = materialised[0];
+                            }
+                            else
+                            {
+                                attachedVal = TryBuildCollectionValue(attachedDp.PropertyType, materialised)
+                                              ?? materialised[0];
+                            }
                         }
                         parentDo.SetValue(attachedDp, attachedVal);
                         return;
@@ -649,6 +850,61 @@ namespace WPR.SilverlightCompability
                     if (coll == null)
                         throw new XamlParseException(
                             $"Read-only property '{propName}' on '{type.Name}' returned null; cannot append children.");
+
+                    // <X.Resources><ResourceDictionary>…</ResourceDictionary></X.Resources> means
+                    // "this IS the dictionary", not "add this dictionary as an entry in it". The
+                    // generic append below reads it the second way, and since the child carries no
+                    // x:Key it was then dropped — "Skipping un-keyed/un-named resource
+                    // 'ResourceDictionary' in dictionary" — taking the ENTIRE App.xaml resources
+                    // block with it, merged theme dictionaries and all.
+                    //
+                    // That is the wrapper form the WP7 app template itself emits whenever an app
+                    // merges anything, so it is the common case rather than an exotic one.
+                    // Carcassonne's every {StaticResource} missed because of this, which is why
+                    // its menu labels were empty: their text binds through
+                    // Source={StaticResource LocalizedStrings}, and that resource was never added.
+                    if (coll is WPR.WindowsCompability.ResourceDictionary targetDictionary &&
+                        valueElements.Count == 1)
+                    {
+                        object? soleValue;
+                        try { soleValue = ProcessElement(valueElements[0], ctx); }
+                        catch (Exception rex)
+                        {
+                            Console.WriteLine(
+                                $"[XamlReader] SKIP resources '{valueElements[0].Name}': " +
+                                $"{rex.GetType().Name}: {rex.Message}");
+                            return;
+                        }
+
+                        if (soleValue is WPR.WindowsCompability.ResourceDictionary parsedDictionary)
+                        {
+                            // Copy rather than replace: the target already holds the WP7 theme
+                            // defaults PhoneTheme seeded, and the app's own entries are meant to
+                            // win over those individually, not erase the lot.
+                            foreach (var entry in parsedDictionary)
+                                targetDictionary[entry.Key] = entry.Value;
+
+                            foreach (var merged in parsedDictionary.MergedDictionaries)
+                                targetDictionary.MergedDictionaries.Add(merged);
+
+                            return;
+                        }
+
+                        // Not a dictionary after all — fall through to the ordinary add.
+                        try
+                        {
+                            if (soleValue != null && !TryAddToCollection(coll, soleValue, valueElements[0]))
+                                Console.WriteLine(
+                                    $"[XamlReader] SKIP add '{valueElements[0].Name}': no Add accepts it.");
+                        }
+                        catch (Exception aex)
+                        {
+                            Console.WriteLine(
+                                $"[XamlReader] SKIP add '{valueElements[0].Name}': {aex.GetType().Name}: {aex.Message}");
+                        }
+                        return;
+                    }
+
                     foreach (XElement ce in valueElements)
                     {
                         // Skip individual collection items whose type can't be resolved
@@ -693,6 +949,37 @@ namespace WPR.SilverlightCompability
                         $"Single-valued property '{propName}' on '{type.Name}' had {valueElements.Count} child elements.");
                 object value = ProcessElement(valueElements[0], ctx);
                 SetMember(instance, type, propName, value);
+                return;
+            }
+
+            // A dictionary target takes its children directly, keyed by x:Key — it has no
+            // [ContentProperty] and never will, because the key is the point. This is the
+            // ordinary shape of every App.xaml:
+            //
+            //     <Application.Resources>
+            //       <local:LocalizedStrings x:Key="LocalizedStrings" />
+            //
+            // The keyed-add machinery already existed in TryAddToCollection; it was simply
+            // unreachable from here, so the ContentProperty test below rejected the child and
+            // took the whole page down with it. The Game of Life is the measured case — two
+            // resources in its App.xaml, and neither the resources nor the game loaded.
+            if (instance is System.Collections.IDictionary)
+            {
+                object dictItem;
+                try { dictItem = ProcessElement(child, ctx); }
+                catch (Exception dex)
+                {
+                    // Same policy as the collection branch above: one unresolvable resource is
+                    // skipped, the rest of the dictionary and the page survive.
+                    Console.WriteLine(
+                        $"[XamlReader] SKIP resource '{child.Name}': {dex.GetType().Name}: {dex.Message}");
+                    return;
+                }
+                if (!TryAddToCollection(instance, dictItem, child))
+                {
+                    Console.WriteLine(
+                        $"[XamlReader] SKIP resource '{child.Name}': no key and no Add that accepts it.");
+                }
                 return;
             }
 
@@ -784,6 +1071,57 @@ namespace WPR.SilverlightCompability
                     return m;
             }
             return null;
+        }
+
+        /// <summary>
+        /// Builds a list of <paramref name="items"/> assignable to <paramref name="targetType"/>,
+        /// or null when that type is not a collection this can satisfy.
+        /// </summary>
+        /// <remarks>
+        /// <para>Used for attached properties declared as collections —
+        /// <c>VisualStateManager.VisualStateGroups</c> is <c>IList&lt;VisualStateGroup&gt;</c> —
+        /// where the XAML writes the members as sibling children rather than wrapping them.</para>
+        ///
+        /// <para>Items that are not of the element type are DROPPED rather than failing the whole
+        /// property: a group that could not be materialised should cost that group, matching how
+        /// every other unresolved thing here behaves. Returns null for a non-collection target so
+        /// the caller can fall back to its single-value path unchanged.</para>
+        /// </remarks>
+        private static object? TryBuildCollectionValue(Type targetType, List<object?> items)
+        {
+            Type? elementType = null;
+
+            if (targetType.IsGenericType)
+            {
+                Type def = targetType.GetGenericTypeDefinition();
+                if (def == typeof(IList<>) || def == typeof(ICollection<>) ||
+                    def == typeof(IEnumerable<>) || def == typeof(List<>))
+                {
+                    elementType = targetType.GetGenericArguments()[0];
+                }
+            }
+            else if (targetType == typeof(System.Collections.IList) ||
+                     targetType == typeof(System.Collections.IEnumerable))
+            {
+                elementType = typeof(object);
+            }
+
+            if (elementType == null) return null;
+
+            try
+            {
+                var list = (System.Collections.IList)Activator.CreateInstance(
+                    typeof(List<>).MakeGenericType(elementType))!;
+
+                foreach (object? item in items)
+                    if (item != null && elementType.IsInstanceOfType(item)) list.Add(item);
+
+                return list;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private static string? FindContentPropertyName(Type type)
@@ -925,6 +1263,12 @@ namespace WPR.SilverlightCompability
                 {
                     Assembly? asm = EnumerateRelevantAssemblies()
                         .FirstOrDefault(a => string.Equals(a.GetName().Name, asmName, StringComparison.Ordinal));
+
+                    // Not loaded YET is the normal case, not an error: a game's App.xaml is the
+                    // first thing parsed, so a sibling assembly it names has had no opportunity to
+                    // be loaded. EnumerateRelevantAssemblies only sees what is already in an ALC.
+                    asm ??= TryLoadSiblingAssembly(asmName);
+
                     if (asm != null)
                     {
                         Type? t = SafeGetType(asm, ns + "." + local);
@@ -970,6 +1314,62 @@ namespace WPR.SilverlightCompability
 
             try { return Assembly.Load(new AssemblyName(name)); }
             catch { return null; }
+        }
+
+        /// <summary>
+        /// Loads a game's own sibling assembly named by a <c>clr-namespace:…;assembly=X</c> XAML
+        /// reference, when nothing has caused it to be loaded yet.
+        /// </summary>
+        /// <remarks>
+        /// <para><b>Through the user assembly's ALC, never <see cref="Assembly.Load(AssemblyName)"/>
+        /// directly.</b> A plain load would bind into the Default context: the resulting types
+        /// would have a different identity from the game's own, so the cast in the game's generated
+        /// <c>InitializeComponent</c> throws <c>InvalidCastException</c>, and the assembly would
+        /// outlive the per-game ALC unload and lock the file against a reinstall. Going through the
+        /// ALC hits the <c>Resolving</c> handler <c>ApplicationLaunch</c> installs, which probes the
+        /// install folder and de-duplicates via <c>TryReuseLoadedAssembly</c>.</para>
+        ///
+        /// <para>Carcassonne is the reference case. Its App.xaml declares
+        /// <c>{clr-namespace:GameResources.Localization;assembly=GameResources}LocalizedStrings</c>
+        /// as an application resource; <c>GameResources.dll</c> sits beside the main assembly and
+        /// nothing had loaded it, so the resource was skipped, <c>App..ctor</c> dereferenced the
+        /// missing resource and the whole title failed to boot — a
+        /// <c>NullReferenceException</c> several frames away from the actual cause.</para>
+        ///
+        /// <para>Answers null on any failure. A name that genuinely does not resolve must still
+        /// produce the caller's <c>XamlParseException</c>, which names the type.</para>
+        /// </remarks>
+        private static Assembly? TryLoadSiblingAssembly(string simpleName)
+        {
+            try
+            {
+                // Probe for the FILE first, so this only ever fires for an assembly the game
+                // actually ships. Without that test it also fires for the WP7 framework assemblies
+                // a mixed-mode App.xaml names — Microsoft.Xna.Framework.Interop, whose types the
+                // patcher has rescoped into WPR.Framework.Xna and which therefore does not and must
+                // not exist. Those resolve through the namespace sweep below the call site; all an
+                // attempted load adds is a first-chance FileNotFoundException in every launch's log,
+                // which is exactly the noise that makes a real one hard to spot.
+                string? installFolder = HostContext.CurrentInstallFolder;
+                if (string.IsNullOrEmpty(installFolder)) return null;
+
+                string candidate = global::System.IO.Path.Combine(installFolder, simpleName + ".dll");
+                if (!global::System.IO.File.Exists(candidate)) return null;
+
+                Assembly? userAsm = HostContext.UserAssembly;
+                var alc = userAsm != null
+                    ? System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(userAsm)
+                    : null;
+
+                if (alc != null)
+                    return alc.LoadFromAssemblyName(new AssemblyName(simpleName));
+
+                return Assembly.Load(new AssemblyName(simpleName));
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private static IEnumerable<Assembly> EnumerateRelevantAssemblies()

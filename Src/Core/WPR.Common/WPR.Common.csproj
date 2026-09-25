@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
     <CheckEolWorkloads>false</CheckEolWorkloads>
-    <TargetFrameworks>net8.0;net8.0-android</TargetFrameworks>
+    <TargetFrameworks>net10.0;net10.0-android</TargetFrameworks>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(OS)' == 'Windows_NT' ">
     <CheckEolWorkloads>false</CheckEolWorkloads>
@@ -11,15 +11,15 @@
          WprHostEnvironment / Configuration, which the types absorbed from WPR.WindowsCompability
          need. Without a net8.0 leg here, Silverlight's net8.0 inner build fails with no compatible
          TFM. The non-Windows list above already builds net8.0, so the sources are known portable. -->
-    <TargetFrameworks>net8.0;net8.0-windows10.0.17763.0;net8.0-android</TargetFrameworks>
+    <TargetFrameworks>net10.0;net10.0-windows10.0.17763.0;net10.0-android</TargetFrameworks>
   </PropertyGroup>
   <PropertyGroup>
     <CheckEolWorkloads>false</CheckEolWorkloads>
     <!-- 21 (Android 5.0) matches the TargetPlatformVersion that the
          installed .NET 10 Android workload (android 36.1.43/10.0.100)
-         assigns to a bare net8.0-android TFM. Setting it any higher
+         assigns to a bare net10.0-android TFM. Setting it any higher
          triggers NETSDK1135 (SOSV > TPV). -->
-    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net8.0-android'">21.0</SupportedOSPlatformVersion>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net10.0-android'">24.0</SupportedOSPlatformVersion>
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>

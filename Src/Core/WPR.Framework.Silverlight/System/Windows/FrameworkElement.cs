@@ -179,6 +179,57 @@ namespace WPR.SilverlightCompability
             if (d is FrameworkElement self) RefreshDescendantBindings(self);
         }
 
+        /// <summary>
+        /// Re-evaluates every binding in the tree rooted at <paramref name="root"/>.
+        /// </summary>
+        /// <remarks>
+        /// <para><b>Run once after a XAML document is fully built, because a binding created
+        /// during parsing cannot see its own DataContext.</b> <c>SetBinding</c> refreshes
+        /// immediately, and at that moment the element is not yet attached to its parent — so
+        /// <c>BindingExpression.ResolveSource</c> walks a <c>Parent</c> chain that does not exist
+        /// and finds nothing. Nothing corrected it afterwards either: the DataContext was set on
+        /// the parent during the PARENT's own attribute pass, before any child existed, so the
+        /// change notification that would have refreshed descendants had no descendants to
+        /// refresh.</para>
+        ///
+        /// <para>The result was that every source-less binding in every Silverlight page silently
+        /// resolved to nothing. Carcassonne's main menu is the measured case — nine of its fifteen
+        /// bindings take their source from the layout root's DataContext, which is where all of its
+        /// localised button labels come from, so the menu rendered with every label blank.</para>
+        ///
+        /// <para>Unlike <see cref="RefreshDescendantBindings"/> this does NOT skip elements that
+        /// have a DataContext of their own: those bindings are equally unresolved after parsing,
+        /// and a binding whose source is already correct re-resolves to the same value.</para>
+        /// </remarks>
+        internal static void RefreshBindingsTree(UIElement? root, int depth = 0)
+        {
+            if (root == null || depth > 64) return;
+
+            if (root is FrameworkElement fe && fe._bindings != null)
+            {
+                foreach (var b in fe._bindings)
+                {
+                    try { b.Refresh(); }
+                    catch { /* one bad binding must not stop the rest of the page resolving */ }
+                }
+            }
+
+            switch (root)
+            {
+                case Panel panel:
+                    foreach (UIElement child in panel.Children) RefreshBindingsTree(child, depth + 1);
+                    break;
+
+                case Border border:
+                    RefreshBindingsTree(border.Child, depth + 1);
+                    break;
+
+                case ContentControl content:
+                    RefreshBindingsTree(content.Presenter ?? content.Content as UIElement, depth + 1);
+                    break;
+            }
+        }
+
         private static void RefreshDescendantBindings(UIElement el)
         {
             switch (el)
@@ -265,12 +316,25 @@ namespace WPR.SilverlightCompability
         public event RoutedEventHandler? Loaded;
         public event RoutedEventHandler? Unloaded;
 
-        // SizeChanged / LayoutUpdated: WP Toolkit controls (Panorama) subscribe to these.
-        // Our renderer doesn't currently raise them; declared for ABI compatibility.
+        // SizeChanged: WP Toolkit controls (Panorama) subscribe to it. Still not raised.
 #pragma warning disable CS0067
         public event SizeChangedEventHandler? SizeChanged;
-        public event EventHandler? LayoutUpdated;
 #pragma warning restore CS0067
+
+        /// <summary>
+        /// Raised after a layout pass — see <see cref="RunLayoutPass"/>.
+        /// </summary>
+        /// <remarks>
+        /// <b>This is where a mixed-mode game builds its Silverlight-to-texture renderer</b>, so
+        /// it is load-bearing rather than decorative: it was declared and never raised until
+        /// 2026-09-22, and four of the six titles that composite phone controls into their scene
+        /// create their <c>UIElementRenderer</c> from this handler and then dereference it in
+        /// their draw. No event, no renderer, and a NullReferenceException once per frame out of
+        /// the game's own OnDraw.
+        /// </remarks>
+        public event EventHandler? LayoutUpdated;
+
+        protected internal void RaiseLayoutUpdated() => LayoutUpdated?.Invoke(this, EventArgs.Empty);
 
         public static readonly DependencyProperty StyleProperty =
             DependencyProperty.Register(nameof(Style), typeof(Style), typeof(FrameworkElement),
@@ -387,7 +451,27 @@ namespace WPR.SilverlightCompability
         /// chain doesn't force-allocate an empty dictionary on every parent.</summary>
         internal bool HasResources => _resources != null && _resources.Count > 0;
 
-        protected internal void RaiseLoaded() => Loaded?.Invoke(this, new RoutedEventArgs { OriginalSource = this });
+        /// <summary>
+        /// XAML-declared triggers on this element — <c>&lt;FrameworkElement.Triggers&gt;</c>.
+        /// </summary>
+        /// <remarks>
+        /// Read-only so the XAML reader appends to it, which is how a collection property is
+        /// recognised. Silverlight only allows <see cref="EventTrigger"/> on <c>Loaded</c> here;
+        /// see that type for why firing it matters rather than merely parsing it.
+        /// </remarks>
+        public TriggerCollection Triggers { get; } = new TriggerCollection();
+
+        protected internal void RaiseLoaded()
+        {
+            Loaded?.Invoke(this, new RoutedEventArgs { OriginalSource = this });
+
+            // After the game's own handlers, so a trigger cannot animate a property the handler
+            // is about to overwrite.
+            foreach (TriggerBase trigger in Triggers)
+            {
+                if (trigger is EventTrigger eventTrigger) eventTrigger.Fire(this);
+            }
+        }
         protected internal void RaiseUnloaded() => Unloaded?.Invoke(this, new RoutedEventArgs { OriginalSource = this });
 
         // Track whether Loaded has fired for this element so we don't double-fire
@@ -436,6 +520,98 @@ namespace WPR.SilverlightCompability
             }
         }
 
+        /// <summary>
+        /// Measures and arranges <paramref name="root"/> against the WP7 screen, then raises
+        /// <see cref="LayoutUpdated"/> across the tree.
+        /// </summary>
+        /// <remarks>
+        /// <para>Silverlight ran this continuously as part of compositing. WPR's mixed-mode host
+        /// never composites the Silverlight tree — that is what lets those games run without
+        /// Avalonia, and on Android at all — so nothing else drives a layout pass and every
+        /// element would otherwise keep <c>ActualWidth</c>/<c>ActualHeight</c> of zero and never
+        /// see <see cref="LayoutUpdated"/>.</para>
+        ///
+        /// <para><b>Called once after navigation, deliberately NOT once per frame.</b> These
+        /// games treat the event as "the layout changed, rebuild the surface": their handlers
+        /// dispose the previous <c>UIElementRenderer</c> and construct a new one, which on a
+        /// per-frame schedule would allocate and destroy a full-screen texture sixty times a
+        /// second. Silverlight only raised it after a pass that actually ran, and one pass is all
+        /// a fixed 480x800 page with no live compositing will ever have.</para>
+        ///
+        /// <para>Post-order, so a parent's handler sees children that have already been
+        /// arranged — the same ordering <see cref="RaiseLoadedTree"/> uses and for the same
+        /// reason.</para>
+        /// </remarks>
+        public static void RunLayoutPass(UIElement? root, double width, double height)
+        {
+            if (root == null) return;
+
+            LayOut(root, width, height);
+            RaiseLayoutUpdatedTree(root);
+        }
+
+        /// <summary>
+        /// Measures and arranges one element, then does the same for a hosted page.
+        /// </summary>
+        /// <remarks>
+        /// <b>A <see cref="Frame"/> does not lay out its own page</b>, which is the whole reason
+        /// this recurses rather than being two calls. The Avalonia frame view measures and
+        /// arranges the current page by hand rather than relying on the frame to do it, so
+        /// arranging a frame leaves the page inside it at <c>ActualWidth</c>/<c>ActualHeight</c>
+        /// of zero — and a mixed-mode game's LayoutUpdated handler opens with exactly that test
+        /// before it will build its renderer, so it returns immediately and the renderer stays
+        /// null for ever. Measured on Sid Meier's Pirates.
+        ///
+        /// <para>The page gets the frame's own size because a frame fills its parent; there is no
+        /// chrome around it on a phone.</para>
+        ///
+        /// <para>Fixed here rather than by giving <c>Frame</c> real layout overrides, which would
+        /// be the tidier change but would alter the Avalonia path that already works — it would
+        /// then measure every page twice. Worth revisiting if Frame ever needs real layout.</para>
+        /// </remarks>
+        private static void LayOut(UIElement element, double width, double height)
+        {
+            try
+            {
+                element.Measure(new Size(width, height));
+                element.Arrange(new Rect(0, 0, width, height));
+            }
+            catch (Exception ex)
+            {
+                // A layout that throws is the page's own problem, and the event is still worth
+                // raising: a handler that only needs the screen size does not care that one
+                // child measured badly.
+                System.Diagnostics.Trace.WriteLine(
+                    "[wpr-layout] layout of " + element.GetType().Name + " threw: " +
+                    ex.GetType().Name + ": " + ex.Message);
+            }
+
+            if (element is Frame frame && frame.Content is UIElement page)
+            {
+                LayOut(page, width, height);
+            }
+        }
+
+        private static void RaiseLayoutUpdatedTree(UIElement? root)
+        {
+            if (root == null) return;
+            foreach (UIElement child in EnumerateLogicalChildren(root))
+                RaiseLayoutUpdatedTree(child);
+
+            if (root is FrameworkElement fe)
+            {
+                try { fe.RaiseLayoutUpdated(); }
+                catch (Exception ex)
+                {
+                    // Matches the Loaded walk: one element's handler must not stop the rest of
+                    // the tree being told, or a single bad page kills every renderer on it.
+                    System.Diagnostics.Trace.WriteLine(
+                        $"[wpr-layout] LayoutUpdated handler on {fe.GetType().Name} threw: " +
+                        ex.GetType().Name + ": " + ex.Message);
+                }
+            }
+        }
+
         private static System.Collections.Generic.IEnumerable<UIElement> EnumerateLogicalChildren(UIElement el)
         {
             // Order matters: more-specific subclasses first. ScrollViewer derives
@@ -443,6 +619,18 @@ namespace WPR.SilverlightCompability
             // (which already covers Content), so we don't list it separately.
             switch (el)
             {
+                // Frame FIRST, and it is not optional. Frame derives straight from
+                // FrameworkElement rather than ContentControl, so without an arm of its own the
+                // walk stopped at the frame and never reached the page inside it — and the frame
+                // is the root visual of every WP7 app, so NOTHING below it was ever traversed.
+                // That silently disabled both users of this walk: RaiseLoadedTree (so Loaded
+                // never fired on a page) and the layout pass (so LayoutUpdated never fired, and
+                // a mixed-mode title's UIElementRenderer was never built). Found 2026-09-22 via
+                // Sid Meier's Pirates, whose LogoPage.OnDraw dereferenced that null renderer once
+                // per frame.
+                case Frame f:
+                    if (f.Content is UIElement framed) yield return framed;
+                    break;
                 case Panel p:
                     foreach (UIElement c in p.Children) yield return c;
                     break;

@@ -10,9 +10,9 @@
       platforms" and WP7 .wma soundtracks were left untranscoded on Android.
       Modelled on Org.Libsdl.App, the one binding project here that was correct.
     -->
-    <TargetFramework>net8.0-android</TargetFramework>
+    <TargetFramework>net10.0-android</TargetFramework>
     <!-- 21.0 matches Org.Libsdl.App; higher trips NETSDK1135. -->
-    <SupportedOSPlatformVersion>21.0</SupportedOSPlatformVersion>
+    <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsBindingProject>true</IsBindingProject>

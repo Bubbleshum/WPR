@@ -929,43 +929,143 @@ namespace Microsoft.Xna.Framework.Graphics
 		[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
 		public static extern void FNA3D_Image_Free(IntPtr mem);
 
+		/* WPR: the three stb_image callbacks below are reverse P/Invokes — FNA3D calls them from
+		 * native code through a function pointer. Two rules follow from that, and upstream FNA
+		 * honours neither:
+		 *
+		 *   1. THEY MUST NOT THROW. An exception escaping a reverse P/Invoke into native frames is
+		 *      unhandled, and CoreCLR aborts the process. MonoVM tolerated it, so this only became
+		 *      fatal when the Android head moved to CoreCLR (2026-09-23).
+		 *   2. THEY MUST NOT ASSUME A SEEKABLE STREAM. Upstream calls Seek in the skip callback and
+		 *      reads Length in the EOF one; both throw NotSupportedException on a network stream.
+		 *
+		 * Both bit at once on Funny Bounce, which hands the image loader an HTTP response body:
+		 * Microsoft.Advertising downloads a banner via WebClient.OpenReadAsync and the stream
+		 * arrives here as a System.Net.Http.HttpBaseStream. The trace was
+		 * "NotSupportedException at HttpBaseStream.Seek, at FNA3D.INTERNAL_Skip" followed by
+		 * "Aborting process" — the game had reached its main menu and then died.
+		 *
+		 * A failure now degrades to "this image did not decode": stb sees a short read or EOF and
+		 * FNA3D_Image_Load returns null, which every caller here already handles. That is strictly
+		 * better than taking the process with it, and it is the same call TextureReadback makes.
+		 */
 		[ObjCRuntime.MonoPInvokeCallback(typeof(FNA3D_Image_ReadFunc))]
 		private static int INTERNAL_Read(
 			IntPtr context,
 			IntPtr data,
 			int size
 		) {
-			Stream stream;
-			lock (readStreams)
+			try
 			{
-				stream = readStreams[context];
+				Stream stream = INTERNAL_LookupStream(context);
+				if (stream == null || size <= 0)
+				{
+					return 0;
+				}
+				byte[] buf = new byte[size]; // FIXME: Preallocate!
+				/* Loop rather than a single Read. A Stream may legally return fewer bytes than
+				 * asked for without being at its end, and a network stream routinely does —
+				 * stb_image reads a short count as EOF and gives up on the image.
+				 */
+				int total = 0;
+				while (total < size)
+				{
+					int read = stream.Read(buf, total, size - total);
+					if (read <= 0)
+					{
+						break;
+					}
+					total += read;
+				}
+				if (total > 0)
+				{
+					Marshal.Copy(buf, 0, data, total);
+				}
+				return total;
 			}
-			byte[] buf = new byte[size]; // FIXME: Preallocate!
-			int result = stream.Read(buf, 0, size);
-			Marshal.Copy(buf, 0, data, result);
-			return result;
+			catch
+			{
+				return 0; // reads as EOF to stb_image
+			}
 		}
 
 		[ObjCRuntime.MonoPInvokeCallback(typeof(FNA3D_Image_SkipFunc))]
 		private static void INTERNAL_Skip(IntPtr context, int n)
 		{
-			Stream stream;
-			lock (readStreams)
+			try
 			{
-				stream = readStreams[context];
+				Stream stream = INTERNAL_LookupStream(context);
+				if (stream == null || n == 0)
+				{
+					return;
+				}
+				if (stream.CanSeek)
+				{
+					stream.Seek(n, SeekOrigin.Current);
+					return;
+				}
+				/* Not seekable: skip forward by reading and discarding. A backwards skip cannot be
+				 * served at all on such a stream — leave the position alone and let the decode
+				 * fail on its own terms rather than throwing into native code.
+				 */
+				if (n < 0)
+				{
+					return;
+				}
+				byte[] scratch = new byte[Math.Min(n, 8192)];
+				int remaining = n;
+				while (remaining > 0)
+				{
+					int read = stream.Read(scratch, 0, Math.Min(remaining, scratch.Length));
+					if (read <= 0)
+					{
+						break;
+					}
+					remaining -= read;
+				}
 			}
-			stream.Seek(n, SeekOrigin.Current);
+			catch
+			{
+				// Swallowed — see the note above these callbacks.
+			}
 		}
 
 		[ObjCRuntime.MonoPInvokeCallback(typeof(FNA3D_Image_EOFFunc))]
 		private static int INTERNAL_EOF(IntPtr context)
 		{
-			Stream stream;
+			try
+			{
+				Stream stream = INTERNAL_LookupStream(context);
+				if (stream == null)
+				{
+					return 1;
+				}
+				if (!stream.CanSeek)
+				{
+					/* Position/Length are unavailable, so answer "not at the end" and let the read
+					 * callback report the end by returning 0. Claiming EOF here would truncate
+					 * every image served from a network stream.
+					 */
+					return 0;
+				}
+				return (stream.Position == stream.Length) ? 1 : 0;
+			}
+			catch
+			{
+				return 0;
+			}
+		}
+
+		/* Returns null instead of throwing KeyNotFoundException: the lookup is on the native side
+		 * of a reverse P/Invoke, where a throw is fatal.
+		 */
+		private static Stream INTERNAL_LookupStream(IntPtr context)
+		{
 			lock (readStreams)
 			{
-				stream = readStreams[context];
+				Stream stream;
+				return readStreams.TryGetValue(context, out stream) ? stream : null;
 			}
-			return (stream.Position == stream.Length) ? 1 : 0;
 		}
 
 		private static FNA3D_Image_ReadFunc readFunc = INTERNAL_Read;

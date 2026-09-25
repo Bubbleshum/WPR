@@ -1,9 +1,6 @@
-﻿using Newtonsoft.Json.Linq;
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.IsolatedStorage;
 using System.Runtime.Serialization;
@@ -12,9 +9,28 @@ using WPR.Common;
 namespace WPR.WindowsCompability
 {
     // projection: System......IsolatedStorageSettings
-    public class IsolatedStorageSettings2 //RnD : static
+    /// <remarks>
+    /// <para><b>Implements <see cref="IDictionary{TKey,TValue}"/> because Silverlight's
+    /// <c>IsolatedStorageSettings</c> does</b>, and the interface is not decoration: a game writing
+    /// <c>settings.ContainsKey(key)</c> binds to <c>IDictionary&lt;string,object&gt;::ContainsKey</c>
+    /// — the interface method, since the class itself declared no such member — and an object that
+    /// does not implement the interface fails that call with
+    /// <c>EntryPointNotFoundException</c>.</para>
+    ///
+    /// <para>That exception is the kind this codebase keeps meeting: it names a BCL interface
+    /// method rather than anything of WPR's, it is thrown at the call site rather than where the
+    /// type is declared, and games catch it. Galactic Reign's <c>AppSettings</c> swallowed it and
+    /// carried on with an uninitialised singleton, which then NREd several frames later inside a
+    /// view-model constructor with nothing left to connect it to storage.</para>
+    ///
+    /// <para>The pre-existing <c>Contains</c>/<c>Add</c>/<c>Remove</c> members already did the
+    /// work; only the declaration was missing. Where a member's signature had to differ to satisfy
+    /// the interface it is implemented explicitly, so the existing call sites are unchanged.</para>
+    /// </remarks>
+    public class IsolatedStorageSettings2 : IDictionary<string, object> //RnD : static
     {
         private static IsolatedStorageSettings2 _ApplicationSettings;
+        private static string? _ApplicationSettingsProductId;
         private const string LocalSettingsName = "__LocalSettings";
 
         private IsolatedStorageFile _Holder;
@@ -118,16 +134,23 @@ namespace WPR.WindowsCompability
         }
 
 
-        // RnD: static 
+        // RnD: static
         public static IsolatedStorageSettings2 ApplicationSettings
         {
             get
             {
-                if (_ApplicationSettings == null)
+                // Rebuilt whenever the hosted game changes. This type lives in a WPR assembly, not
+                // the game's collectible ALC, so the singleton outlives a launch — and with per-game
+                // stores (patcher v38) reusing it would write the next game's settings into the
+                // previous game's store.
+                string? productId = WprHostEnvironment.CurrentProductId;
+                if (_ApplicationSettings == null
+                    || !string.Equals(_ApplicationSettingsProductId, productId, StringComparison.Ordinal))
                 {
                     _ApplicationSettings = new
                         IsolatedStorageSettings2(
-                            IsolatedStorageFile.GetUserStoreForApplication());
+                            PerGameIsolatedStorage.GetUserStoreForApplication());
+                    _ApplicationSettingsProductId = productId;
                 }
 
                 return _ApplicationSettings;
@@ -246,14 +269,58 @@ namespace WPR.WindowsCompability
 
         public ICollection<object> Values => _Settings?.Values ?? (ICollection<object>)Array.Empty<object>();
 
-        //RnD : static
-        //public IsolatedStorageSettings2 get_ApplicationSettings()
-        //{
-            //byte[] result = System.Security.Cryptography
-            //   .ProtectedData.Unprotect(byteArrayOfOriginalData, 
-            //   additionalEntropyOrSalt, 
-            //   DataProtectionScope.CurrentUser);
-            //return default;
-        //}
+        // ---- IDictionary<string, object> ----
+        //
+        // The members the interface needs that are not already above, or whose signature differs.
+        // Explicit where an implicit one would change what an existing call site binds to.
+
+        /// <summary>
+        /// The interface member a game's <c>settings.ContainsKey(key)</c> actually calls — the one
+        /// whose absence produced EntryPointNotFoundException. Same behaviour as
+        /// <see cref="Contains(string)"/>.
+        /// </summary>
+        public bool ContainsKey(string key) => Contains(key);
+
+        /// <summary>
+        /// Explicit, because a <c>static</c> <c>TryGetValue(string, out object)</c> already exists
+        /// above — the patcher routes calls to it — and a static method cannot implement an
+        /// interface. Same behaviour; only the binding differs.
+        /// </summary>
+        bool IDictionary<string, object>.TryGetValue(string key, out object value)
+        {
+            if (_Settings != null && _Settings.TryGetValue(key, out object? found))
+            {
+                value = found!;
+                return true;
+            }
+
+            value = null!;
+            return false;
+        }
+
+        bool ICollection<KeyValuePair<string, object>>.IsReadOnly => false;
+
+        void ICollection<KeyValuePair<string, object>>.Add(KeyValuePair<string, object> item)
+            => Add(item.Key, item.Value);
+
+        bool ICollection<KeyValuePair<string, object>>.Contains(KeyValuePair<string, object> item)
+            => _Settings != null
+               && _Settings.TryGetValue(item.Key, out object? found)
+               && Equals(found, item.Value);
+
+        bool ICollection<KeyValuePair<string, object>>.Remove(KeyValuePair<string, object> item)
+            => ((ICollection<KeyValuePair<string, object>>)this).Contains(item) && Remove(item.Key);
+
+        void ICollection<KeyValuePair<string, object>>.CopyTo(KeyValuePair<string, object>[] array, int arrayIndex)
+        {
+            if (_Settings == null) return;
+            ((ICollection<KeyValuePair<string, object>>)_Settings).CopyTo(array, arrayIndex);
+        }
+
+        public IEnumerator<KeyValuePair<string, object>> GetEnumerator()
+            => (_Settings ?? new Dictionary<string, object>()).GetEnumerator();
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
     }
 }

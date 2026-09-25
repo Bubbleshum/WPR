@@ -1,11 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <CheckEolWorkloads>false</CheckEolWorkloads>
-    <TargetFramework>net8.0-android</TargetFramework>
+    <TargetFramework>net10.0-android</TargetFramework>
     <!-- 21.0 matches the TargetPlatformVersion the installed Android workload
-         (.NET 10's android 36.1.43) assigns to net8.0-android. Higher values
+         (.NET 10's android 36.1.43) assigns to net10.0-android. Higher values
          trigger NETSDK1135. Modelled on com.arthenica.ffmpegkit.csproj. -->
-    <SupportedOSPlatformVersion>21.0</SupportedOSPlatformVersion>
+    <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Org.Libsdl.App</RootNamespace>

@@ -67,7 +67,7 @@ namespace WPR
         // "one assembly = one identity" rule recorded there.
         // Bumped to 20: every IsolatedStorageFile.OpenFile / CreateFile call site is rewritten to
         // WPR.WindowsCompability.SharedIsolatedStorage, which opens with FileShare.ReadWrite. See
-        // RedirectIsolatedStorageOpens. Unlike 19 this is not identity-binding — an older install
+        // RedirectIsolatedStorageCalls. Unlike 19 this is not identity-binding — an older install
         // still launches, it just keeps the exclusive share and therefore keeps failing to save if
         // the game leaks a handle. Reinstall (or repatch) to pick it up.
         // Bumped to 21: spine relocation step 2 — Game, GameComponent, DrawableGameComponent,
@@ -152,7 +152,146 @@ namespace WPR
         // under a Release build of the same tree. Rewrites game IL, not identity-binding, so
         // --repatch-installed is enough; a v28 install keeps the br clones and keeps hanging
         // until it is repatched.
-        public static int Version => 29;
+        //
+        // Bumped to 30: the WP7.1 Silverlight/XNA MIXED-MODE surface. WprFrameworkXnaTypes gained
+        // GameTimer, GameTimerEventArgs, SharedGraphicsDeviceManager and
+        // Graphics.GraphicsDeviceExtensions; Patches gained MediaElement and its supporting media
+        // types. Two of the four XNA types came from Microsoft.Xna.Framework.Interop, an assembly
+        // WPR has no counterpart for, so without these entries their typerefs kept the blanket
+        // Microsoft.Xna.* -> FNA rename and resolved to nothing.
+        //
+        // This is what makes a mixed-mode title launchable at all: such an app has NO Game
+        // subclass, so before this the launcher classified it by its manifest's
+        // RuntimeType="Silverlight" and refused it outright. 13 titles in a 307-XAP library use
+        // this model, 10 of them with no other blocker — Cut the Rope and Cut the Rope:
+        // Experiments, Big Buck Hunter Pro, Carcassonne, Flight Control Rocket, Galactic Reign,
+        // Little Acorns, Rabbids Go Phone, Sid Meier's Pirates! and The Game of Life.
+        //
+        // IS identity-binding for any of them (a v29 install carries IL naming
+        // [FNA]…SharedGraphicsDeviceManager), but no IL body is rewritten, so
+        // --repatch-installed is enough and nothing needs a reinstall. Every other title is
+        // unaffected: none of these names appears in a game that does not use the model.
+        //
+        // Bumped to 31: RedirectIsolatedStorageCalls (renamed from ...Opens) now covers EVERY
+        // path-taking IsolatedStorageFile member, not just OpenFile/CreateFile, and every one of
+        // them normalises its path or search pattern through ContentPaths. v20 added the rewrite
+        // for FileShare reasons and needed only the two opening members; the separator problem is
+        // unrelated and had therefore never been fixed for the other thirteen.
+        //
+        // This is the v23 defect class — a WP7 title spelling a path with a Windows separator,
+        // which Android treats as an ordinary filename character — on the one type v23 could not
+        // reach, because IsolatedStorageFile is sealed and MemberPatches needs a substitutable
+        // replacement. Funny Bounce (f84a19d8-2820-41a6-b972-1f0c7da88196) is the reference case:
+        // GetFileNames("GameData_x\\*") matched nothing, so its high-score list came back empty,
+        // GameOverScreen.LoadContent threw out of .First(), and the half-built screen then drew
+        // nothing but its clear colour on every frame thereafter — reported as issue #41's "blue
+        // screen after game over", Android only.
+        //
+        // Rewrites game IL and is NOT identity-binding: a v30 install still launches, it just
+        // keeps addressing paths that do not exist on a phone. --repatch-installed is enough
+        // (automatic on next launch on Android); nothing needs a reinstall. Windows is unchanged
+        // either way, because ContentPaths.Normalize is a no-op where '\' is already native.
+        //
+        // Bumped to 32: System.Windows.Controls.ProgressBar and its RangeBase now have shims and
+        // rescope entries. ProgressBar was the LAST System.Windows control a WP7 loading screen
+        // routinely builds that WPR had no type for, and a missing type is resolved when the
+        // method naming it is compiled — so the whole of Rabbids Go Phone's
+        // Screens.Loading.LoadContent failed, the screen was never added, and tapping "My Rabbid"
+        // on the main menu did nothing at all with nothing on screen to say why. The type also
+        // appears in that game's VideoGallery and its AR page.
+        //
+        // Not identity-binding (a v31 install launches; it just keeps failing on the screens that
+        // need a ProgressBar), and no IL body is rewritten, so --repatch-installed is enough and
+        // nothing needs a reinstall.
+        // Bumped to 33: PreserveOriginalMetadataTokens, a new pass that gives a game back the
+        // metadata tokens its PRISTINE assembly carried. Cecil does not preserve TypeDef row ids —
+        // it re-emits the table depth first, every type immediately followed by its nested types,
+        // so an assembly laid out any other way is renumbered even though nothing about its types
+        // changed. Ordinary game code cannot tell; Eazfuscator.NET can, because it derives its
+        // string-decryption key from the tokens of its own helper types and uses the result as a
+        // byte offset into the encrypted string blob. The Treasures of Montezuma
+        // (56a2bd8b-af90-4575-b25f-97b31a179422) is the reference case: every launch died in
+        // Game..ctor with "ArgumentOutOfRangeException: value ('-180695550') must be a
+        // non-negative value" out of UnmanagedMemoryStream.set_Position, on both heads, before a
+        // frame was drawn. Only TWO games in a 307-XAP library ask for a token outside
+        // UnityEngine — this one and Farm Frenzy 2, the same Alawar/YF engine, eight obfuscated
+        // assemblies each — so the pass is a no-op everywhere else.
+        //
+        // Rewrites game IL and embeds a resource, so a v32 install keeps the broken key and keeps
+        // throwing. Not identity-binding — a v32 install still launches — so repatch is enough.
+        //
+        // Bumped to 34: System.Windows.Controls.Viewbox now has a shim and a rescope entry. It is
+        // the layout container WP7 designs use to fit one layout to more than one resolution, and
+        // a page naming it in XAML also gets an x:Name'd field for it in the generated
+        // InitializeComponent — so the missing type was resolved when that method was COMPILED and
+        // failed the whole page, not the one container. Found in Carcassonne, which names it 26
+        // times across its main menu; it is ordinary Silverlight and is expected in others.
+        //
+        // Not identity-binding (a v33 install launches; it just fails the pages that use a
+        // Viewbox) and no IL body is rewritten, so --repatch-installed is enough and nothing needs
+        // a reinstall.
+        //
+        // Bumped to 35: NeutraliseObfuscatorStackIdentityChecks, a new pass that makes
+        // Eazfuscator.NET's caller-identity checks answer "trusted". The decryptor walks
+        // StackTrace to a FIXED frame index and demands that frame's declaring type live in its
+        // own assembly; one check feeds a poison flag that collapses EVERY string in the assembly
+        // to the literal "X0X", the other feeds the decryption key itself. On CoreCLR-for-Android
+        // the reported stack is not what it expects, so The Treasures of Montezuma
+        // (56a2bd8b-af90-4575-b25f-97b31a179422) died in Game..ctor with "An item with the same
+        // key has already been added. Key: X0X" — two different axis-id strings having both
+        // decrypted to the sentinel.
+        //
+        // Distinct from the v33 pass despite the same obfuscator and the same game: v33 repairs a
+        // key input WPR itself perturbs (Cecil renumbers the TypeDef table), this one a check WPR
+        // does not touch — proven by running byte-identical patched assemblies on both heads, one
+        // of which plays and one of which poisons. Desktop is unaffected either way, because the
+        // pass writes the answer the check already reaches there.
+        //
+        // Rewrites game IL, so a v34 install keeps the poisoned strings. Not identity-binding — a
+        // v34 install still launches — so --repatch-installed is enough on the desktop and Android
+        // repatches itself on next launch. Of 48 installed titles only Montezuma carries the
+        // check; Farm Frenzy 2 is the likely second, being the same Alawar/YF engine.
+        // Bumped to 36: System.Windows.Media.RotateTransform and ScaleTransform now have shims and
+        // rescope entries. They were the two most-used transforms in WP7 XAML and the only two of
+        // the family with no entry, so their typerefs kept WP7's System.Windows scope — which does
+        // not exist at runtime, so the whole method naming one failed to load rather than merely
+        // losing a transform. Galactic Reign (45859ddf-684e-43bc-a282-0a4494e88864) is the measured
+        // case: TypeLoadException on RotateTransform took ArmadaClient.MenuPage's construction with
+        // it and the game never reached a menu.
+        //
+        // Neither transform is APPLIED by either renderer yet — the CPU rasteriser is axis-aligned
+        // — so this buys the page loading, not the rotation. See
+        // Plans/SILVERLIGHT-XNA-CONVERGENCE.md, gap 2.
+        //
+        // Not identity-binding (a v35 install launches; it just fails the pages that use one) and
+        // no IL body is rewritten, so --repatch-installed is enough and nothing needs a reinstall.
+        // Bumped to 37: the Button family now matches Silverlight's real hierarchy —
+        // ContentControl -> ButtonBase -> Button, and ButtonBase -> ToggleButton ->
+        // CheckBox/RadioButton — with ButtonBase and RadioButton added to this table. It was flat
+        // before, each type deriving straight from ContentControl with its own copy of the shared
+        // members, which is wrong twice over: ButtonBase and RadioButton did not exist as names at
+        // all, and Click was declared on Button rather than on ButtonBase where Silverlight
+        // declares it, so `button.Click += h` (which compiles to ButtonBase::add_Click) could not
+        // resolve. The same lesson as RangeBase/ProgressBar at v32: IL names the DECLARING type.
+        //
+        // Galactic Reign (45859ddf-684e-43bc-a282-0a4494e88864) is the measured case: it names
+        // ButtonBase and RadioButton, and the TypeLoadException took ArmadaClient.MenuPage down
+        // before the game issued a single draw call.
+        //
+        // Not identity-binding (a v36 install launches; it just fails the pages that use one) and
+        // no IL body is rewritten, so --repatch-installed is enough and nothing needs a reinstall.
+        // Bumped to 38: every IsolatedStorageFile.GetUserStoreForApplication() call site now goes
+        // to SharedIsolatedStorage.GetUserStoreForApplication, which hands each game its own store
+        // (PerGameIsolatedStorage) instead of the one the BCL keys on the host exe. Before this,
+        // every game shared a store and same-named files collided: Fragger, Monster Island and
+        // iStunt 2 write $_StatesAfterExitData_$\DLCManager in a shape Gravity Guy
+        // (4f930d12-2350-4c01-91e8-f46b8bd1d884) cannot read, and playing any of them once left
+        // Gravity Guy drawing nothing on every later launch.
+        //
+        // Existing saves are copied into each installed game's new store on its first launch, so
+        // nothing is lost. Not identity-binding (a v37 install launches, still on the shared store),
+        // so --repatch-installed is enough; Android repatches on next launch.
+        public static int Version => 38;
 
         private AssemblyNameReference FnaBackendRef;
         private AssemblyNameReference FNARef;
@@ -270,6 +409,19 @@ namespace WPR
             "Microsoft.Xna.Framework.GraphicsDeviceInformation",
             "Microsoft.Xna.Framework.PreparingDeviceSettingsEventArgs",
             "Microsoft.Xna.Framework.GameTime",
+            // The WP7.1 Silverlight/XNA mixed-mode surface. GameTimer and GameTimerEventArgs came
+            // from Microsoft.Xna.Framework; SharedGraphicsDeviceManager and
+            // Graphics.GraphicsDeviceExtensions came from a SEPARATE assembly,
+            // Microsoft.Xna.Framework.Interop, for which WPR has no counterpart assembly.
+            //
+            // That needed no change in RescopeAssemblyReferences: its `Contains("Microsoft.Xna")`
+            // branch already renames the Interop ref to FNA along with every other XNA ref, and
+            // this set is tested per TYPEREF and by FullName, so it overrides that rename for
+            // exactly these four names — the same split the value types rely on. (v30.)
+            "Microsoft.Xna.Framework.GameTimer",
+            "Microsoft.Xna.Framework.GameTimerEventArgs",
+            "Microsoft.Xna.Framework.SharedGraphicsDeviceManager",
+            "Microsoft.Xna.Framework.Graphics.GraphicsDeviceExtensions",
             "Microsoft.Xna.Framework.Graphics.AlphaTestEffect",
             "Microsoft.Xna.Framework.Graphics.BasicEffect",
             "Microsoft.Xna.Framework.Graphics.Blend",
@@ -530,6 +682,17 @@ namespace WPR
                     Reference = SilverlightCompRef,
                     NewName="IsolatedStorageSettings2", //RnD
                     NewNamespace = "WPR.WindowsCompability"
+                }
+                },
+                // A single-child container that scales its content to its slot. WP7 designs use it
+                // to make one layout work at more than one resolution, and a page that names it in
+                // XAML also carries an x:Name'd field for it in its generated InitializeComponent —
+                // so a missing type is a TypeLoadException when that method is compiled, taking the
+                // whole page rather than one container. Carcassonne's main menu names it 26 times.
+                { "System.Windows.Controls.Viewbox", new TypePatchInfo()
+                {
+                    Reference = SilverlightCompRef,
+                    NewNamespace = "WPR.SilverlightCompability"
                 }
                 },
                 { "System.Windows.Media.SolidColorBrush", new TypePatchInfo()
@@ -984,6 +1147,101 @@ namespace WPR
                     NewNamespace = "WPR.SilverlightCompability"
                 }
                 },
+                // Mixed-mode titles use MediaElement for their cutscenes — it is the ONLY element
+                // in the page XAML of most of them. The shim plays nothing and reports that it
+                // finished; see its class remarks for why that is the right degradation. (v30.)
+                { "System.Windows.Controls.MediaElement", new TypePatchInfo()
+                {
+                    Reference = SilverlightCompRef,
+                    NewNamespace = "WPR.SilverlightCompability"
+                }
+                },
+                { "System.Windows.Media.MediaElementState", new TypePatchInfo()
+                {
+                    Reference = SilverlightCompRef,
+                    NewNamespace = "WPR.SilverlightCompability"
+                }
+                },
+                { "System.Windows.Media.TimelineMarker", new TypePatchInfo()
+                {
+                    Reference = SilverlightCompRef,
+                    NewNamespace = "WPR.SilverlightCompability"
+                }
+                },
+                { "System.Windows.Media.TimelineMarkerCollection", new TypePatchInfo()
+                {
+                    Reference = SilverlightCompRef,
+                    NewNamespace = "WPR.SilverlightCompability"
+                }
+                },
+                { "System.Windows.Media.TimelineMarkerRoutedEventArgs", new TypePatchInfo()
+                {
+                    Reference = SilverlightCompRef,
+                    NewNamespace = "WPR.SilverlightCompability"
+                }
+                },
+                { "System.Windows.Media.TimelineMarkerRoutedEventHandler", new TypePatchInfo()
+                {
+                    Reference = SilverlightCompRef,
+                    NewNamespace = "WPR.SilverlightCompability"
+                }
+                },
+                // Silverlight application lifecycle, reached by mixed-mode titles that do their
+                // setup from Application.Startup rather than WP7's Launching, or that put a
+                // service of their own in <Application.ApplicationLifetimeObjects>. Little
+                // Acorns needs the first pair, Galactic Reign the second. (v30.)
+                { "System.Windows.StartupEventArgs", new TypePatchInfo()
+                {
+                    Reference = SilverlightCompRef,
+                    NewNamespace = "WPR.WindowsCompability"
+                }
+                },
+                { "System.Windows.StartupEventHandler", new TypePatchInfo()
+                {
+                    Reference = SilverlightCompRef,
+                    NewNamespace = "WPR.WindowsCompability"
+                }
+                },
+                { "System.Windows.IApplicationService", new TypePatchInfo()
+                {
+                    Reference = SilverlightCompRef,
+                    NewNamespace = "WPR.SilverlightCompability"
+                }
+                },
+                { "System.Windows.IApplicationLifetimeAware", new TypePatchInfo()
+                {
+                    Reference = SilverlightCompRef,
+                    NewNamespace = "WPR.SilverlightCompability"
+                }
+                },
+                { "System.Windows.ApplicationServiceContext", new TypePatchInfo()
+                {
+                    Reference = SilverlightCompRef,
+                    NewNamespace = "WPR.SilverlightCompability"
+                }
+                },
+                { "System.Windows.Navigation.NavigationContext", new TypePatchInfo()
+                {
+                    Reference = SilverlightCompRef,
+                    NewNamespace = "WPR.SilverlightCompability"
+                }
+                },
+                { "System.Windows.Navigation.LoadCompletedEventHandler", new TypePatchInfo()
+                {
+                    Reference = SilverlightCompRef,
+                    NewNamespace = "WPR.SilverlightCompability"
+                }
+                },
+                // UIElementRenderer keeps its Microsoft.Xna.Framework.Graphics namespace and only
+                // moves ASSEMBLY, which is why it is here and not in WprFrameworkXnaTypes: it
+                // names both Texture2D and UIElement, and Silverlight -> Xna is the direction that
+                // reference already runs. Without the entry the blanket Microsoft.Xna.* -> FNA
+                // rename resolves it to nothing. (v30.)
+                { "Microsoft.Xna.Framework.Graphics.UIElementRenderer", new TypePatchInfo()
+                {
+                    Reference = SilverlightCompRef
+                }
+                },
                 { "System.Windows.Controls.Primitives.Popup", new TypePatchInfo()
                 {
                     Reference = SilverlightCompRef,
@@ -1132,6 +1390,13 @@ namespace WPR
                 { "System.Windows.Media.TransformGroup", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
                 { "System.Windows.Media.TranslateTransform", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
                 { "System.Windows.Media.CompositeTransform", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                // The two most-used transforms, and the two that were missing. A transform type
+                // with no entry keeps its WP7 scope, so the whole method naming it fails to
+                // compile — Galactic Reign's ArmadaClient.MenuPage died on RotateTransform before
+                // the game reached a menu. Scale is added beside it because a design that rotates
+                // usually scales too.
+                { "System.Windows.Media.RotateTransform", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.ScaleTransform", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
                 { "System.Windows.Media.Projection", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
                 { "System.Windows.Media.PlaneProjection", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
                 // Bulk: media — misc
@@ -1149,10 +1414,41 @@ namespace WPR
                 { "System.Windows.Media.Animation.ExponentialEase", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
                 { "System.Windows.Media.Animation.QuarticEase", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
                 { "System.Windows.Media.Animation.EasingMode", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                // The rest of Silverlight's easing set plus its base, and the object-valued key
+                // frames. A storyboard that names one of these is built when its PAGE is
+                // constructed, so a missing easing function does not cost an animation — it costs
+                // the whole page, and with it the game. Carcassonne needs Quintic/Quadratic/Circle
+                // and the base type. (v30.)
+                { "System.Windows.Media.Animation.EasingFunctionBase", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.Animation.QuinticEase", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.Animation.QuadraticEase", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.Animation.CubicEase", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.Animation.CircleEase", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.Animation.SineEase", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.Animation.BackEase", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.Animation.BounceEase", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.Animation.ElasticEase", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.Animation.PowerEase", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.Animation.ObjectAnimationUsingKeyFrames", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.Animation.ObjectKeyFrame", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.Animation.DiscreteObjectKeyFrame", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.Animation.ObjectKeyFrameCollection", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
                 // Bulk: controls
                 { "System.Windows.Controls.CheckBox", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
                 { "System.Windows.Controls.Primitives.ToggleButton", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
                 { "System.Windows.Controls.Primitives.Selector", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                // RangeBase goes with ProgressBar: Silverlight declares Value/Minimum/Maximum
+                // there, so a game setting one names RangeBase in its IL even though it is
+                // holding a ProgressBar.
+                { "System.Windows.Controls.Primitives.RangeBase", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+
+                // ButtonBase goes with Button for the same reason RangeBase goes with ProgressBar:
+                // Silverlight declares Click there, so `button.Click += h` compiles to
+                // ButtonBase::add_Click and a game naming it needs the type to exist. RadioButton
+                // completes the family (ButtonBase -> ToggleButton -> CheckBox/RadioButton).
+                { "System.Windows.Controls.Primitives.ButtonBase", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Controls.RadioButton", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Controls.ProgressBar", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
                 { "System.Windows.Controls.Page", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
                 { "System.Windows.Controls.ContentPresenter", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
                 { "System.Windows.Controls.ItemsPresenter", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
@@ -1522,7 +1818,7 @@ namespace WPR
                 // NOT covered: System.IO.FileInfo / DirectoryInfo. Both are SEALED, so no
                 // subclass can stand where the constructed instance lands, and retargeting the
                 // declaring type is all this table can do. They need a call-site rewrite like
-                // RedirectIsolatedStorageOpens; only 3 uses exist across the installed library,
+                // RedirectIsolatedStorageCalls; only 3 uses exist across the installed library,
                 // so that is deliberately left until something actually needs it.
                 {
                     "System.IO.FileStream System.IO.File::Open(System.String,System.IO.FileMode)",
@@ -2770,7 +3066,170 @@ namespace WPR
             }
         }
 
-        private static void RedirectIsolatedStorageOpens(ModuleDefinition module)
+        /// <summary>
+        /// Records every TypeDef's <em>pristine</em> metadata token in an embedded table, and
+        /// sends every <c>MemberInfo.get_MetadataToken</c> call site in <paramref name="module"/>
+        /// to <see cref="WPR.WindowsCompability.OriginalMetadataTokens.Resolve"/>, which reads it.
+        /// That type carries the full account of why this is needed; the short version is that
+        /// <b>Cecil does not preserve TypeDef row ids</b> — it re-emits the table depth first,
+        /// parent immediately followed by its nested types — so an assembly laid out any other way
+        /// comes back renumbered even though nothing about its types changed.
+        ///
+        /// <para>Ordinary game code never notices. Eazfuscator.NET does: it derives its
+        /// string-decryption key from the tokens of its own helper types and uses the result as a
+        /// byte offset into the encrypted string blob, so a renumbered table makes the game seek
+        /// a stream to a nonsense position and die on the first string it decrypts.</para>
+        ///
+        /// <para>The pass is a no-op for a module that never asks for a token, which is all but
+        /// two games in a 307-XAP library (The Treasures of Montezuma and Farm Frenzy 2 — the same
+        /// Alawar/YF engine, eight obfuscated assemblies each). It deliberately does nothing at all
+        /// for a module that also calls the <c>Module.Resolve*</c> family: such a module feeds
+        /// tokens back to the runtime, and only types are remapped here, so a half-remapped
+        /// round-trip would be worse than none. In this library that is UnityEngine alone.</para>
+        /// </summary>
+        private static void PreserveOriginalMetadataTokens(ModuleDefinition module, string fileName)
+        {
+            const string MemberInfoTypeName = "System.Reflection.MemberInfo";
+            const string ModuleTypeName = "System.Reflection.Module";
+
+            List<Instruction> sites = new List<Instruction>();
+            bool resolvesTokens = false;
+
+            foreach (TypeDefinition type in module.GetTypes())
+            {
+                foreach (MethodDefinition method in type.Methods)
+                {
+                    if (!method.HasBody)
+                    {
+                        continue;
+                    }
+
+                    foreach (Instruction ins in method.Body.Instructions)
+                    {
+                        if (ins.OpCode != OpCodes.Callvirt && ins.OpCode != OpCodes.Call)
+                        {
+                            continue;
+                        }
+
+                        if (ins.Operand is not MethodReference callee || callee.DeclaringType == null)
+                        {
+                            continue;
+                        }
+
+                        /* get_MetadataToken is declared on MemberInfo and inherited, so a call
+                         * site may name MemberInfo, Type, MethodBase, FieldInfo or any other
+                         * subclass. Match on the name and arity instead of the declaring type. */
+                        if (callee.Name == "get_MetadataToken" && callee.Parameters.Count == 0)
+                        {
+                            sites.Add(ins);
+                            continue;
+                        }
+
+                        if (callee.DeclaringType.FullName == ModuleTypeName
+                            && callee.Name.StartsWith("Resolve", StringComparison.Ordinal))
+                        {
+                            resolvesTokens = true;
+                        }
+                    }
+                }
+            }
+
+            if (sites.Count == 0)
+            {
+                return;
+            }
+
+            if (resolvesTokens)
+            {
+                Log.Info(LogCategory.AppInstall,
+                    $"[token-fixup] {fileName}: {sites.Count} get_MetadataToken call site(s) left "
+                    + "alone — the module also calls Module.Resolve*, so its tokens make a "
+                    + "round trip this pass cannot invert.");
+                return;
+            }
+
+            /* Tokens are still the ones read from disk: nothing above adds or removes a type, and
+             * Cecil only reassigns them while writing. So this is the pristine numbering. */
+            List<KeyValuePair<string, int>> entries = new List<KeyValuePair<string, int>>();
+            foreach (TypeDefinition type in module.GetTypes())
+            {
+                if (type.FullName == "<Module>")
+                {
+                    continue;
+                }
+
+                // Cecil spells a nested type Outer/Inner; reflection spells it Outer+Inner, and
+                // reflection is what reads this table back.
+                entries.Add(new KeyValuePair<string, int>(
+                    type.FullName.Replace('/', '+'), type.MetadataToken.ToInt32()));
+            }
+
+            byte[] table;
+            using (MemoryStream buffer = new MemoryStream())
+            {
+                using (BinaryWriter writer =
+                    new BinaryWriter(buffer, System.Text.Encoding.UTF8, true))
+                {
+                    writer.Write(entries.Count);
+                    foreach (KeyValuePair<string, int> entry in entries)
+                    {
+                        writer.Write(entry.Key);
+                        writer.Write(entry.Value);
+                    }
+                }
+
+                table = buffer.ToArray();
+            }
+
+            string resourceName = WPR.WindowsCompability.OriginalMetadataTokens.ResourceName;
+            for (int i = module.Resources.Count - 1; i >= 0; i--)
+            {
+                // Defensive: PatchDll always starts from the pristine .original, so a table
+                // should never already be there. Replace rather than end up with two.
+                if (module.Resources[i].Name == resourceName)
+                {
+                    module.Resources.RemoveAt(i);
+                }
+            }
+
+            module.Resources.Add(new EmbeddedResource(
+                resourceName, ManifestResourceAttributes.Private, table));
+
+            System.Reflection.MethodInfo shim =
+                typeof(WPR.WindowsCompability.OriginalMetadataTokens)
+                    .GetMethod(nameof(WPR.WindowsCompability.OriginalMetadataTokens.Resolve))!;
+            MethodReference target = module.ImportReference(shim);
+
+            foreach (Instruction ins in sites)
+            {
+                // callvirt -> call: the shim is static and the instance is now argument zero.
+                // Nothing else about the stack changes.
+                ins.OpCode = OpCodes.Call;
+                ins.Operand = target;
+            }
+
+            Log.Info(LogCategory.AppInstall,
+                $"[token-fixup] {fileName}: {sites.Count} get_MetadataToken call site(s) now read "
+                + $"the pristine token of {entries.Count} type(s).");
+        }
+
+        /// <summary>
+        /// Every path-taking <see cref="System.IO.IsolatedStorage.IsolatedStorageFile"/> call site
+        /// in <paramref name="module"/> is retargeted to the matching static on
+        /// <see cref="WPR.WindowsCompability.SharedIsolatedStorage"/>, with the instance becoming
+        /// argument zero. That type carries the full account of what the shims change and why;
+        /// in short, opens get a shared <c>FileShare</c> (v20) and everything gets its separators
+        /// normalised for the running platform (v31).
+        ///
+        /// <para>A call-site rewrite rather than a <see cref="MemberPatches"/> entry because
+        /// <c>IsolatedStorageFile</c> is sealed, so nothing can be substituted for the instance on
+        /// the stack.</para>
+        ///
+        /// <para>The member list below is the gate; the shim is then found by name and arity, so
+        /// adding an overload to <c>SharedIsolatedStorage</c> is enough to cover it. A member named
+        /// here with no matching shim is reported once and left alone — never guessed at.</para>
+        /// </summary>
+        private static void RedirectIsolatedStorageCalls(ModuleDefinition module)
         {
             const string StoreTypeName = "System.IO.IsolatedStorage.IsolatedStorageFile";
 
@@ -2798,12 +3257,17 @@ namespace WPR
                         if (ins.Operand is not MethodReference callee
                             || callee.DeclaringType == null
                             || callee.DeclaringType.FullName != StoreTypeName
-                            || (callee.Name != "OpenFile" && callee.Name != "CreateFile"))
+                            || !(callee.HasThis
+                                ? IsolatedStorageRedirects.Contains(callee.Name)
+                                : IsolatedStorageStaticRedirects.Contains(callee.Name)))
                         {
                             continue;
                         }
 
-                        string key = callee.Name + "/" + callee.Parameters.Count;
+                        // A static keeps its own arity; an instance call gains the store as
+                        // argument zero.
+                        int shimArity = callee.Parameters.Count + (callee.HasThis ? 1 : 0);
+                        string key = callee.Name + "/" + shimArity;
                         if (!imported.TryGetValue(key, out MethodReference? target))
                         {
                             // The shim's signature is the instance one with the store prepended.
@@ -2815,7 +3279,7 @@ namespace WPR
                                     .GetMethods(System.Reflection.BindingFlags.Public
                                         | System.Reflection.BindingFlags.Static)
                                     .FirstOrDefault(m => m.Name == callee.Name
-                                        && m.GetParameters().Length == callee.Parameters.Count + 1);
+                                        && m.GetParameters().Length == shimArity);
 
                             target = shim == null ? null : module.ImportReference(shim);
                             imported[key] = target;
@@ -2845,8 +3309,259 @@ namespace WPR
 
             if (rewritten > 0)
             {
-                Debug.WriteLine($"[iso-fixup] redirected {rewritten} IsolatedStorageFile open call(s)"
-                    + $" in {module.Name} to the sharing shim.");
+                Debug.WriteLine($"[iso-fixup] redirected {rewritten} IsolatedStorageFile call(s)"
+                    + $" in {module.Name} to the shim.");
+            }
+        }
+
+        /// <summary>
+        /// The <c>IsolatedStorageFile</c> members whose call sites are redirected. Every one of
+        /// them takes at least one store-relative path or search pattern, which is the entire
+        /// reason they are listed: a WP7 title may spell any of them with a Windows separator, and
+        /// on Android that is an ordinary filename character.
+        ///
+        /// <para><c>GetUserStoreForApplication</c> is not here because it is static — see
+        /// <see cref="IsolatedStorageStaticRedirects"/>. The parameterless <c>GetFileNames()</c> / <c>GetDirectoryNames()</c> overloads
+        /// are reached by name but find no shim (there is nothing to normalise) and are left alone
+        /// — see the note on <c>SharedIsolatedStorage</c>.</para>
+        /// </summary>
+        private static readonly HashSet<string> IsolatedStorageRedirects =
+            new HashSet<string>(StringComparer.Ordinal)
+            {
+                "OpenFile",
+                "CreateFile",
+                "GetFileNames",
+                "GetDirectoryNames",
+                "DirectoryExists",
+                "FileExists",
+                "CreateDirectory",
+                "DeleteDirectory",
+                "DeleteFile",
+                "MoveFile",
+                "MoveDirectory",
+                "CopyFile",
+                "GetCreationTime",
+                "GetLastAccessTime",
+                "GetLastWriteTime",
+            };
+
+        /// <summary>
+        /// The static <c>IsolatedStorageFile</c> members whose call sites are redirected (v38).
+        /// <c>GetUserStoreForApplication</c> is how a WP7 title obtains its store, and the BCL
+        /// answers it with ONE store for the whole host, so every game shared it and titles with
+        /// a common filename overwrote each other — see <c>PerGameIsolatedStorage</c>. It is the
+        /// only store accessor WP7 exposed, so it is the only one listed.
+        /// </summary>
+        private static readonly HashSet<string> IsolatedStorageStaticRedirects =
+            new HashSet<string>(StringComparer.Ordinal)
+            {
+                "GetUserStoreForApplication",
+            };
+
+        /// <summary>
+        /// Makes Eazfuscator.NET's caller-identity checks answer "trusted", so a game's encrypted
+        /// strings decrypt to what they say rather than to a tamper sentinel.
+        ///
+        /// <para>The obfuscator's string decryptor verifies WHO IS CALLING IT by walking
+        /// <see cref="System.Diagnostics.StackTrace"/> to a FIXED frame index and demanding that
+        /// frame's declaring type live in the decryptor's own assembly. There are two such checks:
+        /// one folds its verdict into a poison flag, and once that flag is set every single string
+        /// in the assembly decrypts to the literal <c>"X0X"</c>; the other returns a bool that is
+        /// XORed into the decryption key itself. Both have to be forced, and forcing only the
+        /// first is actively worse — the sentinel stops appearing, the key is still wrong, and the
+        /// blob reader runs off the end with "Attempted to read past the end of the stream".</para>
+        ///
+        /// <para><b>This is not the same bug as <see cref="PreserveOriginalMetadataTokens"/>,
+        /// though it is the same obfuscator and the same game.</b> That pass repairs a key input we
+        /// broke ourselves (Cecil renumbers the TypeDef table). This one is a check that WPR does
+        /// not perturb at all: the patched bytes are irrelevant. Proven by pushing the desktop's
+        /// byte-identical patched assemblies onto the phone — desktop plays, phone still poisons —
+        /// so what differs is the managed stack the runtime reports, not the file.</para>
+        ///
+        /// <para><b>Why it only shows up on Android.</b> The check asks for a specific frame by
+        /// index, and CoreCLR-on-Android does not hand back the frame the obfuscator expects.
+        /// Eliminated by measurement, so do not re-walk these: the patched bytes differing
+        /// (byte-identical assemblies fail the same way), the assembly being loaded twice so the
+        /// <c>Assembly</c> instances differ (each game assembly is probed exactly once), and JIT
+        /// inlining moving the frames (marking all 8,993 methods across the game's 14 assemblies
+        /// <c>NoInlining</c> changed nothing).</para>
+        ///
+        /// <para>The Treasures of Montezuma (56a2bd8b-af90-4575-b25f-97b31a179422) is the
+        /// reference case: nine of its assemblies carry the check, and before this it died in
+        /// <c>Game..ctor</c> with "An item with the same key has already been added. Key: X0X" —
+        /// two different axis-id strings having both decrypted to the sentinel. Of 48 installed
+        /// titles it is the only one that carries this; Farm Frenzy 2 is the likely second, being
+        /// the same Alawar/YF engine.</para>
+        ///
+        /// <para>Forcing the check to its TRUSTED outcome is what keeps this safe on desktop,
+        /// where the check already passes: the pass writes the answer the runtime was going to
+        /// give anyway. Verified — the same rewritten assemblies still run on Windows.</para>
+        /// </summary>
+        private static void NeutraliseObfuscatorStackIdentityChecks(
+            ModuleDefinition module, string fileName)
+        {
+            int forcedHelpers = 0;
+            int forcedBranches = 0;
+
+            foreach (TypeDefinition type in module.GetTypes())
+            {
+                foreach (MethodDefinition method in type.Methods)
+                {
+                    if (!method.HasBody || method.Body.Instructions.Count == 0) continue;
+
+                    /* Three signals together, because any one alone is something ordinary code
+                     * does: a StackTrace walk, a typeof(RuntimeMethodHandle) comparison (how the
+                     * obfuscator spots a reflection invoke) and a Type.Assembly read. A logger
+                     * that walks frames has the first and neither of the others. */
+                    bool walksStack = false;
+                    bool comparesRuntimeMethodHandle = false;
+                    bool readsAssembly = false;
+
+                    foreach (Instruction instruction in method.Body.Instructions)
+                    {
+                        if (instruction.Operand is MethodReference callee)
+                        {
+                            if (callee.Name == "GetFrame"
+                                && callee.DeclaringType != null
+                                && callee.DeclaringType.FullName == "System.Diagnostics.StackTrace")
+                            {
+                                walksStack = true;
+                            }
+                            else if (callee.Name == "get_Assembly"
+                                && callee.DeclaringType != null
+                                && callee.DeclaringType.FullName == "System.Type")
+                            {
+                                readsAssembly = true;
+                            }
+                        }
+                        else if (instruction.OpCode == OpCodes.Ldtoken
+                            && instruction.Operand is TypeReference token
+                            && token.FullName == "System.RuntimeMethodHandle")
+                        {
+                            comparesRuntimeMethodHandle = true;
+                        }
+                    }
+
+                    if (!walksStack || !comparesRuntimeMethodHandle || !readsAssembly) continue;
+
+                    // A parameterless static bool IS the whole check, so answer it outright.
+                    if (method.IsStatic && !method.HasParameters
+                        && method.ReturnType.FullName == "System.Boolean")
+                    {
+                        method.Body.Instructions.Clear();
+                        method.Body.Variables.Clear();
+                        method.Body.ExceptionHandlers.Clear();
+                        ILProcessor answer = method.Body.GetILProcessor();
+                        answer.Append(answer.Create(OpCodes.Ldc_I4_1));
+                        answer.Append(answer.Create(OpCodes.Ret));
+                        forcedHelpers++;
+                        continue;
+                    }
+
+                    if (ForceCallerAssemblyComparison(method)) forcedBranches++;
+                }
+            }
+
+            if (forcedHelpers + forcedBranches == 0) return;
+
+            Log.Info(LogCategory.AppInstall,
+                $"[eaz-fixup] {fileName}: forced {forcedHelpers} caller-trust helper(s) and "
+                + $"{forcedBranches} caller-assembly branch(es) to their trusted outcome, so the "
+                + "obfuscator's strings decrypt instead of collapsing to the tamper sentinel.");
+        }
+
+        /// <summary>
+        /// Rewrites the one <c>caller.Assembly == mine</c> test inside an Eazfuscator caller
+        /// check so the equal path always runs. Returns whether anything changed.
+        /// </summary>
+        private static bool ForceCallerAssemblyComparison(MethodDefinition method)
+        {
+            /* Both operands of the comparison are on the stack, so the branch cannot simply be
+             * deleted — it is replaced by two pops plus, for the equality form, an unconditional
+             * jump to the target it would have taken. SimplifyMacros first because the rewrite
+             * grows the body and a short branch elsewhere may no longer reach; OptimizeMacros
+             * re-shortens what still fits. Same reasoning as RelocateMonoStackConflictBlocks. */
+            method.Body.SimplifyMacros();
+            try
+            {
+                var instructions = method.Body.Instructions;
+
+                for (int i = 0; i + 1 < instructions.Count; i++)
+                {
+                    if (!(instructions[i].Operand is MethodReference callee)
+                        || callee.Name != "get_Assembly"
+                        || callee.DeclaringType == null
+                        || callee.DeclaringType.FullName != "System.Type")
+                    {
+                        continue;
+                    }
+
+                    Instruction branch = instructions[i + 1];
+                    bool equalTakesBranch =
+                        branch.OpCode == OpCodes.Beq || branch.OpCode == OpCodes.Beq_S;
+                    bool equalFallsThrough =
+                        branch.OpCode == OpCodes.Bne_Un || branch.OpCode == OpCodes.Bne_Un_S;
+                    if (!equalTakesBranch && !equalFallsThrough) continue;
+
+                    Instruction target = branch.Operand as Instruction;
+                    if (equalTakesBranch && target == null) continue;
+
+                    ILProcessor rewrite = method.Body.GetILProcessor();
+                    Instruction firstPop = rewrite.Create(OpCodes.Pop);
+                    Instruction secondPop = rewrite.Create(OpCodes.Pop);
+
+                    rewrite.Replace(branch, firstPop);
+                    rewrite.InsertAfter(firstPop, secondPop);
+                    if (equalTakesBranch)
+                    {
+                        rewrite.InsertAfter(secondPop, rewrite.Create(OpCodes.Br, target));
+                    }
+
+                    /* Cecil's Replace does not repoint anything that branched AT the instruction
+                     * it removed, and an obfuscated method is full of jumps. Leaving a dangling
+                     * operand writes a corrupt body that fails to verify rather than throwing
+                     * here, so fix them up explicitly — including exception handler bounds. */
+                    RepointBranches(method.Body, branch, firstPop);
+                    return true;
+                }
+
+                return false;
+            }
+            finally
+            {
+                method.Body.OptimizeMacros();
+            }
+        }
+
+        /// <summary>
+        /// Points every branch, switch case and exception-handler boundary that referred to
+        /// <paramref name="removed"/> at <paramref name="replacement"/>.
+        /// </summary>
+        private static void RepointBranches(
+            MethodBody body, Instruction removed, Instruction replacement)
+        {
+            foreach (Instruction instruction in body.Instructions)
+            {
+                if (ReferenceEquals(instruction.Operand, removed))
+                {
+                    instruction.Operand = replacement;
+                }
+                else if (instruction.Operand is Instruction[] cases)
+                {
+                    for (int i = 0; i < cases.Length; i++)
+                    {
+                        if (ReferenceEquals(cases[i], removed)) cases[i] = replacement;
+                    }
+                }
+            }
+
+            foreach (ExceptionHandler handler in body.ExceptionHandlers)
+            {
+                if (ReferenceEquals(handler.TryStart, removed)) handler.TryStart = replacement;
+                if (ReferenceEquals(handler.TryEnd, removed)) handler.TryEnd = replacement;
+                if (ReferenceEquals(handler.HandlerStart, removed)) handler.HandlerStart = replacement;
+                if (ReferenceEquals(handler.HandlerEnd, removed)) handler.HandlerEnd = replacement;
+                if (ReferenceEquals(handler.FilterStart, removed)) handler.FilterStart = replacement;
             }
         }
 
@@ -3360,7 +4075,18 @@ namespace WPR
             // Send every IsolatedStorageFile.OpenFile / CreateFile call through the sharing shim.
             // Must run after the reference tables, so the shim assembly is already referenced and
             // ImportReference reuses that ref instead of adding a second one.
-            RedirectIsolatedStorageOpens(module);
+            RedirectIsolatedStorageCalls(module);
+
+            // Hand a game back the metadata tokens its own assembly shipped with. Same placement
+            // reasoning as the call above: the shim assembly is already referenced by now. Must
+            // run before the write, which is where Cecil renumbers the TypeDef table.
+            PreserveOriginalMetadataTokens(module, Path.GetFileName(modulePath));
+
+            // Same obfuscator, different defect: make its StackTrace caller-identity checks answer
+            // "trusted". Independent of the pass above — that one repairs an input WPR itself
+            // perturbs, this one a check WPR does not touch at all — so ordering between them does
+            // not matter. Placed here because both concern Eazfuscator and read best together.
+            NeutraliseObfuscatorStackIdentityChecks(module, Path.GetFileName(modulePath));
 
             // Game-specific IL fixups that don't fit the reference-redirect tables above.
             ApplyGameSpecificFixups(module);

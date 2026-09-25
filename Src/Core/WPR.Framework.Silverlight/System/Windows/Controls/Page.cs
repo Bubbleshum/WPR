@@ -21,6 +21,12 @@ namespace WPR.SilverlightCompability
         public string? Title { get; set; }
         public NavigationService? NavigationService { get; internal set; }
 
+        /// <summary>
+        /// The query-string parameters this page was navigated to with. Never null — a page
+        /// navigated to with no parameters gets an empty one, as it did on the phone.
+        /// </summary>
+        public NavigationContext NavigationContext { get; } = new NavigationContext();
+
         protected internal virtual void OnNavigatedTo(NavigationEventArgs e) { }
         protected internal virtual void OnNavigatedFrom(NavigationEventArgs e) { }
         protected internal virtual void OnNavigatingFrom(NavigatingCancelEventArgs e) { }

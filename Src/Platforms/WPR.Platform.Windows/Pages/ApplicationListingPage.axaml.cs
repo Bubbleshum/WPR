@@ -54,10 +54,38 @@ namespace WPR.Platform.Windows.Pages
                 context.SetOutput(msgResult == MessageBox.Avalonia.Enums.ButtonResult.Yes);
             }));
 
+            // Both uninstall entry points (the game pane and the list's context menu) go through
+            // the view-model, so both get this prompt.
+            vm.UninstallInteraction.RegisterHandler(context =>
+                Dispatcher.UIThread.InvokeAsync(async () =>
+            {
+                Application app = context.Input;
+                var msgResult = await MessageBoxUtils.GetMessageDialogResult(
+                    title: "Uninstall",
+                    text: $"Uninstall {app.Name}?\n\n"
+                        + "Do you also want to delete its save data?\n\n"
+                        + "Yes: uninstall and permanently delete all save data (progress, high scores, "
+                        + "settings). This cannot be undone.\n"
+                        + "No: uninstall but keep the save data, so it comes back if you reinstall.\n"
+                        + "Cancel: do nothing.\n\n"
+                        + "Achievements are kept either way.",
+                    icon: MessageBox.Avalonia.Enums.Icon.Question,
+                    buttons: MessageBox.Avalonia.Enums.ButtonEnum.YesNoCancel);
+
+                context.SetOutput(msgResult switch
+                {
+                    MessageBox.Avalonia.Enums.ButtonResult.Yes => UninstallChoice.DeleteSaveData,
+                    MessageBox.Avalonia.Enums.ButtonResult.No => UninstallChoice.KeepSaveData,
+                    // Cancel, or the window closed with the X.
+                    _ => UninstallChoice.Cancel,
+                });
+            }));
+
             vm.InstallRequested += OnDiscoveredAppInstallRequested;
             vm.EditRequested += OnAppEditRequested;
             vm.InfoRequested += OnAppInfoRequested;
             vm.ControlsRequested += OnAppControlsRequested;
+            vm.ClearDataRequested += OnAppClearDataRequested;
 
             this.Get<Button>("addNewAppButton").Click += AddNewAppButton_Click;
 
@@ -119,6 +147,57 @@ namespace WPR.Platform.Windows.Pages
                 await MessageBoxUtils.ShowSelectableErrorAsync(
                     title: WPR.Shell.Resources.AppRunError,
                     body: ex.ToString());
+            }
+        }
+
+        /// <summary>
+        /// Erase every file this game has saved, after a warning. The escape hatch for a game that
+        /// no longer starts because of something in its saves — see
+        /// <see cref="WPR.WindowsCompability.PerGameIsolatedStorage.ClearGameData"/>.
+        /// </summary>
+        private async void OnAppClearDataRequested(object? sender, ApplicationItemViewModel appItem)
+        {
+            if (appItem?.Model == null) return;
+
+            string? productId = appItem.ProductId;
+            if (string.IsNullOrEmpty(productId)) return;
+            string name = appItem.Name ?? productId;
+
+            // A game patched before v38 still reads the old shared store, so clearing its own store
+            // would appear to do nothing. The desktop never repatches by itself, so say so.
+            if (appItem.Model.PatchedVersion < WPR.ApplicationPatcher.Version)
+            {
+                await MessageBoxUtils.GetMessageDialogResult(
+                    title: "Repatch first",
+                    text: $"{name} was patched by an older version of WPR, so it still uses the save "
+                        + "data shared by every game. Click Repatch, then clear its data.",
+                    icon: MessageBox.Avalonia.Enums.Icon.Info);
+                return;
+            }
+
+            var answer = await MessageBoxUtils.GetMessageDialogResult(
+                title: "Clear game data",
+                text: $"This permanently deletes ALL save data for {name}: progress, high scores, "
+                    + "settings and unlocked content. It cannot be undone.\n\n"
+                    + "Achievements are not affected. Close the game before continuing.\n\n"
+                    + "Clear the data?",
+                icon: MessageBox.Avalonia.Enums.Icon.Warning,
+                buttons: MessageBox.Avalonia.Enums.ButtonEnum.YesNo);
+            if (answer != MessageBox.Avalonia.Enums.ButtonResult.Yes) return;
+
+            try
+            {
+                string installsRoot = Configuration.Current!.DataPath(WPR.Models.Application.DataStoreFolder);
+                await Task.Run(() => WPR.WindowsCompability.PerGameIsolatedStorage.ClearGameData(productId, installsRoot));
+                await MessageBoxUtils.GetMessageDialogResult(
+                    title: "Clear game data",
+                    text: $"Save data for {name} was deleted. It will start as if newly installed.");
+            }
+            catch (Exception ex)
+            {
+                await MessageBoxUtils.ShowSelectableErrorAsync(
+                    title: "Could not clear game data",
+                    body: $"Some files could not be deleted — if {name} is running, close it and try again.\n\n{ex}");
             }
         }
 

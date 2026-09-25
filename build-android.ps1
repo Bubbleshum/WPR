@@ -6,15 +6,15 @@
     Windows counterpart of build-android.sh. Wraps the CLI recipe documented in
     CLAUDE.md, and auto-detects the tooling that recipe hardcodes:
 
-      * ANDROID_HOME  - picks the first SDK root that actually has platforms\android-34.
+      * ANDROID_HOME  - picks the first SDK root that actually has platforms\android-36.
                         The system SDK at "Program Files (x86)\Android\android-sdk" only
                         ships API 35/36, so the user-local %LOCALAPPDATA%\Android\Sdk is
                         normally the one that works.
       * JAVA_HOME     - Android Studio's bundled JBR, else an installed JDK 17.
       * dotnet        - the system install; repo global.json pins the SDK 8.0 band, which is
-                        what supplies the net8.0-android34.0 ref packs.
+                        what supplies the net10.0-android36.0 ref packs.
 
-    net8.0-android* maps to API 34 only (see CLAUDE.md) - do not bump the TFM without
+    net10.0-android* maps to API 36 only (see CLAUDE.md) - do not bump the TFM without
     also moving to .NET 10 + Avalonia 12.
 
 .PARAMETER Configuration
@@ -24,7 +24,7 @@
     + AndroidSigningKeyStore/Alias/Pass) - fine for sideloading, not for Play upload.
 
 .PARAMETER TargetFramework
-    Default net8.0-android34.0.
+    Default net10.0-android36.0.
 
 .PARAMETER OutputDir
     Where to copy the APK. Default: Artifacts\android\<Configuration>. Split by
@@ -48,7 +48,7 @@
 param(
     [ValidateSet('Debug', 'Release')]
     [string]$Configuration = 'Release',
-    [string]$TargetFramework = 'net8.0-android34.0',
+    [string]$TargetFramework = 'net10.0-android36.0',
     [string]$OutputDir,
     [switch]$Clean,
     [switch]$Install
@@ -75,8 +75,8 @@ if ([string]::IsNullOrWhiteSpace($OutputDir)) {
     $OutputDir = Join-Path $Root "Artifacts\android\$Configuration"
 }
 
-# API level implied by the TFM, e.g. net8.0-android34.0 -> 34
-$apiLevel = '34'
+# API level implied by the TFM, e.g. net10.0-android36.0 -> 36
+$apiLevel = '36'
 if ($TargetFramework -match 'android(\d+)') { $apiLevel = $Matches[1] }
 
 # --- locate the Android SDK ---------------------------------------------------
@@ -130,7 +130,7 @@ if ($null -eq $JavaHome) {
 $Dotnet = Join-Path $env:ProgramFiles 'dotnet\dotnet.exe'
 if (-not (Test-Path $Dotnet)) {
     $cmd = Get-Command dotnet -ErrorAction SilentlyContinue
-    if ($null -eq $cmd) { throw 'dotnet not found. Install the .NET 8 SDK or add dotnet to PATH.' }
+    if ($null -eq $cmd) { throw 'dotnet not found. Install the .NET 10 SDK or add dotnet to PATH.' }
     $Dotnet = $cmd.Source
 }
 
@@ -143,7 +143,7 @@ try {
     $sdkVersion = & $Dotnet --version
     Write-Host "SDK           : $sdkVersion  ($Dotnet)" -ForegroundColor DarkGray
     if ($sdkVersion -notlike '8.*') {
-        Write-Warning "Resolved SDK is $sdkVersion, not 8.x. net8.0-android$apiLevel.0 ref packs only ship with the .NET 8 android workload - expect CS0234 on Android.* namespaces."
+        Write-Warning "Resolved SDK is $sdkVersion, not 10.x. net10.0-android$apiLevel.0 ref packs only ship with the .NET 10 android workload - expect CS0234 on Android.* namespaces."
     }
     Write-Host "ANDROID_HOME  : $AndroidHome"
     Write-Host "JAVA_HOME     : $JavaHome"
@@ -170,7 +170,7 @@ try {
         '-nodeReuse:false'
         '--nologo'
         "-p:SolutionDir=$SolutionDir"
-        # Src\Directory.Build.targets drops the net8.0-android TFM when it cannot
+        # Src\Directory.Build.targets drops the net10.0-android TFM when it cannot
         # find the workload install marker. This script IS the android build, so
         # force the leg on and let MSBuild raise the real workload error if absent.
         '-p:IncludeAndroidTargets=true'

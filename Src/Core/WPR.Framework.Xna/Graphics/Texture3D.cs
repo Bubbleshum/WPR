@@ -60,6 +60,14 @@ namespace Microsoft.Xna.Framework.Graphics
 			LevelCount = mipMap ? CalculateMipLevels(width, height) : 1;
 			Format = format;
 
+			/* Volume textures are deliberately NOT put through TextureFormatShim: FNA3D's
+			 * OPENGL_GetTextureData3D already fails cleanly on every driver, OPENGL_CreateTexture3D
+			 * asserts on a capability GLES devices do not advertise, and no WP7 title in the
+			 * catalogue uses one — so a conversion here would only ever be dead code. Setting this
+			 * explicitly rather than leaving it at its default keeps the field honest for anything
+			 * that reads it. */
+			storageFormat = Format;
+
 			texture = XnaBackend.Graphics.CreateTexture3D(
 				GraphicsDevice.GLDevice,
 				Format,

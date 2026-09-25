@@ -25,12 +25,12 @@
     <CheckEolWorkloads>false</CheckEolWorkloads>
   </PropertyGroup>
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net8.0-android</TargetFrameworks>
+    <TargetFrameworks>net10.0;net10.0-android</TargetFrameworks>
     <CheckEolWorkloads>false</CheckEolWorkloads>
     <AssemblyName>WPR.Engine.Vibration</AssemblyName>
     <RootNamespace>WPR.Engine.Vibration</RootNamespace>
     <Nullable>enable</Nullable>
-    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net8.0-android'">21.0</SupportedOSPlatformVersion>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net10.0-android'">24.0</SupportedOSPlatformVersion>
   </PropertyGroup>
 
   <ItemGroup>

@@ -104,7 +104,18 @@ namespace WPR.SilverlightCompability
             yield return P("PhoneTouchTargetOverhang",  new Thickness(12));
             yield return P("PhoneHorizontalMargin",     new Thickness(12, 0, 12, 0));
             yield return P("PhoneVerticalMargin",       new Thickness(0, 12, 0, 12));
-            yield return P("PhoneBorderThickness",      3.0);
+            // These two are NOT the same type, and WP7's own ThemeResources.xaml is where that
+            // comes from: PhoneBorderThickness is a <Thickness> because it feeds
+            // Control.BorderThickness, while PhoneStrokeThickness is a <System:Double> because it
+            // feeds Shape.StrokeThickness. Storing both as a double reads as tidy and is wrong.
+            //
+            // A game does not discover the difference gently. Microsoft's own XNA advertising SDK
+            // does an UNBOXING cast — (Thickness?)Resources["PhoneBorderThickness"] — inside
+            // AdTextureSet's constructor, so a double there is an InvalidCastException out of
+            // AdGameComponent.LoadContent, i.e. out of GraphicsDeviceManager.CreateDevice, i.e.
+            // out of Game.Run before the first frame. The whole title dies at launch over a border
+            // width it was going to use to draw an ad banner. Measured on Funny Bounce.
+            yield return P("PhoneBorderThickness",      new Thickness(3));
             yield return P("PhoneStrokeThickness",      3.0);
             yield return P("PhoneTextBlockMargin",      new Thickness(0, 0, 0, 4));
             yield return P("PhoneTouchTargetLargeOverhang", new Thickness(12, 20, 12, 20));

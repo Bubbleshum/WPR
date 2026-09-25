@@ -552,7 +552,7 @@ namespace Microsoft.Xna.Framework.Content
 				else if (typeof(T) == typeof(Song))
 				{
 					// FIXME: Not using the stream! -flibit
-					result = new Song(modifiedAssetName);
+					result = new Song(modifiedAssetName, SongReader.AssetNameOf(assetName));
 				}
 				else if (typeof(T) == typeof(Video))
 				{

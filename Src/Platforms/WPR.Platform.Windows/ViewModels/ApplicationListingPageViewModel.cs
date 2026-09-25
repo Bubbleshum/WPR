@@ -19,6 +19,14 @@ using System.Diagnostics;
 
 namespace WPR.Platform.Windows.ViewModels
 {
+    /// <summary>The answer to the uninstall prompt.</summary>
+    public enum UninstallChoice
+    {
+        Cancel,
+        KeepSaveData,
+        DeleteSaveData,
+    }
+
     public class ApplicationListingPageViewModel : ViewModelBase
     {
         private string _SearchText;
@@ -42,6 +50,9 @@ namespace WPR.Platform.Windows.ViewModels
 
         public Interaction<Application, bool> DeleteExistingAppInteraction;
 
+        /// <summary>Asked before every uninstall: go ahead, and whether the saves go too.</summary>
+        public Interaction<Application, UninstallChoice> UninstallInteraction;
+
         public ReactiveCommand<ApplicationItemViewModel?, Unit> DeleteAppCommand;
 
         public ReactiveCommand<Unit, Unit> ShowInstallProgressCommand;
@@ -50,6 +61,7 @@ namespace WPR.Platform.Windows.ViewModels
         public event EventHandler<ApplicationItemViewModel>? EditRequested;
         public event EventHandler<ApplicationItemViewModel>? InfoRequested;
         public event EventHandler<ApplicationItemViewModel>? ControlsRequested;
+        public event EventHandler<ApplicationItemViewModel>? ClearDataRequested;
 
 
         public string SearchText
@@ -286,6 +298,7 @@ namespace WPR.Platform.Windows.ViewModels
                     appItem.EditRequested += OnAppEditRequested;
                     appItem.InfoRequested += OnAppInfoRequested;
                     appItem.ControlsRequested += OnAppControlsRequested;
+                    appItem.ClearDataRequested += OnAppClearDataRequested;
                 }
             }
             catch (Exception ex)
@@ -324,6 +337,12 @@ namespace WPR.Platform.Windows.ViewModels
         private void OnAppControlsRequested(object? sender, ApplicationItemViewModel appItem)
         {
             ControlsRequested?.Invoke(this, appItem);
+        }
+
+        private void OnAppClearDataRequested(object? sender, ApplicationItemViewModel appItem)
+        {
+            // The page owns the warning dialog.
+            ClearDataRequested?.Invoke(this, appItem);
         }
 
         private void OnAppEditRequested(object? sender, ApplicationItemViewModel appItem)
@@ -428,6 +447,7 @@ namespace WPR.Platform.Windows.ViewModels
             _SearchText = "";
             Applications = new ObservableCollection<ApplicationItemViewModel>();
             DeleteExistingAppInteraction = new Interaction<Application, bool>();
+            UninstallInteraction = new Interaction<Application, UninstallChoice>();
 
             // In ApplicationListingPageViewModel constructor
             var deleteEnabled = this.WhenAnyValue(x => x.ChoosenApp).Select(x => x != null && x.IsInstalled);
@@ -534,7 +554,30 @@ namespace WPR.Platform.Windows.ViewModels
                 // antivirus, etc.) and the user tried to reinstall, the extract would
                 // crash with "process cannot access the file." The installer retries
                 // through transient locks via GC.Collect + backoff.
+                UninstallChoice choice = await UninstallInteraction.Handle(app.Model);
+                if (choice == UninstallChoice.Cancel) return;
+
                 await ApplicationInstaller.UninstallAsync(app.Model);
+
+                // After the uninstall, so a failed uninstall never costs the player their saves.
+                // Saves are kept by default because a reinstall picks them straight back up; see
+                // PerGameIsolatedStorage.ClearGameData for why this also works for a game that
+                // never migrated off the shared store.
+                if (choice == UninstallChoice.DeleteSaveData && !string.IsNullOrEmpty(app.Model.ProductId))
+                {
+                    string installsRoot = Configuration.Current!.DataPath(Application.DataStoreFolder);
+                    string productId = app.Model.ProductId!;
+                    try
+                    {
+                        await Task.Run(() =>
+                            WPR.WindowsCompability.PerGameIsolatedStorage.ClearGameData(productId, installsRoot));
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Error(LogCategory.AppList, $"Uninstalled {app.Name} but could not delete its save data:\n{ex}");
+                    }
+                }
+
                 Applications.Remove(app);
                 UpdateApplications();
             }

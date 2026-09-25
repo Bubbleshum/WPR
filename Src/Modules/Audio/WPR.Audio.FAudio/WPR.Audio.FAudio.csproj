@@ -19,7 +19,7 @@
     library resolution on every platform that needs a mapping. That makes this project a legitimate
     backend referrer, and it is listed as one in BackendIsolationTests.AllowedReferrers.
 
-    TFMs: net8.0 + net8.0-android (stripped when the android workload is absent — see
+    TFMs: net8.0 + net10.0-android (stripped when the android workload is absent — see
     Src/Directory.Build.targets). The android leg is not cosmetic: FAudioSoundBackend asks for
     FAUDIO_1024_QUANTUM under __ANDROID__, which is the mix-quantum headroom a phone's non-realtime
     audio callback needs. No -windows leg is required — nothing here touches Windows APIs, and
@@ -30,7 +30,7 @@
     <CheckEolWorkloads>false</CheckEolWorkloads>
   </PropertyGroup>
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net8.0-android</TargetFrameworks>
+    <TargetFrameworks>net10.0;net10.0-android</TargetFrameworks>
     <CheckEolWorkloads>false</CheckEolWorkloads>
     <AssemblyName>WPR.Audio.FAudio</AssemblyName>
     <RootNamespace>WPR.Audio.FAudio</RootNamespace>
@@ -38,7 +38,7 @@
     <!-- The reverb effect chain (FAudioSoundBackend.AttachReverb) and FACT's notification /
          renderer-enumeration structs are built with pointer code, as they were inside FNA. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net8.0-android'">21.0</SupportedOSPlatformVersion>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net10.0-android'">24.0</SupportedOSPlatformVersion>
   </PropertyGroup>
 
   <ItemGroup>

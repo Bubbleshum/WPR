@@ -14,6 +14,28 @@ namespace WPR.Platform.Windows.Views
     {
         private MainViewNavigator _Navigator;
 
+        /// <summary>
+        /// Whether a title recorded as Silverlight is really a Silverlight/XNA mixed-mode app,
+        /// and so belongs on the XNA host. Any failure answers false, which lands the title on
+        /// the Silverlight host — the behaviour it had before this existed.
+        /// </summary>
+        private static bool IsMixedMode(WPR.Models.Application app)
+        {
+            try
+            {
+                string installFolder = System.IO.Path.Combine(
+                    Configuration.Current!.DataPath(WPR.Models.Application.DataStoreFolder),
+                    app.ProductId!);
+                return WPR.MixedModeDetection.IsMixedMode(
+                    installFolder, app.Assembly, msg => Log.Info(LogCategory.AppList, msg));
+            }
+            catch (Exception ex)
+            {
+                Log.Warn(LogCategory.AppList, $"mixed-mode probe threw: {ex.Message}");
+                return false;
+            }
+        }
+
         public MainWindowDesktop()
         {
             InitializeComponent();
@@ -77,7 +99,20 @@ namespace WPR.Platform.Windows.Views
                     // they fall through to the Silverlight / XNA hosts below.
                     if (!await UnityPortLauncher.TryLaunchAsync(args.Target))
                     {
-                        if (args.Target.ApplicationType == ApplicationType.Silverlight)
+                        // A Silverlight/XNA MIXED-MODE title declares RuntimeType="Silverlight"
+                        // in its manifest and is recorded as ApplicationType.Silverlight, but it
+                        // has no Silverlight UI to host: its page is empty and the game draws
+                        // into it through a SharedGraphicsDeviceManager. Sending one to the
+                        // Silverlight host fails at the first navigation, which is what all ten
+                        // of them did here until 2026-09-23.
+                        //
+                        // Android never had this bug because it has no Silverlight host at all —
+                        // every title goes to FnaGameHost and ApplicationLaunch's own mixed-mode
+                        // gate picks MixedModeGame. This is the desktop's equivalent of that
+                        // gate, and it deliberately asks the SAME detector rather than a second
+                        // rule, so the two heads cannot disagree about what a game is.
+                        if (args.Target.ApplicationType == ApplicationType.Silverlight &&
+                            !IsMixedMode(args.Target))
                         {
                             await SilverlightLauncher.LaunchAsync(args.Target);
                         }
