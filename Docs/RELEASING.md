@@ -18,11 +18,11 @@ only** — Actions → *Release* → *Run workflow*.
 | Artifact | What |
 | --- | --- |
 | `WPR-Setup-<version>.exe` | Windows x64 — a self-contained publish wrapped in an Inno Setup installer, so users need no .NET install |
-| `WPR-<version>.apk` | Android — API 21+, arm64-v8a / x86_64 |
+| `WPR-<version>.apk` | Android 7.0+ (API 24), arm64-v8a / x86_64 |
 
 The Windows leg publishes self-contained `win-x64`, stages the pre-made database,
 then compiles [`Packaging/windows/WPR.iss`](../Packaging/windows/WPR.iss). The
-Android leg runs on Linux with the .NET Android workload and API 34 platform
+Android leg runs on Linux with the .NET Android workload and API 36 platform
 installed on the runner.
 
 
@@ -68,6 +68,24 @@ The `release` job checks out with `fetch-depth: 0` — the default shallow fetch
 empty changelog — and checkout runs **before** `download-artifact`, because checkout cleans the
 workspace and would otherwise delete the built artifacts.
 
+> **Every release up to 0.1.05 republished the entire history, and this is why.** The previous tag
+> was found with `git tag --list 'v*' --sort=-v:refname | head -1`. This repo's tags are
+> zero-padded — `v0.1.01` … `v0.1.05` — beside an unpadded `v0.1.0`, and git's version sort ranks
+> **the unpadded one highest**:
+>
+> ```
+> $ git tag --list 'v*' --sort=-v:refname
+> v0.1.0        <- "the previous release", according to that sort
+> v0.1.05
+> v0.1.04
+> ```
+>
+> So the range was always `v0.1.0..HEAD`. Measured on this repo at 0.1.06: **31 commits** the old
+> way, **2** the right way. It now uses `git describe --tags --abbrev=0 --match 'v*' HEAD`, which
+> answers by topology rather than by name and cannot be fooled by the padding, with
+> `--sort=-creatordate` as a fallback. The step prints the tag it chose — check that line first if
+> a release page ever looks too long again.
+
 To get better notes, write commit subjects as `feat: …`, `fix: …` or `chore: …`.
 
 ### Curated highlights (optional, recommended for big releases)
@@ -79,6 +97,30 @@ generated list — nothing breaks.
 
 So for a significant release: write `Docs/ReleaseNotes/0.2.0.md` before dispatching. See
 [`Docs/ReleaseNotes/0.1.0.md`](ReleaseNotes/0.1.0.md) for the shape.
+
+#### Two files, and only one of them ships — the convention from 0.1.06 onwards
+
+**Every release from 0.1.06 on gets two notes files.** `<version>.md` is pasted into the release
+body **whole**, so it has to stay short — a couple of paragraphs, the summary table, and the
+upgrade box. A release page nobody scrolls to the end of is a release page nobody reads.
+
+The long account goes beside it as **`<version>-full.md`**, which the workflow deliberately never
+reads. Write it as freely as the work deserves: what each change actually was, why it happened,
+what is still missing. The short notes link to it **on the tag**, so the link keeps working after
+`main` moves on:
+
+```markdown
+📖 **[Full release notes](https://github.com/Bubbleshum/WPR/blob/v0.1.06/Docs/ReleaseNotes/0.1.06-full.md)**
+```
+
+0.1.06 is the worked example — **73 lines** on the release page, **625** in the full version.
+0.1.05 and earlier are a single file each, which is why those release pages run for pages; leave
+them as they are rather than retro-splitting.
+
+**Both files cover only what changed since the previous release.** The generated list does that by
+construction now (see the tag note above); the hand-written ones are on you. Before dispatching,
+read the previous version's notes and delete anything you have restated — a fix that shipped last
+time reads as new, and it makes the genuinely new things harder to find.
 
 #### Write them as you go, not at the end
 

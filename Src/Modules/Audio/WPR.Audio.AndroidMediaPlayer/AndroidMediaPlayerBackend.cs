@@ -106,6 +106,14 @@ namespace WPR.Audio.AndroidMediaPlayer
         /// </summary>
         private int _pausedPositionMs = -1;
 
+        /// <summary>
+        /// True between the game's own <see cref="PauseSong"/> and the next resume, play or stop.
+        /// <see cref="_pausedPositionMs"/> cannot answer this: it is deliberately left set after a
+        /// resume. Read by <see cref="HasRunOutLocked"/> so a paused song is never mistaken for a
+        /// finished one.
+        /// </summary>
+        private bool _callerPaused;
+
         #region Song playback
 
         public void SongInit()
@@ -132,6 +140,7 @@ namespace WPR.Audio.AndroidMediaPlayer
             {
                 DisposePlayerLocked();
                 _ended = false;
+                _callerPaused = false;
                 _fileName = fileName;
                 _pausedPositionMs = -1;
 
@@ -245,8 +254,7 @@ namespace WPR.Audio.AndroidMediaPlayer
                  * is otherwise indistinguishable from the game stopping its own music: both end up
                  * as StopSong from the XNA queue. See SuspendForBackground. */
                 WPR.Common.Log.Info(WPR.Common.LogCategory.AppAudioConverter,
-                    $"[wpr-media] song reported ended (suspended={_suspendedByHost})");
-            }
+                    $"[wpr-media] song reported ended (suspended={_suspendedByHost})");            }
         }
 
         /// <summary>
@@ -281,12 +289,23 @@ namespace WPR.Audio.AndroidMediaPlayer
                     return;
                 }
 
+                _callerPaused = true;
+
                 try
                 {
                     /* Capture the offset while the player is certainly still valid. Pause() itself
                      * preserves the position — this is purely the restore point for the rebuild in
                      * ResumeSong, for the case where the player does NOT survive. */
                     _pausedPositionMs = player.CurrentPosition;
+
+                    /* The game has now paused this song itself, so it is no longer ours to restore.
+                     * The usual order on backgrounding is OnPause -> SuspendForBackground (claims the
+                     * playing song) and only THEN the game's Deactivated handler pausing it — so
+                     * without this, RestoreFromForeground restarted music under the game's own pause
+                     * menu while XNA still reported Paused, and MediaPlayer.Update (which only
+                     * advances a Playing song) then left a finished track silent until unpause.
+                     * Sonic 4 Episode I does exactly this. The game's own Resume starts it again. */
+                    _suspendedByHost = false;
 
                     if (player.IsPlaying)
                     {
@@ -320,6 +339,8 @@ namespace WPR.Audio.AndroidMediaPlayer
         {
             lock (_gate)
             {
+                _callerPaused = false;
+
                 global::Android.Media.MediaPlayer? player = _player;
                 if (player != null)
                 {
@@ -398,6 +419,7 @@ namespace WPR.Audio.AndroidMediaPlayer
                 _fileName = null;
                 _pausedPositionMs = -1;
                 _suspendedByHost = false;
+                _callerPaused = false;
             }
         }
 
@@ -421,7 +443,55 @@ namespace WPR.Audio.AndroidMediaPlayer
         {
             lock (_gate)
             {
+                if (!_ended && HasRunOutLocked())
+                {
+                    /* The Completion callback never arrived for a track that has visibly finished. */
+                    _ended = true;
+                }
+
                 return _ended;
+            }
+        }
+
+        /// <summary>
+        /// Whether the current player has stopped at the end of its track, read straight off the
+        /// player rather than waiting for <see cref="OnCompletion"/>.
+        /// </summary>
+        /// <remarks>
+        /// <para>Completion is delivered on the Looper of the thread that <em>created</em> the player
+        /// — the game thread — falling back to the main Looper only when that thread has none. If
+        /// anything ever prepares a Looper on the game thread without looping it, every callback
+        /// queues there for ever. Reported against Sonic 4 Episode I on a Galaxy S24 running 0.1.06:
+        /// the level track (<c>IsRepeating</c>) played once and never came back, on a clean run. The
+        /// identical APK and install repeat correctly on the emulator, so the callback is the one
+        /// moving part left. With this poll the XNA queue advances either way.</para>
+        ///
+        /// <para>Deliberately narrow, because a false positive restarts or skips music: not while
+        /// the game has paused the song, not while the host is holding it silent in the background,
+        /// and only within a quarter-second of the reported duration.</para>
+        /// </remarks>
+        private bool HasRunOutLocked()
+        {
+            global::Android.Media.MediaPlayer? player = _player;
+            if (player == null || _callerPaused || _suspendedByHost || _hostBackgrounded)
+            {
+                return false;
+            }
+
+            try
+            {
+                if (player.IsPlaying)
+                {
+                    return false;
+                }
+
+                int duration = player.Duration;
+                return duration > 0 && player.CurrentPosition >= duration - 250;
+            }
+            catch (Exception)
+            {
+                /* A player in its Error state throws here; OnError owns that case. */
+                return false;
             }
         }
 

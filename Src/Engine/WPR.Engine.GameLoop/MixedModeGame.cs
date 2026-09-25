@@ -73,6 +73,8 @@ namespace WPR
         private int _pageRendererHeight;
         private SpriteBatch? _pageBatch;
         private bool _compositeFailed;
+        private int _compositingBranchReported;
+        private bool _hostCompositesPage;
 
         // Silverlight touch routing state — see PumpSilverlightTouch.
         private bool _touchDown;
@@ -513,23 +515,66 @@ namespace WPR
 
             // Inside the host's BeginDraw/EndDraw, which is the only point at which the page's
             // Draw handler may touch the device. See GameTimer's class remarks.
+            UIElementRenderer.BeginHostFrame();
+            int drawnBefore = GraphicsDevice.WprDrawCallsThisFrame;
             GameTimer.PumpDraw(gameTime.ElapsedGameTime);
+            bool gamePaintedTheFrame = GraphicsDevice.WprDrawCallsThisFrame != drawnBefore;
 
-            // A page that registered no Draw handler is not drawing itself — on the phone the
-            // Silverlight compositor drew it. Nothing else will here, so do it.
-            if (!GameTimer.AnyDrawSubscriber) CompositeSilverlightPage();
+            // Two ways the page is already accounted for, and NEITHER may be composited over.
+            UIElement? root = _layoutRoot;
+            bool gameRasterisedIt = UIElementRenderer.GameCompositedThisFrame(root);
+            bool hostDraws = !gameRasterisedIt && !gamePaintedTheFrame;
+
+            ReportCompositingBranch(gameRasterisedIt, gamePaintedTheFrame);
+
+            // Latched for PumpSilverlightTouch, which runs in Update and so cannot ask the
+            // question itself: whoever presents the page owns its input.
+            _hostCompositesPage = hostDraws;
+            if (hostDraws) CompositeSilverlightPage();
+        }
+
+        /// <summary>
+        /// Says once, per change of answer, who is drawing the page and whether anything is
+        /// underneath it.
+        /// </summary>
+        /// <remarks>
+        /// The branches are indistinguishable from outside and they fail the same way — a black
+        /// screen with a clean log. Without this line, "the game draws the page and its handler
+        /// drew nothing" and "the host composited the page and the rasteriser drew nothing" are
+        /// the same observation, and they have nothing in common as bugs.
+        /// <para>Reported on change rather than once, because the answer is a property of the
+        /// current PAGE: a title whose menu is plain Silverlight and whose board is XNA flips it
+        /// on every navigation, and that transition is exactly what is worth seeing.</para>
+        /// </remarks>
+        private void ReportCompositingBranch(bool gameRasterisedIt, bool gamePaintedTheFrame)
+        {
+            int state = (gameRasterisedIt ? 1 : 0) | (gamePaintedTheFrame ? 2 : 0);
+            if (_compositingBranchReported == state + 1) return;
+            _compositingBranchReported = state + 1;
+
+            _trace(gameRasterisedIt
+                ? "[wpr-mixed] the game rasterises this page itself — not compositing."
+                : gamePaintedTheFrame
+                    ? "[wpr-mixed] the game painted this frame — not compositing."
+                    : "[wpr-mixed] nothing else painted this frame — compositing the page.");
         }
 
         /// <summary>
         /// Feeds <c>TouchPanel</c> samples into the current Silverlight page as routed input.
         /// </summary>
         /// <remarks>
-        /// <para><b>Only for a page this host draws</b> — the same
-        /// <c>GameTimer.AnyDrawSubscriber</c> test that decides compositing. A page with its own
-        /// Draw handler reads <c>TouchPanel</c> itself, and also routing those samples into its
-        /// visual tree would deliver every tap twice: once to the game and once to whatever
-        /// Silverlight element happened to be underneath, which on a game board is not nothing.
-        /// Pages the game draws keep exactly the input behaviour they had.</para>
+        /// <para><b>Only for a page this host composited</b>, which is the same decision Draw
+        /// made and is latched from it. A page the GAME rasterises reads <c>TouchPanel</c> itself,
+        /// and also routing those samples into its visual tree would deliver every tap twice: once
+        /// to the game and once to whatever Silverlight element happened to be underneath, which
+        /// on a game board is not nothing. Pages the game draws keep the input behaviour they had.
+        /// </para>
+        ///
+        /// <para><b>Presentation and input must not be decided by different tests.</b> They were
+        /// briefly: compositing moved to asking whether the game rasterised the tree while this
+        /// still asked whether any timer had a Draw handler, which would have left Galactic
+        /// Reign's menu visible and dead to the touch — the worst of both answers, and one that
+        /// reads as a hit-testing bug rather than a gating one.</para>
         ///
         /// <para><b>No coordinate conversion, and that is a fact rather than an omission.</b>
         /// <c>TouchPanel</c> reports in backbuffer pixels, the page is laid out to the backbuffer
@@ -542,7 +587,7 @@ namespace WPR
         /// </remarks>
         private void PumpSilverlightTouch()
         {
-            if (GameTimer.AnyDrawSubscriber) return;
+            if (!_hostCompositesPage) return;
 
             UIElement? root = _layoutRoot;
             if (root == null) return;
@@ -615,21 +660,36 @@ namespace WPR
         }
 
         /// <summary>
-        /// Rasterises the current Silverlight page and blits it over the whole screen.
+        /// Rasterises the current Silverlight page and blits it over the frame, as the phone's
+        /// compositor did.
         /// </summary>
         /// <remarks>
-        /// <para><b>Only for a page the game does not draw itself</b> — see
-        /// <c>GameTimer.AnyDrawSubscriber</c>. A mixed-mode title is not uniformly XNA:
-        /// Carcassonne paints its board from <c>IngamePage</c>'s own <c>GameTimer</c> and
-        /// <c>UIElementRenderer</c>, but its <c>MainMenu</c> is plain Silverlight with no XNA in
-        /// it at all. Until this existed that menu was a black screen with a clean log —
-        /// everything constructed, navigated and laid out, and nothing ever asked to draw it.</para>
+        /// <para><b>Only for a frame NOBODY ELSE PAINTED.</b> Two things can already have
+        /// accounted for the page, and neither may be drawn over: the game may have rasterised
+        /// this very tree itself (<c>UIElementRenderer.GameCompositedThisFrame</c>), or it may
+        /// have painted a scene of its own, which on WP7 is the layer the page sits above and
+        /// here is simply the frame. Both leave this out of it.</para>
         ///
-        /// <para><b>Full-screen and opaque-cleared, unlike the overlay a game composites
-        /// itself.</b> Here the page IS the frame, so there is nothing underneath to preserve; the
-        /// rasteriser deliberately paints no page backdrop (it is normally composited over a
-        /// game's scene), so without the clear a page would show whatever the previous frame
-        /// left.</para>
+        /// <para><b>Do not widen that to "composite whenever the game did not rasterise it".</b>
+        /// WP7's compositor really did put the page over the game's scene every frame, so it
+        /// looks like the faithful rule — and it was tried, on 2026-09-25, and it broke titles
+        /// that had been correct: Sonic lost its sprites and Cut the Rope lost its finger,
+        /// because a page that WP7 would have shown as a transparent sheet is, through this
+        /// rasteriser, a full-screen blit whose painted parts hide the game beneath. Faithful
+        /// compositing needs the page to be faithful first. Until then the host draws the page
+        /// only when the alternative is an empty screen.</para>
+        ///
+        /// <para><b>Testing "did the game draw" rather than "does a timer have a Draw handler"</b>
+        /// is what lets Galactic Reign's menu appear. Its <c>GameTimer</c> lives on a
+        /// process-lifetime <c>RenderManager</c> that subscribes Draw and starts in its
+        /// constructor, so the handler test answers "the page draws itself" on every page of the
+        /// game forever — while <c>RenderManager.Draw</c> returns immediately unless its own
+        /// unrelated <c>IsRunning</c> flag is set. Nine of the ten mixed-mode titles subscribe
+        /// from a page constructor, which is why that proxy held for so long.</para>
+        ///
+        /// <para><b>Cleared first, because here the page IS the frame.</b> The rasteriser
+        /// deliberately paints no page backdrop — it is normally composited over a game's scene —
+        /// so without the clear a page would show whatever the previous frame left.</para>
         ///
         /// <para>The renderer is rebuilt only when the page or the backbuffer size changes.
         /// <c>UIElementRenderer.Render</c> is itself gated on a signature of the tree, so a static

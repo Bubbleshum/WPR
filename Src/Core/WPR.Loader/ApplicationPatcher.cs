@@ -280,7 +280,18 @@ namespace WPR
         //
         // Not identity-binding (a v36 install launches; it just fails the pages that use one) and
         // no IL body is rewritten, so --repatch-installed is enough and nothing needs a reinstall.
-        public static int Version => 37;
+        // Bumped to 38: every IsolatedStorageFile.GetUserStoreForApplication() call site now goes
+        // to SharedIsolatedStorage.GetUserStoreForApplication, which hands each game its own store
+        // (PerGameIsolatedStorage) instead of the one the BCL keys on the host exe. Before this,
+        // every game shared a store and same-named files collided: Fragger, Monster Island and
+        // iStunt 2 write $_StatesAfterExitData_$\DLCManager in a shape Gravity Guy
+        // (4f930d12-2350-4c01-91e8-f46b8bd1d884) cannot read, and playing any of them once left
+        // Gravity Guy drawing nothing on every later launch.
+        //
+        // Existing saves are copied into each installed game's new store on its first launch, so
+        // nothing is lost. Not identity-binding (a v37 install launches, still on the shared store),
+        // so --repatch-installed is enough; Android repatches on next launch.
+        public static int Version => 38;
 
         private AssemblyNameReference FnaBackendRef;
         private AssemblyNameReference FNARef;
@@ -3246,12 +3257,17 @@ namespace WPR
                         if (ins.Operand is not MethodReference callee
                             || callee.DeclaringType == null
                             || callee.DeclaringType.FullName != StoreTypeName
-                            || !IsolatedStorageRedirects.Contains(callee.Name))
+                            || !(callee.HasThis
+                                ? IsolatedStorageRedirects.Contains(callee.Name)
+                                : IsolatedStorageStaticRedirects.Contains(callee.Name)))
                         {
                             continue;
                         }
 
-                        string key = callee.Name + "/" + callee.Parameters.Count;
+                        // A static keeps its own arity; an instance call gains the store as
+                        // argument zero.
+                        int shimArity = callee.Parameters.Count + (callee.HasThis ? 1 : 0);
+                        string key = callee.Name + "/" + shimArity;
                         if (!imported.TryGetValue(key, out MethodReference? target))
                         {
                             // The shim's signature is the instance one with the store prepended.
@@ -3263,7 +3279,7 @@ namespace WPR
                                     .GetMethods(System.Reflection.BindingFlags.Public
                                         | System.Reflection.BindingFlags.Static)
                                     .FirstOrDefault(m => m.Name == callee.Name
-                                        && m.GetParameters().Length == callee.Parameters.Count + 1);
+                                        && m.GetParameters().Length == shimArity);
 
                             target = shim == null ? null : module.ImportReference(shim);
                             imported[key] = target;
@@ -3304,8 +3320,8 @@ namespace WPR
         /// reason they are listed: a WP7 title may spell any of them with a Windows separator, and
         /// on Android that is an ordinary filename character.
         ///
-        /// <para><c>GetUserStoreForApplication</c> is absent because it is static and takes no
-        /// path; the parameterless <c>GetFileNames()</c> / <c>GetDirectoryNames()</c> overloads
+        /// <para><c>GetUserStoreForApplication</c> is not here because it is static — see
+        /// <see cref="IsolatedStorageStaticRedirects"/>. The parameterless <c>GetFileNames()</c> / <c>GetDirectoryNames()</c> overloads
         /// are reached by name but find no shim (there is nothing to normalise) and are left alone
         /// — see the note on <c>SharedIsolatedStorage</c>.</para>
         /// </summary>
@@ -3327,6 +3343,19 @@ namespace WPR
                 "GetCreationTime",
                 "GetLastAccessTime",
                 "GetLastWriteTime",
+            };
+
+        /// <summary>
+        /// The static <c>IsolatedStorageFile</c> members whose call sites are redirected (v38).
+        /// <c>GetUserStoreForApplication</c> is how a WP7 title obtains its store, and the BCL
+        /// answers it with ONE store for the whole host, so every game shared it and titles with
+        /// a common filename overwrote each other — see <c>PerGameIsolatedStorage</c>. It is the
+        /// only store accessor WP7 exposed, so it is the only one listed.
+        /// </summary>
+        private static readonly HashSet<string> IsolatedStorageStaticRedirects =
+            new HashSet<string>(StringComparer.Ordinal)
+            {
+                "GetUserStoreForApplication",
             };
 
         /// <summary>

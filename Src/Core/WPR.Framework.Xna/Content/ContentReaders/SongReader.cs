@@ -31,6 +31,22 @@ namespace Microsoft.Xna.Framework.Content
 			return Normalize(fileName, supportedExtensions);
 		}
 
+		/// <summary>
+		/// What XNA reports as <see cref="Song.Name"/> for a content-loaded song: the asset name the
+		/// game passed to <c>Load</c>, with XNA's cleaned-path separator (<c>\</c>).
+		/// </summary>
+		/// <remarks>
+		/// FNA left this null, and games key on it. Sonic 4 Episode I's <c>MediaStateChanged</c>
+		/// handler matches <c>MediaPlayer.Queue.ActiveSong.Name</c> against <c>"Sound\\" + file</c>
+		/// (it loads with <c>"Sound/" + file</c>, so the backslash is XNA's normalisation, not the
+		/// game's) and does nothing when it is null — so a non-repeating track ending (the 1-up
+		/// jingle, the speed-shoes track) was never noticed and the level music never came back.
+		/// </remarks>
+		internal static string AssetNameOf(string assetName)
+		{
+			return assetName?.Replace('/', '\\');
+		}
+
 		#endregion
 
 		#region Protected Read Method
@@ -56,7 +72,7 @@ namespace Microsoft.Xna.Framework.Content
 
 			int durationMs = input.ReadInt32();
 
-			return new Song(path, durationMs);
+			return new Song(path, durationMs, AssetNameOf(input.AssetName));
 		}
 
 		#endregion

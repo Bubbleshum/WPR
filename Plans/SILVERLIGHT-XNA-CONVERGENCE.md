@@ -1,6 +1,29 @@
 # Collapsing the Silverlight host into the XNA host
 
-**Status:** Plan. Nothing here is built. Stage A is work that is already owed for two titles
+**Status (2026-09-25): Stages A and B are built.** Gaps 1, 2, 3 and 5 are done; gap 4 turned out
+not to be needed (see below). Stage C has not started and is still gated on the
+`IBackgroundRenderer` decision in §5. What each stage actually delivered, and where it stopped:
+
+| | exit criterion | result |
+|---|---|---|
+| **A** | Carcassonne and Galactic Reign render their menus on Windows **and** Android, with an empty `[wpr-uirender]` list | **Carcassonne: met on both heads.** Galactic Reign renders its page — background, logo, layout, on both heads — but its menu *buttons* are blank: their visuals live in a `ControlTemplate`, which is **gap 6**, excluded from this stage by §3. The unsupported list is empty across **all ten** installed mixed-mode titles. |
+| **B** | a mixed-mode title's Silverlight UI takes taps and drags on both heads | **Met.** Carcassonne: tap *New Game* → *Set up game*, verified on Windows and on Android (API 36). Drags and flicks are asserted by `scratchpad/scrollprobe`. |
+
+**Gap 4 was measured away, not skipped.** The plan expected a mechanical port of the WP control
+chrome the Avalonia renderer draws — Button, ProgressBar, ToggleSwitch, Panorama, PanoramaItem.
+Across all ten mixed-mode titles, **not one of them is ever reported unsupported**: these titles
+style their own controls rather than relying on the system chrome. Port it when a title asks for
+it; the `[wpr-uirender]` line is what will ask.
+
+**What Stage A actually cost that the plan did not predict:** rotation and skew (gap 2's hard
+half, done by rendering upright into an offscreen buffer and resampling), and a correction to
+*who draws a mixed-mode page at all* — the host's `GameTimer.AnyDrawSubscriber` test is a proxy
+that Galactic Reign defeats, and replacing it with "did anything actually paint this frame" is
+what let that title draw. Both are written up in CLAUDE.md.
+
+---
+
+**Original plan follows.** Stage A is work that is already owed for two titles
 regardless of whether the rest is ever done.
 
 **Verdict:** The two hosts should become one, and the reason is not tidiness — **the line WPR
@@ -94,7 +117,7 @@ Two further facts that make the remaining work smaller than it looks:
 | 1 | **Text rendering** | **the one hard dependency** | 7 of the 8 titles above |
 | 2 | `RenderTransform`, `Projection`, clip, opacity layers | moderate | Minesweeper, Carcassonne, Galactic Reign, Flowerz |
 | 3 | Gradients, `Path`/`Ellipse` geometry, `Popup` | moderate | Flowerz, Minesweeper, Carcassonne |
-| 4 | WP control chrome the Avalonia renderer already draws — Button, ProgressBar, ToggleSwitch, Panorama, PanoramaItem | mechanical port | Silverlight titles generally |
+| 4 | WP control chrome the Avalonia renderer already draws — Button, ProgressBar, ToggleSwitch, Panorama, PanoramaItem | mechanical port | **nothing measured so far** — see the status table |
 | 5 | Input: `TouchPanel` -> Silverlight routed events + `GestureListener` | mechanical | all |
 | 6 | `ControlTemplate` / `DataTemplate` / `VisualStateManager` / `Binding` / virtualising `ListBox` | large | Minesweeper, Carcassonne, Galactic Reign |
 

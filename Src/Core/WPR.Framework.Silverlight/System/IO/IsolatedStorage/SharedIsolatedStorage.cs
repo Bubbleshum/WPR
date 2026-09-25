@@ -40,6 +40,10 @@ namespace WPR.WindowsCompability
     ///   character, so the call silently addresses something that does not exist. Every path and
     ///   search pattern therefore goes through <see cref="ContentPaths.Normalize"/> first — a
     ///   no-op on Windows, so the desktop head is unchanged.</item>
+    ///
+    ///   <item><b>One store per game</b> (patcher v38), which applies to acquiring the store only.
+    ///   The BCL gives the whole host one store; <see cref="PerGameIsolatedStorage"/> carries the
+    ///   account, the save migration, and the game it was found on.</item>
     /// </list>
     ///
     /// <para>The two reasons are independent: v20 needed only the opening members and was never
@@ -84,6 +88,17 @@ namespace WPR.WindowsCompability
     /// </summary>
     public static class SharedIsolatedStorage
     {
+        // ---- acquiring the store: one per game (v38) -------------------------------------------
+
+        /// <summary>
+        /// Stands in for the static <see cref="IsolatedStorageFile.GetUserStoreForApplication"/>,
+        /// whose BCL answer is one store shared by every game the host runs. See
+        /// <see cref="PerGameIsolatedStorage"/>. The patcher matches statics by equal arity, so
+        /// this cannot collide with the instance shims below, which take the store first.
+        /// </summary>
+        public static IsolatedStorageFile GetUserStoreForApplication()
+            => PerGameIsolatedStorage.GetUserStoreForApplication();
+
         // ---- opening: share mode widened (v20), and the path normalised by the stream shim -----
 
         public static IsolatedStorageFileStream OpenFile(

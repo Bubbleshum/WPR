@@ -21,10 +21,10 @@ Publishing a release is covered separately in [RELEASING.md](RELEASING.md).
 
 | Needed | For | Notes |
 | --- | --- | --- |
-| **.NET SDK 8.0** | everything | `global.json` pins the build to the **8.0** feature band (`rollForward: latestFeature`), so any `8.0.1xx`+ SDK works. A machine with only .NET 9/10 will not build this repo. [Download](https://dotnet.microsoft.com/download/dotnet/8.0). |
-| **Windows 10 1809 (build 17763) or newer** | the desktop app | The desktop TFM is `net8.0-windows10.0.17763.0`. No Windows SDK install is needed — the ref pack comes from NuGet. |
+| **.NET SDK 10.0** | everything | `global.json` pins the build to the **10.0** feature band (`rollForward: latestFeature`), so any `10.0.1xx`+ SDK works. A machine with only .NET 8 will not build this repo. [Download](https://dotnet.microsoft.com/download/dotnet/10.0). |
+| **Windows 10 1809 (build 17763) or newer** | the desktop app | The desktop TFM is `net10.0-windows10.0.17763.0`. No Windows SDK install is needed — the ref pack comes from NuGet. |
 | Rider 2023.3+ / Visual Studio 2022 17.8+ | IDE workflow | Optional; the CLI build below is enough. |
-| .NET **Android workload**, JDK 17+, Android SDK **API 34** | the Android APK **only** | Skip all of this if you only care about desktop — see [Building without the Android workload](#building-without-the-android-workload). |
+| .NET **Android workload**, JDK 17+, Android SDK **API 36** | the Android APK **only** | Skip all of this if you only care about desktop — see [Building without the Android workload](#building-without-the-android-workload). |
 
 Everything else the app needs at runtime — `SDL2.dll`, `FNA3D.dll`, `FAudio.dll`,
 `FNWP72.dll`, `ffmpeg.exe`, the prebuilt SQLite databases, the vendored
@@ -40,7 +40,7 @@ dotnet build Src/Platforms/WPR.Platform.Windows/WPR.Platform.Windows.csproj -c D
 ```
 
 The exe lands in
-`Src/Platforms/WPR.Platform.Windows/bin/Debug/net8.0-windows10.0.17763.0/WPR.Platform.Windows.exe`.
+`Src/Platforms/WPR.Platform.Windows/bin/Debug/net10.0-windows10.0.17763.0/WPR.Platform.Windows.exe`.
 
 Or use the packaging script, which publishes into `Artifacts/` and can launch it
 for you:
@@ -65,12 +65,12 @@ To verify a small edit on a leaf project:
 
 ```pwsh
 dotnet build <project>.csproj -c Debug `
-    -f net8.0-windows10.0.17763.0 `
+    -f net10.0-windows10.0.17763.0 `
     -maxcpucount:1 -nodeReuse:false --nologo `
     -p:SolutionDir=<repo>/Src/
 ```
 
-- `-f net8.0-windows10.0.17763.0` pins the desktop leg and skips the Android one.
+- `-f net10.0-windows10.0.17763.0` pins the desktop leg and skips the Android one.
 - `-maxcpucount:1 -nodeReuse:false` avoids an MSBuild `CS0006`
   "metadata file not found" race that hits in the default parallel settings.
 - `-p:SolutionDir=<repo>/Src/` — **forward slashes and a trailing slash**. Many
@@ -114,25 +114,26 @@ workload (next section). Use `build-desktop.ps1` if you want to force it.
 
 ## Building without the Android workload
 
-Fourteen projects in this repo carry a `net8.0-android` target framework, twelve
-of them alongside a desktop TFM — and MSBuild builds *every* TFM of a project
-reference. Left alone that means a clone with a plain .NET 8 SDK cannot build the
-desktop app at all: the Android leg fails with `NETSDK1147: the following
-workloads must be installed: android` and takes the whole build down with it.
+Thirty-two projects in this repo carry a `net10.0-android` target framework,
+twenty-one of them alongside a desktop TFM — and MSBuild builds *every* TFM of a
+project reference. Left alone that means a clone without the Android workload
+cannot build the desktop app at all: the Android leg fails with `NETSDK1147: the
+following workloads must be installed: android` and takes the whole build down
+with it.
 
 [`Src/Directory.Build.targets`](../Src/Directory.Build.targets) fixes that. It
-checks for the API-34 **reference pack**
-(`<dotnet-root>/packs/Microsoft.Android.Ref.34`, installed by
+checks for the API-36 **reference pack**
+(`<dotnet-root>/packs/Microsoft.Android.Ref.36`, installed by
 `dotnet workload install android`) and, when it isn't there, strips `*-android`
 out of `$(TargetFrameworks)` repo-wide. Desktop contributors need nothing beyond
-the .NET 8 SDK; machines that *do* have the workload build exactly as before.
+the .NET 10 SDK; machines that *do* have the workload build exactly as before.
 
-> The check deliberately tests for `Microsoft.Android.Ref.34` specifically rather
+> The check deliberately tests for `Microsoft.Android.Ref.36` specifically rather
 > than globbing `Microsoft.Android.Sdk.*`. Workload installs land in whichever SDK
 > band resolves at the time, and bands don't share packs — a glob happily reports
-> "installed" from a .NET 10 band install while the 8.0 band has nothing, and then
-> every Android leg fails `NETSDK1147` for real. The comments in that file spell
-> out the two traps in more detail; read them before editing it.
+> "installed" from a different band's install while the one this repo builds with
+> has nothing, and then every Android leg fails `NETSDK1147` for real. The comments
+> in that file spell out the two traps in more detail; read them before editing it.
 
 The desktop build prints one line when the strip kicks in. To override the
 detection either way:
@@ -147,15 +148,16 @@ so a detection miss can never silently skip the Android build in CI.
 
 ## Android
 
-On top of the .NET 8 SDK you need the workload — installed **from the repo root**,
-so `global.json` pins it to the 8.0 band:
+On top of the .NET 10 SDK you need the workload — installed **from the repo root**,
+so `global.json` pins it to the 10.0 band:
 
 ```bash
 dotnet workload install android
 ```
 
 plus a JDK (17 or newer; 21 is what's currently tested) and Android SDK
-**platform 34**. `net8.0-android*` maps to API 34 and only API 34:
+**platform 36**. Microsoft locks the API level per .NET band, and it is not
+negotiable:
 
 | .NET TFM | Android API |
 | --- | --- |
@@ -163,11 +165,15 @@ plus a JDK (17 or newer; 21 is what's currently tested) and Android SDK
 | `net9.0-android*` | 35 |
 | `net10.0-android*` | 36 |
 
-`Avalonia.Android` also skipped .NET 9 — 11.x ships only `lib/net8.0-android34.0/`
-and 12.x only `lib/net10.0-android36.0/`, so moving off API 34 means moving all
-the way to net10 + Avalonia 12.
+That lock is why the Android head moved to net10 before anything else did:
+`Avalonia.Android` skipped .NET 9 entirely, 11.x ships only
+`lib/net8.0-android34.0/` and 12.x only `lib/net10.0-android36.0/`, so getting off
+API 34 meant going all the way to net10 and Avalonia 12 in one step. The desktop
+side followed later and is on net10 too, but it is still on **Avalonia 11.3.9** —
+see the `AvaloniaVersion` property in `WPR.Framework.Silverlight.csproj` for what
+unifying that would cost.
 
-Point the build at an SDK that actually has API 34 installed:
+Point the build at an SDK that actually has API 36 installed:
 
 ```pwsh
 $env:ANDROID_HOME     = "C:\Android\Sdk"        # wherever yours lives
@@ -192,7 +198,7 @@ for a real key.
 ```pwsh
 Start-Process "C:\Android\Sdk\emulator\emulator.exe" -ArgumentList "-avd","<your-avd>"
 C:\Android\Sdk\platform-tools\adb.exe wait-for-device
-C:\Android\Sdk\platform-tools\adb.exe install -r -t "Src\Platforms\WPR.Platform.Android\bin\Debug\net8.0-android34.0\com.wpr.android-Signed.apk"
+C:\Android\Sdk\platform-tools\adb.exe install -r -t "Src\Platforms\WPR.Platform.Android\bin\Debug\net10.0-android36.0\com.wpr.android-Signed.apk"
 C:\Android\Sdk\platform-tools\adb.exe shell monkey -p com.wpr.android -c android.intent.category.LAUNCHER 1
 C:\Android\Sdk\platform-tools\adb.exe logcat -d | Select-String "WPR|FATAL"
 ```
@@ -245,11 +251,11 @@ the per-stage exit checklist.
 
 | Symptom | Cause / fix |
 | --- | --- |
-| `NETSDK1045` / "compatible SDK version was not found" | No .NET **8** SDK installed. `global.json` deliberately refuses to roll forward to 9/10 — the Android workload only exists for 8 here. Install the 8.0 SDK. |
+| `NETSDK1045` / "compatible SDK version was not found" | No .NET **10** SDK installed. `global.json` pins the 10.0 band and will not roll back to 8 or 9. Install the 10.0 SDK. |
 | `NETSDK1147: the following workloads must be installed: android` | The Android TFM gating did not kick in. Force it off with `-p:IncludeAndroidTargets=false`, and open an issue with your `dotnet --info` output. |
 | `CS0246` on every XNA type when building from the CLI | `$(SolutionDir)` did not resolve. Add `-p:SolutionDir=<repo>/Src/` (forward slashes, trailing slash). |
 | `CS0006` "metadata file not found", intermittent | MSBuild parallel-build race. Add `-maxcpucount:1 -nodeReuse:false`. |
 | `NU1301` unable to load the service index | A NuGet source in `Src/NuGet.Config` is unreachable. That file `<clear />`s the source list, so every entry must resolve. |
 | Rider builds with the wrong MSBuild / "build tool not found" | Stale `Src/WPR.sln.DotSettings.user`. It is no longer tracked; delete your local copy, or clear Settings → Build → *Use MSBuild version / Custom build tool path*. |
-| CS0234 on `Android.Content` / `Android.Graphics` / `AssetManager` | MSBuild picked the .NET 10 SDK, whose Android manifest has no `net8.0-android*` ref packs. Check `dotnet --version` from the repo root prints `8.0.4xx` — if not, `global.json` isn't being picked up. |
+| CS0234 on `Android.Content` / `Android.Graphics` / `AssetManager` | MSBuild picked an SDK band whose Android manifest has no `net10.0-android*` ref packs. Check `dotnet --version` from the repo root prints `10.0.1xx` — if not, `global.json` is not being picked up. |
 | A game still fails with the old error after a reinstall | Check whether `ApplicationPatcher.PatchDll` actually wrote a `.dll.original` sibling in `%LocalAppData%\WPR\AppData\<ProductId>`. If it's missing or older than your patcher edit, the install didn't re-run — "Play" was clicked instead of "Repatch"/"Reinstall". |

@@ -43,6 +43,13 @@ namespace WPR.SilverlightCompability
         /// <summary>Guards against a tree that contains a cycle; nothing legitimate is this deep.</summary>
         private const int MaxDepth = 64;
 
+        /// <summary>
+        /// The largest offscreen buffer <see cref="PaintTransformed"/> will allocate to turn an
+        /// element, in pixels. A WVGA screen is 384,000, so this allows a rotated element four
+        /// times the size of the display before falling back to drawing it upright.
+        /// </summary>
+        private const long MaxTransformPixels = 1536 * 1024;
+
         private static readonly HashSet<string> Reported = new(StringComparer.Ordinal);
 
         /// <summary>
@@ -65,9 +72,14 @@ namespace WPR.SilverlightCompability
         /// <see cref="Viewbox"/>. Children's layout offsets and sizes are multiplied by it; see
         /// <see cref="PaintChild"/>.
         /// </param>
+        /// <param name="ignoreOwnTransform">
+        /// Set by <see cref="PaintTransformed"/> when it re-enters to paint this element upright:
+        /// the element's own transform is being applied by the resample instead, so applying it
+        /// here as well would compound it.
+        /// </param>
         private static void PaintElement(
             UIElement element, Rect bounds, double opacity, Surface surface, int depth,
-            double scaleX, double scaleY, Rect clip)
+            double scaleX, double scaleY, Rect clip, bool ignoreOwnTransform = false)
         {
             if (depth > MaxDepth) return;
             if (element is FrameworkElement fe && fe.Visibility == Visibility.Collapsed) return;
@@ -76,10 +88,19 @@ namespace WPR.SilverlightCompability
             if (opacity <= 0.0) return;
             if (opacity > 1.0) opacity = 1.0;
 
+            // A transform that turns or shears cannot be folded into an axis-aligned slot at all,
+            // so it takes a different path entirely — offscreen and resampled.
+            if (!ignoreOwnTransform && TryGetRotationSkew(element, out Affine turned))
+            {
+                PaintTransformed(element, bounds, opacity, surface, depth, scaleX, scaleY, clip, turned);
+                return;
+            }
+
             // The element's own transform, folded into its slot and into the scale its children
             // inherit. Translation lands in `bounds` (device space), so only the scale has to be
             // carried onward.
-            if (TryGetTransform(element, out double tsx, out double tsy, out double tdx, out double tdy))
+            if (!ignoreOwnTransform &&
+                TryGetTransform(element, out double tsx, out double tsy, out double tdx, out double tdy))
             {
                 // Scaling happens about RenderTransformOrigin, expressed as a fraction of the
                 // element's own size — the default (0,0) is its top-left corner.
@@ -275,12 +296,13 @@ namespace WPR.SilverlightCompability
                     scaleY *= c.ScaleY;
                     dx += c.TranslateX;
                     dy += c.TranslateY;
-                    if (c.Rotation != 0 || c.SkewX != 0 || c.SkewY != 0)
-                        ReportOnce("CompositeTransform.Rotation", "rotation and skew are not applied");
+                    // Its rotation and skew are not ignored — an element carrying either never
+                    // reaches here, because PaintElement diverts it to PaintTransformed.
                     break;
 
-                case RotateTransform r:
-                    if (r.Angle != 0) ReportOnce("RotateTransform", "rotation is not applied");
+                case RotateTransform:
+                    // Likewise: a non-zero angle is handled by PaintTransformed, and a zero one
+                    // contributes nothing.
                     break;
 
                 case TransformGroup group:
@@ -293,6 +315,298 @@ namespace WPR.SilverlightCompability
                     break;
             }
         }
+
+        // -----------------------------------------------------------------------------------
+        // Rotation and skew
+        // -----------------------------------------------------------------------------------
+
+        /// <summary>A 2x3 affine, row-vector: (x,y) -> (x*M11 + y*M21 + Dx, x*M12 + y*M22 + Dy).</summary>
+        private struct Affine
+        {
+            public double M11, M12, M21, M22, Dx, Dy;
+
+            public static Affine Identity => new Affine { M11 = 1, M22 = 1 };
+
+            /// <summary>This map, then <paramref name="next"/>.</summary>
+            public Affine Then(Affine next) => new Affine
+            {
+                M11 = (M11 * next.M11) + (M12 * next.M21),
+                M12 = (M11 * next.M12) + (M12 * next.M22),
+                M21 = (M21 * next.M11) + (M22 * next.M21),
+                M22 = (M21 * next.M12) + (M22 * next.M22),
+                Dx = (Dx * next.M11) + (Dy * next.M21) + next.Dx,
+                Dy = (Dx * next.M12) + (Dy * next.M22) + next.Dy,
+            };
+
+            /// <summary>The same map applied about (<paramref name="cx"/>, <paramref name="cy"/>).</summary>
+            public Affine About(double cx, double cy)
+            {
+                if (cx == 0 && cy == 0) return this;
+                return new Affine { M11 = 1, M22 = 1, Dx = -cx, Dy = -cy }
+                    .Then(this)
+                    .Then(new Affine { M11 = 1, M22 = 1, Dx = cx, Dy = cy });
+            }
+
+            /// <summary>True when the map leaves the axes aligned, i.e. it only scales and moves.</summary>
+            public bool IsAxisAligned => M12 == 0 && M21 == 0;
+        }
+
+        /// <summary>
+        /// The element's <c>RenderTransform</c> as a full affine in LAYOUT units, or false when it
+        /// contains no rotation or skew.
+        /// </summary>
+        /// <remarks>
+        /// <para><b>Deliberately a second walk of the chain <see cref="TryGetTransform"/> already
+        /// walks</b>, rather than a replacement for it. That one is the path every element takes
+        /// and it is exact for scale and translate; making it build a general affine — and honour
+        /// that affine's ordering rules — would put the rare case's cost on the hot path. This
+        /// runs only once a rotation or skew is actually present.</para>
+        ///
+        /// <para>Composition order is Silverlight's: inside a <c>CompositeTransform</c>, scale,
+        /// then skew, then rotate, all about <c>CenterX/CenterY</c>, then translate; inside a
+        /// <c>TransformGroup</c>, children in declaration order. Order matters here in a way it
+        /// does not for the axis-aligned path, where scales multiply and translations add however
+        /// they are arranged.</para>
+        /// </remarks>
+        private static bool TryGetRotationSkew(UIElement element, out Affine local)
+        {
+            local = Affine.Identity;
+
+            Transform? transform = element.RenderTransform;
+            if (transform == null) return false;
+
+            local = Compose(transform, 0);
+            return !local.IsAxisAligned;
+        }
+
+        private static Affine Compose(Transform? transform, int depth)
+        {
+            if (transform == null || depth > 8) return Affine.Identity;
+
+            switch (transform)
+            {
+                case TranslateTransform t:
+                    return new Affine { M11 = 1, M22 = 1, Dx = t.X, Dy = t.Y };
+
+                case ScaleTransform s:
+                    return new Affine { M11 = s.ScaleX, M22 = s.ScaleY }.About(s.CenterX, s.CenterY);
+
+                case RotateTransform r:
+                    return Rotation(r.Angle).About(r.CenterX, r.CenterY);
+
+                case CompositeTransform c:
+                    return new Affine { M11 = c.ScaleX, M22 = c.ScaleY }
+                        .Then(Skew(c.SkewX, c.SkewY))
+                        .Then(Rotation(c.Rotation))
+                        .About(c.CenterX, c.CenterY)
+                        .Then(new Affine { M11 = 1, M22 = 1, Dx = c.TranslateX, Dy = c.TranslateY });
+
+                case TransformGroup group:
+                    Affine combined = Affine.Identity;
+                    foreach (Transform child in group.Children)
+                        combined = combined.Then(Compose(child, depth + 1));
+                    return combined;
+
+                default:
+                    // Unknown transform types are reported by Accumulate on the axis-aligned path,
+                    // which an identity here guarantees this element still takes.
+                    return Affine.Identity;
+            }
+        }
+
+        private static Affine Rotation(double degrees)
+        {
+            if (degrees == 0) return Affine.Identity;
+
+            double rad = degrees * Math.PI / 180.0;
+            double cos = Math.Cos(rad);
+            double sin = Math.Sin(rad);
+            return new Affine { M11 = cos, M12 = sin, M21 = -sin, M22 = cos };
+        }
+
+        private static Affine Skew(double degX, double degY)
+        {
+            if (degX == 0 && degY == 0) return Affine.Identity;
+
+            return new Affine
+            {
+                M11 = 1,
+                M12 = Math.Tan(degY * Math.PI / 180.0),
+                M21 = Math.Tan(degX * Math.PI / 180.0),
+                M22 = 1,
+            };
+        }
+
+        /// <summary>
+        /// Paints an element whose transform turns or shears it: upright into an offscreen buffer,
+        /// then inverse-mapped into <paramref name="surface"/>.
+        /// </summary>
+        /// <remarks>
+        /// <para><b>Offscreen-then-resample is what makes this ONE code path rather than one per
+        /// primitive.</b> The alternative — teaching every fill, blit and glyph run to walk a
+        /// rotated edge — is where the cost estimate in <see cref="TryGetTransform"/>'s remarks
+        /// came from. Rendering the subtree upright and resampling the result costs a buffer and a
+        /// pass, and every primitive keeps the exact axis-aligned code it already had.</para>
+        ///
+        /// <para><b>The buffer is the element's own slot, so a child painting OUTSIDE its parent's
+        /// bounds is clipped here where the axis-aligned path would have shown it.</b> Silverlight
+        /// does not clip to bounds, so that is a real difference rather than a rounding of one. It
+        /// is bounded this way on purpose: the alternative is a buffer sized by an arbitrary
+        /// margin, which is a constant chosen to hide a case rather than to describe one. Every
+        /// rotated element measured across the mixed-mode library paints inside its slot. If one
+        /// ever does not, the fix is to union the subtree's arranged rects — not to inflate.</para>
+        ///
+        /// <para>Sampling is bilinear, and everything outside the buffer is transparent. Nearest
+        /// neighbour leaves a rotated edge visibly stepped, and these are UI elements looked at
+        /// while at rest.</para>
+        /// </remarks>
+        private static void PaintTransformed(
+            UIElement element, Rect bounds, double opacity, Surface surface, int depth,
+            double scaleX, double scaleY, Rect clip, Affine local)
+        {
+            int tw = (int)Math.Ceiling(bounds.Width);
+            int th = (int)Math.Ceiling(bounds.Height);
+            if (tw <= 0 || th <= 0) return;
+
+            if ((long)tw * th > MaxTransformPixels)
+            {
+                // Upright, rather than dropped: the wrong orientation in the right place beats
+                // absent, and it keeps one oversized element from costing the whole page.
+                ReportOnce("transform:oversize",
+                    "a rotated element larger than four screens is drawn upright");
+                PaintElement(element, bounds, opacity, surface, depth, scaleX, scaleY, clip,
+                    ignoreOwnTransform: true);
+                return;
+            }
+
+            var buffer = new Surface(new uint[tw * th], tw, th);
+            PaintElement(
+                element, new Rect(0, 0, bounds.Width, bounds.Height), opacity, buffer, depth,
+                scaleX, scaleY, new Rect(0, 0, tw, th), ignoreOwnTransform: true);
+
+            if (!buffer.Painted) return;
+
+            // Layout units become device units through diag(scaleX, scaleY), and a linear map
+            // conjugated by that scale is S·M·S⁻¹ — which for a diagonal S touches only the
+            // off-diagonal terms. Skipping it shears a rotated element whenever its ancestors
+            // scaled the two axes by different amounts.
+            double sx = scaleX == 0 ? 1 : scaleX;
+            double sy = scaleY == 0 ? 1 : scaleY;
+            double a = local.M11;
+            double b = local.M12 * sy / sx;
+            double c = local.M21 * sx / sy;
+            double d = local.M22;
+
+            double det = (a * d) - (b * c);
+            if (Math.Abs(det) < 1e-9) return;   // collapsed to a line; there is nothing to show
+
+            // The transform acts about RenderTransformOrigin, a fraction of the element's size.
+            Point origin = element.RenderTransformOrigin;
+            double ox = bounds.X + (origin.X * bounds.Width);
+            double oy = bounds.Y + (origin.Y * bounds.Height);
+            double tx = local.Dx * scaleX;
+            double ty = local.Dy * scaleY;
+
+            // Destination extent: the buffer's four corners, mapped forward.
+            double minX = double.MaxValue, minY = double.MaxValue;
+            double maxX = double.MinValue, maxY = double.MinValue;
+            for (int corner = 0; corner < 4; corner++)
+            {
+                double lx = bounds.X + ((corner & 1) == 0 ? 0 : tw) - ox;
+                double ly = bounds.Y + ((corner & 2) == 0 ? 0 : th) - oy;
+                double px = ox + (lx * a) + (ly * c) + tx;
+                double py = oy + (lx * b) + (ly * d) + ty;
+                if (px < minX) minX = px;
+                if (px > maxX) maxX = px;
+                if (py < minY) minY = py;
+                if (py > maxY) maxY = py;
+            }
+
+            Rect target = Intersect(new Rect(minX, minY, maxX - minX, maxY - minY), clip);
+            if (target.Width <= 0 || target.Height <= 0) return;
+
+            int x0 = Math.Max(0, (int)Math.Floor(target.X));
+            int y0 = Math.Max(0, (int)Math.Floor(target.Y));
+            int x1 = Math.Min(surface.Width, (int)Math.Ceiling(target.Right));
+            int y1 = Math.Min(surface.Height, (int)Math.Ceiling(target.Bottom));
+            if (x1 <= x0 || y1 <= y0) return;
+
+            double ia = d / det, ib = -b / det, ic = -c / det, id = a / det;
+            double shiftX = ox - bounds.X - 0.5;
+            double shiftY = oy - bounds.Y - 0.5;
+
+            uint[] src = buffer.Pixels;
+            uint[] dst = surface.Pixels;
+
+            for (int y = y0; y < y1; y++)
+            {
+                int row = y * surface.Width;
+                double py = y + 0.5 - oy - ty;
+
+                for (int x = x0; x < x1; x++)
+                {
+                    double px = x + 0.5 - ox - tx;
+
+                    // Inverse-map the destination pixel CENTRE back into element-local device
+                    // space, then shift it into buffer indices.
+                    double u = (px * ia) + (py * ic) + shiftX;
+                    double v = (px * ib) + (py * id) + shiftY;
+
+                    uint sample = SampleBilinear(src, tw, th, u, v);
+                    if ((sample >> 24) == 0) continue;
+
+                    dst[row + x] = Over(sample, dst[row + x]);
+                    surface.Painted = true;
+                }
+            }
+        }
+
+        /// <summary>Bilinear sample of a premultiplied buffer; transparent outside it.</summary>
+        /// <remarks>
+        /// Premultiplied is what makes a plain per-channel lerp correct: interpolating
+        /// straight-alpha colour would pull the colour of fully transparent texels into the edge
+        /// and fringe every rotated element — the same property that makes the rasteriser's output
+        /// premultiplied in the first place.
+        /// </remarks>
+        private static uint SampleBilinear(uint[] src, int w, int h, double u, double v)
+        {
+            int x0 = (int)Math.Floor(u);
+            int y0 = (int)Math.Floor(v);
+
+            uint p00 = Texel(src, w, h, x0, y0);
+            uint p10 = Texel(src, w, h, x0 + 1, y0);
+            uint p01 = Texel(src, w, h, x0, y0 + 1);
+            uint p11 = Texel(src, w, h, x0 + 1, y0 + 1);
+            if ((p00 | p10 | p01 | p11) == 0) return 0;
+
+            double fx = u - x0;
+            double fy = v - y0;
+            double w00 = (1 - fx) * (1 - fy);
+            double w10 = fx * (1 - fy);
+            double w01 = (1 - fx) * fy;
+            double w11 = fx * fy;
+
+            uint result = 0;
+            for (int shift = 0; shift < 32; shift += 8)
+            {
+                double channel =
+                    (((p00 >> shift) & 0xFF) * w00) +
+                    (((p10 >> shift) & 0xFF) * w10) +
+                    (((p01 >> shift) & 0xFF) * w01) +
+                    (((p11 >> shift) & 0xFF) * w11);
+
+                int rounded = (int)(channel + 0.5);
+                if (rounded < 0) rounded = 0;
+                if (rounded > 255) rounded = 255;
+                result |= (uint)rounded << shift;
+            }
+
+            return result;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static uint Texel(uint[] src, int w, int h, int x, int y)
+            => (uint)x < (uint)w && (uint)y < (uint)h ? src[(y * w) + x] : 0u;
 
         /// <summary>
         /// Folds a <see cref="Viewbox"/>'s content scaling into <paramref name="bounds"/> and the
@@ -728,6 +1042,17 @@ namespace WPR.SilverlightCompability
             if (TryGetTransform(element, out double tsx, out double tsy, out double tdx, out double tdy))
             {
                 hash.Add(tsx); hash.Add(tsy); hash.Add(tdx); hash.Add(tdy);
+            }
+
+            // And the turning part, which the call above cannot see — it reduces a transform to a
+            // scale and a translation, and a pure rotation has neither. Without this a spinner
+            // animating nothing but RotateTransform.Angle hashes identically on every frame and is
+            // painted exactly once, at whatever angle it happened to start on.
+            if (TryGetRotationSkew(element, out Affine turned))
+            {
+                hash.Add(turned.M11); hash.Add(turned.M12);
+                hash.Add(turned.M21); hash.Add(turned.M22);
+                hash.Add(turned.Dx); hash.Add(turned.Dy);
             }
             if (element is FrameworkElement fe)
             {

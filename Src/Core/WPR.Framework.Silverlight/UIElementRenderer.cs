@@ -47,6 +47,47 @@ namespace Microsoft.Xna.Framework.Graphics
         private bool _disposed;
         private static bool _announced;
 
+        [ThreadStatic]
+        private static UIElement _renderedThisFrame;
+
+        /// <summary>
+        /// Forgets what the game rasterised last frame. The host calls this immediately before
+        /// pumping the page's Draw handlers.
+        /// </summary>
+        internal static void BeginHostFrame() => _renderedThisFrame = null;
+
+        /// <summary>
+        /// True when the game has, this frame, rasterised something that lives inside
+        /// <paramref name="root"/>'s tree — i.e. it is compositing that page itself.
+        /// </summary>
+        /// <remarks>
+        /// <para><b>This replaces asking whether the page has a <c>GameTimer.Draw</c> subscriber</b>,
+        /// which is a proxy and one title defeats outright. Galactic Reign creates its
+        /// <c>GameTimer</c> in a process-lifetime <c>RenderManager</c>, subscribes Draw and calls
+        /// <c>Start()</c> in the constructor — so the proxy answers "the page draws itself" on
+        /// every page of the game forever, while <c>RenderManager.Draw</c> returns immediately
+        /// unless its own unrelated <c>IsRunning</c> flag is set. Its menu was therefore never
+        /// drawn by anyone. Every other mixed-mode title subscribes from a specific page's
+        /// constructor, which is why the proxy held for nine titles out of ten.</para>
+        ///
+        /// <para><b>Anything inside the tree counts, not just the root.</b> A game that rasterises
+        /// a subtree of the live page is compositing that page's Silverlight content into its own
+        /// scene at a depth of its choosing; compositing the whole page over the top as well would
+        /// draw that subtree twice, and alpha-blending translucent content twice is visible.</para>
+        /// </remarks>
+        internal static bool GameCompositedThisFrame(UIElement root)
+        {
+            UIElement rendered = _renderedThisFrame;
+            if (rendered == null || root == null) return false;
+
+            for (UIElement node = rendered; node != null; node = node.Parent)
+            {
+                if (ReferenceEquals(node, root)) return true;
+            }
+
+            return false;
+        }
+
         public UIElementRenderer(UIElement element, int width, int height)
         {
             Element = element;
@@ -68,6 +109,7 @@ namespace Microsoft.Xna.Framework.Graphics
 
         /// <summary>The element rasterised into <see cref="Texture"/>.</summary>
         public UIElement Element { get; private set; }
+
 
         /// <summary>
         /// The rasterised surface. Allocated on first read rather than in the constructor: a game
@@ -110,6 +152,11 @@ namespace Microsoft.Xna.Framework.Graphics
         public void Render()
         {
             if (_disposed) return;
+
+            // Recorded on every call, not only when the pixels change: the gates below make most
+            // calls early-return, and the host's question is "is the game drawing this page",
+            // which a cache hit answers just as affirmatively as a repaint.
+            _renderedThisFrame = Element;
 
             Texture2D texture;
             try { texture = Texture; }

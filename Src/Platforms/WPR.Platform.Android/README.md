@@ -1,7 +1,7 @@
 # WPR.Platform.Android
 
 The Android head. Builds `com.wpr.android` (assembly `WPR.Platform.Android`) for
-`net8.0-android34.0`, minimum API 21.
+`net10.0-android36.0`, minimum API 24 (Android 7.0).
 
 ## Shell: native Android, not Avalonia
 
@@ -79,4 +79,4 @@ toolchain notes and the CLI recipe.
 dotnet build Src/Platforms/WPR.Platform.Android/WPR.Platform.Android.csproj -c Debug
 ```
 
-Output: `bin/Debug/net8.0-android34.0/com.wpr.android-Signed.apk`.
+Output: `bin/Debug/net10.0-android36.0/com.wpr.android-Signed.apk`.

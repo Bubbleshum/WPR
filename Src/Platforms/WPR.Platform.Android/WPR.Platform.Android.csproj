@@ -180,12 +180,12 @@
          2.1.x core. -->
     <PackageReference Include="SQLitePCLRaw.provider.dynamic_cdecl" Version="2.1.13" />
     <PackageReference Include="System.ServiceModel.Http" Version="4.10.0" />
-    <!-- CVE-2024-38095 / GHSA-447r-wph3-92pm (High, CVSS 8.7): System.Formats.Asn1 through 6.0.0
-         (and 8.0.0) burns excessive CPU parsing a malicious X.509 certificate — denial of service.
-         Reached here at 5.0.0 via System.ServiceModel.* -> System.Private.ServiceModel 4.10.0 ->
-         System.Security.Cryptography.Pkcs 5.0.0. Pinned to 8.0.1, the fix in the 8.x band that
-         matches this head's TFM (6.0.1 is the equivalent 6.x fix). -->
-    <PackageReference Include="System.Formats.Asn1" Version="8.0.1" />
+    <!-- The System.Formats.Asn1 pin retired with the move to net10 (2026-09-25); the Windows head
+         carries the full account and the two must stay in step. It lifted the 5.0.0 that
+         System.ServiceModel.* -> System.Private.ServiceModel 4.10.0 ->
+         System.Security.Cryptography.Pkcs 5.0.0 still drags in, off CVE-2024-38095 /
+         GHSA-447r-wph3-92pm (High, CVSS 8.7). From net10 the shared framework supplies it, so the
+         pin would only name an assembly older than the runtime's own (NU1510). -->
     <!-- CVE-2022-34716 / GHSA-vh55-786g-wjwj (Moderate, CVSS 5.9): System.Security.Cryptography.Xml
          5.0.0-6.0.0 can disclose privileged information (XML signature verification). Reached at
          5.0.0 via System.ServiceModel.* -> System.Private.ServiceModel 4.10.0. Pinned to 8.0.4 — NOT 8.0.0,

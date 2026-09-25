@@ -87,7 +87,7 @@ jobs:
         run: >
           dotnet publish Src/Platforms/WPR.Platform.Windows/WPR.Platform.Windows.csproj
           -c Release
-          -f net8.0-windows10.0.17763.0
+          -f net10.0-windows10.0.17763.0
           -r win-x64
           --self-contained true
           -o publish/desktop
@@ -168,7 +168,7 @@ jobs:
 
       # net10.0-android* maps to API 36 only; the runner image's default platform
       # set moves over time, so pin what we need explicitly.
-      - name: Ensure Android SDK platform 34
+      - name: Ensure Android SDK platform 36
         run: |
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
             "platforms;android-36" "build-tools;36.0.0"
@@ -261,6 +261,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # Explicit, though fetch-depth: 0 already brings tags: the changelog range is derived
+          # from `git describe`, so no tags means no range means the whole history gets
+          # republished — silently, and looking exactly like a correct first release.
+          fetch-tags: true
 
       - uses: actions/download-artifact@v4
         with:
@@ -280,7 +284,24 @@ jobs:
         run: |
           set -euo pipefail
 
-          PREV=$(git tag --list 'v*' --sort=-v:refname | head -1 || true)
+          # The most recent release tag REACHABLE FROM HEAD.
+          #
+          # DO NOT go back to `git tag --list 'v*' --sort=-v:refname | head -1`. This repo's tags
+          # are zero-padded (v0.1.01 … v0.1.05) alongside an unpadded v0.1.0, and git's version
+          # sort ranks the UNPADDED ONE HIGHEST — measured, not guessed:
+          #     $ git tag --list 'v*' --sort=-v:refname
+          #     v0.1.0      <- "previous release", according to that sort
+          #     v0.1.05
+          #     v0.1.04
+          # So every release since 0.1.01 generated its commit list from v0.1.0 and republished
+          # the entire history. `git describe` answers by topology instead of by name, which
+          # cannot be fooled by the padding; creatordate is the fallback for a tag that is not an
+          # ancestor of HEAD.
+          PREV=$(git describe --tags --abbrev=0 --match 'v*' HEAD 2>/dev/null || true)
+          if [[ -z "$PREV" ]]; then
+            PREV=$(git tag --list 'v*' --sort=-creatordate | head -1 || true)
+          fi
+          echo "changelog: previous release tag = ${PREV:-<none>}"
           if [[ -n "$PREV" ]]; then
             RANGE="$PREV..HEAD"
             COMPARE="Changes since [$PREV](https://github.com/$GITHUB_REPOSITORY/releases/tag/$PREV)."
@@ -343,6 +364,11 @@ jobs:
           # A hand-written summary for this version, if one exists. A generated commit list is
           # fine for a patch release but says little useful about a large one, so an optional
           # Docs/ReleaseNotes/<version>.md is prepended as "Highlights" when present.
+          #
+          # THAT FILE IS THE SHORT ONE, and it is pasted in WHOLE — so keep it to a screen or two.
+          # The long account of a release lives beside it as <version>-full.md, which this job
+          # deliberately does not read; the short notes link to it on the tag. 0.1.06 is the worked
+          # example: 73 lines here, 625 in the full version.
           HIGHLIGHTS="Docs/ReleaseNotes/$VERSION.md"
           if [[ -f "$HIGHLIGHTS" ]]; then
             echo "changelog: prepending curated highlights from $HIGHLIGHTS"
@@ -354,7 +380,7 @@ jobs:
             printf 'Prebuilt WPR %s.\n\n' "$VERSION"
             printf '| Download | Platform |\n| --- | --- |\n'
             printf '| `WPR-Setup-%s.exe` | Windows x64 — self-contained, no .NET install required |\n' "$VERSION"
-            printf '| `WPR-%s.apk` | Android — API 21+, arm64-v8a / x86_64 |\n\n' "$VERSION"
+            printf '| `WPR-%s.apk` | Android 7.0+ (API 24), arm64-v8a / x86_64 |\n\n' "$VERSION"
             printf "## What's changed\n\n%s\n\n" "$COMPARE"
             if [[ -f "$HIGHLIGHTS" ]]; then
               printf '## Highlights\n\n'

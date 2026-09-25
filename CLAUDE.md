@@ -34,10 +34,51 @@ The user normally builds and runs from **Rider** (system .NET 10 MSBuild). The
 CLI `dotnet build` path is for verifying small edits — it hits known
 limitations on this machine and should not be the primary build mechanism.
 
+### The whole repo is on .NET 10 (2026-09-25)
+
+**There is no `net8.0` anywhere in the build any more.** Android moved first
+(`net10.0-android36.0` for the head, `net10.0-android` for everything else); Windows
+followed on 2026-09-25, so the TFM vocabulary is now exactly three strings:
+
+| spelling | where |
+| --- | --- |
+| `net10.0` | shared projects, engine tier, modules, probes |
+| `net10.0-windows10.0.17763.0` | the desktop head, D3D11 backend, WindowsToast, the harnesses |
+| `net10.0-android` / `net10.0-android36.0` | android legs; the head pins the API level |
+
+`global.json` pins the SDK to `10.0.100` with `rollForward: latestFeature`. **Older notes
+in this file describing `net8.0` legs, `Microsoft.Android.Ref.34` and the 8.0 SDK band are
+history** — they explain how the gating in `Src/Directory.Build.targets` came to be and the
+traps inside it, all of which still apply, but the version numbers have moved on
+(`WprAndroidApiLevel` is 36).
+
+**Two security pins retired with the move, and they should NOT be re-added**:
+`System.Text.Json` (in `WPR.Framework.Xna` and `WPR.Loader`) and `System.Formats.Asn1` (in
+both heads). All three are part of the shared framework from net10, so an explicit 8.0.x
+reference earns `NU1510` *and* names an assembly older than the runtime's own — the
+opposite of what a security pin is for. Each site carries the full account of what it used
+to cover. `System.Security.Cryptography.Xml` 8.0.4 is **not** in the shared framework and
+stays. The one advisory left in the repo is `NU1904` on `System.Drawing.Common` 4.7.0,
+reached transitively through `WPR.Notifications.WindowsToast`; it predates this move.
+
+Verified on the day: desktop head 0 errors, Android head 0 errors (Release), all three
+`scratchpad` probes ALL PASS, and Carcassonne, Galactic Reign, Cut the Rope and Sonic 4 all
+run with the same draw counts they had on net8.
+
+**Avalonia is still split — 11.3.9 on desktop, 12.1.3 on android — and that is NOT because
+the TFM blocked it.** net10 removes the *restore* obstacle, and the desktop could take 12.1.3
+tomorrow; what stops it is four migrations riding along behind the version number, chief among
+them that `Avalonia.ReactiveUI` stops at 11.3.9 and its successor pulls **ReactiveUI 24**, where
+`System.Reactive.Unit` became `RxVoid`. The full measured list is on the `AvaloniaVersion`
+property in `WPR.Framework.Silverlight.csproj` — **read it before starting, because "bump the
+version" is the wrong mental model.** A trial run on 2026-09-25 reached 84 compile errors with
+more behind them, and Avalonia 12's XAML and theme changes do not surface at compile time at
+all, so this needs a real pass through the UI afterwards.
+
 ### How runs actually happen
 
 - **Build**: the user clicks build/run in Rider, which builds `WPR.Platform.Windows`
-  for `net8.0-windows10.0.17763.0` and pulls in the rest by project reference.
+  for `net10.0-windows10.0.17763.0` and pulls in the rest by project reference.
 - **Run**: `WPR.Platform.Windows` is the entry point (assembly/exe `WPR.Platform.Windows`, renamed from `WPR.UI.Desktop` on 2026-08-29). The UI lists installed games;
   picking one launches via `SilverlightLauncher.LaunchAsync` or
   `XnaLauncher.LaunchAsync`.
@@ -1797,7 +1838,7 @@ log — grep `error reflecting type` there before concluding a stuck game is a t
 
 **This was a patcher table change (v22), and affected games must be repatched.** Unlike v21 it is
 not identity-binding — a v21 install still launches, it just keeps failing to build the affected
-serializer — so `--repatch-installed` is enough. **The current version is 36**; see the next
+serializer — so `--repatch-installed` is enough. **The current version is 38**; see the next
 section.
 
 ### Windows path separators in game file I/O (patcher v23), a patch that silently skipped (v24), and a game-specific IL guard (v25)
@@ -2919,7 +2960,7 @@ Four things that will bite if you touch this:
 `GraphicsDeviceInformation` and `PreparingDeviceSettingsEventArgs` now live in
 `WPR.Framework.Xna` and are rescoped there by `ApplicationPatcher.WprFrameworkXnaTypes`.
 **This bumped `ApplicationPatcher.Version` to 21, and every game installed before it must be
-repatched or reinstalled** (the current version is 36) —
+repatched or reinstalled** (the current version is 38) —
 a v20 install carries IL naming `[FNA]Microsoft.Xna.Framework.Game`, FNA no longer defines it, and
 the game will TypeLoadException at launch. `--repatch-installed` is enough.
 
@@ -3088,11 +3129,82 @@ progress".
 `[iso-fixup] redirected N … call(s)` is written to the install log per assembly, so the count says
 whether a given game used this path at all.
 
-**This was a patcher table change (v20).** The current version is **36** — see "Windows path
+**This was a patcher table change (v20).** The current version is **38** — see "Windows path
 separators in game file I/O" above for the most recent bumps; this paragraph describes what v20
 itself changed. Unlike v19 it is not identity-binding — a v19 install still launches, it
 just keeps the exclusive share and keeps failing to save. `--repatch-installed` is enough (it
 restores each `.dll.original` first, so repatching is idempotent).
+
+### Every game has its own isolated store (patcher v38, 2026-09-25)
+
+The BCL keys `IsolatedStorageFile.GetUserStoreForApplication()` on the host's **entry assembly**,
+so every game WPR ever hosted shared one store, and two titles using the same filename overwrote
+each other. (On Windows that store also changes with the exe's path, which is why
+`%LOCALAPPDATA%\IsolatedStorage` holds a dozen `Url.*` folders: one per build or harness.)
+
+**Gravity Guy is the reference case** (`4f930d12-…`), reported as "doesn't load any more". It,
+Fragger, Monster Island and iStunt 2 all bundle Miniclip's `DLCFramework`, which persists to
+`$_StatesAfterExitData_$\DLCManager`. In the other three that copy is obfuscated, so the file's root
+is `<d>`/`<b>`; Gravity Guy's `XmlSerializer` throws on it inside `DLCManager.Initialize`, which
+aborts `Game.Initialize` before `LoadContent`, so no Cocos2D scene is ever run. `drawScene` then
+NREs per frame after `glPushMatrix`, and eleven frames later the matrix stack overflows
+(`IndexOutOfRangeException` in `NSObject.glPushMatrix`). **That overflow is the loud line and it is
+three layers downstream**; the first `[wpr-fce]` of the launch is the XML error. One session of
+Fragger was enough to break it for good, because the framework deletes that file only after reading
+it successfully.
+
+**The mechanism: `SharedIsolatedStorage.GetUserStoreForApplication` → `PerGameIsolatedStorage`**
+returns a real `IsolatedStorageFile` with its private `_rootDirectory` moved to
+`<DataStore>\IsolatedStore\<ProductId>\AppFiles\`. Every BCL member, `IsolatedStorageFileStream`
+included, resolves paths through that one field, so the whole surface is isolated, including the
+parameterless listings the path shims deliberately skip. Checked on .NET 8 and .NET 10, kept from
+the trimmer by `[DynamicDependency]`. If it is ever missing, the shared store is returned and
+`[wpr-isostore]` says so, rather than throwing. The game comes from
+`WprHostEnvironment.CurrentProductId`, which both launch paths set.
+
+Four things are load-bearing:
+
+- **The `<ProductId>\AppFiles` layout copies the BCL's for a reason:** `IsolatedStorageFile.Remove()`
+  deletes the root **and then its parent** when the parent holds nothing else. Put the per-game
+  folder directly under `IsolatedStore` and one game's `Remove()` would delete every game's saves.
+- **`IsolatedStorageSettings2.ApplicationSettings` is rebuilt when the product id changes.** It is
+  a static in a WPR assembly, not the game's ALC, so it outlived a launch. That meant cross-game
+  settings before this change, and would mean writing into the previous game's store after it.
+- **Migration is a manifest, `IsolatedStore\shared-store-migration.txt`**, written on the first use
+  and listing every folder beside the running game's install folder, i.e. every game installed at
+  the cut-over. A listed game copies the old shared pool into its store on first open (never
+  overwriting) and is struck off. Games installed later are not listed and start empty, as a
+  fresh WP7 install did. The old store is left untouched. **The source is the running host's BCL
+  store**, so running a harness first would migrate from the harness's pool. Delete
+  `IsolatedStore` to redo it.
+- **`$_StatesAfterExitData_$` and `$_TombstoneData_$` are not inherited.** They hold transient
+  DLCFramework pending-purchase state and are exactly what the four games collide on. Measured:
+  with them copied, Fragger inherited Gravity Guy's copy and drew nothing on its first launch.
+
+Verified with the headless harness, from a clean store: Gravity Guy → Fragger → Gravity Guy →
+Fragger. Each migrated once, with zero `ArgumentNull`/`NullReference`/`IndexOutOfRange` and frames
+drawing on every run. Each store holds its own `DLCManager` file in its own shape.
+
+**The player can clear a game's data**: "Clear data" in the desktop game pane, "clear data" in the
+Android long-press list, both behind a warning, both calling
+`PerGameIsolatedStorage.ClearGameData(productId, installsRoot)`. It **strikes the game off the
+manifest before deleting**. A game still waiting to migrate would otherwise re-inherit the old
+shared pool, and with it the file that broke it, on its next launch. If no manifest exists yet it
+writes one listing every *other* installed game. Achievements live in `achievements.db` and are
+unaffected. The desktop refuses a game still below v38 and asks for a Repatch, because such a
+game reads the shared store and a clear would look like it did nothing. Android needs no such
+check: `GameLauncher.Launch` repatches before the game can open a store.
+
+**Uninstall asks whether the saves go too**: Yes/No/Cancel on the desktop, and on Android a
+two-item list followed by a second confirmation for deleting. Saves are deleted **after** the
+uninstall succeeds, so a failed uninstall never costs them. Kept saves come straight back on
+reinstall, because the store is keyed by ProductId and not by the install folder. Deleting at
+uninstall needs no repatch check: striking the game off the manifest is enough to stop a
+reinstall re-inheriting the shared pool. Before this, the Android prompt claimed uninstall removed
+"everything it has saved", and it never did.
+
+**Patcher table change (v38).** `--repatch-installed` on the desktop, automatic on next launch on
+Android. Not identity-binding: a v37 install launches and simply stays on the shared store.
 
 ### The game loop floors `TargetElapsedTime` at one 60 Hz frame
 
@@ -3783,6 +3895,113 @@ Verified on Windows: Rabbids Go Phone menu with its background, into **My Rabbid
 Rabbid; Sid Meier's Pirates! now paints its 2K Games logo page, which was blank; Cut the Rope and
 Little Acorns unaffected (Little Acorns reaches a level).
 
+### Who draws a mixed-mode page: ask what was PAINTED, not what subscribed (2026-09-25)
+
+`MixedModeGame.Draw` composites the Silverlight page only when **nothing else painted the frame**.
+Two things can already have accounted for it, and neither may be drawn over: the game may have
+rasterised that very tree itself (`UIElementRenderer.GameCompositedThisFrame`), or it may have
+painted a scene of its own. Otherwise the screen would be empty, so the host draws the page.
+
+**The test used to be `GameTimer.AnyDrawSubscriber`, and one title defeats it outright.** Galactic
+Reign (`45859ddf-684e-43bc-a282-0a4494e88864`) creates its `GameTimer` inside a process-lifetime
+`RenderManager`, subscribes `Draw` and calls `Start()` **in the constructor** — so the proxy
+answered "this page draws itself" on every page of the game forever, while `RenderManager.Draw`
+returns immediately unless its own unrelated `IsRunning` flag is set. Nobody drew the menu and the
+screen stayed black with a completely clean log: page constructed, navigated, laid out at 800x480,
+zero draw calls. **Nine of the ten mixed-mode titles subscribe from a specific page's constructor**
+(`GamePage::.ctor`, `IngamePage::InitializeXNA`, `ModeGame::.ctor`…), which is why the proxy held
+so long — it is a property of how a title happens to be written, not of the platform.
+
+**`GraphicsDevice.WprDrawCallsThisFrame` is the replacement**, sampled either side of
+`GameTimer.PumpDraw`. It is live in Release — only the tracing around the counter is
+`[Conditional("DEBUG")]`, not the count. Clears deliberately do not count: a game that clears and
+draws nothing has not put a frame on the screen, which is exactly Galactic Reign's menu.
+
+**DO NOT widen this to "composite whenever the game did not rasterise it".** WP7's compositor
+really did put the Silverlight tree over the shared device's output every frame, so the faithful
+rule looks obviously right — it was tried on 2026-09-25 and **it broke titles that were correct**:
+Sonic lost sprites, Cut the Rope lost its finger. A page WP7 would have shown as a transparent
+sheet is, through this rasteriser, a full-screen blit whose painted parts hide the game beneath.
+Faithful compositing needs the page to be faithful first. Until then the host draws the page only
+when the alternative is an empty screen.
+
+**The safety check that missed it is worth remembering too.** The first attempt measured the
+overlay's *fully opaque* pixel fraction and reported `0.0%` for Cut the Rope, Cut the Rope Exp and
+Little Acorns — which reads as "harmless" and is not: alpha 254 covers the game just as
+effectively as alpha 255. **Measure painted coverage, not opaque coverage**, if you ever need this
+number again.
+
+**Presentation and input must be decided by the same test.** `PumpSilverlightTouch` runs in
+`Update` and so latches the previous `Draw`'s answer (`_hostCompositesPage`) rather than asking
+again. They were briefly decided by different tests, which would have left Galactic Reign's menu
+visible and dead to the touch — a gating bug wearing a hit-testing bug's clothes.
+
+Read it out of the per-game log; one line per change of answer, because a title whose menu is
+plain Silverlight and whose board is XNA flips it on every navigation:
+
+```
+[wpr-mixed] nothing else painted this frame — compositing the page.
+[wpr-mixed] the game painted this frame — not compositing.
+[wpr-mixed] the game rasterises this page itself — not compositing.
+```
+
+Measured over all ten installed mixed-mode titles: Carcassonne and Galactic Reign composite;
+Cut the Rope, Cut the Rope Exp, Little Acorns, FC Rocket, Big Buck Hunter Pro, The Game of Life
+and Pirates do not. **That distribution is the regression test** — a change here that moves a
+title between those two lists needs a screenshot, not a draw count.
+
+No `ApplicationPatcher.Version` bump and no reinstall — host behaviour, picked up on next launch.
+
+### The rasteriser turns and shears by rendering upright and resampling (2026-09-25)
+
+`SoftwareVisualRasteriser` handles `RotateTransform`, `CompositeTransform.Rotation` and skew.
+Anything that turns or shears takes a different path from the axis-aligned one: the element is
+rendered **upright into an offscreen buffer** and then inverse-mapped, bilinearly, into the
+destination. That is what makes it one code path rather than one per primitive — teaching every
+fill, blit and glyph run to walk a rotated edge is the cost estimate that kept this unimplemented.
+
+Four things are load-bearing:
+
+- **`TryGetTransform` is untouched and still the path every element takes.** It reduces a
+  transform to a scale and a translation and is exact for those. `TryGetRotationSkew` is a
+  *second* walk of the same chain that runs only once a rotation or skew is present, so the
+  general affine — and its ordering rules — stay off the hot path.
+- **Order matters here and does not there.** Scales multiply and translations add however they are
+  arranged, so the axis-aligned path can ignore order; a rotation cannot. `Compose` follows
+  Silverlight's: inside a `CompositeTransform`, scale → skew → rotate about `CenterX/CenterY`,
+  then translate; inside a `TransformGroup`, children in declaration order.
+- **A non-uniform ancestor scale must stay on the OUTSIDE.** The device-space linear part is
+  `S·M·S⁻¹` for `S = diag(scaleX, scaleY)`, which for a diagonal `S` touches only the off-diagonal
+  terms. Skip it and a rotated element shears whenever its ancestors scaled the axes differently.
+- **The change-detection signature must include the rotation.** `Signature` hashes
+  `TryGetTransform`'s output, and a *pure* rotation has neither scale nor translation — so without
+  a separate contribution a spinner animating only `RotateTransform.Angle` hashes identically every
+  frame and is painted exactly once, at whatever angle it started on. That looks precisely like
+  rotation never having been implemented.
+
+**Sampling is bilinear over PREMULTIPLIED pixels**, which is what makes a plain per-channel lerp
+correct: interpolating straight-alpha colour pulls the colour of fully transparent texels into the
+edge and fringes every rotated element. Same property that makes the rasteriser's output
+premultiplied in the first place.
+
+**The buffer is the element's own slot, so a child painting outside its parent's bounds is clipped
+here where the axis-aligned path would have shown it.** Silverlight does not clip to bounds, so
+that is a real difference rather than a rounding of one, and it is bounded that way on purpose —
+the alternative is a margin constant chosen to hide a case rather than to describe one. If a title
+ever needs more, union the subtree's arranged rects. An element larger than
+`MaxTransformPixels` (four WVGA screens) falls back to drawing upright rather than being dropped.
+
+**`scratchpad/rotprobe` is the regression test** — 11 checks, no game and no screen: extents and
+centres for 90°/180°, area preservation, the default origin as a fixed point, skew width against
+`tan`, that the signature tracks the angle, and that **rotate-then-translate differs from
+translate-then-rotate** (the one that catches a matrix composed in the wrong order, since the
+axis-aligned path cannot tell them apart and would agree with a wrong answer).
+
+With this in, the `[wpr-uirender]` unsupported list is **empty across all ten installed mixed-mode
+titles** — no shapes, popups, brushes or missing fonts reported on the screens they reach.
+
+Shim behaviour, so no patcher bump and no reinstall.
+
 ### When I touch a shim type
 
 Two distinct rebuild paths depending on what changed:
@@ -3891,11 +4110,11 @@ from a workload-version mismatch; gating handles that case now.
 When verifying a small edit:
 
 ```
-dotnet build <project>.csproj -c Debug -f net8.0-windows10.0.17763.0 \
+dotnet build <project>.csproj -c Debug -f net10.0-windows10.0.17763.0 \
     -maxcpucount:1 -nodeReuse:false --nologo -p:SolutionDir=<repo>/Src/
 ```
 
-- `-f net8.0-windows10.0.17763.0` pins the desktop leg explicitly.
+- `-f net10.0-windows10.0.17763.0` pins the desktop leg explicitly.
 - `-p:SolutionDir=<repo>/Src/` with **forward slashes and a trailing slash** — many
   csprojs resolve `ProjectReference`s through it, and
   `Src/Backends/FNA.Platform/Directory.Build.props` shadows the one

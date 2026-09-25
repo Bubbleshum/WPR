@@ -31,6 +31,7 @@ namespace WPR.Platform.Windows.ViewModels
         public ReactiveCommand<Unit, Unit> EditAppCommand { get; }
         public ReactiveCommand<Unit, Unit> InfoAppCommand { get; }
         public ReactiveCommand<Unit, Unit> ControlsAppCommand { get; }
+        public ReactiveCommand<Unit, Unit> ClearDataAppCommand { get; }
 
         public event EventHandler<ApplicationItemViewModel>? UninstallRequested;
         public event EventHandler<ApplicationItemViewModel>? InstallRequested;
@@ -38,6 +39,7 @@ namespace WPR.Platform.Windows.ViewModels
         public event EventHandler<ApplicationItemViewModel>? EditRequested;
         public event EventHandler<ApplicationItemViewModel>? InfoRequested;
         public event EventHandler<ApplicationItemViewModel>? ControlsRequested;
+        public event EventHandler<ApplicationItemViewModel>? ClearDataRequested;
 
         public ApplicationItemViewModel(Application app)
         {
@@ -49,6 +51,7 @@ namespace WPR.Platform.Windows.ViewModels
             EditAppCommand = ReactiveCommand.Create(EditApp);
             InfoAppCommand = ReactiveCommand.Create(ShowInfo);
             ControlsAppCommand = ReactiveCommand.Create(ShowControls);
+            ClearDataAppCommand = ReactiveCommand.Create(ClearData);
         }
 
         public ApplicationItemViewModel(string xapFilePath, ApplicationPreview preview)
@@ -62,6 +65,7 @@ namespace WPR.Platform.Windows.ViewModels
             EditAppCommand = ReactiveCommand.Create(() => { });
             InfoAppCommand = ReactiveCommand.Create(() => { });
             ControlsAppCommand = ReactiveCommand.Create(() => { });
+            ClearDataAppCommand = ReactiveCommand.Create(() => { });
         }
 
         /// <summary>
@@ -81,6 +85,7 @@ namespace WPR.Platform.Windows.ViewModels
             EditAppCommand = ReactiveCommand.Create(() => { });
             InfoAppCommand = ReactiveCommand.Create(() => { });
             ControlsAppCommand = ReactiveCommand.Create(() => { });
+            ClearDataAppCommand = ReactiveCommand.Create(() => { });
 
             // Re-raise PropertyChanged for our Progress when the installer ticks.
             _InstallingProgressSub = installing.WhenAnyValue(i => i.Progress)
@@ -262,6 +267,14 @@ namespace WPR.Platform.Windows.ViewModels
         {
             if (!IsInstalled) return;
             ControlsRequested?.Invoke(this, this);
+        }
+
+        /// <summary>Ask the page to warn and then erase this game's saved data. Installed games
+        /// only; the page owns the confirmation dialog.</summary>
+        private void ClearData()
+        {
+            if (!IsInstalled) return;
+            ClearDataRequested?.Invoke(this, this);
         }
 
         private void EditApp()

@@ -196,6 +196,11 @@
                       ToolTip.Tip="Bind keys to touch taps and swipes for this game. Draw the gesture on a to-scale phone outline; saved with this game only."
                       IsVisible="{Binding ChoosenApp.IsInstalled}"/>
               <Button Classes="ghost"
+                      Command="{Binding ChoosenApp.ClearDataAppCommand}"
+                      Content="Clear data"
+                      ToolTip.Tip="Delete all of this game's save data, so it starts as if newly installed. Use this when a game stopped starting because of something it saved. Asks for confirmation first."
+                      IsVisible="{Binding ChoosenApp.IsInstalled}"/>
+              <Button Classes="ghost"
                       Command="{Binding ChoosenApp.UninstallAppCommand}"
                       Content="Uninstall"
                       IsVisible="{Binding ChoosenApp.IsInstalled}"/>

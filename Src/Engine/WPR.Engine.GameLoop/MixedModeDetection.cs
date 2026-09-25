@@ -6,7 +6,7 @@ using Mono.Cecil;
 namespace WPR
 {
     /// <summary>
-    /// Decides whether an install is a WP7.1 Silverlight/XNA <em>mixed-mode</em> application —
+    /// Decides whether an installation is a WP7.1 Silverlight/XNA <em>mixed-mode</em> application —
     /// one with no <c>Game</c> subclass, whose loop is a <c>GameTimer</c> on a
     /// <c>PhoneApplicationPage</c> and whose device comes from a
     /// <c>SharedGraphicsDeviceManager</c>.

@@ -3,7 +3,7 @@
     <!-- Windows-only head: the old WPR.UI.Desktop project carried a plain net8.0 leg for
          Linux/macOS, but nothing shipped on it and the project is now named for the
          platform it targets. A non-Windows desktop head would be its own project. -->
-    <TargetFramework>net8.0-windows10.0.17763.0</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.17763.0</TargetFramework>
     <RootNamespace>WPR.Platform.Windows</RootNamespace>
     <!-- Assembly name follows the project name (renamed from WPR.UI.Desktop on 2026-08-29).
          It is stated explicitly rather than left to default, because it is load-bearing in
@@ -149,12 +149,16 @@
          pins below travel with these for the same reason they do there. -->
     <PackageReference Include="System.ServiceModel.Http" Version="4.10.0" />
     <PackageReference Include="System.ServiceModel.Primitives" Version="4.10.0" />
-    <!-- CVE-2024-38095 / GHSA-447r-wph3-92pm (High, CVSS 8.7): System.Formats.Asn1 through 6.0.0
-         (and 8.0.0) burns excessive CPU parsing a malicious X.509 certificate — denial of service.
-         Reached here at 5.0.0 via System.ServiceModel.* -> System.Private.ServiceModel 4.10.0 ->
-         System.Security.Cryptography.Pkcs 5.0.0. Pinned to 8.0.1, the fix in the 8.x band that
-         matches this head's TFM. -->
-    <PackageReference Include="System.Formats.Asn1" Version="8.0.1" />
+    <!-- The System.Formats.Asn1 pin retired with the move to net10 (2026-09-25). It lifted the
+         5.0.0 that System.ServiceModel.* -> System.Private.ServiceModel 4.10.0 ->
+         System.Security.Cryptography.Pkcs 5.0.0 still drags in, off CVE-2024-38095 /
+         GHSA-447r-wph3-92pm (High, CVSS 8.7). From net10 the package is part of the shared
+         framework, so the runtime's own copy wins over that transitive 5.0.0 without being asked
+         and an explicit 8.0.1 would only pin something older (NU1510). The ServiceModel packages
+         below are unchanged and still drag it in — so if this head ever leaves the shared
+         framework (self-contained trimming that prunes it, or a downgrade off net10), the pin has
+         to come back. -->
+    <!-- System.Security.Cryptography.Xml is NOT in the shared framework and its pin stays. -->
     <!-- CVE-2022-34716 / GHSA-vh55-786g-wjwj (Moderate, CVSS 5.9): System.Security.Cryptography.Xml
          5.0.0-6.0.0 can disclose privileged information (XML signature verification). Reached at
          5.0.0 via System.ServiceModel.* -> System.Private.ServiceModel 4.10.0. Pinned to 8.0.4 —

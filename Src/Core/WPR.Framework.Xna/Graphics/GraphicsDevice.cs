@@ -1317,6 +1317,18 @@ namespace Microsoft.Xna.Framework.Graphics
 		// drawing past its clears or just sitting on a blank backbuffer.
 		private static int _wprDrawCallsThisFrame;
 		private static int _wprDrawCallTotalLogged;
+
+		/// <summary>
+		/// Draw calls issued since the last <c>Present</c>. Live in Release — only the tracing
+		/// around it is <c>[Conditional("DEBUG")]</c>, not the count.
+		/// </summary>
+		/// <remarks>
+		/// Read by the mixed-mode host to tell a frame the game painted from one it left blank,
+		/// which is how it decides whether a Silverlight page still needs compositing. Clears do
+		/// not count, and that is the point: a game that clears and draws nothing has not put a
+		/// frame on the screen.
+		/// </remarks>
+		internal static int WprDrawCallsThisFrame => _wprDrawCallsThisFrame;
 		private static void WprTraceDraw(string kind, int primitiveCount)
 		{
 			_wprDrawCallsThisFrame++;

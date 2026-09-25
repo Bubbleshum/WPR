@@ -39,13 +39,18 @@ internal static class Program
 
         foreach (double size in sizes)
         {
-            object?[] margs = { "Carcassonne 123 gjpqy", size, null, null };
+            // EVERY parameter, including the optional ones: MethodInfo.Invoke does not apply C#
+            // default values, so a short array throws TargetParameterCountException the moment
+            // either signature grows one — which is exactly what wrapping and alignment did.
+            object?[] margs = { "Carcassonne 123 gjpqy", size, null, null, double.PositiveInfinity };
             measure.Invoke(null, margs);
             Console.WriteLine($"  size {size,7:F3}  measured {(double)margs[2]!,8:F2} x {(double)margs[3]!,7:F2}");
 
             draw.Invoke(null, new object?[]
             {
                 buffer, W, H, "Carcassonne 123 gjpqy", size, 6.0, y, Black, clip,
+                double.PositiveInfinity,                        // layoutWidth: no wrapping
+                Enum.ToObject(draw.GetParameters()[10].ParameterType, 0),   // TextAlignment.Left
             });
 
             y += (double)margs[3]!;

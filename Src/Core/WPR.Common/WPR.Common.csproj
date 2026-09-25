@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
     <CheckEolWorkloads>false</CheckEolWorkloads>
-    <TargetFrameworks>net8.0;net10.0-android</TargetFrameworks>
+    <TargetFrameworks>net10.0;net10.0-android</TargetFrameworks>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(OS)' == 'Windows_NT' ">
     <CheckEolWorkloads>false</CheckEolWorkloads>
@@ -11,7 +11,7 @@
          WprHostEnvironment / Configuration, which the types absorbed from WPR.WindowsCompability
          need. Without a net8.0 leg here, Silverlight's net8.0 inner build fails with no compatible
          TFM. The non-Windows list above already builds net8.0, so the sources are known portable. -->
-    <TargetFrameworks>net8.0;net8.0-windows10.0.17763.0;net10.0-android</TargetFrameworks>
+    <TargetFrameworks>net10.0;net10.0-windows10.0.17763.0;net10.0-android</TargetFrameworks>
   </PropertyGroup>
   <PropertyGroup>
     <CheckEolWorkloads>false</CheckEolWorkloads>

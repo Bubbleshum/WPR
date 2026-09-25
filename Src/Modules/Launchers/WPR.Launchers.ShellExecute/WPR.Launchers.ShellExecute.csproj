@@ -11,7 +11,7 @@
   -->
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <CheckEolWorkloads>false</CheckEolWorkloads>
     <AssemblyName>WPR.Launchers.ShellExecute</AssemblyName>
     <RootNamespace>WPR.Launchers.ShellExecute</RootNamespace>

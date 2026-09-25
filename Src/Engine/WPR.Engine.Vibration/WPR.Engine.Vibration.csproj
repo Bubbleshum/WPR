@@ -25,7 +25,7 @@
     <CheckEolWorkloads>false</CheckEolWorkloads>
   </PropertyGroup>
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net10.0-android</TargetFrameworks>
+    <TargetFrameworks>net10.0;net10.0-android</TargetFrameworks>
     <CheckEolWorkloads>false</CheckEolWorkloads>
     <AssemblyName>WPR.Engine.Vibration</AssemblyName>
     <RootNamespace>WPR.Engine.Vibration</RootNamespace>

@@ -1,9 +1,6 @@
-﻿using Newtonsoft.Json.Linq;
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.IsolatedStorage;
 using System.Runtime.Serialization;
@@ -33,6 +30,7 @@ namespace WPR.WindowsCompability
     public class IsolatedStorageSettings2 : IDictionary<string, object> //RnD : static
     {
         private static IsolatedStorageSettings2 _ApplicationSettings;
+        private static string? _ApplicationSettingsProductId;
         private const string LocalSettingsName = "__LocalSettings";
 
         private IsolatedStorageFile _Holder;
@@ -136,16 +134,23 @@ namespace WPR.WindowsCompability
         }
 
 
-        // RnD: static 
+        // RnD: static
         public static IsolatedStorageSettings2 ApplicationSettings
         {
             get
             {
-                if (_ApplicationSettings == null)
+                // Rebuilt whenever the hosted game changes. This type lives in a WPR assembly, not
+                // the game's collectible ALC, so the singleton outlives a launch — and with per-game
+                // stores (patcher v38) reusing it would write the next game's settings into the
+                // previous game's store.
+                string? productId = WprHostEnvironment.CurrentProductId;
+                if (_ApplicationSettings == null
+                    || !string.Equals(_ApplicationSettingsProductId, productId, StringComparison.Ordinal))
                 {
                     _ApplicationSettings = new
                         IsolatedStorageSettings2(
-                            IsolatedStorageFile.GetUserStoreForApplication());
+                            PerGameIsolatedStorage.GetUserStoreForApplication());
+                    _ApplicationSettingsProductId = productId;
                 }
 
                 return _ApplicationSettings;
@@ -317,14 +322,5 @@ namespace WPR.WindowsCompability
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-        //RnD : static
-        //public IsolatedStorageSettings2 get_ApplicationSettings()
-        //{
-            //byte[] result = System.Security.Cryptography
-            //   .ProtectedData.Unprotect(byteArrayOfOriginalData, 
-            //   additionalEntropyOrSalt, 
-            //   DataProtectionScope.CurrentUser);
-            //return default;
-        //}
     }
 }
