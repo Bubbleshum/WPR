@@ -25,8 +25,13 @@ namespace WPR.Online.Hub;
 public sealed class HubAccountService
 {
     private readonly HubConnection _connection;
+    private readonly HubProgressSync _progress;
 
-    internal HubAccountService(HubConnection connection) => _connection = connection;
+    internal HubAccountService(HubConnection connection, HubProgressSync progress)
+    {
+        _connection = connection;
+        _progress = progress;
+    }
 
     public bool IsSignedIn => _connection.IsSignedIn;
 
@@ -288,6 +293,9 @@ public sealed class HubAccountService
 
             await _owner.CompletedAsync(token).ConfigureAwait(false);
             _ = WPR.Engine.Online.OnlineBackend.FlushAsync();
+            // The account's achievements, from every device: without this a fresh install shows
+            // 0 G and an empty achievements list until the player happens to unlock something.
+            _ = Task.Run(_owner._progress.RestoreAsync);
             return token.User.Username;
         }
     }

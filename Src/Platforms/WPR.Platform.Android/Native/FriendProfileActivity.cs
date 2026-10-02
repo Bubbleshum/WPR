@@ -188,7 +188,7 @@ namespace WPR.Platform.Android.Native
 
             bool achievement = item.Type == FriendActivity.Achievement;
             installed.TryGetValue(TitleIds.Normalize(item.TitleId), out WprApplication? app);
-            Bitmap? tile = app == null ? null : GameTileArt.Decode(app);
+            Bitmap? tile = GameTileArt.Decode(app, item.TitleId);
             if (achievement && !string.IsNullOrEmpty(item.IconUrl)) _ = HubViews.LoadImageAsync(this, hub, art, item.IconUrl!);
             else if (tile != null) art.SetImageBitmap(tile);
             else if (!string.IsNullOrEmpty(item.TitleIconUrl)) _ = HubViews.LoadImageAsync(this, hub, art, item.TitleIconUrl!);

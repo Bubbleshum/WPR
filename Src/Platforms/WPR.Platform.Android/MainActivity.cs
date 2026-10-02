@@ -119,6 +119,11 @@ namespace WPR.Platform.Android
             // process wrote on its way down, which only a launcher that lives on can send.
             _ = WPR.Engine.Online.OnlineBackend.FlushAsync();
 
+            // ...and bring down what the account earned on other devices, so the gamer card and
+            // achievements count are the account's, not just this install's.
+            WPR.Shell.HubSetup.ProgressRestored += OnProgressRestored;
+            WPR.Shell.HubSetup.RestoreProgressInBackground();
+
             // "Online" on WPR Hub while signed in. GameLauncher suspends it while the :game
             // process, which has its own, speaks for this device.
             WPR.Engine.Online.OnlineBackend.Presence?.Start();
@@ -194,8 +199,16 @@ namespace WPR.Platform.Android
             }
         }
 
+        /// <summary>A hub restore (sign-in or start-up) earned rows here: recount the tiles.</summary>
+        private void OnProgressRestored(int earned) => RunOnUiThread(() =>
+        {
+            if (!IsFinishing && !IsDestroyed) RefreshTileCounts();
+        });
+
         protected override void OnDestroy()
         {
+            WPR.Shell.HubSetup.ProgressRestored -= OnProgressRestored;
+
             if (_LaunchRequestHandler != null)
             {
                 ApplicationLaunchRequest.Incoming -= _LaunchRequestHandler;

@@ -99,6 +99,29 @@ namespace WPR
         }
 
         /// <summary>
+        /// Store a game's tile art fetched from WPR Hub, for a game this device has never
+        /// installed (its achievements were restored from the account). Never replaces a stored
+        /// icon: art captured from a real install is the better copy. Best-effort, like Capture.
+        /// </summary>
+        public static void SaveDownloaded(string? productId, byte[] png)
+        {
+            string? trimmed = Normalise(productId);
+            if (trimmed == null || png == null || png.Length == 0) return;
+            try
+            {
+                if (EnumerateCandidates(trimmed).Any()) return;
+                Directory.CreateDirectory(StoreFolder);
+                // Lower case, the catalogue's spelling: the hub sends its ids upper case.
+                File.WriteAllBytes(Path.Combine(StoreFolder, trimmed.ToLowerInvariant() + ".png"), png);
+            }
+            catch (Exception ex)
+            {
+                Log.Warn(LogCategory.AppInstall,
+                    $"GameIconStore: could not store the downloaded icon for {productId}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// The stored icon's path relative to the data store, or null when nothing was captured
         /// for this product. Feed the result to <see cref="Configuration.DataPath"/>.
         /// </summary>

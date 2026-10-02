@@ -38,6 +38,25 @@ public sealed class HubSettings
     /// <summary>The local database's queue of unlocks and play sessions awaiting upload. Null disables progress sync.</summary>
     public IOnlineLocalStore? Local { get; init; }
 
+    /// <summary>
+    /// Before the account's unlocks are restored into the local database: make sure these games'
+    /// achievement catalogues are there, installed or not (hub title ids). Null skips it, and a
+    /// restored game then lists only the achievements the player has earned.
+    /// </summary>
+    public Func<IReadOnlyCollection<string>, Task>? PrepareTitles { get; init; }
+
+    /// <summary>
+    /// The head already has tile art for this game (hub title id). With <see cref="SaveTitleArt"/>,
+    /// a restore downloads the hub's icon for each game the account has played that lacks it.
+    /// </summary>
+    public Func<string, bool>? HasTitleArt { get; init; }
+
+    /// <summary>Store a game's tile art (PNG bytes from the hub) for a game not installed here.</summary>
+    public Action<string, byte[]>? SaveTitleArt { get; init; }
+
+    /// <summary>A restore marked this many achievements earned. For repainting a gamerscore or a list.</summary>
+    public Action<int>? ProgressRestored { get; init; }
+
     /// <summary>How to get a game's original package back, for uploads. Null disables uploads.</summary>
     public IGamePackageSource? Packages { get; init; }
 

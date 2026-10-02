@@ -60,6 +60,11 @@ namespace WPR.Platform.Windows.ViewModels
             _Achievements = new ObservableCollection<AchievementItemViewModel>();
 
             _ = LoadAsync();
+
+            // A sign-in (or start-up) brought the account's achievements down from WPR Hub. The
+            // page lives as long as the window, so the subscription does too.
+            WPR.Shell.HubSetup.ProgressRestored += earned =>
+                Dispatcher.UIThread.Post(() => _ = LoadAsync(_SelectedGame?.ProductId));
         }
 
         public async Task LoadAsync(string? selectProductId = null)

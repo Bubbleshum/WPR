@@ -35,7 +35,7 @@ namespace WPR
             if (string.IsNullOrEmpty(productId)) return;
             try
             {
-                await ReconcileAsync(productId, appName, HardcodedAchievementCatalogue.Load(productId));
+                await ReconcileAsync(AchievementContext.Current, productId, appName, HardcodedAchievementCatalogue.Load(productId));
             }
             catch (Exception ex)
             {
@@ -71,12 +71,25 @@ namespace WPR
                     return;
                 }
 
+                // Games restored from WPR Hub have rows without an install; they get catalogue
+                // updates too, or a corrected key would leave their row orphaned.
+                HashSet<string> withRows = new HashSet<string>(
+                    (await AchievementContext.Current.Achievements!.AsNoTracking()
+                        .Select(a => a.OwnProductId).Distinct().ToListAsync())
+                    .Where(id => !string.IsNullOrEmpty(id)).Select(id => id.Trim('{').Trim('}')),
+                    StringComparer.OrdinalIgnoreCase);
+
                 foreach (string productId in catalogueIds)
                 {
-                    // Only reconcile games the user actually has installed; leave
+                    // Only reconcile games the user has installed or has achievements in; leave
                     // catalogues for absent games alone.
-                    if (!installed.TryGetValue(productId, out string? appName)) continue;
-                    await ReconcileAsync(productId, appName ?? productId,
+                    string? appName;
+                    if (!installed.TryGetValue(productId, out appName))
+                    {
+                        if (!withRows.Contains(productId)) continue;
+                        appName = HardcodedAchievementCatalogue.GameName(productId);
+                    }
+                    await ReconcileAsync(AchievementContext.Current, productId, appName ?? productId,
                         HardcodedAchievementCatalogue.Load(productId));
                 }
             }
@@ -88,11 +101,45 @@ namespace WPR
         }
 
         /// <summary>
+        /// Make sure each of these games has its catalogue in the local DB, installed or not. For
+        /// WPR Hub's restore, which runs this before marking the account's unlocks earned, so a
+        /// device that never installed a game still lists every achievement in it (the locked ones
+        /// too) with names, descriptions and icons. Ids are matched loosely (case, braces); a game
+        /// with no bundled catalogue is skipped, and the restore makes its rows from the hub's data.
+        /// </summary>
+        /// <remarks>
+        /// Runs on a thread-pool thread, so it uses a context of its own rather than the tracked
+        /// <see cref="AchievementContext.Current"/>, which a running game's award path uses.
+        /// </remarks>
+        public static async Task SeedCataloguesAsync(IEnumerable<string> productIds)
+        {
+            try
+            {
+                Dictionary<string, string> catalogue = HardcodedAchievementCatalogue.ProductIds()
+                    .GroupBy(id => id, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+                using AchievementContext db = new AchievementContext();
+                foreach (string raw in productIds.Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    if (string.IsNullOrEmpty(raw)) continue;
+                    if (!catalogue.TryGetValue(raw.Trim().Trim('{', '}'), out string? productId)) continue;
+                    await ReconcileAsync(db, productId, HardcodedAchievementCatalogue.GameName(productId) ?? productId,
+                        HardcodedAchievementCatalogue.Load(productId));
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warn(LogCategory.GamerServices, $"XnaAchievementSeeder: catalogue seed for restored games failed: {ex}");
+            }
+        }
+
+        /// <summary>
         /// Upserts <paramref name="desired"/> into the DB for the product, preserving
         /// earned state. Inserts missing rows, updates changed metadata, deletes
         /// nothing.
         /// </summary>
-        private static async Task ReconcileAsync(string productId, string appName, List<HardcodedAchievement> desired)
+        private static async Task ReconcileAsync(AchievementContext db, string productId, string appName, List<HardcodedAchievement> desired)
         {
             productId = productId.Trim('{').Trim('}');
             if (desired.Count == 0)
@@ -102,7 +149,7 @@ namespace WPR
                 return;
             }
 
-            List<Achievement> existing = await AchievementContext.Current.Achievements!
+            List<Achievement> existing = await db.Achievements!
                 .Where(a => a.OwnProductId == productId)
                 .ToListAsync();
             Dictionary<string, Achievement> byKey = existing
@@ -130,7 +177,7 @@ namespace WPR
                 }
                 else
                 {
-                    AchievementContext.Current.Achievements!.Add(new Achievement
+                    db.Achievements!.Add(new Achievement
                     {
                         OwnProductId = productId,
                         Key = d.Key,
@@ -156,11 +203,11 @@ namespace WPR
             var desiredKeys = new HashSet<string>(desired.Select(d => d.Key), StringComparer.Ordinal);
             List<Achievement> stale = existing.Where(a => !desiredKeys.Contains(a.Key)).ToList();
             int removed = stale.Count;
-            if (removed > 0) AchievementContext.Current.Achievements!.RemoveRange(stale);
+            if (removed > 0) db.Achievements!.RemoveRange(stale);
 
             if (inserted > 0 || updated > 0 || removed > 0)
             {
-                await AchievementContext.Current.SaveChangesAsync();
+                await db.SaveChangesAsync();
             }
 
             Log.Info(LogCategory.AppInstall,

@@ -22,7 +22,9 @@ namespace WPR.Platform.Windows
             // WPR Hub: leaderboards, and crash reports for players who opted in. Sends nothing
             // until a hub URL is configured. One instance for the process, however many times the
             // descriptor is applied.
-            Hub ??= WPR.Shell.HubSetup.TryCreate("windows", new Online.DesktopGamePackageSource(), new WPR.Database.Online.EfOnlineLocalStore());
+            Hub ??= WPR.Shell.HubSetup.TryCreate("windows", new Online.DesktopGamePackageSource(),
+                new WPR.Database.Online.EfOnlineLocalStore(), WPR.XnaAchievementSeeder.SeedCataloguesAsync,
+                id => WPR.GameIconStore.Find(id) != null, WPR.GameIconStore.SaveDownloaded);
             if (Hub != null) caps.Online(Hub.Services);
         }
 

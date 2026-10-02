@@ -27,6 +27,28 @@ namespace WPR.Platform.Android.Native
         /// All three mean "draw the placeholder" rather than being errors — plenty of XAPs carry
         /// no tile art at all.
         /// </summary>
+        /// <summary>
+        /// Art for a game that may not be installed: the install's when there is one, otherwise
+        /// whatever the icon store holds (captured at an earlier install, or downloaded from WPR
+        /// Hub for a game restored from the account).
+        /// </summary>
+        public static Bitmap? Decode(WprApplication? model, string productId)
+        {
+            if (model != null) return Decode(model);
+            try
+            {
+                string? relative = GameIconStore.Find(productId);
+                if (string.IsNullOrWhiteSpace(relative)) return null;
+                string full = Configuration.Current!.DataPath(relative!);
+                return File.Exists(full) ? BitmapFactory.DecodeFile(full) : null;
+            }
+            catch (Exception ex)
+            {
+                Log.Warn(LogCategory.AppList, $"Could not decode the stored icon for {productId}: {ex.Message}");
+                return null;
+            }
+        }
+
         public static Bitmap? Decode(WprApplication model)
         {
             try

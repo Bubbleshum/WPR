@@ -235,7 +235,7 @@ namespace WPR.Platform.Android.Native
                 ImageView art = new ImageView(this) { ContentDescription = null };
                 art.SetScaleType(ImageView.ScaleType.CenterCrop);
                 art.SetBackgroundColor(WpTheme.Muted(WpTheme.Accent));
-                Bitmap? tile = app == null ? null : GameTileArt.Decode(app);
+                Bitmap? tile = GameTileArt.Decode(app, game.TitleId);
                 if (tile != null) art.SetImageBitmap(tile);
                 row.AddView(art, new LinearLayout.LayoutParams(Dp(56), Dp(56)));
 
