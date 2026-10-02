@@ -64,6 +64,24 @@ namespace WPR.Platform.Android.Native
 
             _ProductId = Intent?.GetStringExtra(ExtraProductId);
 
+            Load();
+            // Signing in brings the account's achievements down from WPR Hub, a moment later.
+            WPR.Shell.HubSetup.ProgressRestored += OnProgressRestored;
+        }
+
+        protected override void OnDestroy()
+        {
+            WPR.Shell.HubSetup.ProgressRestored -= OnProgressRestored;
+            base.OnDestroy();
+        }
+
+        private void OnProgressRestored(int earned) => RunOnUiThread(() =>
+        {
+            if (!IsFinishing && !IsDestroyed) Load();
+        });
+
+        private void Load()
+        {
             if (string.IsNullOrEmpty(_ProductId)) LoadGameRollup();
             else LoadGameDetail(_ProductId!);
         }
@@ -114,17 +132,25 @@ namespace WPR.Platform.Android.Native
             adapter.SetItems(entries);
             _List.Adapter = adapter;
 
-            _List.ItemClick += (_, e) =>
-            {
-                AchievementGameEntry entry = adapter[e.Position];
-                Intent intent = new Intent(this, typeof(AchievementsActivity));
-                intent.PutExtra(ExtraProductId, entry.ProductId);
-                intent.PutExtra(ExtraGameName, entry.Name);
-                StartActivity(intent);
-            };
+            _List.ItemClick -= OnGameClick;
+            _List.ItemClick += OnGameClick;
+            _GameAdapter = adapter;
 
             ShowEmptyIfNeeded(entries.Count,
                 "no achievements yet. install a game with a catalogue and its achievements appear here, locked, before you have earned any.");
+        }
+
+        private AchievementGameAdapter? _GameAdapter;
+
+        // A named handler, so a reload does not stack a second one on the list.
+        private void OnGameClick(object? sender, AdapterView.ItemClickEventArgs e)
+        {
+            if (_GameAdapter == null) return;
+            AchievementGameEntry entry = _GameAdapter[e.Position];
+            Intent intent = new Intent(this, typeof(AchievementsActivity));
+            intent.PutExtra(ExtraProductId, entry.ProductId);
+            intent.PutExtra(ExtraGameName, entry.Name);
+            StartActivity(intent);
         }
 
         private void LoadGameDetail(string productId)

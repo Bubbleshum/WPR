@@ -223,7 +223,7 @@ namespace WPR.Platform.Windows.Pages
                 installed.TryGetValue(game.TitleId, out WPR.Models.Application? app);
 
                 var art = new Border { Width = 56, Height = 56, CornerRadius = new CornerRadius(3), ClipToBounds = true, Background = Tile };
-                if (app != null && LoadTileArt(app) is { } bitmap) art.Child = new Image { Source = bitmap, Stretch = Stretch.UniformToFill };
+                if (LoadTileArt(app, game.TitleId) is { } bitmap) art.Child = new Image { Source = bitmap, Stretch = Stretch.UniformToFill };
 
                 var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Spacing = 2, Margin = new Thickness(14, 0, 0, 0) };
                 text.Children.Add(new TextBlock { Text = app?.Name ?? game.Name, FontSize = 18, FontWeight = FontWeight.Light, Foreground = Brushes.White, TextTrimming = TextTrimming.CharacterEllipsis });
@@ -253,11 +253,12 @@ namespace WPR.Platform.Windows.Pages
             return map;
         }
 
-        private static Bitmap? LoadTileArt(WPR.Models.Application app)
+        /// <summary>The install's art, or for a game not installed here the stored copy (an earlier install, or WPR Hub).</summary>
+        private static Bitmap? LoadTileArt(WPR.Models.Application? app, string titleId)
         {
             try
             {
-                string? relative = GameIconStore.Resolve(app.ProductId, app.IconPath);
+                string? relative = app != null ? GameIconStore.Resolve(app.ProductId, app.IconPath) : GameIconStore.Find(titleId);
                 if (string.IsNullOrWhiteSpace(relative)) return null;
                 string full = Configuration.Current!.DataPath(relative!);
                 return File.Exists(full) ? new Bitmap(full) : null;

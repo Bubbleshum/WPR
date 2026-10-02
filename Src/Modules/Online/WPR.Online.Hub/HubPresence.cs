@@ -26,6 +26,10 @@ public sealed class HubPresence : IPresence
     private bool _stopped;
     private string? _titleId;
     private string? _titleName;
+    // Bumped by every Wake. A wake that lands while a beat is on the wire has no delay to cut
+    // short yet, so the loop compares this before it sleeps; without it "playing X" waited a
+    // whole heartbeat (a minute) whenever the game started during the beat its own Start() sent.
+    private int _changes;
 
     /// <summary>The hub's answer to the last heartbeat: friends online, unread messages, pending requests. Null until one lands, and again when signed out.</summary>
     public PresenceBeat? LastBeat { get; private set; }
@@ -97,8 +101,10 @@ public sealed class HubPresence : IPresence
             TimeSpan wait = SignedOutPoll;
             bool stopped, suspended;
             string? titleId, titleName;
+            int changes;
             lock (_gate)
             {
+                changes = _changes;
                 stopped = _stopped;
                 suspended = _suspended;
                 titleId = _titleId;
@@ -136,7 +142,11 @@ public sealed class HubPresence : IPresence
             }
 
             CancellationTokenSource wake = new();
-            lock (_gate) _wake = wake;
+            lock (_gate)
+            {
+                _wake = wake;
+                if (_changes != changes) continue; // woken during the beat: send the new state now
+            }
             try { await Task.Delay(wait, wake.Token).ConfigureAwait(false); }
             catch (OperationCanceledException) { /* woken early: a title change, a resume, a sign-in */ }
         }
@@ -145,7 +155,11 @@ public sealed class HubPresence : IPresence
     private void Wake()
     {
         CancellationTokenSource? wake;
-        lock (_gate) wake = _wake;
+        lock (_gate)
+        {
+            _changes++;
+            wake = _wake;
+        }
         try { wake?.Cancel(); } catch (ObjectDisposedException) { }
     }
 }

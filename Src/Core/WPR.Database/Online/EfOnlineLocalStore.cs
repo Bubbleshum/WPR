@@ -166,6 +166,126 @@ namespace WPR.Database.Online
             return total;
         }
 
+        public async Task<int> RestoreUnlocksAsync(IReadOnlyList<RestoredUnlock> unlocks)
+        {
+            if (unlocks.Count == 0) return 0;
+            await EnsureSchema().ConfigureAwait(false);
+
+            // A game installed here keeps the product id spelling its install row uses; anything
+            // else takes the catalogue's (lower case, no braces), so a later install finds it.
+            Dictionary<string, string> installed = InstalledProductIds();
+
+            int earned = 0;
+            using SqliteConnection db = Open(AchievementsDb);
+            using SqliteTransaction tx = db.BeginTransaction();
+
+            using SqliteCommand find = db.CreateCommand();
+            find.Transaction = tx;
+            // Product ids are matched loosely: the hub spells them upper case without braces, the
+            // catalogues lower case, and an install row may carry braces.
+            find.CommandText = "SELECT Id, IsEarned, EarnedOnline FROM Achievements " +
+                               "WHERE REPLACE(REPLACE(OwnProductId, '{', ''), '}', '') = $p COLLATE NOCASE AND Key = $k LIMIT 1";
+            SqliteParameter findProduct = find.Parameters.Add("$p", SqliteType.Text);
+            SqliteParameter findKey = find.Parameters.Add("$k", SqliteType.Text);
+
+            using SqliteCommand earn = db.CreateCommand();
+            earn.Transaction = tx;
+            earn.CommandText = "UPDATE Achievements SET IsEarned = 1, EarnedOnline = 1, EarnedDateTime = $at WHERE Id = $id";
+            SqliteParameter earnAt = earn.Parameters.Add("$at", SqliteType.Text);
+            SqliteParameter earnId = earn.Parameters.Add("$id", SqliteType.Integer);
+
+            using SqliteCommand confirm = db.CreateCommand();
+            confirm.Transaction = tx;
+            // Earned here and also on the hub (another device got there first): nothing to send.
+            confirm.CommandText = "UPDATE Achievements SET EarnedOnline = 1 WHERE Id = $id";
+            SqliteParameter confirmId = confirm.Parameters.Add("$id", SqliteType.Integer);
+
+            using SqliteCommand insert = db.CreateCommand();
+            insert.Transaction = tx;
+            insert.CommandText =
+                "INSERT INTO Achievements (_IconPath, Description, DisplayBeforeEarned, EarnedDateTime, EarnedOnline, " +
+                "GamerScore, HowToEarn, IsEarned, Key, Name, OwnProductId) " +
+                "VALUES ('', '', 1, $at, 1, $score, '', 1, $k, $name, $p)";
+            SqliteParameter insAt = insert.Parameters.Add("$at", SqliteType.Text);
+            SqliteParameter insScore = insert.Parameters.Add("$score", SqliteType.Integer);
+            SqliteParameter insKey = insert.Parameters.Add("$k", SqliteType.Text);
+            SqliteParameter insName = insert.Parameters.Add("$name", SqliteType.Text);
+            SqliteParameter insProduct = insert.Parameters.Add("$p", SqliteType.Text);
+
+            foreach (RestoredUnlock u in unlocks)
+            {
+                if (string.IsNullOrEmpty(u.TitleId) || string.IsNullOrEmpty(u.Key)) continue;
+                string product = Normalize(u.TitleId);
+                // EF reads EarnedDateTime back as local time with no offset; write it the same way.
+                string at = u.UnlockedAt.LocalDateTime.ToString(SqliteDate, CultureInfo.InvariantCulture);
+
+                findProduct.Value = product;
+                findKey.Value = u.Key;
+                long? id = null;
+                bool isEarned = false, isOnline = false;
+                using (SqliteDataReader r = await find.ExecuteReaderAsync().ConfigureAwait(false))
+                {
+                    if (await r.ReadAsync().ConfigureAwait(false))
+                    {
+                        id = r.GetInt64(0);
+                        isEarned = r.GetInt64(1) != 0;
+                        isOnline = r.GetInt64(2) != 0;
+                    }
+                }
+
+                if (id is { } existing)
+                {
+                    if (!isEarned)
+                    {
+                        earnAt.Value = at;
+                        earnId.Value = existing;
+                        await earn.ExecuteNonQueryAsync().ConfigureAwait(false);
+                        earned++;
+                    }
+                    else if (!isOnline)
+                    {
+                        confirmId.Value = existing;
+                        await confirm.ExecuteNonQueryAsync().ConfigureAwait(false);
+                    }
+                    continue;
+                }
+
+                insAt.Value = at;
+                insScore.Value = Math.Max(0, u.Points);
+                insKey.Value = u.Key;
+                insName.Value = string.IsNullOrWhiteSpace(u.Name) ? u.Key : u.Name;
+                insProduct.Value = installed.TryGetValue(product, out string? local) ? local : product.ToLowerInvariant();
+                await insert.ExecuteNonQueryAsync().ConfigureAwait(false);
+                earned++;
+            }
+
+            tx.Commit();
+            return earned;
+        }
+
+        public async Task<string?> GetMetaAsync(string key)
+        {
+            await EnsureSchema().ConfigureAwait(false);
+            using SqliteConnection db = Open(AchievementsDb);
+            using SqliteCommand cmd = db.CreateCommand();
+            cmd.CommandText = "SELECT Value FROM WprOnlineMeta WHERE Key = $k";
+            cmd.Parameters.AddWithValue("$k", key);
+            object? value = await cmd.ExecuteScalarAsync().ConfigureAwait(false);
+            return value is string s ? s : null;
+        }
+
+        public async Task SetMetaAsync(string key, string? value)
+        {
+            await EnsureSchema().ConfigureAwait(false);
+            using SqliteConnection db = Open(AchievementsDb);
+            using SqliteCommand cmd = db.CreateCommand();
+            cmd.CommandText = "INSERT INTO WprOnlineMeta (Key, Value) VALUES ($k, $v) " +
+                              "ON CONFLICT(Key) DO UPDATE SET Value = excluded.Value";
+            cmd.Parameters.AddWithValue("$k", key);
+            cmd.Parameters.AddWithValue("$v", (object?)value ?? DBNull.Value);
+            await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+
         // ------------------------------------------------------------------ plumbing
 
         private async Task EnsureSchema()
@@ -234,6 +354,30 @@ namespace WPR.Database.Online
                 // Names are a nicety; the unlocks go without them.
             }
             return names;
+        }
+
+        /// <summary>Installed product ids, keyed loosely, mapped to the spelling achievements.db uses for them.</summary>
+        private static Dictionary<string, string> InstalledProductIds()
+        {
+            Dictionary<string, string> ids = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                using SqliteConnection db = Open(ApplicationsDb);
+                using SqliteCommand cmd = db.CreateCommand();
+                cmd.CommandText = "SELECT ProductId FROM Applications";
+                using SqliteDataReader r = cmd.ExecuteReader();
+                while (r.Read())
+                {
+                    if (r.IsDBNull(0)) continue;
+                    string id = Normalize(r.GetString(0));
+                    ids[id] = id; // the seeder trims braces the same way
+                }
+            }
+            catch (Exception)
+            {
+                // No install table yet (a brand-new device): every restored game is uninstalled.
+            }
+            return ids;
         }
 
         private static string Normalize(string productId) => productId.Trim().Trim('{', '}');

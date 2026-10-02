@@ -16,6 +16,8 @@ namespace WPR.Shell
             if (presence.IsOnline)
             {
                 if (!string.IsNullOrEmpty(presence.TitleName)) return "playing " + presence.TitleName;
+                // In a game the hub has no name for: still say so, rather than plain "online".
+                if (!string.IsNullOrEmpty(presence.TitleId)) return "playing a game";
                 return presence.Status == PresenceStatuses.Online ? "online" : presence.Status;
             }
             return presence.LastSeenAt is { } seen ? "last seen " + Ago(seen) : "offline";

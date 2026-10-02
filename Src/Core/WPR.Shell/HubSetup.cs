@@ -19,7 +19,12 @@ namespace WPR.Shell
         /// platform descriptor, and PlatformComposition is two-phase, so a throw here would leave
         /// the whole platform uncomposed - no audio, no sensors - over an optional feature.
         /// </summary>
-        public static HubOnline? TryCreate(string platform, IGamePackageSource? packages, IOnlineLocalStore? local)
+        /// <param name="prepareTitles">Seeds the bundled achievement catalogues of games restored
+        /// from the hub (<c>XnaAchievementSeeder.SeedCataloguesAsync</c>, which this project cannot
+        /// reference).</param>
+        public static HubOnline? TryCreate(string platform, IGamePackageSource? packages, IOnlineLocalStore? local,
+            Func<System.Collections.Generic.IReadOnlyCollection<string>, System.Threading.Tasks.Task>? prepareTitles = null,
+            Func<string, bool>? hasTitleArt = null, Action<string, byte[]>? saveTitleArt = null)
         {
             if (Current != null) return Current;
             if (Configuration.Current is not { } config) return null;
@@ -38,6 +43,14 @@ namespace WPR.Shell
                 Platform = platform,
                 Packages = packages,
                 Local = local,
+                PrepareTitles = prepareTitles,
+                HasTitleArt = hasTitleArt,
+                SaveTitleArt = saveTitleArt,
+                ProgressRestored = earned =>
+                {
+                    try { ProgressRestored?.Invoke(earned); }
+                    catch (Exception e) { WPR.Common.Log.Warn(LogCategory.AppList, "ProgressRestored handler threw: " + e.Message); }
+                },
                 SignedOut = () =>
                 {
                     if (Configuration.Current is { } current)
@@ -88,6 +101,28 @@ namespace WPR.Shell
         public static HubOnline? Current { get; private set; }
 
         /// <summary>
+        /// Achievements were restored from the hub (the count that became earned here). Raised on
+        /// a worker thread: marshal before touching a view.
+        /// </summary>
+        public static event Action<int>? ProgressRestored;
+
+        /// <summary>
+        /// Pull the signed-in account's achievements down. Both launchers call this at start-up,
+        /// beside the first flush; sign-in does it by itself. Background, never throws.
+        /// </summary>
+        public static void RestoreProgressInBackground()
+        {
+            if (Current is { } hub) _ = System.Threading.Tasks.Task.Run(hub.Progress.RestoreAsync);
+        }
+
+        /// <summary>
+        /// The product version, when the head knows it better than the entry assembly. Android sets
+        /// it from the package manager: there is no entry assembly there, so <see cref="Version"/>
+        /// answered "unknown" for the device name, crash reports and ratings alike.
+        /// </summary>
+        public static string? ProductVersion { get; set; }
+
+        /// <summary>
         /// The signed-in account's gamerpic as the hub module last saved it, or null when there is
         /// none on disk. For the gamer card, which must draw without waiting on the network.
         /// </summary>
@@ -105,10 +140,10 @@ namespace WPR.Shell
         /// </summary>
         public static string ClientName(string device) => $"WPR {Version()} on {device}";
 
-        /// <summary>The product version the UI shows ($(WprVersion) in Src/Directory.Build.props).</summary>
         /// <summary>This build's WPR version, as sent to the hub (e.g. <c>0.1.05</c>).</summary>
         public static string Version()
         {
+            if (!string.IsNullOrEmpty(ProductVersion)) return ProductVersion!;
             Assembly? entry = Assembly.GetEntryAssembly();
             string? informational = entry?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
             if (!string.IsNullOrEmpty(informational))

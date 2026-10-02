@@ -37,7 +37,23 @@ namespace WPR.Engine.Online
 
         /// <summary>Total seconds played in a game before a moment, for "unlocked after 2 minutes of play".</summary>
         Task<long> GetPlaytimeSecondsAsync(string titleId, DateTimeOffset before);
+
+        /// <summary>
+        /// Unlocks the hub holds for the signed-in account, earned on any device. Each one marks
+        /// the matching local row earned and uploaded, and a game with no local row at all (never
+        /// installed here, no catalogue) gets one made from what the hub knows. Returns how many
+        /// rows became earned. Never un-earns anything.
+        /// </summary>
+        Task<int> RestoreUnlocksAsync(IReadOnlyList<RestoredUnlock> unlocks);
+
+        /// <summary>A small value the online module keeps beside the queue (e.g. when it last pulled). Null when unset.</summary>
+        Task<string?> GetMetaAsync(string key);
+
+        Task SetMetaAsync(string key, string? value);
     }
+
+    /// <summary>One unlock as the hub reports it. <see cref="TitleId"/> is the hub's spelling (upper case, no braces).</summary>
+    public sealed record RestoredUnlock(string TitleId, string Key, DateTimeOffset UnlockedAt, string? Name, int Points);
 
     /// <param name="LocalId">The local row, for marking it uploaded.</param>
     public sealed record PendingUnlock(long LocalId, string TitleId, string Key, DateTimeOffset UnlockedAt, string? TitleName);

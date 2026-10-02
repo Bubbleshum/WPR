@@ -162,6 +162,9 @@ namespace WPR.Platform.Windows.Views
             // hub asked for, scores played while signed out). Background; never throws.
             _ = WPR.Engine.Online.OnlineBackend.FlushAsync();
 
+            // ...and bring down what the account earned on other devices (sign-in does this too).
+            WPR.Shell.HubSetup.RestoreProgressInBackground();
+
             // "Online" on WPR Hub while this window is open and someone is signed in; playing X
             // while a game runs (PlaytimeTracker tells it). Offline when the window closes.
             WPR.Engine.Online.OnlineBackend.Presence?.Start();

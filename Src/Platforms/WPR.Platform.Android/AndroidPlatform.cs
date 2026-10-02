@@ -131,7 +131,11 @@ namespace WPR.Platform.Android
                 // WPR Hub: leaderboards, and crash reports for players who opted in. One instance
                 // per process: this descriptor is applied again on a graphics-driver change, and
                 // the module's queues live on disk, so the launcher and :game share them anyway.
-                Hub ??= WPR.Shell.HubSetup.TryCreate("android", new Online.AndroidGamePackageSource(_context), new WPR.Database.Online.EfOnlineLocalStore());
+                // There is no entry assembly on Android, so the version comes from the package.
+                WPR.Shell.HubSetup.ProductVersion ??= Native.UpdateNotifier.InstalledVersion(_context);
+                Hub ??= WPR.Shell.HubSetup.TryCreate("android", new Online.AndroidGamePackageSource(_context),
+                    new WPR.Database.Online.EfOnlineLocalStore(), WPR.XnaAchievementSeeder.SeedCataloguesAsync,
+                    id => WPR.GameIconStore.Find(id) != null, WPR.GameIconStore.SaveDownloaded);
                 if (Hub != null) caps.Online(Hub.Services);
             }
 

@@ -13,8 +13,8 @@ public sealed class HubOnline
         var connection = new HubConnection(settings);
         Leaderboards = new HubLeaderboards(connection);
         Crashes = new HubCrashReporter(connection);
-        Account = new HubAccountService(connection);
         Progress = new HubProgressSync(connection);
+        Account = new HubAccountService(connection, Progress);
         Presence = new HubPresence(connection);
         Social = new HubSocialService(connection);
         Services = new OnlineServices
