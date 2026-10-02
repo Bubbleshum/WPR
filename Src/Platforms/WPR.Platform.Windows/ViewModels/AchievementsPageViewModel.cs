@@ -90,7 +90,7 @@ namespace WPR.Platform.Windows.ViewModels
                     .Select(g =>
                     {
                         apps.TryGetValue(g.Key, out var app);
-                        return new AchievementGameItemViewModel(g.Key, app, g.ToList());
+                        return new AchievementGameItemViewModel(g.Key, app, g.ToList(), LocalName(g.Key, app));
                     })
                     .OrderBy(g => g.Name, StringComparer.OrdinalIgnoreCase)
                     .ToList();
@@ -102,6 +102,8 @@ namespace WPR.Platform.Windows.ViewModels
                         ? grouped.FirstOrDefault(g => g.ProductId == selectProductId)
                         : null) ?? grouped.FirstOrDefault();
                 });
+
+                _ = FillNamesFromHubAsync(grouped);
             }
             catch (Exception ex)
             {
@@ -112,6 +114,36 @@ namespace WPR.Platform.Windows.ViewModels
             {
                 IsLoading = false;
             }
+        }
+
+        /// <summary>
+        /// A game's name from what is on this machine, in the same order as the Android page: the
+        /// bundled achievement catalogue first (its names are curated, where an install record can
+        /// carry the raw manifest title), then the install record, then a name WPR Hub gave earlier.
+        /// The product id only when none of them knows the game.
+        /// </summary>
+        private static string LocalName(string productId, Application? app) =>
+            HardcodedAchievementCatalogue.GameName(productId)
+            ?? (string.IsNullOrWhiteSpace(app?.Name) ? null : app!.Name)
+            ?? WPR.Shell.HubTitleNames.Cached(productId)
+            ?? productId;
+
+        /// <summary>Asks WPR Hub for the games still showing a product id, and names them as answers arrive.</summary>
+        private static async Task FillNamesFromHubAsync(IReadOnlyList<AchievementGameItemViewModel> games)
+        {
+            var unnamed = games.Where(g => g.NameIsProductId).ToList();
+            if (unnamed.Count == 0) return;
+
+            IReadOnlyDictionary<string, string> found = await WPR.Shell.HubTitleNames.FetchMissingAsync(unnamed.Select(g => g.ProductId));
+            if (found.Count == 0) return;
+
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                foreach (var game in unnamed)
+                {
+                    if (found.TryGetValue(game.ProductId, out string? name)) game.Name = name;
+                }
+            });
         }
 
         private void RefreshAchievementsForSelectedGame()

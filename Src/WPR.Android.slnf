@@ -23,6 +23,8 @@
       "Engine\\WPR.Engine.Sensors\\WPR.Engine.Sensors.csproj",
       "Engine\\WPR.Engine.Vibration\\WPR.Engine.Vibration.csproj",
       "Engine\\WPR.Engine.Launchers\\WPR.Engine.Launchers.csproj",
+      "Engine\\WPR.Engine.Online\\WPR.Engine.Online.csproj",
+      "Modules\\Online\\WPR.Online.Hub\\WPR.Online.Hub.csproj",
       "Engine\\WPR.Engine\\WPR.Engine.csproj",
       "JavaBindings\\com.arthenica.ffmpegkit\\com.arthenica.ffmpegkit.csproj",
       "JavaBindings\\com.arthenica.smartexception.java\\com.arthenica.smartexception.java.csproj",

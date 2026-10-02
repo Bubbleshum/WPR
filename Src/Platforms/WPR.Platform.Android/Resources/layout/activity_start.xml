@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The Start screen. Tile heights are square and set in code (StartActivity.LayoutTiles)
+<!-- The Start screen. Tile heights are square and set in code (MainActivity.LayoutTiles)
      from the measured content width, so the grid keeps WP's 1:1 tile proportion on any
      display without a pile of size buckets. -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
@@ -35,46 +35,246 @@
         android:layout_marginBottom="22dp"
         android:text="start" />
 
-    <!-- Row 1: wide "games" tile -->
+
+    <!-- Row 1: wide "wpr hub" tile, with two faces (MainActivity.RefreshHubTile).
+         Signed out it is the basic hub tile: the logo (or a glyph and "wpr hub" when the build has
+         no logo) and "sign in or sign up". Signed in it is a gamer card: gamertag,
+         gamerscore and who is online, with the logo as a badge. Accent coloured like the other
+         primary tiles, so it carries the white logo (HubLogo.LoadWhite); the colour one is for the
+         black hub pages. -->
     <FrameLayout
-        android:id="@+id/tileGames"
+        android:id="@+id/tileHub"
         android:layout_width="match_parent"
         android:layout_height="160dp"
         android:clickable="true"
         android:focusable="true">
 
-      <ImageView
-          android:layout_width="34dp"
-          android:layout_height="34dp"
-          android:layout_gravity="top|start"
-          android:layout_margin="14dp"
-          android:src="@drawable/ic_wp_games"
-          android:contentDescription="@null" />
+      <!-- Basic face. -->
+      <FrameLayout
+          android:id="@+id/tileHubBasic"
+          android:layout_width="match_parent"
+          android:layout_height="match_parent">
 
-      <TextView
-          android:id="@+id/tileGamesCount"
-          android:layout_width="wrap_content"
-          android:layout_height="wrap_content"
-          android:layout_gravity="top|end"
-          android:layout_margin="12dp"
-          android:fontFamily="sans-serif-light"
-          android:includeFontPadding="false"
-          android:textColor="@color/wp_foreground"
-          android:textSize="46sp"
-          android:text="0" />
+        <ImageView
+            android:id="@+id/tileHubGlyph"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:layout_gravity="top|start"
+            android:layout_margin="14dp"
+            android:src="@drawable/ic_wp_people"
+            android:contentDescription="@null" />
 
-      <TextView
-          android:layout_width="wrap_content"
-          android:layout_height="wrap_content"
-          android:layout_gravity="bottom|start"
-          android:layout_margin="12dp"
-          android:fontFamily="sans-serif"
-          android:textColor="@color/wp_foreground"
-          android:textSize="17sp"
-          android:text="games" />
+        <!-- The white logo is wide and spells out "WPR HUB" itself, so it sits centred above the
+             caption and the "wpr hub" label below is hidden. -->
+        <ImageView
+            android:id="@+id/tileHubLogo"
+            android:layout_width="wrap_content"
+            android:layout_height="112dp"
+            android:layout_gravity="center_horizontal|top"
+            android:layout_marginTop="8dp"
+            android:adjustViewBounds="true"
+            android:scaleType="fitCenter"
+            android:visibility="gone"
+            android:contentDescription="WPR Hub" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|start"
+            android:layout_margin="12dp"
+            android:orientation="vertical">
+
+          <TextView
+              android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:fontFamily="sans-serif"
+              android:textColor="@color/wp_foreground"
+              android:alpha="0.8"
+              android:textSize="13sp"
+              android:text="sign in or sign up" />
+
+          <TextView
+              android:id="@+id/tileHubName"
+              android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:fontFamily="sans-serif"
+              android:textColor="@color/wp_foreground"
+              android:textSize="17sp"
+              android:text="wpr hub" />
+        </LinearLayout>
+      </FrameLayout>
+
+      <!-- Gamer card face: the text down the left, the logo bottom right. Deliberately no gamerpic. -->
+      <LinearLayout
+          android:id="@+id/tileHubCard"
+          android:layout_width="match_parent"
+          android:layout_height="match_parent"
+          android:orientation="horizontal"
+          android:padding="12dp"
+          android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+          <TextView
+              android:id="@+id/tileHubGamertag"
+              android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:fontFamily="sans-serif-light"
+              android:includeFontPadding="false"
+              android:textColor="@color/wp_foreground"
+              android:textSize="28sp"
+              android:singleLine="true"
+              android:ellipsize="end"
+              android:text="gamertag" />
+
+          <!-- Gamerscore: a ringed "G" badge (background set in code), then the number. -->
+          <LinearLayout
+              android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:layout_marginTop="6dp"
+              android:gravity="center_vertical"
+              android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/tileHubScoreBadge"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:gravity="center"
+                android:fontFamily="sans-serif-medium"
+                android:includeFontPadding="false"
+                android:textSize="12sp"
+                android:textColor="@color/wp_foreground"
+                android:text="G" />
+
+            <TextView
+                android:id="@+id/tileHubScore"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:fontFamily="sans-serif"
+                android:textColor="@color/wp_foreground"
+                android:textSize="18sp"
+                android:text="0" />
+          </LinearLayout>
+
+          <TextView
+              android:id="@+id/tileHubStatus"
+              android:layout_width="match_parent"
+              android:layout_height="wrap_content"
+              android:layout_marginTop="4dp"
+              android:fontFamily="sans-serif"
+              android:textColor="@color/wp_foreground"
+              android:alpha="0.8"
+              android:textSize="13sp"
+              android:maxLines="2"
+              android:ellipsize="end"
+              android:text="" />
+
+          <View
+              android:layout_width="1dp"
+              android:layout_height="0dp"
+              android:layout_weight="1" />
+
+          <TextView
+              android:id="@+id/tileHubCardName"
+              android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:fontFamily="sans-serif"
+              android:textColor="@color/wp_foreground"
+              android:textSize="17sp"
+              android:text="wpr hub" />
+
+          <!-- The logo in place of the "wpr hub" label, bottom right. Inside this column rather
+               beside it, so it never takes width from the gamertag above. -->
+          <ImageView
+              android:id="@+id/tileHubCardLogo"
+              android:layout_width="84dp"
+              android:layout_height="42dp"
+              android:layout_gravity="end"
+              android:scaleType="fitCenter"
+              android:visibility="gone"
+              android:contentDescription="WPR Hub" />
+        </LinearLayout>
+      </LinearLayout>
     </FrameLayout>
 
     <!-- Row 2 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="@dimen/wp_tile_gap">
+
+      <FrameLayout
+          android:id="@+id/tileGames"
+          android:layout_width="0dp"
+          android:layout_weight="1"
+          android:layout_height="160dp"
+          android:clickable="true"
+          android:focusable="true">
+        <ImageView
+            android:layout_width="34dp" android:layout_height="34dp"
+            android:layout_gravity="top|start" android:layout_margin="14dp"
+            android:src="@drawable/ic_wp_games" android:contentDescription="@null" />
+        <TextView
+            android:id="@+id/tileGamesCount"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_gravity="top|end" android:layout_margin="12dp"
+            android:fontFamily="sans-serif-light" android:includeFontPadding="false"
+            android:textColor="@color/wp_foreground" android:textSize="34sp" android:text="0" />
+        <TextView
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_gravity="bottom|start" android:layout_margin="12dp"
+            android:fontFamily="sans-serif" android:textColor="@color/wp_foreground"
+            android:textSize="17sp" android:text="games" />
+      </FrameLayout>
+
+      <View android:layout_width="@dimen/wp_tile_gap" android:layout_height="1dp" />
+
+      <!-- Social (friends + messages): the live number is unread messages, from the last presence heartbeat; the
+           line under it is the newest sender when there is one (MainActivity.RefreshMessagesTile). -->
+      <FrameLayout
+          android:id="@+id/tileMessages"
+          android:layout_width="0dp"
+          android:layout_weight="1"
+          android:layout_height="160dp"
+          android:clickable="true"
+          android:focusable="true">
+        <ImageView
+            android:layout_width="34dp" android:layout_height="34dp"
+            android:layout_gravity="top|start" android:layout_margin="14dp"
+            android:src="@drawable/ic_wp_messages" android:contentDescription="@null" />
+        <TextView
+            android:id="@+id/tileMessagesCount"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_gravity="top|end" android:layout_margin="12dp"
+            android:fontFamily="sans-serif-light" android:includeFontPadding="false"
+            android:textColor="@color/wp_foreground" android:textSize="34sp"
+            android:visibility="gone" android:text="0" />
+        <LinearLayout
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_gravity="bottom|start" android:layout_margin="12dp"
+            android:orientation="vertical">
+          <TextView
+              android:id="@+id/tileMessagesStatus"
+              android:layout_width="wrap_content" android:layout_height="wrap_content"
+              android:fontFamily="sans-serif" android:textColor="@color/wp_foreground"
+              android:alpha="0.8" android:textSize="13sp"
+              android:singleLine="true" android:ellipsize="end"
+              android:visibility="gone" android:text="" />
+          <TextView
+              android:layout_width="wrap_content" android:layout_height="wrap_content"
+              android:fontFamily="sans-serif" android:textColor="@color/wp_foreground"
+              android:textSize="17sp" android:text="social" />
+        </LinearLayout>
+      </FrameLayout>
+    </LinearLayout>
+
+    <!-- Row 3 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -126,7 +326,7 @@
       </FrameLayout>
     </LinearLayout>
 
-    <!-- Row 3 -->
+    <!-- Row 4 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

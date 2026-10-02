@@ -33,6 +33,17 @@ namespace Microsoft.Phone.Controls
         /// </remarks>
         public PhoneApplicationFrame()
         {
+            // WP7's frame ships with RenderTransform = TransformGroup { TranslateTransform, … } —
+            // the translate is what the OS moves to slide the page up over the on-screen keyboard.
+            // Code copied from the XNA/Silverlight sample "UIElementRendererHelper" relies on it:
+            //   ((TransformGroup)RootFrame.RenderTransform).Children[0] as TranslateTransform
+            // With a null RenderTransform that is an NRE from the page's OnNavigatedTo, and the
+            // page never starts its GameTimer (Flappy Bird: black screen). Identity, so it draws
+            // exactly as before.
+            var transforms = new TransformGroup();
+            transforms.Children.Add(new TranslateTransform());
+            RenderTransform = transforms;
+
             try
             {
                 var app = WPR.WindowsCompability.Application.Current;

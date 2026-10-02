@@ -2,15 +2,59 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:p="clr-namespace:WPR.Shell;assembly=WPR.Shell"
-             mc:Ignorable="d" 
-             d:DesignWidth="800" 
-             d:DesignHeight="450"
+             mc:Ignorable="d"
+             d:DesignWidth="800"
+             d:DesignHeight="600"
              x:Class="WPR.Platform.Windows.Pages.AboutPage">
-	<StackPanel Orientation="Vertical" Margin="20">
-		<!-- Text set in code-behind from AppVersion so it cannot drift from the window title. -->
-		<Label x:Name="VersionLabel" FontSize="30" />
-		<Label>(C) Lin Yan::MediaExplorer::Bubbleshum 2022::2026::2026</Label>
-		<Label>License: MIT</Label>
-	</StackPanel>
+	<!-- Hardcoded English, like the Hub page. The Android twin is Native/AboutActivity. -->
+	<ScrollViewer HorizontalScrollBarVisibility="Disabled">
+		<StackPanel Margin="20" Spacing="14" MaxWidth="720" HorizontalAlignment="Left">
+			<StackPanel Spacing="4">
+				<TextBlock Text="ABOUT" FontSize="14" LetterSpacing="2"
+				           Foreground="{StaticResource WprAccentBrush}"/>
+				<!-- Version and build set in code-behind from AppVersion so they cannot drift from the window title. -->
+				<TextBlock Name="versionText" FontSize="30" FontWeight="Light" Foreground="White"/>
+				<TextBlock Name="buildText" Classes="dim" TextWrapping="Wrap"/>
+				<TextBlock Classes="body" TextWrapping="Wrap" Margin="0,6,0,0"
+				           Text="Windows Phone Runner. Play your old Windows Phone games again, on a PC or an Android phone."/>
+			</StackPanel>
+
+			<Border Background="{StaticResource WprPanelBrush}" CornerRadius="6" Padding="20,16">
+				<StackPanel Spacing="10">
+					<TextBlock Classes="eyebrow" Text="PROJECT"/>
+					<TextBlock Classes="body" TextWrapping="Wrap"
+					           Text="Open source under the MIT licence. Report bugs, check which games work, or help out on GitHub."/>
+					<WrapPanel Orientation="Horizontal">
+						<Button Name="githubButton" Classes="ghost" Content="GitHub" Margin="0,0,6,6"/>
+						<Button Name="compatibilityButton" Classes="ghost" Content="Compatibility list" Margin="0,0,6,6"/>
+						<Button Name="issuesButton" Classes="ghost" Content="Report a problem" Margin="0,0,6,6"/>
+					</WrapPanel>
+				</StackPanel>
+			</Border>
+
+			<Border Background="{StaticResource WprPanelBrush}" CornerRadius="6" Padding="20,16">
+				<StackPanel Spacing="10">
+					<TextBlock Classes="eyebrow" Text="WPR HUB"/>
+					<TextBlock Name="hubText" Classes="body" TextWrapping="Wrap"/>
+					<WrapPanel Name="hubLinksPanel" Orientation="Horizontal">
+						<Button Name="termsButton" Classes="ghost" Content="Terms of service" Margin="0,0,6,6"/>
+						<Button Name="privacyButton" Classes="ghost" Content="Privacy notice" Margin="0,0,6,6"/>
+					</WrapPanel>
+				</StackPanel>
+			</Border>
+
+			<Border Background="{StaticResource WprPanelBrush}" CornerRadius="6" Padding="20,16">
+				<StackPanel Spacing="10">
+					<TextBlock Classes="eyebrow" Text="CREDITS"/>
+					<TextBlock Classes="body" TextWrapping="Wrap" Text="Lin Yan · MediaExplorer · Bubbleshum"/>
+					<TextBlock Classes="dim" Text="© 2022–2026 · MIT licence"/>
+				</StackPanel>
+			</Border>
+
+			<TextBlock Name="statusText" Classes="dim" TextWrapping="Wrap" IsVisible="False"/>
+
+			<TextBlock Classes="dim" TextWrapping="Wrap"
+			           Text="WPR is an independent project, not affiliated with or endorsed by Microsoft or Xbox. Games and trademarks belong to their owners."/>
+		</StackPanel>
+	</ScrollViewer>
 </UserControl>

@@ -7,6 +7,8 @@ using ReactiveUI;
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 using Microsoft.Xna.Framework.GamerServices;
 using MessageBox.Avalonia;
@@ -19,25 +21,8 @@ namespace WPR.Platform.Windows.Pages
         {
             InitializeComponent();
 
-            TextBox gamerTagTextBox = this.Get<TextBox>("gamerTagTextBox");
-            if (Configuration.Current.GamerTag != null)
-            {
-                gamerTagTextBox.Text = Configuration.Current.GamerTag;
-            }
-
-            gamerTagTextBox.WhenAnyValue(x => x.Text).Subscribe(text =>
-            {
-                if (Gamer.SignedInGamers.Count != 0)
-                {
-                    Gamer.SignedInGamers[0].Gamertag = text;
-                }
-
-                Configuration.Current.GamerTag = text;
-                Configuration.Current.Save();
-            });
-
-            WireGamerPicturePicker();
             WireHighlightColorPicker();
+            WireOnlineSettings();
 
             TextBox pathTextBox = this.Get<TextBox>("dataStoragePathText");
             pathTextBox.Text = Configuration.Current.DataStorePath;
@@ -110,6 +95,117 @@ namespace WPR.Platform.Windows.Pages
         }
 
         /// <summary>
+        /// The WPR Hub section. The hub is always the official one (its address is deliberately not
+        /// editable). Server logging is read live by the hub module, so it applies immediately; switching server logging on also flushes anything a crash already queued
+        /// (nothing is queued while it is off), and switching it off discards the queue.
+        /// </summary>
+        private void WireOnlineSettings()
+        {
+            CheckBox serverLogging = this.Get<CheckBox>("serverLoggingCheckBox");
+
+            serverLogging.IsChecked = Configuration.Current.ServerLogging;
+
+            serverLogging.IsCheckedChanged += (_, _) =>
+            {
+                bool on = serverLogging.IsChecked == true;
+                if (on == Configuration.Current.ServerLogging) return;
+                Configuration.Current.ServerLogging = on;
+                Configuration.Current.Save();
+                // Signed in, the hub goes by the account's setting, so keep it in step.
+                _ = WPR.Shell.HubSetup.Current?.Account.SyncServerLoggingAsync();
+                _ = WPR.Engine.Online.OnlineBackend.FlushAsync();
+            };
+
+            WireRatingCooldown();
+            WireAccount();
+        }
+
+        /// <summary>How often "how did it run?" may be asked: the shared choices, saved on change.</summary>
+        private void WireRatingCooldown()
+        {
+            ComboBox box = this.Get<ComboBox>("ratingCooldownComboBox");
+            var choices = WPR.Shell.GameRatingPrompt.CooldownChoices;
+            box.ItemsSource = choices.Select(c => char.ToUpperInvariant(c.Label[0]) + c.Label[1..]).ToList();
+
+            int current = Configuration.Current.RatingPromptCooldownMinutes;
+            int index = choices.Select(c => c.Minutes).ToList().IndexOf(current);
+            box.SelectedIndex = index >= 0 ? index : choices.Select(c => c.Minutes).ToList().IndexOf(Configuration.DefaultRatingPromptCooldownMinutes);
+
+            box.SelectionChanged += (_, _) =>
+            {
+                if (box.SelectedIndex < 0) return;
+                int minutes = choices[box.SelectedIndex].Minutes;
+                if (minutes == Configuration.Current.RatingPromptCooldownMinutes) return;
+                Configuration.Current.RatingPromptCooldownMinutes = minutes;
+                Configuration.Current.Save();
+            };
+        }
+
+        /// <summary>
+        /// The WPR Hub account row. Signing in happens in <see cref="Views.SignInWindow"/> and picking
+        /// a picture in <see cref="Views.GamerpicWindow"/>; this only shows who is signed in.
+        /// </summary>
+        private void WireAccount()
+        {
+            Views.HubLogo.Apply(this.Get<Image>("hubLogoImage"), this.Get<TextBlock>("onlineHeaderText"));
+
+            TextBlock name = this.Get<TextBlock>("accountNameText");
+            TextBlock status = this.Get<TextBlock>("accountStatusText");
+            Image picture = this.Get<Image>("accountGamerpicImage");
+            Button account = this.Get<Button>("accountButton");
+            Button gamerpic = this.Get<Button>("gamerpicButton");
+
+            bool SignedIn() => !string.IsNullOrEmpty(Configuration.Current.HubAccessToken);
+
+            async Task RefreshAsync()
+            {
+                bool signedIn = SignedIn();
+                name.Text = signedIn ? Configuration.Current.HubUsername ?? "Signed in" : "Not signed in";
+                status.Text = signedIn
+                    ? "Signed in to WPR Hub. Your scores go to the leaderboards."
+                    : "Sign in to put your scores on the leaderboards and choose a gamerpic.";
+                account.Content = signedIn ? "Sign out" : "Sign in";
+                gamerpic.IsVisible = signedIn;
+                if (!signedIn) { picture.Source = null; return; }
+
+                // Refreshing also catches a device signed out on the website.
+                picture.Source = await Views.SignInWindow.LoadCurrentGamerpicAsync(WPR.Shell.HubSetup.Current);
+                if (!SignedIn()) await RefreshAsync();
+                else name.Text = Configuration.Current.HubUsername ?? name.Text;
+            }
+
+            async Task ShowGamerpicsAsync()
+            {
+                var window = new Views.GamerpicWindow(WPR.Shell.HubSetup.Current);
+                await window.ShowDialog(GetWindow());
+                if (window.Changed) await RefreshAsync();
+            }
+
+            _ = RefreshAsync();
+
+            gamerpic.Click += async (_, _) => await ShowGamerpicsAsync();
+
+            account.Click += async (_, _) =>
+            {
+                var hub = WPR.Shell.HubSetup.Current;
+                if (SignedIn())
+                {
+                    account.IsEnabled = false;
+                    if (hub != null) await hub.Account.SignOutAsync();
+                    account.IsEnabled = true;
+                    await RefreshAsync();
+                    return;
+                }
+
+                var window = new Views.SignInWindow(hub);
+                await window.ShowDialog(GetWindow());
+                await RefreshAsync();
+                if (window.WantsGamerpic) await ShowGamerpicsAsync();
+            };
+        }
+
+
+        /// <summary>
         /// Populate the highlight-color combo with the WP7 accent palette,
         /// seed selection from <see cref="Configuration.AccentColor"/>, and on
         /// change persist the chosen hex back to configuration plus update the
@@ -138,121 +234,6 @@ namespace WPR.Platform.Windows.Pages
                 Configuration.Current.Save();
                 swatch.Background = pick.Brush;
             };
-        }
-
-        /// <summary>
-        /// Wires the gamer picture row: shows a preview of the currently-configured file
-        /// (or a placeholder), lets the user Browse to a new image, and Clear to remove the
-        /// selection. The chosen path is stored in <see cref="Configuration.GamerPicturePath"/>
-        /// as an absolute path and consumed by
-        /// <c>Microsoft.Xna.Framework.GamerServices.GamerProfile.GetGamerPicture()</c> at
-        /// each game's profile-fetch time, so changes here take effect on the next game launch.
-        /// </summary>
-        private void WireGamerPicturePicker()
-        {
-            Image preview = this.Get<Image>("gamerPictureImage");
-            TextBlock pathText = this.Get<TextBlock>("gamerPicturePathText");
-            Button browseBtn = this.Get<Button>("gamerPictureBrowseBtn");
-            Button clearBtn = this.Get<Button>("gamerPictureClearBtn");
-            StackPanel defaultsPanel = this.Get<StackPanel>("gamerPictureDefaultsPanel");
-
-            BuildDefaultsStrip(defaultsPanel, preview, pathText);
-            RefreshGamerPictureUi(preview, pathText);
-
-            browseBtn.Click += async (_, _) =>
-            {
-                var dlg = new OpenFileDialog
-                {
-                    AllowMultiple = false,
-                    Filters = new System.Collections.Generic.List<FileDialogFilter>
-                    {
-                        new FileDialogFilter { Name = "Images", Extensions = { "png", "jpg", "jpeg", "bmp", "gif" } },
-                        new FileDialogFilter { Name = "All files", Extensions = { "*" } }
-                    }
-                };
-                string[]? picked = await dlg.ShowAsync(GetWindow());
-                if (picked == null || picked.Length == 0) return;
-                Configuration.Current.GamerPicturePath = picked[0];
-                Configuration.Current.Save();
-                RefreshGamerPictureUi(preview, pathText);
-            };
-
-            clearBtn.Click += (_, _) =>
-            {
-                Configuration.Current.GamerPicturePath = null;
-                Configuration.Current.Save();
-                RefreshGamerPictureUi(preview, pathText);
-            };
-        }
-
-        /// <summary>
-        /// Populate the horizontal thumbnail strip with one button per bundled default
-        /// from <see cref="GamerPictureDefaults"/>. Clicking a thumbnail writes its
-        /// <c>default:&lt;id&gt;</c> token to config and refreshes the preview.
-        /// </summary>
-        private static void BuildDefaultsStrip(StackPanel panel, Image preview, TextBlock pathText)
-        {
-            foreach (string id in GamerPictureDefaults.Ids)
-            {
-                Bitmap? thumb = null;
-                using (Stream? s = GamerPictureDefaults.Open(id))
-                {
-                    if (s != null) thumb = new Bitmap(s);
-                }
-                if (thumb == null) continue;
-
-                var img = new Image { Source = thumb, Stretch = Avalonia.Media.Stretch.UniformToFill, Width = 36, Height = 36 };
-                var btn = new Button
-                {
-                    Padding = new Avalonia.Thickness(2),
-                    Background = Avalonia.Media.Brushes.Transparent,
-                    BorderBrush = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#7FFFFFFF")),
-                    BorderThickness = new Avalonia.Thickness(1),
-                    CornerRadius = new Avalonia.CornerRadius(3),
-                    Content = img,
-                    Tag = id
-                };
-                btn.Click += (_, _) =>
-                {
-                    Configuration.Current.GamerPicturePath = GamerPictureDefaults.ToConfigValue(id);
-                    Configuration.Current.Save();
-                    RefreshGamerPictureUi(preview, pathText);
-                };
-                panel.Children.Add(btn);
-            }
-        }
-
-        private static void RefreshGamerPictureUi(Image preview, TextBlock pathText)
-        {
-            string? configured = Configuration.Current.GamerPicturePath;
-
-            if (GamerPictureDefaults.IsDefault(configured))
-            {
-                string id = GamerPictureDefaults.ExtractId(configured)!;
-                using Stream? s = GamerPictureDefaults.Open(id);
-                if (s != null)
-                {
-                    preview.Source = new Bitmap(s);
-                    pathText.Text = id;
-                    return;
-                }
-            }
-            else if (!string.IsNullOrEmpty(configured) && File.Exists(configured))
-            {
-                try
-                {
-                    preview.Source = new Bitmap(configured);
-                    pathText.Text = configured;
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    Log.Warn(LogCategory.Common, $"Settings: failed to load gamer-picture preview {configured}: {ex.Message}");
-                }
-            }
-
-            preview.Source = null;
-            pathText.Text = WPR.Shell.Resources.GamerPictureNone;
         }
 
         Window GetWindow() => VisualRoot as Window ?? throw new NullReferenceException("Invalid Owner");

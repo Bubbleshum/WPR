@@ -79,6 +79,9 @@ namespace WPR.Platform.Android
                 Configuration.Current = new Configuration(GetExternalFilesDir(null)!.AbsolutePath);
             }
 
+            // Its own file: the launcher process writes wpr-launcher.log at the same time.
+            WPR.Common.SessionLog.Start(Configuration.Current.DataPath(WPR.Common.SessionLog.FolderName), "game");
+
             base.OnCreate(savedInstanceState);
 
             CurrentActivity = this;
@@ -91,6 +94,11 @@ namespace WPR.Platform.Android
             MessageBoxUtils.MainActivity = this;
             ServicesSetup.Start();
 
+            // This process speaks for the device while the game runs: "online, playing X". The
+            // launcher's own presence is suspended meanwhile (GameLauncher), and the launcher may
+            // be frozen by Android anyway once it is in the background.
+            WPR.Engine.Online.OnlineBackend.Presence?.Start();
+
             string ?targetApplication = Intent!.GetStringExtra(TargetApplicationDataName);
 
             if (targetApplication == null)
@@ -99,6 +107,81 @@ namespace WPR.Platform.Android
             }
 
             TargetLaunchApplication = JsonConvert.DeserializeObject<Models.Application>(targetApplication);
+
+            // "Play with logging": the verbose log for this run (ApplicationLaunch reads the flag),
+            // and a button over the game that ends it and has the launcher send the log.
+            bool diagnostic = Intent.GetBooleanExtra(DiagnosticRunDataName, false);
+            WPR.Common.WprHostEnvironment.DiagnosticRun = diagnostic;
+            if (diagnostic) AddStopAndSendButton();
+        }
+
+        /// <summary>Intent extra: this launch is a "play with logging" run (see <c>WPR.Shell.DiagnosticRun</c>).</summary>
+        public static string DiagnosticRunDataName = "DiagnosticRun";
+
+        /// <summary>
+        /// The "stop and send report" button of a logging run, over the top-right of the game.
+        ///
+        /// <para>Two taps, not one and not a dialog: a game is all taps, so a single one would end runs
+        /// by accident, and a dialog would take focus from SDL and deactivate the game in the middle
+        /// of what is being logged. The first tap arms it for three seconds.</para>
+        ///
+        /// <para>It only records the request and finishes the activity. <see cref="OnDestroy"/> ends the
+        /// game and kills this process as it always does, and the launcher, which outlives it, sends
+        /// the report (<c>GameLauncher.HandleGameResult</c>). This works when the game itself has hung,
+        /// because the game loop does not run on the UI thread.</para>
+        /// </summary>
+        private void AddStopAndSendButton()
+        {
+            float density = Resources!.DisplayMetrics!.Density;
+            int Dp(int dp) => (int)(dp * density);
+
+            var button = new global::Android.Widget.TextView(this)
+            {
+                Text = "● logging · stop & send report",
+                TextSize = 13,
+                Clickable = true,
+                Focusable = false,
+            };
+            button.SetTextColor(global::Android.Graphics.Color.White);
+            button.SetBackgroundColor(global::Android.Graphics.Color.Argb(170, 0, 0, 0));
+            button.SetPadding(Dp(12), Dp(8), Dp(12), Dp(8));
+            button.Alpha = 0.85f;
+
+            bool armed = false;
+            button.Click += (_, _) =>
+            {
+                if (!armed)
+                {
+                    armed = true;
+                    button.Text = "tap again to stop the game and send the log";
+                    button.SetBackgroundColor(global::Android.Graphics.Color.Argb(220, 180, 30, 30));
+                    button.PostDelayed(() =>
+                    {
+                        if (IsDestroyed || !armed) return;
+                        armed = false;
+                        button.Text = "● logging · stop & send report";
+                        button.SetBackgroundColor(global::Android.Graphics.Color.Argb(170, 0, 0, 0));
+                    }, 3000);
+                    return;
+                }
+
+                armed = false;
+                button.Text = "stopping…";
+                button.Enabled = false;
+                WPR.Shell.DiagnosticRun.MarkStopRequested();
+                SetResult(Result.Ok);
+                Finish();
+            };
+
+            var layout = new global::Android.Widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent,
+                GravityFlags.Top | GravityFlags.End);
+            layout.SetMargins(0, Dp(10), Dp(10), 0);
+
+            var overlay = new global::Android.Widget.FrameLayout(this);
+            overlay.AddView(button, layout);
+            // Only the button takes touches: the overlay's empty area passes them through to SDL.
+            AddContentView(overlay, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent));
         }
 
         public override void OnWindowFocusChanged(bool hasFocus)

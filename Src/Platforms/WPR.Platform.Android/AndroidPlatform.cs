@@ -127,6 +127,12 @@ namespace WPR.Platform.Android
 
                 // ShareLinkTask / ShareStatusTask go to the system chooser (ACTION_SEND).
                 caps.ShareSheet(new WPR.Launchers.AndroidIntent.AndroidShareSheet(_context));
+
+                // WPR Hub: leaderboards, and crash reports for players who opted in. One instance
+                // per process: this descriptor is applied again on a graphics-driver change, and
+                // the module's queues live on disk, so the launcher and :game share them anyway.
+                Hub ??= WPR.Shell.HubSetup.TryCreate("android", new Online.AndroidGamePackageSource(_context), new WPR.Database.Online.EfOnlineLocalStore());
+                if (Hub != null) caps.Online(Hub.Services);
             }
 
             caps.Achievements(new WPR.Database.Achievements.EfAchievementStore());
@@ -150,6 +156,8 @@ namespace WPR.Platform.Android
         /// overrule it. Letting the probe win would collapse the second case into the first and
         /// leave that person with no way out again.</para>
         /// </summary>
+        private static WPR.Online.Hub.HubOnline? Hub;
+
         private static GraphicsDriver ChosenGraphicsDriver()
         {
             string? chosen = WPR.Common.Configuration.Current?.GraphicsDriver;

@@ -42,6 +42,8 @@ namespace WPR.Platform.Android.Native
             Intent intent = new Intent(Intent.ActionOpenDocument);
             intent.AddCategory(Intent.CategoryOpenable);
             intent.SetType("*/*");
+            // Ask for a grant that can outlive this session; see PersistReadGrant.
+            intent.AddFlags(ActivityFlags.GrantReadUriPermission | ActivityFlags.GrantPersistableUriPermission);
             host.StartActivityForResult(intent, RequestPickXap);
         }
 
@@ -56,6 +58,7 @@ namespace WPR.Platform.Android.Native
 
             global::Android.Net.Uri uri = data.Data;
             string displayName = ResolveDisplayName(host, uri) ?? "package.xap";
+            string? packageSource = PersistReadGrant(host, uri, data);
 
             string stagingDir = Path.Combine(host.CacheDir!.AbsolutePath, "xap-import");
             Directory.CreateDirectory(stagingDir);
@@ -118,7 +121,8 @@ namespace WPR.Platform.Android.Native
                         installStream,
                         percent => progress.SetProgress(percent),
                         existing => RxObservable.FromAsync(() => ConfirmReplaceAsync(host, existing)),
-                        CancellationToken.None);
+                        CancellationToken.None,
+                        packageSource);
                 }
 
                 progress.Dismiss();
@@ -132,6 +136,9 @@ namespace WPR.Platform.Android.Native
                     return false;
                 }
 
+                // Sends the installer's "installed" report to WPR Hub, which uploads the package
+                // in the background if the hub has never seen this build.
+                _ = WPR.Engine.Online.OnlineBackend.FlushAsync();
                 return true;
             }
             catch (Exception ex)
@@ -155,6 +162,35 @@ namespace WPR.Platform.Android.Native
                 host,
                 WPR.Shell.Resources.ApplicationAlreadyInstalled,
                 string.Format(WPR.Shell.Resources.ApplicationAlreadyInstalledDescription, existing.Name));
+
+        /// <summary>
+        /// Keeps read access to the picked document after this session, and returns its URI for
+        /// the install record - or null when the provider will not grant it.
+        /// </summary>
+        /// <remarks>
+        /// <para>This is what lets WPR Hub have the game package later: the staged copy is deleted
+        /// once installed, and without a persisted grant the URI stops being readable when the
+        /// process dies. It is only ever read if the player has server logging on, the game
+        /// crashes, and the hub has no copy of that build.</para>
+        ///
+        /// <para>Not every provider hands out persistable grants (the intent says whether it did),
+        /// and apps may hold only a limited number of them, so failure is normal and silent: the
+        /// game installs exactly the same, it just can never be uploaded.</para>
+        /// </remarks>
+        private static string? PersistReadGrant(Context context, global::Android.Net.Uri uri, Intent data)
+        {
+            try
+            {
+                if ((data.Flags & ActivityFlags.GrantPersistableUriPermission) == 0) return null;
+                context.ContentResolver?.TakePersistableUriPermission(uri, ActivityFlags.GrantReadUriPermission);
+                return uri.ToString();
+            }
+            catch (Exception ex)
+            {
+                Log.Info(LogCategory.AppInstall, $"XAP install: no persistable read grant for {uri} ({ex.Message})");
+                return null;
+            }
+        }
 
         private static bool CopyToStaging(Context context, global::Android.Net.Uri uri, string destination)
         {

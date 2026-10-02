@@ -79,6 +79,7 @@ namespace WPR.Engine
             private IKeyboardEmulationHost? _tilt;
             private WPR.Engine.Launchers.IUriLauncher? _uriLauncher;
             private WPR.Engine.Launchers.IShareSheet? _shareSheet;
+            private WPR.Engine.Online.OnlineServices? _online;
 
             public IPlatformCapabilities Accelerometer(IAccelerometerProvider provider)
             {
@@ -150,6 +151,12 @@ namespace WPR.Engine
                 return this;
             }
 
+            public IPlatformCapabilities Online(WPR.Engine.Online.OnlineServices services)
+            {
+                _online = services ?? throw new ArgumentNullException(nameof(services));
+                return this;
+            }
+
             internal void Commit()
             {
                 if (_accelerometer != null) WPR.Engine.Sensors.SensorBackend.SetAccelerometer(_accelerometer);
@@ -174,6 +181,7 @@ namespace WPR.Engine
                 if (_tilt != null) XnaBackend.SetKeyboardEmulation(_tilt);
                 if (_uriLauncher != null) WPR.Engine.Launchers.LauncherBackend.SetUriLauncher(_uriLauncher);
                 if (_shareSheet != null) WPR.Engine.Launchers.LauncherBackend.SetShareSheet(_shareSheet);
+                if (_online != null) WPR.Engine.Online.OnlineBackend.Set(_online);
             }
 
             internal string Summarise()
@@ -190,6 +198,11 @@ namespace WPR.Engine
                 parts.Add("tilt=" + Name(_tilt));
                 parts.Add("launcher=" + Name(_uriLauncher));
                 parts.Add("share=" + Name(_shareSheet));
+                parts.Add("leaderboards=" + Name(_online?.Leaderboards));
+                parts.Add("crashes=" + Name(_online?.Crashes));
+                parts.Add("progress=" + Name(_online?.Progress));
+                parts.Add("presence=" + Name(_online?.Presence));
+                parts.Add("localstore=" + Name(_online?.Local));
                 return string.Join(" ", parts);
             }
 

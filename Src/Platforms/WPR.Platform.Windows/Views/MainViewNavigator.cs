@@ -8,49 +8,42 @@ namespace WPR.Platform.Windows.Views
 {
     public class MainViewNavigator
     {
+        /// <summary>
+        /// One page per sidebar tab, in the order the tabs appear in MainWindowDesktop.axaml:
+        /// playing and progress (PLAY, TROPHIES), then online (HUB, MESSAGES), then setup
+        /// (CONTROLS, SETTINGS), then ABOUT. Change the two together. Pages other than PLAY are
+        /// built the first time their tab is opened.
+        /// </summary>
+        private static readonly Func<UserControl>[] PageFactories =
+        {
+            () => new ApplicationListingPage(),
+            () => new AchievementsPage(),
+            () => new HubPage(),
+            () => new MessagesPage(),
+            () => new ControlsPage(),
+            () => new SettingsPage(),
+            () => new AboutPage(),
+        };
+
         private int _CurrentIndex = -1;
-        private UserControl[] _Pages = new UserControl[5];
+        private readonly UserControl?[] _Pages = new UserControl?[PageFactories.Length];
 
         public void SetupNavigation(TabControl control, TransitioningContentControl contentControl)
         {
             _CurrentIndex = 0;
-
-            _Pages[0] = new ApplicationListingPage();
-
-            SetPageContent(contentControl, _Pages[0]);
+            SetPageContent(contentControl, PageAt(0));
 
             control.SelectionChanged += (obj, args) =>
             {
-                if (_CurrentIndex != control.SelectedIndex)
-                {
-                    _CurrentIndex = control.SelectedIndex;
+                int index = control.SelectedIndex;
+                if (_CurrentIndex == index || index < 0 || index >= PageFactories.Length) return;
 
-                    if (_Pages[_CurrentIndex] == null)
-                    {
-                        switch (_CurrentIndex)
-                        {
-                            case 1:
-                                _Pages[1] = new SettingsPage();
-                                break;
-
-                            case 2:
-                                _Pages[2] = new ControlsPage();
-                                break;
-
-                            case 3:
-                                _Pages[3] = new AboutPage();
-                                break;
-
-                            case 4:
-                                _Pages[4] = new AchievementsPage();
-                                break;
-                        }
-                    }
-
-                    SetPageContent(contentControl, _Pages[_CurrentIndex]);
-                }
+                _CurrentIndex = index;
+                SetPageContent(contentControl, PageAt(index));
             };
         }
+
+        private UserControl PageAt(int index) => _Pages[index] ??= PageFactories[index]();
 
         private static void SetPageContent(TransitioningContentControl contentControl, UserControl page)
         {

@@ -11,7 +11,7 @@ namespace WPR.Engine.Graphics
     ///
     /// <para><b>Why this is a file and not a static.</b> Capabilities can only be measured where a
     /// graphics device exists, which on Android is the <c>:game</c> process — and the diagnostics
-    /// screen that wants to show them is <c>GameInfoActivity</c>, in the launcher. The two never
+    /// launcher that wanted to show them (the per-game info screen, removed 2026-09-29) runs elsewhere. The two never
     /// share memory, and <c>GameActivity.OnDestroy</c> kills <c>:game</c> outright, so there is no
     /// handover to catch. The same reasoning, and the same directory, as
     /// <see cref="GraphicsDriverProbe"/>.</para>

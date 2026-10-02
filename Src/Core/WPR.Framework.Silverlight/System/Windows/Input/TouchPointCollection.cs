@@ -3,5 +3,5 @@ using System.Collections.Generic;
 
 namespace WPR.SilverlightCompability
 {
-    public class TouchPointCollection : List<TouchPoint> { }
+    public class TouchPointCollection : PresentationFrameworkCollection<TouchPoint> { }
 }

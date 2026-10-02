@@ -417,7 +417,7 @@ namespace WPR.SilverlightCompability
                 navigatedToFailure = ex;
                 System.Diagnostics.Trace.WriteLine(
                     $"[wpr-nav] {newPage.GetType().Name}.OnNavigatedTo threw ({ex.GetType().Name}: {ex.Message}); " +
-                    "the navigation still committed.");
+                    "the navigation still committed.\n" + ex.StackTrace);
             }
 
             Navigated?.Invoke(this, new NavigationEventArgs(newPage, newUri, mode));

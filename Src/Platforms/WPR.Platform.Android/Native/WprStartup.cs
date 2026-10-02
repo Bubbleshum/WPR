@@ -59,6 +59,7 @@ namespace WPR.Platform.Android.Native
         private static void SetupConfigurationAndDatabase(Context context)
         {
             Configuration.Current = new Configuration(context.GetExternalFilesDir(null)!.AbsolutePath);
+            SessionLog.Start(Configuration.Current.DataPath(SessionLog.FolderName), "launcher");
 
             var databaseDir = Configuration.Current.DataPath("Database");
             Directory.CreateDirectory(databaseDir);

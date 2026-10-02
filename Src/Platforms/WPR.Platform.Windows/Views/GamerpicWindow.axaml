@@ -1,0 +1,28 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="620"
+        x:Class="WPR.Platform.Windows.Views.GamerpicWindow"
+        Title="Choose a gamerpic"
+        Width="640" Height="620"
+        MinWidth="420" MinHeight="400"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource WprWindowBackdrop}">
+  <Grid Margin="28,24" RowDefinitions="Auto,Auto,Auto,*,Auto">
+    <Image Grid.Row="0" Name="logoImage" Height="44" HorizontalAlignment="Left" Margin="0,0,0,10" IsVisible="False"/>
+    <TextBlock Grid.Row="1" Classes="h1" Text="Gamerpic" Margin="0,0,0,6"/>
+    <TextBlock Grid.Row="2" Classes="body" TextWrapping="Wrap" Margin="0,0,0,16"
+               Text="Other players see this beside your name on the leaderboards. It also becomes your gamer picture inside games."/>
+
+    <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto">
+      <StackPanel Name="catalogPanel" Spacing="16"/>
+    </ScrollViewer>
+
+    <Grid Grid.Row="4" ColumnDefinitions="*,Auto" Margin="0,16,0,0">
+      <TextBlock Grid.Column="0" Name="statusText" Classes="dim" VerticalAlignment="Center" TextWrapping="Wrap"
+                 Text="Loading gamerpics…"/>
+      <Button Grid.Column="1" Name="closeButton" Classes="ghost" Content="Done"/>
+    </Grid>
+  </Grid>
+</Window>

@@ -53,6 +53,7 @@ namespace WPR.Platform.Windows
             WPR.SilverlightCompability.HostContext.CurrentProductId = app.ProductId;
             // Neutral ambient holder — what GamerServices reads (see WprHostEnvironment).
             WPR.Common.WprHostEnvironment.CurrentProductId = app.ProductId;
+            WPR.Common.WprHostEnvironment.CurrentTitleName = app.Name;
             string installFolder = Path.Combine(
                 Configuration.Current!.DataPath(WPRModel.DataStoreFolder),
                 app.ProductId!);
@@ -88,7 +89,17 @@ namespace WPR.Platform.Windows
                     "Silverlight app booted but Application.Current.RootVisual was never set. " +
                     "The app's App.xaml.cs is expected to assign a PhoneApplicationFrame (or other UIElement) to RootVisual.");
 
-            await ShowAndAwaitCloseAsync(app, result);
+            // WPR Hub playtime, as ApplicationLaunch does for the XNA path. One session per run;
+            // no pause while the window is behind others (the Silverlight host raises no focus events).
+            WPR.Engine.Online.PlaytimeTracker.Begin(app.ProductId, app.Name);
+            try
+            {
+                await ShowAndAwaitCloseAsync(app, result);
+            }
+            finally
+            {
+                WPR.Engine.Online.PlaytimeTracker.End();
+            }
         }
 
         private static Task ShowAndAwaitCloseAsync(WPRModel app, SilverlightAppHost.HostResult host)

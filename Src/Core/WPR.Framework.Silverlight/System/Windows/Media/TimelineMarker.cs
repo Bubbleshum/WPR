@@ -23,7 +23,7 @@ namespace WPR.SilverlightCompability
     /// the property to resolve and return something enumerable rather than null — one title in
     /// the library does exactly that.
     /// </remarks>
-    public class TimelineMarkerCollection : Collection<TimelineMarker>
+    public class TimelineMarkerCollection : PresentationFrameworkCollection<TimelineMarker>
     {
     }
 }

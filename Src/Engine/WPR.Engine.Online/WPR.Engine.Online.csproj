@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Engine.Online - the contracts and registry for WPR Hub, the online backend
+    (github.com/Bubbleshum/WPR-Hub): leaderboards and automatic crash reports today, with sign-in,
+    friends and the rest of the hub's API to follow.
+
+    Same three-part shape as vibration and launchers. The contracts speak strings, longs and
+    Exception on purpose: WPR.Framework.Xna (LeaderboardWriter / LeaderboardReader) and
+    WPR.Engine.GameLoop (the crash sites) CONSUME this, so naming a GamerServices type here would
+    invert the reference.
+
+    The implementation is a module, Src/Modules/Online/WPR.Online.Hub, declared by each head
+    through caps.Online(...). A platform that declares none keeps leaderboards empty and reports
+    nothing, which is exactly what WPR did before this existed.
+
+    TFMs mirror WPR.Engine.Launchers. References nothing.
+  -->
+
+  <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+  </PropertyGroup>
+  <PropertyGroup>
+    <TargetFrameworks>net10.0;net10.0-android</TargetFrameworks>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <AssemblyName>WPR.Engine.Online</AssemblyName>
+    <RootNamespace>WPR.Engine.Online</RootNamespace>
+    <Nullable>enable</Nullable>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net10.0-android'">24.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+</Project>

@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Runtime.Loader;
 using WPR.Models;
 using WPR.Common;
+using WPR.Engine.Online;
 
 using WPR.SilverlightCompability;
 using Microsoft.Phone.Shell;
@@ -48,6 +49,18 @@ namespace WPR
         /// </summary>
         [System.Diagnostics.Conditional("DEBUG")]
         private static void WprTrace(string msg) => Trace.WriteLine(msg);
+
+        /// <summary>Trace for the per-launch verbose log: kept in Release, because a logging run needs it there.</summary>
+        private static void VerboseTrace(string msg) => Trace.WriteLine(msg);
+
+#if DEBUG
+        private const bool IsDebugBuild = true;
+#else
+        private const bool IsDebugBuild = false;
+#endif
+
+        /// <summary>This launch attached the verbose log (Debug, or a logging run). Read by the process-wide first-chance hook.</summary>
+        private static bool _verboseLaunch;
 
         // Diagnostic state for the first-chance exception logger (see Start). Hook the
         // AppDomain event once; the [ThreadStatic] flag stops the logger recursing if our
@@ -330,6 +343,97 @@ namespace WPR
                     $"Application runtime type '{app.ApplicationType}' is not supported.");
             }
 
+            // Past the refusals above, anything that escapes is a crash worth reporting; they are
+            // "WPR cannot run this kind of app", which the hub already knows. The filter never
+            // catches - it records and returns false - so the exception, its stack and the
+            // teardown below all proceed exactly as before. It does run BEFORE StartCore's finally
+            // blocks (filters run in the first pass), which is harmless: it only writes a file.
+            InstallCrashReportHook();
+            _reportingApp = app;
+            // WPR Hub playtime: the whole run is one session, paused while the game is in the
+            // background (the Activated/Deactivated wiring is at game creation, in StartCore).
+            PlaytimeTracker.Begin(app.ProductId, app.Name);
+            try
+            {
+                await StartCore(app, hooks, isMixedMode);
+            }
+            catch (Exception ex) when (ReportCrash(app, ex, CrashReport.Sources.GameRun))
+            {
+                throw; // unreachable: ReportCrash always returns false
+            }
+            finally
+            {
+                PlaytimeTracker.End();
+                _reportingApp = null;
+            }
+        }
+
+        /// <summary>The game being run, for the process-wide unhandled-exception hook. Null between launches.</summary>
+        private static volatile Application? _reportingApp;
+
+        /// <summary>Exceptions already reported. Weak, so it cannot pin a game's objects (or its ALC).</summary>
+        private static readonly ConditionalWeakTable<Exception, object?> _reportedCrashes = new ConditionalWeakTable<Exception, object?>();
+
+        /// <summary>
+        /// Queues a crash report for WPR Hub (a no-op unless the player has server logging on) and
+        /// returns false, so it can sit in an exception filter. Never throws.
+        /// </summary>
+        private static bool ReportCrash(Application app, Exception ex, string source)
+        {
+            try
+            {
+                ICrashReporter? reporter = OnlineBackend.Crashes;
+                if (reporter == null) return false;
+
+                // The same exception can reach both sites: the filter sees it leave the game run,
+                // and if the head does not catch it, the unhandled hook sees it again.
+                lock (_reportedCrashes)
+                {
+                    if (_reportedCrashes.TryGetValue(ex, out _)) return false;
+                    _reportedCrashes.Add(ex, null);
+                }
+
+                CrashReport report = CrashReport.FromException(ex, source);
+                report.TitleId = app.ProductId;
+                report.TitleName = app.Name;
+                report.InstallFolder = WprHostEnvironment.CurrentInstallFolder
+                    ?? Path.Combine(Configuration.Current!.DataPath(Application.DataStoreFolder), app.ProductId!);
+                report.GraphicsBackend = WPR.Engine.Graphics.GraphicsCapabilitiesStore.Current?.Backend
+                    ?? WPR.Engine.Graphics.GraphicsDriverPreference.ResolveDriverName();
+                reporter.Report(report);
+            }
+            catch (Exception reportEx)
+            {
+                TeardownLog("crash report could not be queued: " + reportEx.Message);
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Reports an exception that kills the process while a game is running - one thrown on a
+        /// thread the game started, which nothing above can catch.
+        ///
+        /// <para>Separate from <see cref="InstallCrashHooks"/>, which is <c>#if DEBUG</c> and only
+        /// writes the teardown log: this one has to be live in the Release builds players run.
+        /// It fires only while <see cref="_reportingApp"/> is set, so a launcher-side crash with
+        /// no game running is not filed against the last game played.</para>
+        /// </summary>
+        private static int _crashReportHookInstalled;
+        private static void InstallCrashReportHook()
+        {
+            if (Interlocked.Exchange(ref _crashReportHookInstalled, 1) != 0) return;
+
+            AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            {
+                if (_reportingApp is { } app && e.ExceptionObject is Exception ex)
+                {
+                    ReportCrash(app, ex, CrashReport.Sources.Unhandled);
+                }
+            };
+        }
+
+        private static async Task StartCore(Application app, IGameLaunchHooks hooks, bool isMixedMode)
+        {
             // Framework-side per-launch hooks. The FNA host used to register these before calling
             // in here, but every one of them names only WPR.Framework.Xna types, so they are launch
             // work, not backend work. XnaBackend.Clear() — the host's finally — drops them again
@@ -342,6 +446,7 @@ namespace WPR
             // than off the Silverlight Application shim, so the XNA layer needs no dependency on
             // the Silverlight/Avalonia stack. Both are set so either host path behaves identically.
             WPR.Common.WprHostEnvironment.CurrentProductId = app.ProductId;
+            WPR.Common.WprHostEnvironment.CurrentTitleName = app.Name;
             // Derive fresh (never through CurrentProductFolder — that would return the PREVIOUS
             // launch's captured folder), then pin it for the rest of this launch INCLUDING teardown,
             // where the singleton it is derived from has already been reset.
@@ -363,12 +468,15 @@ namespace WPR
             // failure). Without this, a game whose Draw throws every frame appears as a silent
             // black screen with no diagnostic file (since Run() itself doesn't throw).
             //
-            // Gated on DEBUG so end users on Release builds don't get a 300 KB-per-launch log
+            // Gated (below) so end users on Release builds don't get a 300 KB-per-launch log
             // file (and don't pay for the per-frame Trace traffic that fills it). To debug a
             // game locally, build the solution in Debug — the per-game wpr_game_debug.log will
             // reappear next to the install directory.
             TextWriterTraceListener? debugListener = null;
-#if DEBUG
+            // Always in Debug; in Release only for a "play with logging" run (WprHostEnvironment.DiagnosticRun),
+            // whose log the launcher uploads as a report when the run ends.
+            _verboseLaunch = IsDebugBuild || WPR.Common.WprHostEnvironment.DiagnosticRun;
+            if (_verboseLaunch)
             try
             {
                 string debugLogPath = Path.Combine(folderPath, "wpr_game_debug.log");
@@ -380,11 +488,11 @@ namespace WPR
                 sw.WriteLine();
                 debugListener = new TextWriterTraceListener(sw, "wpr_game_debug");
                 Trace.Listeners.Add(debugListener);
-                WprTrace("[wpr-trace] ApplicationLaunch: trace listener attached (smoke test)");                // Which module ended up on each audio seam. Reported here rather than where it is
+                VerboseTrace("[wpr-trace] ApplicationLaunch: trace listener attached (smoke test)" + (IsDebugBuild ? "" : " [logging run]"));                // Which module ended up on each audio seam. Reported here rather than where it is
                 // decided (FnaGameHost, before this file exists) so it lands in the per-game log
                 // beside the failures it explains — "sound=none" is the answer to a game throwing
                 // NoAudioHardwareException, and "media=" names who is actually playing songs.
-                WprTrace("[wpr-audio] " + WPR.Engine.Audio.AudioBackendRegistry.LastComposition);
+                VerboseTrace("[wpr-audio] " + WPR.Engine.Audio.AudioBackendRegistry.LastComposition);
                 InstallCrashHooks();
                 hooks.RecordLaunchBaseline();
                 TeardownLog($"===== launch: {app.Name} ({app.ProductId}) =====");
@@ -401,12 +509,12 @@ namespace WPR
                     _firstChanceHooked = true;
                     AppDomain.CurrentDomain.FirstChanceException += (_, e) =>
                     {
-                        if (_inFirstChance) return;
+                        if (_inFirstChance || !_verboseLaunch) return;
                         _inFirstChance = true;
                         try
                         {
                             Exception fce = e.Exception;
-                            WprTrace($"[wpr-fce] {fce.GetType().FullName}: {fce.Message}");
+                            VerboseTrace($"[wpr-fce] {fce.GetType().FullName}: {fce.Message}");
 
                             // WALK THE STACK HERE rather than printing fce.StackTrace.
                             // FirstChanceException fires on the throwing thread with the full
@@ -432,7 +540,7 @@ namespace WPR
                                 trace = fce.StackTrace ?? "(no stack)";
                             }
 
-                            WprTrace("[wpr-fce] " + trace);
+                            VerboseTrace("[wpr-fce] " + trace);
                         }
                         catch { /* never let logging mask the original throw */ }
                         finally { _inFirstChance = false; }
@@ -443,7 +551,6 @@ namespace WPR
             {
                 Log.Warn(LogCategory.AppList, $"Could not attach debug log listener: {ex.Message}");
             }
-#endif
 
             // Use a collectible ALC so closing the game can unload the user assembly — otherwise
             // the .dll stays locked on disk for the life of WPR (blocking re-install) and any
@@ -667,6 +774,11 @@ namespace WPR
                     // prevent the game from running.
                     try { hooks.OnGameCreated(obj); }
                     catch (Exception ex) { Log.Warn(LogCategory.AppList, $"OnGameCreated hook threw: {ex.Message}"); }
+
+                    // Playtime counts only while the game is in front: backgrounded on Android,
+                    // behind another window on the desktop, it stops.
+                    obj!.Deactivated += (_, _) => PlaytimeTracker.Pause();
+                    obj!.Activated += (_, _) => PlaytimeTracker.Resume();
 
                     // Keyboard-driven tilt emulation, when a head registered one. Engine code, so it
                     // is composed here rather than by the backend; a no-op on Android. Order kept

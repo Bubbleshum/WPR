@@ -338,13 +338,31 @@ namespace WPR
             return (ApplicationInstallError.None, app, dataFolderProduct);
         }
 
-        public static async Task<ApplicationInstallError> Install(Stream fileStream, Action<int> progressSet, Func<Application, IObservable<bool>> deleteExistingApp, CancellationToken cancelSource)
+        /// <param name="packageSource">Where the package can be found again later, recorded for
+        /// WPR Hub uploads (<see cref="WPR.Engine.Online.GamePackageRecord.Source"/>): a file path
+        /// on the desktop, a persisted <c>content://</c> URI on Android, or null.</param>
+        public static async Task<ApplicationInstallError> Install(Stream fileStream, Action<int> progressSet, Func<Application, IObservable<bool>> deleteExistingApp, CancellationToken cancelSource,
+            string? packageSource = null)
         {
             try
             {
                 Application? app;
                 string? appDataFolder;
                 ApplicationInstallError error;
+
+                // The package's SHA-256, taken now because this is the only time we hold the
+                // original bytes: the install folder is about to be full of patched assemblies.
+                // Crash reports name the build by it. Best effort - an install never fails for it.
+                WPR.Engine.Online.GamePackageRecord? package = null;
+                try
+                {
+                    package = await Task.Run(() => WPR.Engine.Online.GamePackageRecord.Measure(fileStream));
+                    if (package != null) package.Source = packageSource;
+                }
+                catch (Exception ex)
+                {
+                    Log.Warn(LogCategory.AppInstall, $"Could not fingerprint the package (non-fatal): {ex.Message}");
+                }
 
                 // 60% spend for extracting files
                 (error, app, appDataFolder) = await Task.Run(() => CreateApplicationEntryAndExtract(fileStream, progressSet, deleteExistingApp, cancelSource));
@@ -480,6 +498,24 @@ namespace WPR
                 // rather than beside the DB insert so a cancelled install — which deletes the
                 // folder and the row again above — leaves nothing cached behind.
                 GameIconStore.Capture(app);
+
+                if (package != null)
+                {
+                    try
+                    {
+                        package.Save(appDataFolder!);
+
+                        // Tell WPR Hub which build was just installed, so it can ask for the
+                        // package if it has never seen it. Queued only (no-op with server logging
+                        // off); the head's flush after install sends it and runs the upload.
+                        WPR.Engine.Online.OnlineBackend.Crashes?.Report(WPR.Engine.Online.CrashReport.ForInstall(
+                            app!.ProductId, app.Name, appDataFolder!,
+                            app.ApplicationType == ApplicationType.Silverlight
+                                ? WPR.Engine.Online.CrashReport.RuntimePaths.SilverlightAvalonia
+                                : WPR.Engine.Online.CrashReport.RuntimePaths.XnaFna));
+                    }
+                    catch (Exception ex) { Log.Warn(LogCategory.AppInstall, $"Could not write {WPR.Engine.Online.GamePackageRecord.FileName} (non-fatal): {ex.Message}"); }
+                }
 
                 progressSet(100);
             } catch (Exception ex)

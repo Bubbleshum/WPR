@@ -144,7 +144,9 @@ namespace WPR.Platform.Android.Native
         /// </summary>
         private async Task ShowContextSheetAsync(GameEntry entry)
         {
-            var actions = new List<string> { "play", "achievements", "info" };
+            // "play with logging": a run whose log goes to WPR Hub when it ends, with a stop-and-send
+            // button over the game. It replaces the settings page's "send a report" (GameLauncher).
+            var actions = new List<string> { "play", "play with logging", "achievements" };
 
             // WP7's own wording, and the same gesture: long-press a game, pin it to Start.
             // Offered only when the home screen will take it — a few third-party launchers
@@ -168,18 +170,15 @@ namespace WPR.Platform.Android.Native
                     GameLauncher.Launch(this, entry.Model);
                     break;
 
+                case "play with logging":
+                    GameLauncher.Launch(this, entry.Model, diagnostic: true);
+                    break;
+
                 case "achievements":
                     Intent intent = new Intent(this, typeof(AchievementsActivity));
                     intent.PutExtra(AchievementsActivity.ExtraProductId, entry.ProductId);
                     intent.PutExtra(AchievementsActivity.ExtraGameName, entry.Name);
                     StartActivity(intent);
-                    break;
-
-                case "info":
-                    Intent info = new Intent(this, typeof(GameInfoActivity));
-                    info.PutExtra(GameInfoActivity.ExtraProductId, entry.ProductId);
-                    info.PutExtra(GameInfoActivity.ExtraGameName, entry.Name);
-                    StartActivity(info);
                     break;
 
                 case "pin to start":

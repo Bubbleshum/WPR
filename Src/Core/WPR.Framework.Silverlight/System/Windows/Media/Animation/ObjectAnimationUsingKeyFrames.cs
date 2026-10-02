@@ -39,7 +39,7 @@ namespace WPR.SilverlightCompability
     public class DiscreteObjectKeyFrame : ObjectKeyFrame { }
 
     /// <summary>Shim for <c>System.Windows.Media.Animation.ObjectKeyFrameCollection</c>.</summary>
-    public class ObjectKeyFrameCollection : List<ObjectKeyFrame> { }
+    public class ObjectKeyFrameCollection : PresentationFrameworkCollection<ObjectKeyFrame> { }
 
     /// <summary>
     /// Shim for <c>System.Windows.Media.Animation.ObjectAnimationUsingKeyFrames</c>.

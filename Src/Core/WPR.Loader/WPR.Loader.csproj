@@ -58,6 +58,8 @@
     <PackageReference Include="System.Reactive" Version="5.0.0" />
     <!-- AudioTranscoderBackend moved to the engine tier (Stage 6); the installer reads the transcoder from it. -->
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Audio\WPR.Engine.Audio.csproj" />
+    <!-- GamePackageRecord: the installer fingerprints each package for WPR Hub crash reports. -->
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Online\WPR.Engine.Online.csproj" />
   </ItemGroup>
 
   <ItemGroup>

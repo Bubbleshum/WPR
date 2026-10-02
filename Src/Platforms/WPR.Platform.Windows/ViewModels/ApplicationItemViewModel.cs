@@ -25,11 +25,12 @@ namespace WPR.Platform.Windows.ViewModels
         public int Height => 160;
 
         public ReactiveCommand<Unit, Unit> RunAppCommand { get; }
+        /// <summary>"Play with logging": the verbose log for this run and a stop-and-send-report button (WPR.Shell.DiagnosticRun).</summary>
+        public ReactiveCommand<Unit, Unit> RunWithLoggingCommand { get; }
         public ReactiveCommand<Unit, Unit> UninstallAppCommand { get; }
         public ReactiveCommand<Unit, Unit> InstallAppCommand { get; }
         public ReactiveCommand<Unit, Unit> RepatchAppCommand { get; }
         public ReactiveCommand<Unit, Unit> EditAppCommand { get; }
-        public ReactiveCommand<Unit, Unit> InfoAppCommand { get; }
         public ReactiveCommand<Unit, Unit> ControlsAppCommand { get; }
         public ReactiveCommand<Unit, Unit> ClearDataAppCommand { get; }
 
@@ -37,7 +38,6 @@ namespace WPR.Platform.Windows.ViewModels
         public event EventHandler<ApplicationItemViewModel>? InstallRequested;
         public event EventHandler<ApplicationItemViewModel>? RepatchRequested;
         public event EventHandler<ApplicationItemViewModel>? EditRequested;
-        public event EventHandler<ApplicationItemViewModel>? InfoRequested;
         public event EventHandler<ApplicationItemViewModel>? ControlsRequested;
         public event EventHandler<ApplicationItemViewModel>? ClearDataRequested;
 
@@ -45,11 +45,11 @@ namespace WPR.Platform.Windows.ViewModels
         {
             _App = app;
             RunAppCommand = ReactiveCommand.Create(RunApp);
+            RunWithLoggingCommand = ReactiveCommand.Create(() => { if (_App != null) ApplicationLaunchRequest.Ask(_App, diagnostic: true); });
             UninstallAppCommand = ReactiveCommand.Create(UninstallApp);
             InstallAppCommand = ReactiveCommand.Create(() => { });
             RepatchAppCommand = ReactiveCommand.Create(RepatchApp);
             EditAppCommand = ReactiveCommand.Create(EditApp);
-            InfoAppCommand = ReactiveCommand.Create(ShowInfo);
             ControlsAppCommand = ReactiveCommand.Create(ShowControls);
             ClearDataAppCommand = ReactiveCommand.Create(ClearData);
         }
@@ -63,7 +63,6 @@ namespace WPR.Platform.Windows.ViewModels
             InstallAppCommand = ReactiveCommand.Create(InstallApp);
             RepatchAppCommand = ReactiveCommand.Create(() => { });
             EditAppCommand = ReactiveCommand.Create(() => { });
-            InfoAppCommand = ReactiveCommand.Create(() => { });
             ControlsAppCommand = ReactiveCommand.Create(() => { });
             ClearDataAppCommand = ReactiveCommand.Create(() => { });
         }
@@ -83,7 +82,6 @@ namespace WPR.Platform.Windows.ViewModels
             InstallAppCommand = ReactiveCommand.Create(() => { });
             RepatchAppCommand = ReactiveCommand.Create(() => { });
             EditAppCommand = ReactiveCommand.Create(() => { });
-            InfoAppCommand = ReactiveCommand.Create(() => { });
             ControlsAppCommand = ReactiveCommand.Create(() => { });
             ClearDataAppCommand = ReactiveCommand.Create(() => { });
 
@@ -251,13 +249,6 @@ namespace WPR.Platform.Windows.ViewModels
         private void RepatchApp()
         {
             RepatchRequested?.Invoke(this, this);
-        }
-
-        /// <summary>Ask the page to open the read-only diagnostics dialog for this game.</summary>
-        private void ShowInfo()
-        {
-            if (!IsInstalled) return;
-            InfoRequested?.Invoke(this, this);
         }
 
         /// <summary>Ask the page to open the per-game key-to-touch binding editor. Installed games

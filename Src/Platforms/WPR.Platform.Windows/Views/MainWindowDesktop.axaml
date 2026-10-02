@@ -41,6 +41,9 @@
               </ItemsPanelTemplate>
             </TabControl.ItemsPanel>
 
+            <!-- Order: playing and progress, then online, then setup, then about. The index of each
+                 tab is what MainViewNavigator switches on, so change both together. -->
+
             <TabItem>
               <TabItem.Header>
                 <Grid Width="72" Height="72">
@@ -70,8 +73,46 @@
                               VerticalAlignment="Center"
                               HorizontalAlignment="Center"
                               Spacing="6">
-                    <ic:Icon Value="fa-solid fa-gear" FontSize="22"/>
-                    <TextBlock Text="SETTINGS" FontSize="10"
+                    <ic:Icon Value="fa-solid fa-trophy" FontSize="22"/>
+                    <TextBlock Text="TROPHIES" FontSize="10"
+                               LetterSpacing="2"
+                               HorizontalAlignment="Center"/>
+                  </StackPanel>
+                </Grid>
+              </TabItem.Header>
+            </TabItem>
+
+            <TabItem>
+              <TabItem.Header>
+                <Grid Width="72" Height="72">
+                  <Border HorizontalAlignment="Left" Width="3"
+                          Background="{StaticResource WprAccentBrush}"
+                          IsVisible="{Binding $parent[TabItem].IsSelected}"/>
+                  <StackPanel Orientation="Vertical"
+                              VerticalAlignment="Center"
+                              HorizontalAlignment="Center"
+                              Spacing="6">
+                    <ic:Icon Value="fa-solid fa-user-group" FontSize="22"/>
+                    <TextBlock Text="HUB" FontSize="10"
+                               LetterSpacing="2"
+                               HorizontalAlignment="Center"/>
+                  </StackPanel>
+                </Grid>
+              </TabItem.Header>
+            </TabItem>
+
+            <TabItem>
+              <TabItem.Header>
+                <Grid Width="72" Height="72">
+                  <Border HorizontalAlignment="Left" Width="3"
+                          Background="{StaticResource WprAccentBrush}"
+                          IsVisible="{Binding $parent[TabItem].IsSelected}"/>
+                  <StackPanel Orientation="Vertical"
+                              VerticalAlignment="Center"
+                              HorizontalAlignment="Center"
+                              Spacing="6">
+                    <ic:Icon Value="fa-solid fa-message" FontSize="22"/>
+                    <TextBlock Text="MESSAGES" FontSize="10"
                                LetterSpacing="2"
                                HorizontalAlignment="Center"/>
                   </StackPanel>
@@ -108,8 +149,8 @@
                               VerticalAlignment="Center"
                               HorizontalAlignment="Center"
                               Spacing="6">
-                    <ic:Icon Value="fa-solid fa-circle-info" FontSize="22"/>
-                    <TextBlock Text="ABOUT" FontSize="10"
+                    <ic:Icon Value="fa-solid fa-gear" FontSize="22"/>
+                    <TextBlock Text="SETTINGS" FontSize="10"
                                LetterSpacing="2"
                                HorizontalAlignment="Center"/>
                   </StackPanel>
@@ -127,8 +168,8 @@
                               VerticalAlignment="Center"
                               HorizontalAlignment="Center"
                               Spacing="6">
-                    <ic:Icon Value="fa-solid fa-trophy" FontSize="22"/>
-                    <TextBlock Text="TROPHIES" FontSize="10"
+                    <ic:Icon Value="fa-solid fa-circle-info" FontSize="22"/>
+                    <TextBlock Text="ABOUT" FontSize="10"
                                LetterSpacing="2"
                                HorizontalAlignment="Center"/>
                   </StackPanel>

@@ -77,6 +77,11 @@
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Sensors\WPR.Engine.Sensors.csproj" />
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Vibration\WPR.Engine.Vibration.csproj" />
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Audio\WPR.Engine.Audio.csproj" />
+    <!-- WPR.Engine.Online - the launch sequence is where a game's crash is caught, so it is what
+         queues the crash report (OnlineBackend.Crashes). WPR.Engine.Graphics names the driver
+         that was running in that report. -->
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Online\WPR.Engine.Online.csproj" />
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Graphics\WPR.Engine.Graphics.csproj" />
   </ItemGroup>
 
 </Project>

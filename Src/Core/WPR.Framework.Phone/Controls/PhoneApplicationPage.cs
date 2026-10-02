@@ -55,6 +55,13 @@ namespace Microsoft.Phone.Controls
             set => SetValue(TitleProperty, value);
         }
 
+        /// <summary>
+        /// Per-page tombstoning state. WP7 persisted it across a deactivate/reactivate of the
+        /// app; here a game run is never tombstoned, so it simply lives as long as the page.
+        /// </summary>
+        public System.Collections.Generic.IDictionary<string, object> State { get; } =
+            new System.Collections.Generic.Dictionary<string, object>();
+
         /// <summary>The current physical orientation of the page. Static no-op shim — always Portrait.</summary>
         public PageOrientation Orientation { get; set; } = PageOrientation.PortraitUp;
 

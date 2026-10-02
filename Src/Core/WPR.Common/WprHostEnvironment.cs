@@ -35,5 +35,20 @@ namespace WPR.Common
         /// stack for one string. Both are kept in sync so the Silverlight-hosted path is unchanged.
         /// </summary>
         public static string? CurrentProductId { get; set; }
+
+        /// <summary>
+        /// Display name of the game currently being hosted, or <c>null</c>. Set beside
+        /// <see cref="CurrentProductId"/>; WPR Hub uses it to name a leaderboard's game the first
+        /// time a score arrives for a title nobody has defined yet.
+        /// </summary>
+        public static string? CurrentTitleName { get; set; }
+
+        /// <summary>
+        /// True while the game was started with "play with logging": <c>ApplicationLaunch</c> then
+        /// attaches the per-game trace log and the first-chance exception logger that a Release build
+        /// otherwise leaves out, and the head shows a "stop and send report" button over the game.
+        /// Set by the head for one launch (on Android, in the <c>:game</c> process from the intent).
+        /// </summary>
+        public static bool DiagnosticRun { get; set; }
     }
 }

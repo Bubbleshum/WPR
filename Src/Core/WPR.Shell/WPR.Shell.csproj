@@ -53,6 +53,8 @@
          name ApplicationInstallError. -->
     <ProjectReference Include="$(SolutionDir)Core\WPR.Database\WPR.Database.csproj" />
     <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Xna\WPR.Framework.Xna.csproj" />
+    <!-- HubSetup: builds the WPR Hub module over Configuration for both heads. -->
+    <ProjectReference Include="$(SolutionDir)Modules\Online\WPR.Online.Hub\WPR.Online.Hub.csproj" />
   </ItemGroup>
 
   <ItemGroup>

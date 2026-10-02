@@ -15,63 +15,9 @@
 			           Margin="0,0,0,6"/>
 			<Border BorderBrush="#3FFFFFFF" BorderThickness="1" CornerRadius="3" Padding="12">
 				<StackPanel Spacing="10">
-					<Grid VerticalAlignment="Center">
-						<Grid.ColumnDefinitions>
-							<ColumnDefinition Width="160" />
-							<ColumnDefinition Width="*" />
-						</Grid.ColumnDefinitions>
-						<Label Grid.Column="0" Padding="0,0,10,0" VerticalContentAlignment="Center" Foreground="White">GamerTag</Label>
-						<TextBox Name="gamerTagTextBox" Grid.Column="1"
-						         HorizontalAlignment="Stretch"
-						         Watermark="{x:Static p:Resources.EnterYourGamerTag}" />
-					</Grid>
-
-					<Grid VerticalAlignment="Center">
-						<Grid.ColumnDefinitions>
-							<ColumnDefinition Width="160" />
-							<ColumnDefinition Width="Auto" />
-							<ColumnDefinition Width="*" />
-							<ColumnDefinition Width="Auto" />
-							<ColumnDefinition Width="Auto" />
-						</Grid.ColumnDefinitions>
-						<Label Grid.Column="0" Padding="0,0,10,0"
-						       VerticalContentAlignment="Center"
-						       Content="{x:Static p:Resources.GamerPicture}"
-						       Foreground="White"/>
-						<Border Grid.Column="1"
-						        Width="48" Height="48"
-						        Margin="0,0,10,0"
-						        CornerRadius="3"
-						        BorderBrush="#7FFFFFFF" BorderThickness="1"
-						        Background="#33FFFFFF">
-							<Image Name="gamerPictureImage" Stretch="UniformToFill"/>
-						</Border>
-						<TextBlock Name="gamerPicturePathText"
-						           Grid.Column="2"
-						           VerticalAlignment="Center"
-						           TextTrimming="CharacterEllipsis"
-						           Foreground="#BFFFFFFF"
-						           Text="{x:Static p:Resources.GamerPictureNone}"/>
-						<Button Name="gamerPictureBrowseBtn"
-						        Grid.Column="3"
-						        Margin="10,0,0,0"
-						        Content="{x:Static p:Resources.GamerPictureBrowse}"/>
-						<Button Name="gamerPictureClearBtn"
-						        Grid.Column="4"
-						        Margin="6,0,0,0"
-						        Content="{x:Static p:Resources.GamerPictureClear}"/>
-					</Grid>
-					<TextBlock Text="{x:Static p:Resources.GamerPictureHint}"
-					           Foreground="#BFFFFFFF" FontSize="11" TextWrapping="Wrap"
-					           Margin="160,0,0,0"/>
-
-					<!-- Default avatars strip — populated programmatically from
-					     WPR.Common.GamerPictureDefaults in code-behind. Each
-					     thumbnail is a clickable button; selecting one sets the
-					     config to default:<id>. -->
-					<StackPanel Orientation="Horizontal" Margin="160,4,0,0" Spacing="6"
-					            Name="gamerPictureDefaultsPanel"/>
-
+					<!-- No gamertag or gamer picture here: games use the WPR Hub gamertag and gamerpic when
+					     signed in, and a "player" + digits name with the default picture when not
+					     (Configuration.EffectiveGamerTag / EffectiveGamerPicturePath). -->
 					<Grid VerticalAlignment="Center">
 						<Grid.ColumnDefinitions>
 							<ColumnDefinition Width="160" />
@@ -109,6 +55,58 @@
 					<TextBlock Text="{x:Static p:Resources.HighlightColorHint}"
 					           Foreground="#BFFFFFFF" FontSize="11" TextWrapping="Wrap"
 					           Margin="160,0,0,0"/>
+				</StackPanel>
+			</Border>
+
+			<!-- WPR Hub (online) section. Hardcoded English: these
+			     strings are new and not in the shared .resx yet. -->
+			<Image Name="hubLogoImage" Height="48" HorizontalAlignment="Left" Margin="-4,20,0,6" IsVisible="False"/>
+			<TextBlock Name="onlineHeaderText" Text="Online"
+			           FontSize="16" FontWeight="SemiBold"
+			           Foreground="White"
+			           Margin="0,20,0,6"/>
+			<Border BorderBrush="#3FFFFFFF" BorderThickness="1" CornerRadius="3" Padding="12">
+				<StackPanel Spacing="10">
+					<!-- The account: gamerpic, who, and the two things you do with it. -->
+					<Grid VerticalAlignment="Center" ColumnDefinitions="Auto,*,Auto">
+						<Border Grid.Column="0" Width="56" Height="56" CornerRadius="3" ClipToBounds="True"
+						        Background="#33FFFFFF" Margin="0,0,14,0">
+							<Image Name="accountGamerpicImage" Stretch="UniformToFill"/>
+						</Border>
+						<StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+							<TextBlock Name="accountNameText" Foreground="White" FontSize="16" FontWeight="SemiBold"
+							           TextTrimming="CharacterEllipsis" Text="Not signed in"/>
+							<TextBlock Name="accountStatusText" Foreground="#BFFFFFFF" FontSize="11" TextWrapping="Wrap"
+							           Text="Sign in to put your scores on the leaderboards and choose a gamerpic."/>
+						</StackPanel>
+						<StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+							<Button Name="gamerpicButton" Content="Gamerpic…" IsVisible="False"/>
+							<Button Name="accountButton" Content="Sign in"/>
+						</StackPanel>
+					</Grid>
+
+					<!-- "How did it run?": how often WPR may ask (WPR.Shell.GameRatingPrompt). The hub
+					     address is deliberately not here: WPR always uses the official hub. -->
+					<Grid VerticalAlignment="Center">
+						<Grid.ColumnDefinitions>
+							<ColumnDefinition Width="160" />
+							<ColumnDefinition Width="*" />
+						</Grid.ColumnDefinitions>
+						<Label Grid.Column="0" Padding="0,0,10,0" VerticalContentAlignment="Center" Foreground="White">Ask how a game ran</Label>
+						<ComboBox Name="ratingCooldownComboBox" Grid.Column="1" MinWidth="200"/>
+					</Grid>
+					<TextBlock Foreground="#BFFFFFFF" FontSize="11" TextWrapping="Wrap"
+					           Text="After you play a game, WPR sometimes asks how well it ran and puts your answer on WPR Hub's compatibility page. This is how long it waits before asking about another game. It never asks about a game you have already rated on this version of WPR, and needs you to be signed in."/>
+
+					<CheckBox Name="serverLoggingCheckBox" Foreground="White"
+					          Content="Send crash reports automatically (server logging)"/>
+					<TextBlock Foreground="#BFFFFFFF" FontSize="11" TextWrapping="Wrap"
+					           Text="When a game crashes, WPR sends WPR Hub the error, a stack trace and the end of the game's log, with your user name and paths removed. When you install a game, or one crashes, and the hub has no copy of that exact game package, WPR uploads the package in the background. Nothing is sent while this is off, and switching it off drops anything still waiting to be sent."/>
+
+					<!-- Reporting a problem is "Play with logging" in a game's pane (MainWindowDesktop). -->
+					<TextBlock Text="Report a problem" Foreground="White" FontWeight="SemiBold" Margin="0,8,0,0"/>
+					<TextBlock Foreground="#BFFFFFFF" FontSize="11" TextWrapping="Wrap"
+					           Text="Select the game and press Play with logging. Play until the problem happens, then press Stop &amp; send report at the top of the screen: the game closes and the log from that run goes to WPR Hub, with your user name and paths removed. You get a report code to quote."/>
 				</StackPanel>
 			</Border>
 

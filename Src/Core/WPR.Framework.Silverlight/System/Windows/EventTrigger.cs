@@ -34,13 +34,13 @@ namespace WPR.SilverlightCompability
     }
 
     /// <summary>Shim for <c>System.Windows.TriggerActionCollection</c>.</summary>
-    public class TriggerActionCollection : List<TriggerAction> { }
+    public class TriggerActionCollection : PresentationFrameworkCollection<TriggerAction> { }
 
     /// <summary>Shim for <c>System.Windows.TriggerBase</c>.</summary>
     public abstract class TriggerBase : DependencyObject { }
 
     /// <summary>Shim for <c>System.Windows.TriggerCollection</c>.</summary>
-    public class TriggerCollection : List<TriggerBase> { }
+    public class TriggerCollection : PresentationFrameworkCollection<TriggerBase> { }
 
     /// <summary>Shim for <c>System.Windows.EventTrigger</c>.</summary>
     /// <remarks>
