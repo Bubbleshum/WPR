@@ -82,6 +82,12 @@
     <None Update="SDL2.dll">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <!-- The WPR Hub logo (sign-in, hub page, settings), the white version from Images/white_wpr_hub.png:
+         the desktop shows only that one. Optional: Views/HubLogo falls back to text without it. -->
+    <None Include="..\..\..\Images\white_wpr_hub.png" Link="Assets\wpr-hub-logo.png"
+          Condition="Exists('..\..\..\Images\white_wpr_hub.png')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <!--This helps with theme dll-s trimming.

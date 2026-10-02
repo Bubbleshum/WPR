@@ -100,6 +100,17 @@ namespace WPR.Engine
         IPlatformCapabilities ShareSheet(WPR.Engine.Launchers.IShareSheet sheet);
 
         /// <summary>
+        /// WPR Hub, the online backend: leaderboards and automatic crash reports. Omit it and
+        /// leaderboards stay empty and nothing is reported.
+        ///
+        /// <para>Not strictly a fact about the device, since both heads plug in the same module.
+        /// But the module is built from head facts (where its data lives, how to get an installed
+        /// game's package back), and declaring it here keeps it on the <c>[wpr-platform]</c>
+        /// line.</para>
+        /// </summary>
+        IPlatformCapabilities Online(WPR.Engine.Online.OnlineServices services);
+
+        /// <summary>
         /// This platform emulates tilt from the keyboard. Declared only by heads that have a
         /// keyboard and no real sensor; the game host attaches the XNA components when it sees one.
         /// </summary>

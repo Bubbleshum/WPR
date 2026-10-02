@@ -69,7 +69,7 @@ namespace WPR.SilverlightCompability
     }
 
     /// <summary>Shim for <c>System.Windows.Media.GradientStopCollection</c>.</summary>
-    public class GradientStopCollection : List<GradientStop> { }
+    public class GradientStopCollection : PresentationFrameworkCollection<GradientStop> { }
 
     /// <summary>Shim for <c>System.Windows.Media.LinearGradientBrush</c>.</summary>
     /// <remarks>See <see cref="GradientBrush"/> for why it exists despite painting nothing.</remarks>

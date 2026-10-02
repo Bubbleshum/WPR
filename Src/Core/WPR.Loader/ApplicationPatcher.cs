@@ -291,7 +291,12 @@ namespace WPR
         // Existing saves are copied into each installed game's new store on its first launch, so
         // nothing is lost. Not identity-binding (a v37 install launches, still on the shared store),
         // so --repatch-installed is enough; Android repatches on next launch.
-        public static int Version => 38;
+        // Bumped to 39: ApplyGameSpecificFixups gained a third entry. The Treasures of Montezuma's
+        // options dialog zeroes the music slider whenever MediaPlayer is paused, and the game
+        // pauses it itself for every level-start jingle, so the music turned itself off at the
+        // start of each level. The handler is emptied. Rewrites game IL, so a v38 install keeps
+        // the old handler; not identity-binding.
+        public static int Version => 39;
 
         private AssemblyNameReference FnaBackendRef;
         private AssemblyNameReference FNARef;
@@ -3582,6 +3587,102 @@ namespace WPR
         {
             ApplyHothRevealFixup(module);
             ApplyFeedMeOilStopByIdFixup(module);
+            ApplyMontezumaMusicSliderFixup(module);
+        }
+
+        /// <summary>
+        /// The Treasures of Montezuma (Alawar.TheTreasuresOfMontezuma.Gameplay.dll). Empties the
+        /// options dialog's <c>MediaPlayer.MediaStateChanged</c> handler, which is what turned the
+        /// music off at the start of every level.
+        ///
+        /// <para><b>The handler.</b> The options dialog template (shared by the main-menu and the
+        /// in-game dialog) subscribes in <c>Build</c> with
+        /// <c>if (BackgroundMusicPlayer.IsPaused) musicSlider.Value = 0f;</c>. It exists to mirror
+        /// the PHONE pausing the game's music — the Zune controls on the volume overlay — onto the
+        /// slider. Setting the slider then runs the slider's own change callback, which writes
+        /// <c>GameData.MusicVolume = 0</c> and <c>MediaPlayer.Volume = 0</c>.</para>
+        ///
+        /// <para><b>Why it fires under WPR.</b> Every level start (and level complete / game over)
+        /// plays a track and immediately calls <c>BackgroundMusicPlayer.Pause()</c> so the jingle
+        /// can play, resuming five seconds later. The dialog is built with the level, so it sees
+        /// that pause, takes it for the player's, and zeroes the music. The resume then plays at
+        /// volume 0 and the saved setting is 0: "the music setting resets between levels".</para>
+        ///
+        /// <para><b>Why emptying it is safe.</b> Nothing outside the game can pause WPR's
+        /// <c>MediaPlayer</c> — <c>GameHasControl</c> is always true and Android backgrounding does
+        /// not change <c>MediaPlayer.State</c> — so the only pauses the handler can ever see are the
+        /// game's own, and every one of them is the wrong answer.</para>
+        ///
+        /// <para>Found by shape rather than by name, since the obfuscated names are unprintable:
+        /// a method that subscribes <c>MediaPlayer.add_MediaStateChanged</c>, and the
+        /// <c>(object, EventArgs)</c> method it takes <c>ldftn</c> of whose body reads
+        /// <c>BackgroundMusicPlayer.get_IsPaused</c>.</para>
+        /// </summary>
+        private static void ApplyMontezumaMusicSliderFixup(ModuleDefinition module)
+        {
+            if (module.GetType("Alawar.TheTreasuresOfMontezuma.Gameplay.GameScreenManager") == null) return;
+
+            try
+            {
+                var handlers = new HashSet<MethodDefinition>();
+                foreach (TypeDefinition type in module.GetTypes())
+                {
+                    foreach (MethodDefinition m in type.Methods)
+                    {
+                        if (!m.HasBody) continue;
+                        var ins = m.Body.Instructions;
+                        if (!ins.Any(i => i.Operand is MethodReference r
+                                          && r.Name == "add_MediaStateChanged"
+                                          && r.DeclaringType.Name == "MediaPlayer"))
+                        {
+                            continue;
+                        }
+
+                        foreach (Instruction i in ins)
+                        {
+                            if (i.OpCode != OpCodes.Ldftn || i.Operand is not MethodReference target) continue;
+                            MethodDefinition? def = target.Resolve();
+                            if (def == null || !def.HasBody
+                                || def.ReturnType.MetadataType != MetadataType.Void
+                                || def.Parameters.Count != 2
+                                || def.Parameters[1].ParameterType.Name != "EventArgs")
+                            {
+                                continue;
+                            }
+
+                            if (def.Body.Instructions.Any(x => x.Operand is MethodReference r
+                                                               && r.Name == "get_IsPaused"
+                                                               && r.DeclaringType.Name == "BackgroundMusicPlayer"))
+                            {
+                                handlers.Add(def);
+                            }
+                        }
+                    }
+                }
+
+                if (handlers.Count == 0)
+                {
+                    Log.Warn(LogCategory.AppInstall,
+                        "[montezuma-fixup] options dialog MediaStateChanged handler not found — left unpatched.");
+                    return;
+                }
+
+                foreach (MethodDefinition h in handlers)
+                {
+                    h.Body.Instructions.Clear();
+                    h.Body.ExceptionHandlers.Clear();
+                    h.Body.Variables.Clear();
+                    h.Body.InitLocals = false;
+                    h.Body.GetILProcessor().Append(Instruction.Create(OpCodes.Ret));
+                }
+
+                Log.Info(LogCategory.AppInstall,
+                    $"[montezuma-fixup] emptied {handlers.Count} options-dialog MediaStateChanged handler(s); the level-start jingle no longer zeroes the music slider.");
+            }
+            catch (Exception ex)
+            {
+                Log.Warn(LogCategory.AppInstall, $"[montezuma-fixup] threw, left unpatched: {ex.Message}");
+            }
         }
 
         private static void ApplyHothRevealFixup(ModuleDefinition module)

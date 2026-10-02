@@ -34,10 +34,10 @@ namespace Microsoft.Xna.Framework.GamerServices
         /// MissingMethodException, which games typically surface as a generic error dialog.
         ///
         /// Resolution order:
-        /// 1. User-configured picture file (<see cref="Configuration.GamerPicturePath"/>) —
-        ///    set in the host's settings page, persisted across launches, shared by every
-        ///    game that asks for it. Returned as a raw file stream so the original encoding
-        ///    is preserved (FromStream handles PNG/JPG/GIF/BMP).
+        /// 1. The WPR Hub gamerpic while signed in (<see cref="Configuration.EffectiveGamerPicturePath"/>,
+        ///    the file the hub module saved), shared by every game that asks for it. Returned
+        ///    as a raw file stream so the original encoding is preserved. Signed out there is
+        ///    none, and the bundled default at the end is used.
         /// 2. In-memory <see cref="GamerPicture"/> texture if a game/shim explicitly set one
         ///    (currently no internal code does, but the property is publicly settable in
         ///    spirit) — encoded to PNG via <c>Texture2D.SaveAsPng</c>.
@@ -46,7 +46,7 @@ namespace Microsoft.Xna.Framework.GamerServices
         /// </summary>
         public Stream GetGamerPicture()
         {
-            string? configured = Configuration.Current?.GamerPicturePath;
+            string? configured = Configuration.Current?.EffectiveGamerPicturePath;
             if (!string.IsNullOrEmpty(configured))
             {
                 if (GamerPictureDefaults.IsDefault(configured))

@@ -273,7 +273,10 @@ namespace Microsoft.Xna.Framework.GamerServices
                         }
 
                         achievement.IsEarned = true;
-                        achievement.EarnedOnline = true;
+                        // Earned locally, awaiting upload. WPR Hub's sync sets this once the hub
+                        // has the unlock (WPR.Database.Online.EfOnlineLocalStore), so a game
+                        // reading EarnedOnline gets the truth rather than a blanket true.
+                        achievement.EarnedOnline = false;
                         achievement.EarnedDateTime = DateTime.Now;
 
                         newlyEarned ??= achievement;
@@ -317,6 +320,13 @@ namespace Microsoft.Xna.Framework.GamerServices
                 if (store != null)
                 {
                     await store.SaveChangesAsync();
+                }
+
+                // Saved locally as awaiting upload; now, if signed in, send it to WPR Hub. Offline
+                // or signed out it simply waits: the next flush after sign-in sends it.
+                if (achievements.Any(a => a.IsEarned && !a.EarnedOnline))
+                {
+                    WPR.Engine.Online.OnlineBackend.Progress?.Unlocked();
                 }
 
                 if (callback != null)

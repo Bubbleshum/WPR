@@ -16,15 +16,17 @@ namespace Microsoft.Xna.Framework.GamerServices
         private String _GamerTag;
 
         /// <summary>
-        /// The tag a signed-in gamer falls back to when the host has none configured. XNA has no
-        /// concept of a signed-in gamer without a tag, so this must never be null or empty.
+        /// The last-resort tag, should the host somehow have none. XNA has no concept of a
+        /// signed-in gamer without a tag, so this must never be null or empty. Normally the tag is
+        /// <see cref="Configuration.EffectiveGamerTag"/>: the WPR Hub gamertag, or the install's
+        /// "player" + digits guest name when signed out.
         /// </summary>
-        private const string DefaultGamerTag = "HarryDirk";
+        private const string DefaultGamerTag = "player";
 
         internal Gamer()
         {
             _LeaderboardWriter = new LeaderboardWriter();
-            _GamerTag = Normalise(Configuration.Current.GamerTag);
+            _GamerTag = Normalise(Configuration.Current?.EffectiveGamerTag);
         }
 
         /// <summary>

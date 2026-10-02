@@ -1,6 +1,8 @@
 using System;
+using System.Linq;
 
 using Android.App;
+using Android.Content;
 using Android.Content.PM;
 using Android.Graphics;
 using Android.OS;
@@ -15,8 +17,12 @@ using WPR.Engine.Vibration;
 namespace WPR.Platform.Android.Native
 {
     /// <summary>
-    /// Settings for the Android head: gamertag, accent colour, the global vibration switch and the
-    /// graphics-driver escape hatch.
+    /// Settings for the Android head: accent colour, the global vibration switch, crash reports,
+    /// update checks, game ratings and the graphics-driver escape hatch.
+    ///
+    /// <para>No account section and no gamertag or gamerpic field: the WPR Hub account (sign in,
+    /// sign out, gamerpic) lives on the Start screen's hub tile and <see cref="HubActivity"/>, and
+    /// games take their gamertag and picture from it (<c>Configuration.EffectiveGamerTag</c>).</para>
     ///
     /// <para>The desktop page also has data-store and game-library folder pickers. Neither
     /// applies here — the data store is the app-private external files dir Android hands
@@ -38,8 +44,6 @@ namespace WPR.Platform.Android.Native
     [Register("com.wpr.android.SettingsActivity")]
     public class SettingsActivity : Activity
     {
-        private EditText _GamerTag = null!;
-
         protected override void OnCreate(Bundle? savedInstanceState)
         {
             base.OnCreate(savedInstanceState);
@@ -51,15 +55,92 @@ namespace WPR.Platform.Android.Native
 
             FindViewById<TextView>(Resource.Id.appTitle)!.SetTextColor(WpTheme.Accent);
 
-            _GamerTag = FindViewById<EditText>(Resource.Id.gamerTagInput)!;
-            _GamerTag.Text = Configuration.Current?.GamerTag ?? "";
-
             FindViewById<TextView>(Resource.Id.storagePathText)!.Text =
                 Configuration.Current?.DataStorePath ?? "(not initialised)";
 
             BuildAccentGrid();
             BuildVibrationToggle();
+            BuildServerLoggingToggle();
+            BuildUpdateCheckToggle();
+            BuildRatingCooldown();
             BuildGraphicsDriverPicker();
+        }
+
+        /// <summary>
+        /// How often "how did it run?" may be asked (<see cref="WPR.Shell.GameRatingPrompt"/>). A list
+        /// of the shared choices; saved at once, and read live the next time a game ends.
+        /// </summary>
+        private void BuildRatingCooldown()
+        {
+            TextView button = FindViewById<TextView>(Resource.Id.ratingCooldownButton)!;
+            WpTheme.ApplyTilt(button);
+
+            void Show() => button.Text = "ask how a game ran: " +
+                WPR.Shell.GameRatingPrompt.DescribeCooldown(Configuration.Current?.RatingPromptCooldownMinutes
+                    ?? Configuration.DefaultRatingPromptCooldownMinutes);
+            Show();
+
+            button.Click += async (_, _) =>
+            {
+                var choices = WPR.Shell.GameRatingPrompt.CooldownChoices;
+                int picked = await WpDialogs.ChooseAsync(this, "ask how a game ran", choices.Select(c => c.Label).ToArray());
+                if (picked < 0 || Configuration.Current == null) return;
+                Configuration.Current.RatingPromptCooldownMinutes = choices[picked].Minutes;
+                Configuration.Current.Save();
+                Show();
+            };
+        }
+
+        /// <summary>
+        /// WPR Hub crash reports. Read live by the hub module, so it applies at once; switching it
+        /// off also discards anything still queued, which the flush below does.
+        /// </summary>
+        private void BuildServerLoggingToggle()
+        {
+            Switch toggle = FindViewById<Switch>(Resource.Id.serverLoggingSwitch)!;
+            TextView state = FindViewById<TextView>(Resource.Id.serverLoggingStateText)!;
+
+            WpTheme.ApplySwitch(toggle);
+
+            toggle.Checked = Configuration.Current?.ServerLogging == true;
+            state.Text = toggle.Checked ? "on" : "off";
+
+            toggle.CheckedChange += (_, args) =>
+            {
+                state.Text = args.IsChecked ? "on" : "off";
+                if (Configuration.Current == null) return;
+
+                // Straight away, like vibration: one deliberate tap, and it must survive the
+                // process being killed from the task switcher.
+                Configuration.Current.ServerLogging = args.IsChecked;
+                Configuration.Current.Save();
+                // Signed in, the hub goes by the account's setting, so keep it in step.
+                _ = WPR.Shell.HubSetup.Current?.Account.SyncServerLoggingAsync();
+                _ = WPR.Engine.Online.OnlineBackend.FlushAsync();
+            };
+        }
+
+        /// <summary>
+        /// Automatic update checks (<see cref="WPR.Shell.AppUpdates"/>). Off stops the background
+        /// check and its notification; the About page can still check by hand.
+        /// </summary>
+        private void BuildUpdateCheckToggle()
+        {
+            Switch toggle = FindViewById<Switch>(Resource.Id.updateCheckSwitch)!;
+            TextView state = FindViewById<TextView>(Resource.Id.updateCheckStateText)!;
+
+            WpTheme.ApplySwitch(toggle);
+
+            toggle.Checked = Configuration.Current?.UpdateCheckEnabled != false;
+            state.Text = toggle.Checked ? "on" : "off";
+
+            toggle.CheckedChange += (_, args) =>
+            {
+                state.Text = args.IsChecked ? "on" : "off";
+                if (Configuration.Current == null) return;
+                Configuration.Current.UpdateCheckEnabled = args.IsChecked;
+                Configuration.Current.Save();
+            };
         }
 
         /// <summary>
@@ -103,8 +184,8 @@ namespace WPR.Platform.Android.Native
             int padX = (int)TypedValue.ApplyDimension(ComplexUnitType.Dip, 20, metrics);
             int padY = (int)TypedValue.ApplyDimension(ComplexUnitType.Dip, 11, metrics);
 
-            // The chosen one is an accent tile; the other is the same chrome the gamertag field
-            // uses. Deliberately NOT the accent grid's white-ring marker — that grid is a field of
+            // The chosen one is an accent tile; the other is the same chrome the other buttons
+            // use. Deliberately NOT the accent grid's white-ring marker — that grid is a field of
             // colours where a fill cannot mean "selected", and reusing the ring here would leave
             // two differently-marked selections on one page.
             TextView option = new TextView(this);
@@ -174,7 +255,7 @@ namespace WPR.Platform.Android.Native
             ServicesSetup.Start();
 
             // Only repaint the picker. Recreate() would be the accent-grid answer, but nothing else
-            // on this page depends on the driver and the gamertag field would lose an unsaved edit.
+            // on this page depends on the driver (and recreating it would scroll the page back to the top).
             BuildGraphicsDriverPicker();
         }
 
@@ -199,7 +280,7 @@ namespace WPR.Platform.Android.Native
 
                 if (Configuration.Current == null) return;
 
-                // Written straight away rather than in OnPause like the gamertag: this is a
+                // Written straight away: this is a
                 // single deliberate tap, not a stream of keystrokes, and persisting now means the
                 // setting survives the process being killed from the task switcher.
                 Configuration.Current.VibrationEnabled = args.IsChecked;
@@ -232,23 +313,6 @@ namespace WPR.Platform.Android.Native
             }
         }
 
-        /// <summary>
-        /// Persist on the way out rather than on every keystroke: <c>Configuration.Save</c>
-        /// rewrites config.json, and a per-character write would hammer the disk while the
-        /// user types their gamertag.
-        /// </summary>
-        protected override void OnPause()
-        {
-            base.OnPause();
-
-            if (Configuration.Current == null) return;
-
-            // Only the persisted value matters. Games read it through GamerServices when
-            // they launch, in their own process — there is no signed-in gamer object in the
-            // launcher process to update live.
-            Configuration.Current.GamerTag = _GamerTag.Text ?? "";
-            Configuration.Current.Save();
-        }
 
         private void BuildAccentGrid()
         {

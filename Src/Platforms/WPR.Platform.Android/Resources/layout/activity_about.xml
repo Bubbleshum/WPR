@@ -1,10 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/aboutScroll"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/wp_background"
     android:fillViewport="true">
 
+  <!-- Two WP pivots, "about" and "what's new". Links are WP7-style list rows (primary + secondary
+       line), tapped to open in the browser. The what's new pivot is filled in code from the release
+       notes bundled into the APK (assets/ReleaseNotes), see AboutActivity. -->
   <LinearLayout
       android:layout_width="match_parent"
       android:layout_height="wrap_content"
@@ -21,75 +25,222 @@
         android:layout_height="wrap_content"
         android:text="@string/app_title" />
 
-    <TextView
-        android:id="@+id/pageTitle"
-        style="@style/WpPageTitle"
-        android:layout_width="wrap_content"
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:orientation="horizontal"
         android:layout_marginTop="6dp"
-        android:layout_marginBottom="26dp"
-        android:text="about" />
+        android:layout_marginBottom="22dp">
 
-    <TextView
-        android:id="@+id/aboutVersion"
+      <TextView
+          android:id="@+id/pivotAbout"
+          style="@style/WpPageTitle"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:layout_marginEnd="24dp"
+          android:textSize="34sp"
+          android:clickable="true"
+          android:focusable="true"
+          android:text="about" />
+
+      <TextView
+          android:id="@+id/pivotWhatsNew"
+          style="@style/WpPageTitle"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:textSize="34sp"
+          android:textColor="@color/wp_subtle"
+          android:clickable="true"
+          android:focusable="true"
+          android:text="what's new" />
+
+    </LinearLayout>
+
+    <!-- ============================================================ about -->
+    <LinearLayout
+        android:id="@+id/aboutPage"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:fontFamily="sans-serif-light"
-        android:textColor="@color/wp_foreground"
-        android:textSize="26sp" />
+        android:orientation="vertical">
 
-    <TextView
-        android:id="@+id/aboutBuild"
-        style="@style/WpListSecondary"
+      <TextView
+          android:id="@+id/aboutVersion"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:fontFamily="sans-serif-light"
+          android:textColor="@color/wp_foreground"
+          android:textSize="26sp" />
+
+      <TextView
+          android:id="@+id/aboutBuild"
+          style="@style/WpListSecondary"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:layout_marginTop="6dp"
+          android:singleLine="false" />
+
+      <TextView
+          style="@style/WpBody"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:layout_marginTop="14dp"
+          android:lineSpacingExtra="4dp"
+          android:text="Windows Phone Runner. play your old Windows Phone games again, on a PC or an Android phone." />
+
+      <TextView
+          style="@style/WpSectionHeader"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:layout_marginTop="28dp"
+          android:text="UPDATES" />
+
+      <!-- Tapped: downloads the newer APK when one is known, otherwise checks GitHub now. -->
+      <LinearLayout
+          android:id="@+id/updateRow"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:orientation="vertical"
+          android:paddingTop="10dp"
+          android:paddingBottom="10dp"
+          android:background="?android:attr/selectableItemBackground"
+          android:clickable="true"
+          android:focusable="true">
+        <TextView android:id="@+id/updateTitle" style="@style/WpListPrimary" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="check for updates" />
+        <TextView android:id="@+id/updateDetail" style="@style/WpListSecondary" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="2dp" android:singleLine="false" android:text="look for a newer WPR on GitHub" />
+      </LinearLayout>
+
+      <TextView
+          style="@style/WpSectionHeader"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:layout_marginTop="28dp"
+          android:text="PROJECT" />
+
+      <LinearLayout
+          android:id="@+id/githubRow"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:orientation="vertical"
+          android:paddingTop="10dp"
+          android:paddingBottom="10dp"
+          android:background="?android:attr/selectableItemBackground"
+          android:clickable="true"
+          android:focusable="true">
+        <TextView style="@style/WpListPrimary" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="github" />
+        <TextView style="@style/WpListSecondary" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="2dp" android:text="source code, open source under MIT" />
+      </LinearLayout>
+
+      <LinearLayout
+          android:id="@+id/compatibilityRow"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:orientation="vertical"
+          android:paddingTop="10dp"
+          android:paddingBottom="10dp"
+          android:background="?android:attr/selectableItemBackground"
+          android:clickable="true"
+          android:focusable="true">
+        <TextView style="@style/WpListPrimary" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="compatibility list" />
+        <TextView style="@style/WpListSecondary" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="2dp" android:text="which games work, and how well" />
+      </LinearLayout>
+
+      <LinearLayout
+          android:id="@+id/issuesRow"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:orientation="vertical"
+          android:paddingTop="10dp"
+          android:paddingBottom="10dp"
+          android:background="?android:attr/selectableItemBackground"
+          android:clickable="true"
+          android:focusable="true">
+        <TextView style="@style/WpListPrimary" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="report a problem" />
+        <TextView style="@style/WpListSecondary" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="2dp" android:text="open an issue on GitHub" />
+      </LinearLayout>
+
+      <TextView
+          style="@style/WpSectionHeader"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:layout_marginTop="28dp"
+          android:text="WPR HUB" />
+
+      <TextView
+          android:id="@+id/hubText"
+          style="@style/WpBody"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:layout_marginTop="8dp"
+          android:layout_marginBottom="4dp"
+          android:lineSpacingExtra="4dp" />
+
+      <LinearLayout
+          android:id="@+id/termsRow"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:orientation="vertical"
+          android:paddingTop="10dp"
+          android:paddingBottom="10dp"
+          android:background="?android:attr/selectableItemBackground"
+          android:clickable="true"
+          android:focusable="true">
+        <TextView style="@style/WpListPrimary" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="terms of service" />
+        <TextView style="@style/WpListSecondary" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="2dp" android:text="the rules for accounts, messages and online play" />
+      </LinearLayout>
+
+      <LinearLayout
+          android:id="@+id/privacyRow"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:orientation="vertical"
+          android:paddingTop="10dp"
+          android:paddingBottom="10dp"
+          android:background="?android:attr/selectableItemBackground"
+          android:clickable="true"
+          android:focusable="true">
+        <TextView style="@style/WpListPrimary" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="privacy notice" />
+        <TextView style="@style/WpListSecondary" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="2dp" android:text="what the Hub stores about you, and your rights" />
+      </LinearLayout>
+
+      <TextView
+          android:id="@+id/statusText"
+          style="@style/WpListSecondary"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:layout_marginTop="20dp"
+          android:singleLine="false"
+          android:visibility="gone" />
+
+      <TextView
+          style="@style/WpListSecondary"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:layout_marginTop="28dp"
+          android:singleLine="false"
+          android:lineSpacingExtra="3dp"
+          android:text="WPR is an independent project, not affiliated with or endorsed by Microsoft or Xbox. games and trademarks belong to their owners." />
+
+    </LinearLayout>
+
+    <!-- ============================================================ what's new -->
+    <LinearLayout
+        android:id="@+id/whatsNewPage"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:singleLine="false" />
-
-    <TextView
-        style="@style/WpSectionHeader"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="28dp"
-        android:text="CREDITS" />
-
-    <TextView
-        style="@style/WpBody"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:lineSpacingExtra="4dp"
-        android:text="(C) Lin Yan :: MediaExplorer :: Bubbleshum\n2022 :: 2026" />
-
-    <TextView
-        style="@style/WpSectionHeader"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="28dp"
-        android:text="LICENSE" />
-
-    <TextView
-        style="@style/WpBody"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="MIT" />
-
-    <TextView
-        style="@style/WpSectionHeader"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="28dp"
-        android:text="SHELL" />
-
-    <TextView
-        android:id="@+id/aboutShell"
-        style="@style/WpBody"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:lineSpacingExtra="4dp"
-        android:text="native Android views throughout the launcher. games are hosted by FNA over SDL in their own process." />
+        android:orientation="vertical"
+        android:visibility="gone" />
 
   </LinearLayout>
 </ScrollView>

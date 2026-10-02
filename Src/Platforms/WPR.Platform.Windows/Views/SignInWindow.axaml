@@ -1,0 +1,104 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="600"
+        x:Class="WPR.Platform.Windows.Views.SignInWindow"
+        Title="Sign in to WPR Hub"
+        Width="520" SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource WprWindowBackdrop}">
+  <StackPanel Margin="28,24,28,24" Spacing="0">
+    <Image Name="logoImage" Height="72" HorizontalAlignment="Left" Margin="-6,0,0,10" IsVisible="False"/>
+    <TextBlock Name="eyebrowText" Classes="eyebrow" Text="WPR HUB" Margin="0,0,0,6"/>
+    <TextBlock Classes="h1" Name="titleText" Text="Sign in" Margin="0,0,0,8"/>
+    <TextBlock Classes="body" TextWrapping="Wrap" Margin="0,0,0,20"
+               Name="introText"
+               Text="See your friends and what they're playing, put your scores on the leaderboards and keep your achievements. You sign in on the WPR Hub website, so WPR never sees a password."/>
+
+    <!-- Pick how to sign in. Signing up is the same step: the first sign-in makes the account.
+         One button per provider the hub offers (SignInWindow.ShowProviders). -->
+    <StackPanel Name="chooserPanel" Spacing="10">
+      <TextBlock Classes="eyebrow" Text="SIGN IN OR SIGN UP"/>
+      <StackPanel Name="providerButtons" Spacing="8"/>
+      <TextBlock Name="chooserStatusText" Classes="dim" Text="Getting ready…"/>
+      <TextBlock Classes="dim" TextWrapping="Wrap" Margin="0,4,0,0"
+                 Text="New to WPR Hub? Pick any of these. The first time you sign in it makes your WPR Hub account: you choose your gamertag on the page that opens, and a gamerpic afterwards."/>
+      <Button Name="otherDeviceButton" Classes="ghost" HorizontalAlignment="Left" Margin="0,6,0,0"
+              Content="Sign in on another device instead"/>
+    </StackPanel>
+
+    <!-- Waiting for approval: the three steps and the link key. -->
+    <StackPanel Name="stepsPanel" Spacing="14" IsVisible="False">
+      <Border Background="{StaticResource WprPanelBrush}" CornerRadius="6" Padding="20,18">
+        <StackPanel Spacing="16">
+          <Grid ColumnDefinitions="28,*">
+            <TextBlock Grid.Column="0" Classes="h2" Text="1" Foreground="{StaticResource WprAccentBrush}"/>
+            <StackPanel Grid.Column="1" Spacing="8">
+              <TextBlock Classes="body" Text="Open the link page" Foreground="{StaticResource WprTextStrongBrush}"/>
+              <Button Name="openButton" Classes="play" HorizontalAlignment="Left" Content="Open in browser"/>
+              <TextBlock Name="linkPageText" Classes="dim" TextWrapping="Wrap"/>
+            </StackPanel>
+          </Grid>
+
+          <Grid ColumnDefinitions="28,*">
+            <TextBlock Grid.Column="0" Classes="h2" Text="2" Foreground="{StaticResource WprAccentBrush}"/>
+            <StackPanel Grid.Column="1" Spacing="8">
+              <TextBlock Classes="body" Text="Check the page shows this key" Foreground="{StaticResource WprTextStrongBrush}"/>
+              <StackPanel Orientation="Horizontal" Spacing="12">
+                <TextBlock Name="keyText" Text="····-····"
+                           FontSize="38" FontWeight="SemiBold" LetterSpacing="4"
+                           FontFamily="Consolas,Cascadia Mono,Menlo,monospace"
+                           Foreground="{StaticResource WprAccentBrush}"
+                           VerticalAlignment="Center"/>
+                <Button Name="copyButton" Classes="ghost" VerticalAlignment="Center" Content="Copy"/>
+              </StackPanel>
+              <TextBlock Classes="dim" TextWrapping="Wrap"
+                         Text="If it does not match, close the page. Only approve a key you started yourself."/>
+            </StackPanel>
+          </Grid>
+
+          <Grid ColumnDefinitions="28,*">
+            <TextBlock Grid.Column="0" Classes="h2" Text="3" Foreground="{StaticResource WprAccentBrush}"/>
+            <TextBlock Grid.Column="1" Classes="body" TextWrapping="Wrap" Foreground="{StaticResource WprTextStrongBrush}"
+                       Text="Sign in and approve. This window finishes by itself."/>
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <StackPanel Spacing="6">
+        <ProgressBar Name="waitingBar" IsIndeterminate="True" Height="3" MinHeight="3"
+                     Foreground="{StaticResource WprAccentBrush}"/>
+        <TextBlock Name="statusText" Classes="dim" Text="Asking WPR Hub for a key…"/>
+      </StackPanel>
+    </StackPanel>
+
+    <!-- Signed in. -->
+    <Border Name="donePanel" IsVisible="False" Background="{StaticResource WprPanelBrush}" CornerRadius="6" Padding="20,20">
+      <Grid ColumnDefinitions="Auto,*">
+        <Border Grid.Column="0" Width="96" Height="96" CornerRadius="4" ClipToBounds="True"
+                Background="{StaticResource WprPanelHiBrush}" Margin="0,0,18,0">
+          <Image Name="gamerpicImage" Stretch="UniformToFill"/>
+        </Border>
+        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
+          <TextBlock Classes="eyebrow" Text="SIGNED IN" Foreground="{StaticResource WprAccentBrush}"/>
+          <TextBlock Name="usernameText" Classes="h2" TextTrimming="CharacterEllipsis"/>
+          <TextBlock Classes="dim" TextWrapping="Wrap"
+                     Text="Your scores now go to the leaderboards, including any you played while signed out."/>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- Declined, expired, or the hub could not be reached. -->
+    <Border Name="failedPanel" IsVisible="False" Background="{StaticResource WprPanelBrush}" CornerRadius="6" Padding="20,18">
+      <TextBlock Name="failedText" Classes="body" TextWrapping="Wrap"/>
+    </Border>
+
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,22,0,0">
+      <Button Name="gamerpicButton" Classes="play" IsVisible="False" Content="Choose a gamerpic"/>
+      <Button Name="retryButton" Classes="play" IsVisible="False" Content="Try again"/>
+      <Button Name="closeButton" Classes="ghost" Content="Cancel"/>
+    </StackPanel>
+  </StackPanel>
+</Window>

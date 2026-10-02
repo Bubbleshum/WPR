@@ -86,6 +86,13 @@
          "ArgumentNull_Generic Arg_ParamName_Name, type" instead of naming the parameter, which
          makes the per-game log and the user-facing error dialog close to useless. -->
     <UseSystemResourceKeys>false</UseSystemResourceKeys>
+    <!-- Keep System.Text.Json's reflection serializer. PublishTrimmed=true flips this feature
+         switch to false by default, and every JsonSerializer call without a source-generated
+         context then throws "Reflection-based serialization has been disabled" - at runtime, in
+         Release only. WPR.Online.Hub (the WPR Hub client) serialises records and anonymous types
+         that way, and GamePackageRecord does too, so without this the hub silently never works
+         on a phone while working on the desktop. The assemblies involved are rooted below. -->
+    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
     <!-- android-arm (32-bit ARM, RID linux-bionic-arm) dropped: Google Play
          has required 64-bit since 2019, and the 32-bit ARM runtime pack is
          not installed on this machine (NU1101 for
@@ -123,6 +130,17 @@
   -->
   <ItemGroup>
     <AndroidAsset Include="$(SolutionDir)Core\WPR.Database\Data\**\*.*" Link="Database\%(RecursiveDir)%(Filename)%(Extension)" />
+    <!-- The WPR Hub logo (sign-in, hub pages), from Images/wprhub.png. Optional: Native/HubLogo falls back to text without it. -->
+    <AndroidAsset Include="$(SolutionDir)..\Images\wprhub.png" Link="hub\wpr-hub-logo.png"
+                  Condition="Exists('$(SolutionDir)..\Images\wprhub.png')" />
+    <!-- Its white version, for the accent-coloured Start tile. -->
+    <AndroidAsset Include="$(SolutionDir)..\Images\white_wpr_hub.png" Link="hub\wpr-hub-logo-white.png"
+                  Condition="Exists('$(SolutionDir)..\Images\white_wpr_hub.png')" />
+    <!-- The short release notes, for the About page's "what's new" pivot. Bundled rather than
+         fetched so the page works offline and describes the build that is actually installed.
+         The *-full.md write-ups are for GitHub and are left out. -->
+    <AndroidAsset Include="$(SolutionDir)..\Docs\ReleaseNotes\*.md" Exclude="$(SolutionDir)..\Docs\ReleaseNotes\*-full.md"
+                  Link="ReleaseNotes\%(Filename)%(Extension)" />
     <!-- The Engine tier: this head declares its platform through PlatformDescriptor and the
          composition root fills every registry (Stage 6). -->
     <ProjectReference Include="$(SolutionDir)Engine/WPR.Engine/WPR.Engine.csproj" />
@@ -288,6 +306,9 @@
     <TrimmerRootAssembly Include="WPR.Notifications.AndroidChannel" />
     <TrimmerRootAssembly Include="WPR.Vibration.AndroidVibrator" />
     <TrimmerRootAssembly Include="WPR.Launchers.AndroidIntent" />
+    <!-- Not bound by games, but serialised by reflection (see JsonSerializerIsReflectionEnabledByDefault). -->
+    <TrimmerRootAssembly Include="WPR.Engine.Online" />
+    <TrimmerRootAssembly Include="WPR.Online.Hub" />
   </ItemGroup>
 
 

@@ -34,32 +34,12 @@
         android:layout_marginBottom="26dp"
         android:text="settings" />
 
+    <!-- No WPR Hub account section: signing in and out and the gamerpic are on the Start
+         screen's hub tile and the hub page it opens (Native/HubActivity). -->
     <TextView
         style="@style/WpSectionHeader"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="GAMERTAG" />
-
-    <EditText
-        android:id="@+id/gamerTagInput"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:background="@color/wp_chrome"
-        android:padding="12dp"
-        android:inputType="text"
-        android:maxLines="1"
-        android:textColor="@color/wp_foreground"
-        android:textColorHint="@color/wp_disabled"
-        android:textSize="18sp"
-        android:fontFamily="sans-serif"
-        android:hint="Player" />
-
-    <TextView
-        style="@style/WpSectionHeader"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="28dp"
         android:text="ACCENT COLOUR" />
 
     <TextView
@@ -121,6 +101,145 @@
         android:textSize="13sp"
         android:lineSpacingExtra="3dp"
         android:text="applies to every game, and to any connected controller. a game already running keeps its current setting until you next launch it." />
+
+    <!-- WPR Hub crash reports: the same on/off row as vibration. The hub is always wpr.it-stacks.com; its address is deliberately not editable here. -->
+    <TextView
+        style="@style/WpSectionHeader"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="28dp"
+        android:text="CRASH REPORTS" />
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp">
+
+      <Switch
+          android:id="@+id/serverLoggingSwitch"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:layout_alignParentEnd="true"
+          android:layout_centerVertical="true" />
+
+      <TextView
+          android:id="@+id/serverLoggingStateText"
+          style="@style/WpBody"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:layout_alignParentStart="true"
+          android:layout_centerVertical="true"
+          android:layout_marginEnd="16dp"
+          android:text="off" />
+
+    </RelativeLayout>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:fontFamily="sans-serif"
+        android:textColor="@color/wp_subtle"
+        android:textSize="13sp"
+        android:lineSpacingExtra="3dp"
+        android:text="when a game crashes, send the error, a stack trace and the end of its log to WPR Hub, with your user name and paths removed. when you install a game, or one crashes, and the hub has no copy of that exact game package, the package is uploaded in the background. nothing is sent while this is off." />
+
+
+    <!-- Automatic update checks (WPR.Shell.AppUpdates): the same on/off row as vibration. -->
+    <TextView
+        style="@style/WpSectionHeader"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="28dp"
+        android:text="UPDATES" />
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp">
+
+      <Switch
+          android:id="@+id/updateCheckSwitch"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:layout_alignParentEnd="true"
+          android:layout_centerVertical="true" />
+
+      <TextView
+          android:id="@+id/updateCheckStateText"
+          style="@style/WpBody"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:layout_alignParentStart="true"
+          android:layout_centerVertical="true"
+          android:layout_marginEnd="16dp"
+          android:text="on" />
+
+    </RelativeLayout>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:fontFamily="sans-serif"
+        android:textColor="@color/wp_subtle"
+        android:textSize="13sp"
+        android:lineSpacingExtra="3dp"
+        android:text="now and then, ask GitHub whether a newer WPR is out, and notify you once when one is. you can still check by hand under about." />
+
+    <!-- "How did it run?": how often WPR may ask (WPR.Shell.GameRatingPrompt). A list dialog,
+         like the uninstall choices, since the answer is one of a handful of fixed values. -->
+    <TextView
+        style="@style/WpSectionHeader"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="28dp"
+        android:text="GAME RATINGS" />
+
+    <TextView
+        android:id="@+id/ratingCooldownButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:background="@color/wp_chrome"
+        android:paddingStart="18dp"
+        android:paddingEnd="18dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="10dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:fontFamily="sans-serif"
+        android:textColor="@color/wp_foreground"
+        android:textSize="16sp"
+        android:text="ask how a game ran: once an hour" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:fontFamily="sans-serif"
+        android:textColor="@color/wp_subtle"
+        android:textSize="13sp"
+        android:lineSpacingExtra="3dp"
+        android:text="after you play a game, WPR sometimes asks how well it ran and puts your answer on WPR Hub's compatibility page. this is how long it waits before asking about another game. it never asks about a game you have already rated on this version of WPR. needs you to be signed in." />
+
+    <!-- Reporting a problem is "play with logging" on a game's long-press menu (GameLauncher). -->
+    <TextView
+        style="@style/WpSectionHeader"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="28dp"
+        android:text="REPORT A PROBLEM" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:fontFamily="sans-serif"
+        android:textColor="@color/wp_subtle"
+        android:textSize="13sp"
+        android:lineSpacingExtra="3dp"
+        android:text="in games, tap and hold the game and choose play with logging. play until the problem happens, then tap stop &amp; send report at the top of the screen. the log from that run goes to WPR Hub, with your user name and paths removed, and you get a report code to quote." />
 
     <!-- Graphics driver. Not a Switch, because neither value is "off" and a switch would have
          to label one of them as the absence of the other. Two buttons built in code, using the

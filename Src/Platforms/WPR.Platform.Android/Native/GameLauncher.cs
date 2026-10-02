@@ -32,8 +32,14 @@ namespace WPR.Platform.Android.Native
         /// <summary>Request code the host must route back into <see cref="HandleGameResult"/>.</summary>
         public const int RequestGame = 4201;
 
-        public static void Launch(Activity host, WprApplication app)
+        /// <param name="diagnostic">"Play with logging": the verbose log for this run, a "stop and send
+        /// report" button over the game, and the report sent when it ends (see <see cref="WPR.Shell.DiagnosticRun"/>).</param>
+        public static void Launch(Activity host, WprApplication app, bool diagnostic = false)
         {
+            // A record left by an earlier logging run that never came back (the launcher died) must
+            // not turn this one into a report.
+            if (!diagnostic) WPR.Shell.DiagnosticRun.Take(app.ProductId ?? "");
+
             global::Android.Util.Log.Info("WPR", $"Launch requested: {app.Name} (PatchedVersion={app.PatchedVersion})");
 
             // Externally-built native ports (Unity rebuilds, etc.) are not patched WP8
@@ -93,9 +99,18 @@ namespace WPR.Platform.Android.Native
                             }
                         }
 
+                        LastLaunched = app;
+                        LastLaunchedAt = DateTime.UtcNow;
+                        // The :game process heartbeats "playing X" now; two voices would flip-flop.
+                        WPR.Engine.Online.OnlineBackend.Presence?.Suspend();
                         Intent launchIntent = new Intent(host, typeof(GameActivity));
                         launchIntent.PutExtra(GameActivity.TargetApplicationDataName,
                             JsonConvert.SerializeObject(app));
+                        if (diagnostic)
+                        {
+                            WPR.Shell.DiagnosticRun.Begin(app.ProductId!, app.Name ?? app.ProductId!);
+                            launchIntent.PutExtra(GameActivity.DiagnosticRunDataName, true);
+                        }
                         host.StartActivityForResult(launchIntent, RequestGame);
                     }
                     catch (Exception ex)
@@ -126,13 +141,43 @@ namespace WPR.Platform.Android.Native
             try { Directory.SetCurrentDirectory(WprStartup.PatchAssembliesDirectory(host)); }
             catch (Exception) { /* the folder is recreated on next patch; not fatal */ }
 
-            if (resultCode == Result.Ok) return;
+            WprApplication? ranApp = LastLaunched;
+            LastLaunched = null;
+            WPR.Engine.Online.OnlineBackend.Presence?.Resume();
+
+            // A logging run is reported however it ended. When Android recreated this process
+            // meanwhile, ranApp is gone but the run's own record still names the game.
+            WPR.Shell.DiagnosticRun.Run? logging =
+                WPR.Shell.DiagnosticRun.Take(ranApp?.ProductId ?? WPR.Shell.DiagnosticRun.Current()?.ProductId ?? "");
+
+            if (resultCode == Result.Ok)
+            {
+                FlushOnline();
+                if (logging != null)
+                {
+                    _ = SendLoggingRunAsync(host, logging,
+                        logging.StopRequested ? "stopped by the player" : "the game exited normally", null, onErrorAcknowledged);
+                }
+                else if (ranApp != null && host is not GameShortcutActivity)
+                {
+                    // Not over the shortcut trampoline: it finishes as soon as the game hands back.
+                    MaybeAskRating(host, ranApp, DateTime.UtcNow - LastLaunchedAt);
+                }
+                return;
+            }
 
             string? errorText = data?.GetStringExtra(GameActivity.ErrorDataName);
             if (string.IsNullOrWhiteSpace(errorText))
             {
                 errorText = "The game process exited unexpectedly (native crash or force-close). Check logcat for details.";
+
+                // A managed crash was already queued by ApplicationLaunch inside the :game process.
+                // This one had no managed exception at all - SIGSEGV, abort, the OOM killer, or a
+                // force-close - so only this process can report it.
+                ReportNativeCrash(ranApp);
             }
+
+            FlushOnline();
 
             Log.Error(LogCategory.AppList, $"Game run error: {errorText}");
             global::Android.Util.Log.Error("WPR", $"Game run error: {errorText}");
@@ -145,6 +190,13 @@ namespace WPR.Platform.Android.Native
             }
             catch (Exception) { /* diagnostics only */ }
 
+            if (logging != null)
+            {
+                // One dialog, not two: the report's, which carries the error as well.
+                _ = SendLoggingRunAsync(host, logging, "the game crashed", GraphicsDriverHint() + errorText, onErrorAcknowledged);
+                return;
+            }
+
             string dialogMessage = errorText.Length > 3500
                 ? errorText.Substring(0, 3500) + "\n…(truncated)"
                 : errorText;
@@ -152,6 +204,153 @@ namespace WPR.Platform.Android.Native
             // Hint FIRST. A managed failure dumps a stack trace long enough to fill several
             // screens of a scrolling dialog, and anything appended after it is never read.
             ShowError(host, GraphicsDriverHint() + dialogMessage, onErrorAcknowledged);
+        }
+
+        /// <summary>
+        /// The game handed to <c>GameActivity</c> most recently, so <see cref="HandleGameResult"/>
+        /// knows what a dead game process was running. Launcher-process state: if Android
+        /// recreated this process in between, it is null and the crash goes unattributed rather
+        /// than being filed against the wrong game.
+        /// </summary>
+        private static WprApplication? LastLaunched;
+
+        /// <summary>When <see cref="LastLaunched"/> was handed over, for how long it ran (the rating prompt's minimum).</summary>
+        private static DateTime LastLaunchedAt;
+
+        private static void ReportNativeCrash(WprApplication? app)
+        {
+            if (app == null || WPR.Engine.Online.OnlineBackend.Crashes is not { } reporter) return;
+
+            reporter.Report(new WPR.Engine.Online.CrashReport
+            {
+                Source = WPR.Engine.Online.CrashReport.Sources.NativeCrash,
+                TitleId = app.ProductId,
+                TitleName = app.Name,
+                InstallFolder = Path.Combine(Configuration.Current!.DataPath(WprApplication.DataStoreFolder), app.ProductId!),
+                GraphicsBackend = WPR.Engine.Graphics.GraphicsDriverPreference.ResolveDriverName(),
+                // No managed exception to name. A fixed type is what lets the hub group these by
+                // game and driver rather than filing each one as unique.
+                ExceptionType = "NativeCrash",
+                ExceptionMessage = "The game process exited without a managed exception (native crash, abort, or killed by the system).",
+            });
+        }
+
+        /// <summary>
+        /// Sends what the game left behind: its crash report, if any, and the scores it posted.
+        /// Run from the launcher because the :game process is killed as soon as it finishes.
+        /// </summary>
+        private static void FlushOnline() => _ = WPR.Engine.Online.OnlineBackend.FlushAsync();
+
+        /// <summary>
+        /// "How did it run?", now and again (the rules are <see cref="WPR.Shell.GameRatingPrompt"/>'s):
+        /// the hub's six ratings as a list, "ask me later" and "don't ask about this game". Tapping a rating sends it at once.
+        /// </summary>
+        private static void MaybeAskRating(Activity host, WprApplication app, TimeSpan played)
+        {
+            if (!WPR.Shell.GameRatingPrompt.ShouldAsk(app.ProductId, played)) return;
+
+            host.RunOnUiThread(() =>
+            {
+                if (host.IsFinishing || host.IsDestroyed) return;
+
+                var ratings = WPR.Online.Hub.Client.CompatibilityRatings.All;
+                string[] items = ratings.Select(r => $"{r.Label.ToLowerInvariant()} — {r.Meaning.ToLowerInvariant()}").ToArray();
+                string name = WPR.HardcodedAchievementCatalogue.GameName(app.ProductId) ?? app.Name ?? "this game";
+
+                AlertDialog dialog = new AlertDialog.Builder(host)!
+                    .SetTitle($"how did {name} run?")!
+                    .SetItems(items, (_, e) => _ = SubmitRatingAsync(host, app, ratings[e.Which].Key, ratings[e.Which].Label))!
+                    // Postponing is the default for any way out that is not an answer: Back, a tap
+                    // outside, or "ask me later" all leave the game to be asked about next time.
+                    .SetNeutralButton("ask me later", (IDialogInterfaceOnClickListener?)null)!
+                    .SetNegativeButton("don't ask about this game", (_, _) => WPR.Shell.GameRatingPrompt.Decline(app.ProductId!))!
+                    .Create()!;
+                WPR.Shell.GameRatingPrompt.MarkAsked(app.ProductId!);
+                dialog.Show();
+            });
+        }
+
+        private static async Task SubmitRatingAsync(Activity host, WprApplication app, string rating, string label)
+        {
+            string message;
+            try
+            {
+                await WPR.Shell.GameRatingPrompt.SubmitAsync(app.ProductId!, rating, "android",
+                    global::Android.OS.Build.VERSION.Release, WPR.Online.Hub.Client.RuntimePaths.XnaFna,
+                    WPR.Engine.Graphics.GraphicsCapabilitiesStore.ReadLastMeasured()?.Backend);
+                message = "thanks. your rating (" + label.ToLowerInvariant() + ") is on WPR Hub.";
+            }
+            catch (Exception ex)
+            {
+                Log.Warn(LogCategory.AppList, "[wpr-rating] could not send: " + ex.Message);
+                message = "could not send your rating: " + ex.Message;
+            }
+            host.RunOnUiThread(() =>
+            {
+                if (!host.IsDestroyed) global::Android.Widget.Toast.MakeText(host, message, global::Android.Widget.ToastLength.Long)!.Show();
+            });
+        }
+
+        /// <summary>
+        /// Send a finished logging run's log (WPR's session log for the run, plus this app's logcat
+        /// for the same window) and say how it went. Pressing "play with logging" is the consent, so
+        /// this sends with server logging off, like the old "send a report" button did.
+        /// </summary>
+        private static async Task SendLoggingRunAsync(Activity host, WPR.Shell.DiagnosticRun.Run run, string outcome,
+            string? errorText, Action? onDismissed)
+        {
+            WpProgressDialog progress = WpProgressDialog.Show(host, run.Title, "sending the log from this run…", indeterminate: true);
+            string message;
+            string? code = null;
+            try
+            {
+                TimeSpan window = run.Window;
+                string logcat = await Task.Run(() => OwnLogcat.Read(window));
+                code = await WPR.Shell.DiagnosticRun.SendAsync(run, outcome,
+                    "===== logcat (this app, same window) =====\n" + logcat,
+                    new System.Collections.Generic.Dictionary<string, string>
+                    {
+                        ["device"] = global::Android.OS.Build.Manufacturer + " " + global::Android.OS.Build.Model,
+                        ["android"] = global::Android.OS.Build.VERSION.Release + " (API " + (int)global::Android.OS.Build.VERSION.SdkInt + ")",
+                        ["graphics"] = WPR.Engine.Graphics.GraphicsDriverPreference.ResolveDriverName() ?? "default",
+                    },
+                    runtimePath: WPR.Online.Hub.Client.RuntimePaths.XnaFna,
+                    graphicsBackend: WPR.Engine.Graphics.GraphicsCapabilitiesStore.ReadLastMeasured()?.Backend);
+                message = $"the log from this run of {run.Title} ({outcome}) was sent to WPR Hub.\n\nyour report code is {code}. quote it if you open a GitHub issue about this game.";
+            }
+            catch (Exception ex)
+            {
+                Log.Warn(LogCategory.AppList, "[wpr-diag] could not send the logging run: " + ex);
+                message = $"the run ended ({outcome}), but its log could not be sent: {ex.Message}";
+            }
+            finally
+            {
+                progress.Dismiss();
+            }
+
+            if (!string.IsNullOrWhiteSpace(errorText))
+                message += "\n\n" + (errorText!.Length > 2000 ? errorText.Substring(0, 2000) + "\n…(truncated)" : errorText);
+
+            host.RunOnUiThread(() =>
+            {
+                if (host.IsFinishing || host.IsDestroyed) { onDismissed?.Invoke(); return; }
+
+                var builder = new AlertDialog.Builder(host)!
+                    .SetTitle(code != null ? "report sent" : "report not sent")!
+                    .SetMessage(message)!
+                    .SetPositiveButton("OK", (IDialogInterfaceOnClickListener?)null)!;
+                if (code != null)
+                {
+                    builder.SetNeutralButton("copy code", (_, _) =>
+                    {
+                        var clipboard = (ClipboardManager?)host.GetSystemService(Context.ClipboardService);
+                        if (clipboard != null) clipboard.PrimaryClip = ClipData.NewPlainText("WPR report code", code);
+                    });
+                }
+                AlertDialog dialog = builder.Create()!;
+                if (onDismissed != null) dialog.DismissEvent += (_, _) => onDismissed();
+                dialog.Show();
+            });
         }
 
         /// <summary>

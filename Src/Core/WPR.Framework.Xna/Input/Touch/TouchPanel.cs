@@ -58,6 +58,7 @@ namespace Microsoft.Xna.Framework.Input.Touch
 		{
 			get
 			{
+				WprReadCount++;
 				return gestures.Count > 0;
 			}
 		}
@@ -185,9 +186,17 @@ namespace Microsoft.Xna.Framework.Input.Touch
 			return XnaBackend.Input.GetTouchCapabilities();
 		}
 
+		/// <summary>
+		/// Counts every read of touch input through the public API (GetState, IsGestureAvailable).
+		/// The mixed-mode host uses it to tell a page whose game reads TouchPanel itself from one
+		/// that relies on Silverlight input only; it subtracts its own reads.
+		/// </summary>
+		internal static int WprReadCount;
+
 		private static int _wprGetStateTraceCount;
 		public static TouchCollection GetState()
 		{
+			WprReadCount++;
 			validTouches.Clear();
 			for (int i = 0; i < MAX_TOUCHES; i += 1)
 			{

@@ -542,6 +542,284 @@ schemes) and `BingMapsTask`. `MarketplaceDetailTask` stays empty on purpose (see
 
 No `ApplicationPatcher.Version` bump and no reinstall — shim behaviour, picked up on next launch.
 
+### WPR Hub: leaderboards and automatic crash reports (2026-09-27)
+
+The online backend is **WPR Hub** (Laravel, `C:\Users\BenSl\PhpstormProjects\WPR-Hub`). Same
+three-part shape as vibration and launchers:
+
+* **Contract**: `Src/Engine/WPR.Engine.Online`, which holds `ILeaderboardService`, `ICrashReporter`,
+  `CrashReport`, `IGamePackageSource` and `GamePackageRecord`. It speaks strings, longs and
+  `Exception` only, because `WPR.Framework.Xna` and `WPR.Engine.GameLoop` consume it.
+* **Registry**: `OnlineBackend.Leaderboards` / `.Crashes`, filled by `caps.Online(...)`.
+  `OnlineBackend.FlushAsync()` sends everything queued.
+* **Implementation**: `Src/Modules/Online/WPR.Online.Hub`. `Client/` is the hub repo's own C#
+  client (`client/WPR.Hub`), brought in so it is actually compiled. It differs from the hub's copy
+  in two ways: there is no default base URI, and the queues are one file per item. Both heads build
+  it through `WPR.Shell.HubSetup.TryCreate`.
+
+**Settings** (`Configuration`, all read live):
+
+* `HubUrl` defaults to `Configuration.DefaultHubUrl`, which is **https://wpr.it-stacks.com/**. An
+  empty value, or one equal to the default, is stored as null, so the default can move.
+* `HubAccessToken` / `HubUsername`: null means signed out.
+* `ServerLogging` defaults to **on** (product decision, 2026-09-27). It is persisted as the
+  nullable `ServerLoggingEnabled`, **not** `ServerLogging`, because the first build wrote
+  `"ServerLogging": false` as its default.
+
+Both settings pages expose the switch. **The hub address is not in either settings page (2026-09-29)**: players always use the official hub. `HubUrl` in config.json still overrides it, which is how the local test hub is reached.
+
+**Every install offers its package, not only crashes.** After writing `wpr-package.json` the
+installer queues `CrashReport.ForInstall(...)`, which is sent as a hub **`manual`** report with no
+stack, and each head flushes after a successful install. A diagnostics receipt is the hub's only
+anonymous route to an upload offer, so this works against the deployed hub unchanged. The cost is
+one manual report row per install in the admin area. A dedicated anonymous "offer" endpoint on the
+hub would be cleaner.
+
+**Crashes are queued on disk, never sent from where they happen.** `Report()` only writes a file
+under `<DataStore>/Online/reports/`. The launcher flushes at startup and after every game run.
+This one rule covers both a dying process and Android's `:game`, which `OnDestroy` kills. There
+are three capture sites:
+
+| site | catches |
+| --- | --- |
+| exception filter on `ApplicationLaunch.Start` | anything escaping a game run, XNA and mixed-mode. The filter returns false, so the stack and teardown are untouched. The unsupported-runtime refusals are excluded |
+| `InstallCrashReportHook` (AppDomain unhandled, **Release too**) | a worker thread killing the process. `InstallCrashHooks` is `#if DEBUG` and was not enough |
+| `GameLauncher.HandleGameResult` (Android launcher) | a `:game` death with no managed exception, reported as `NativeCrash`. It is dropped if a managed report for that title landed within 2 minutes |
+
+The desktop Silverlight UI host reports through its own filter in `MainWindowDesktop`.
+
+**Game uploads**: the installer hashes the package (`GamePackageRecord.Measure`) and writes
+`wpr-package.json` into the install folder. That record is the only way to know the original
+build, because the folder holds patched DLLs. When a receipt says `game_file.wanted`, the reporter
+gets the package back through the head's `IGamePackageSource` and **re-checks the SHA before
+sending**. The desktop uses the library file path. Android uses a persisted `ACTION_OPEN_DOCUMENT`
+grant, copied into the cache for the duration of the upload. **Games installed before this have no
+record**: they report without a hash, and the hub can never ask for their package until they are
+reinstalled.
+
+**Leaderboards**: `LeaderboardEntry.Rating`'s setter commits on the next game-thread pump, so
+columns set after `Rating` go with it, and several assignments in one frame make one write. Board
+key is `<Key>:<GameMode>`. Writes queue while signed out and are sent the first time a token
+appears. Reads (`LeaderboardReader`, all three views plus paging) return the old empty board unless
+signed in, and a failed read is an empty board, never a fault in the game's callback.
+
+**Reading a board creates it on the hub.** `LeaderboardReader` calls
+`ILeaderboardService.EnsureBoard` before every read, signed in or not. That hits the hub's
+anonymous `POST /api/leaderboards/{titleId}/boards` (added 2026-09-27). It is per-IP rate limited
+(30 a minute, 500 a day), subject to the same 25-undefined-boards cap as a first score, and returns
+nothing about players. Registration happens once per board per process, and a failure clears it so
+the next read retries. The signed-in `GET …/{key}` also creates a missing board rather than
+returning 404. The same hub change made `guessSort` treat `BestScore*` as highest-wins and
+`BestTime*` as lowest-wins, ahead of its `time` regex.
+
+**Sign-in, gamerpics and manual reports (2026-09-28).**
+
+* **Sign-in** is the hub's device-code flow. `HubAccountService` (`HubOnline.Account`) does it,
+  and `SignInWindow` (desktop) / `SignInActivity` (Android) show it: the link key, a button to the
+  `/link` page, and a live expiry countdown. After approval it saves the token and username, turns
+  the account's server logging on to match WPR's switch, pulls the gamerpic, and flushes queued
+  scores. **Without the server-logging sync, a newly signed-in player's uploads would be refused**,
+  because signed in, the hub goes by the account setting.
+* **Desktop sidebar order (2026-10-02)**: PLAY, TROPHIES, HUB, MESSAGES, CONTROLS, SETTINGS, ABOUT.
+  `MainViewNavigator.PageFactories` lists the pages in the same order, and the tab index is what
+  selects one, so the XAML and that list change together. The desktop shows only the white hub
+  logo (`Images/white_wpr_hub.png`).
+* **Trophy (achievements) page names (2026-10-02)**: both heads name a game from the bundled
+  catalogue (`HardcodedAchievementCatalogue.GameName`) first, then the install record. The desktop
+  then asks WPR Hub (`HubSocialService.GetTitleNameAsync`, anonymous) for any still showing a
+  product id, through `WPR.Shell.HubTitleNames`, which caches answers in
+  `Online/title-names.json`. Android does not ask the hub yet.
+* **The Android settings page has no account section (2026-10-02).** Sign in, sign out and the
+  gamerpic picker are on the Start screen's hub tile and `Native/HubActivity` (which gained the
+  sign-out button). The desktop settings page still has its Online account row.
+* **Gamerpics**: `GamerpicWindow` / `GamerpicsActivity` over `GET /api/gamerpics` and
+  `PUT /api/me/gamerpic`. The chosen picture is saved as `<DataStore>/Online/gamerpic.png` and made
+  the in-game `Configuration.GamerPicturePath` by `HubSetup.GamerpicChanged`, always (there is no
+  local picture to protect: the desktop's file picker and default-avatar strip were removed on
+  2026-10-02). Sign-out clears it, so games fall back to the bundled default.
+  `GetImageAsync` fetches only from the configured hub's own host.
+* **Reports are "play with logging" runs (2026-09-29)**, which replaced the settings pages' "send a
+  report" box (its fixed 20-minute window rarely held the moment that mattered). Start one from a
+  game's long-press list on Android or the **Play with logging** button in the desktop game pane.
+  The run sets `WprHostEnvironment.DiagnosticRun`, so `ApplicationLaunch` attaches the per-game
+  trace log and the first-chance logger that Release builds otherwise leave out (`_verboseLaunch`;
+  always on in Debug). A **stop & send report** button sits over the game, tapped twice to fire:
+  on Android a view `GameActivity` adds over the SDL surface, on the desktop a topmost
+  `Views/LoggingRunWindow`. Whether the player stops it or the game exits or crashes, the
+  **launcher** sends the run's `SessionLog` from its start time (plus the app's logcat on Android)
+  through `HubCrashReporter.SendManualAsync` and shows the report code. It sends with server
+  logging off, because asking for the run is the consent. **The run is a file**
+  (`Online/diagnostic-run.txt`, `WPR.Shell.DiagnosticRun`), because on Android the stop button kills
+  the `:game` process and the launcher may have been recreated meanwhile. A normal launch clears any
+  leftover record so it cannot turn into a report. On the desktop, a game that does not close
+  within 8 s of the stop is reported anyway, while it is still running.
+* **`SessionLog` is new, and it is what makes any of this possible in Release.** `Log` wrote only
+  to stdout, which the desktop WinExe discards, and `wpr_game_debug.log` is `#if DEBUG`. Every
+  `Log.*` and `Trace` line now goes to `<DataStore>/Logs/wpr-<process>.log` (`launcher`, `game`),
+  one file per process because Android runs two, capped at 4 MB by halving. Automatic crash reports
+  fall back to its last 10 minutes when there is no per-game log.
+* **Logo** (2026-10-02): two files in `Images/`. `wprhub.png` is the full-colour logo, for anything
+  on black (the hub pages and sign-in, both heads; shipped as `Assets/wpr-hub-logo.png` /
+  asset `hub/wpr-hub-logo.png`). `white_wpr_hub.png` is the white version, for the
+  accent-coloured Android Start tile (asset `hub/wpr-hub-logo-white.png`, `HubLogo.LoadWhite`).
+  The tile stays the accent like every other primary tile; a branded near-black tile was tried and
+  rejected. On Android the colour logo's near-black square is keyed to transparent at load
+  (`HubLogo.KeyOutBackground`), because it is not quite even and showed a faint box. Both are
+  optional: without them the pages show a "WPR HUB" text header and the tile its glyph.
+
+**Achievements, playtime and presence (2026-09-28).**
+
+* **An unlock is always recorded locally first.** "Awaiting upload" means `IsEarned = 1 AND
+  EarnedOnline = 0` in `achievements.db`. `EarnedOnline` is XNA's own column, already in every
+  shipped database, so no schema change was needed. `SignedInGamer` now writes it **false** (it
+  used to write true unconditionally), and calls `OnlineBackend.Progress.Unlocked()`, which uploads
+  straight away when signed in. `HubProgressSync` is the only thing that sets it true, and only
+  after the hub has answered. So offline, signed out and "the send failed" are one state with one
+  way out: the next flush.
+* **A one-time reset** (`WprOnlineMeta` marker `achievements-earned-online-reset-v1`) turns every
+  unlock earned before this existed back into awaiting upload, because none of them was ever sent.
+  Measured on the S24: `10 earlier unlock(s) marked awaiting upload` → `achievements uploaded: 10
+  (hub: 10 new)`.
+* **`EfOnlineLocalStore` (`WPR.Database/Online/`) uses raw SQLite on its own connections, not
+  `AchievementContext`.** That context is a tracked singleton the game thread uses during an award,
+  and a DbContext is not thread-safe. Writing only `EarnedOnline` is safe against the tracked copy
+  because EF writes only the properties it saw change.
+* **Playtime**: `PlaytimeTracker` (engine) runs one session per game run, started and ended in
+  `ApplicationLaunch.Start` and in the desktop `SilverlightLauncher`. It pauses on the game's
+  `Deactivated` and resumes on `Activated`, and checkpoints every minute to a new `PlaySessions`
+  table in `achievements.db` (`CREATE TABLE IF NOT EXISTS`, no migration). Each unlock is sent with
+  the playtime before it, from those sessions. Sessions under 5 s are dropped as failed launches.
+* **Presence**: `HubPresence` beats `PUT /api/me/presence` about once a minute while signed in,
+  saying "playing X" while `PlaytimeTracker` has a game. On Android the launcher and `:game` each
+  run one, and **`GameLauncher` suspends the launcher's while a game runs**, or the hub would see
+  "idle" and "playing X" alternate. The desktop sends "offline" on window close.
+* **Hub side**: `online_sessions` (migration `2026_09_28_000100`) plus `OnlineSessionService`
+  turn heartbeats into sessions: per device token, closed after `social.online_seconds` of silence
+  or on an "offline" beat, with seconds spent in a game. They are listed on the admin player page,
+  included in `/api/me/export`, and pruned after a year. **This needs the hub deployed and
+  migrated**; until then presence still works, it just is not logged.
+* **The WPR Hub page (2026-09-28)** is a Start tile on Android (`tileHub` → `Native/HubActivity`)
+  and a `HUB` tab on the desktop (`Pages/HubPage`; see the tab order note below). Profile (gamerpic, name, games · playtime · achievements from `/api/me/games`), incoming
+  friend requests, friends with presence, add a friend by username, outgoing requests, and games
+  with local tile art. Calls are `HubOnline.Social` (`HubSocialService` over `Client/Social.cs`);
+  wording is shared through `WPR.Shell.HubText`. The Android tile's "N friends online" costs no
+  request: it reads `HubPresence.LastBeat`. Tapping an installed game on the Android page launches
+  it through `GameLauncher`. Messages are not built yet, though the hub has them.
+  `scratchpad/hubprobe social` checks the calls end to end (11 checks).
+  The hub tile is the **top** Start tile, with two faces: signed out, a basic "wpr hub / sign in or
+  sign up" tile that opens `SignInActivity`; signed in, a **gamer card** (gamertag; gamerscore
+  summed from this device's earned achievements; friends online from the last beat; down the left,
+  with the white logo bottom right). **No gamerpic on the card, by choice (2026-10-02)**; the
+  picture is still saved and still the in-game gamer picture. Nothing on the card needs a request.
+  Games is a square tile now.
+* **Messages (2026-09-28)**: a `messages` Start tile (row 2, beside games; the number is unread
+  messages from `LastBeat`) → `Native/MessagesActivity` (message a player by username, send a friend
+  request, conversations, friends not messaged yet) → `Native/ConversationActivity` (bubbles, reply,
+  polls `?after=<id>` every 5 s while in front, marks read, long-press to copy / delete for me /
+  report and optionally block). Desktop: a `MESSAGES` tab (`Pages/MessagesPage`), two panes,
+  same behaviour. **The hub only carries messages between friends**, so a non-friend username is
+  offered a friend request, and a conversation whose `is_friend` is false is read-only. Calls are
+  `Client/Messages.cs` via `HubOnline.Social`; `Native/HubViews` holds the Android hub screens'
+  shared row and button builders. MainActivity nudges presence on resume so the tile counts catch
+  up in seconds. `scratchpad/hubprobe messages` checks it end to end (14 checks).
+* **Social + appear offline (2026-09-29, Android)**: the messages tile is now `social` →
+  `Native/SocialActivity`, two WP pivots: **friends** (appear-offline switch, requests, friends, add,
+  outgoing) and **messages** (the old messages page). It opens on messages when `LastBeat` has
+  unread. A friend row (here and on the hub page, both via `Native/HubFriendViews`) opens
+  `Native/FriendProfileActivity` over the hub's new `GET /api/friends/{username}`: presence, totals,
+  and the latest 30 unlocks/play sessions. (Named `...ProfileActivity` because the client record
+  `FriendActivity` is an activity-feed item.)
+  **Appear offline** is `Configuration.HubAppearOffline`, read live through `HubSettings.AppearOffline`;
+  `HubPresence` then beats as `invisible` (`PresenceStatuses.AppearOffline`), so messages and counts
+  keep working. Hub side (migration `2026_09_29_000001`): an invisible beat opens its own
+  `online_sessions` row with `appear_offline = 1` (a visible/invisible switch splits the session),
+  and `users.visible_seen_at` moves only on visible beats, or on a sign-off that ends a visible run.
+  Friends' "last seen" is `visible_seen_at`, so appear-offline time plus real offline time read as
+  one offline stretch. The friend feed drops any unlock or play session inside an appear-offline
+  session (end padded by `online_seconds`). **Totals (games, achievements, G) still count
+  everything**, so they can rise while a friend looks offline — accepted, not an oversight.
+* **Sign in and sign up are one screen** on both heads: "Continue with GitHub / Microsoft / Google",
+  then the key and the wait. The hub lists its enabled providers in the device-code response
+  (`providers`), and `/link?code=…&provider=x` skips straight to that provider; the player still
+  returns to the link page to check the key and approve. A hub without the list gets the three
+  defaults (`SignIn.Providers`) and ignores the hint. **A new account chooses its gamertag
+  (2026-10-02)**: the hub's `/link` page shows a "choose your gamertag" form (suggested from the
+  provider nickname) before Approve, and `POST /link` refuses to approve until
+  `users.username_chosen_at` is set (migration `2026_10_02_000001`; existing accounts are
+  backfilled and never asked; `PATCH /api/me` also sets it). Rules are `User::usernameRules`.
+  **What games see is derived, never set (2026-10-02)**: `Configuration.EffectiveGamerTag` is the
+  hub username when signed in and `GuestGamerTag` otherwise; `EffectiveGamerPicturePath` is the hub
+  gamerpic when signed in and null (the bundled default) otherwise. `Gamer` and `GamerProfile`
+  read only these. The old `GamerTag` setting is no longer read, and neither settings page has a
+  gamertag or picture field. `GuestGamerTag` is `player` + six digits, made and saved on the
+  first `Configuration` load. It never leaves the device: signed-out scores still wait and go up
+  under the account at sign-in. The hub refuses `player` + digits for any account
+  (`User::isGuestStyleUsername`, in both `usernameRules` and `isValidUsername`), and its own
+  fallback name is now `gamer####`; older `player####` accounts keep their names, and since those
+  are four digits they still cannot equal a six-digit guest name.
+  **Google needs `GOOGLE_CLIENT_ID` /
+  `GOOGLE_CLIENT_SECRET` on the server**; unconfigured providers are not offered (unless none are
+  configured at all, the local-dev case).
+* **"How did it run?" ratings (2026-09-29)**: after a game, now and again, the launcher asks for
+  one of the hub's six compatibility ratings (`perfect` … `nothing`) and posts it to
+  `POST /api/compatibility` (the hub's own feature, signed-in only). The rules are all in
+  `WPR.Shell.GameRatingPrompt`, so both heads ask on the same terms: at most once per cooldown
+  (`Configuration.RatingPromptCooldownMinutes`, default 60, 0 = never, -1 = after every game;
+  "Ask how a game ran" on both settings pages, choices in `GameRatingPrompt.CooldownChoices`). The
+  question offers "ask me later" (also what closing it does: the game is asked about again the next
+  time it is finished, once the cooldown allows) and "don't ask about this game" (never again on
+  this WPR version). The earlier "never the same game twice in a row" rule was dropped, since
+  postponing exists to ask about the same game again. Otherwise: never again for a game rated on
+  this WPR version, only after a run that ended normally and lasted a minute, and only when signed
+  in. A question shown starts the cooldown whatever the answer, and a rating that fails to send is not remembered as answered.
+  State is `Online/rating-prompts.json`. Android asks in `GameLauncher.MaybeAskRating` (not over
+  the shortcut trampoline, which finishes at once); the desktop uses `Views/RateGameWindow`.
+  `scratchpad/hubprobe rating` checks the rules and the send (12 checks).
+* `caps.Online(...)` takes one `OnlineServices` bundle (leaderboards, crashes, progress, presence,
+  local store), built by `HubOnline.Services`.
+
+**Android Release needs `JsonSerializerIsReflectionEnabledByDefault=true`** (set in the head
+csproj), because the client serialises records and anonymous types by reflection. Both assemblies
+are trimmer roots too.
+
+**Hub-side sort bug (fixed in the hub repo 2026-09-27, see above)**: `app/Models/Leaderboard.php` guessed sort order with
+`/time|…|lap/i`, which matches **`BestScoreLifeTime`**, XNA's most common key. Undefined boards
+with that key rank lower-is-better until the definitions repo defines them.
+
+**Verifying**: run the hub from a scratch copy (`composer install`, `QUEUE_CONNECTION=sync`,
+sqlite, `php -S 127.0.0.1:8765 -t public public/index.php`) and mint a token with
+`php artisan tinker` (`$u->createToken('x', config('wpr.device.token_abilities'))`). The
+session's `scratchpad/hubprobe` harness ran 22 checks end to end (queue, send, upload + hub
+verification, dedupe, consent off, real `LeaderboardWriter`/`Reader`), all passing. The local PHP
+has no sodium extension, which only breaks `/api/services/*`.
+
+Unrelated, and present before this change: the **Android Debug** build fails
+`MSB4096 … TrimmerRootAssembly … "RootMode"` in the SDK's `_FixRootAssembly`. Release (no
+trimming) builds fine.
+
+No `ApplicationPatcher.Version` bump. Nothing needs a repatch; only a reinstall writes the package
+record.
+
+### Update checks and the About page's "what's new" (2026-09-29, Android)
+
+`WPR.Shell.AppUpdates` asks GitHub's `/releases/latest` (drafts and pre-releases excluded) at most
+every 12 hours, compares versions number by number (`0.1.10` > `0.1.09`; the tag's `v` and zero
+padding mean nothing), and remembers what it found in `<DataStore>/Online/update-check.json`.
+Android calls it from `MainActivity` (end of start-up and every resume) through
+`Native/UpdateNotifier`, which posts one notification per release on channel `wpr_updates`; tapping it
+opens About. `Configuration.UpdateCheckEnabled` (null = on, "UPDATES" switch in settings) stops only
+the automatic check. The About page's update row always works: it downloads the release's `.apk`
+asset in the browser, or checks now. Log lines are `[wpr-update]`.
+
+About is two pivots, **about** and **what's new**. Credits and the shell blurb were removed.
+What's new renders `Docs/ReleaseNotes/<version>.md`, which is bundled as `assets/ReleaseNotes/`
+(`*-full.md` excluded) so it works offline and matches the installed build. `Native/ReleaseNotesView`
+reads the small Markdown subset those files use. The installed version is shown in full (a dev build
+gets the newest notes at or below its version), and earlier versions expand in place. **So a
+release's notes file must exist before the APK is built**, which release.yml also reads (as Highlights) when present.
+
+No desktop equivalent yet; `AppUpdates` names no UI type, so it is ready for one (`InstallerUrl`).
+
 ### Home-screen game shortcuts go through a trampoline, not GameActivity (2026-09-05)
 
 WP7's "pin to start" for the Android home screen: long-press a game in the games list →
@@ -1118,7 +1396,7 @@ picker remains the answer there; the two mechanisms are complementary and neithe
 `IGraphicsCapabilities` + `GraphicsCapabilities` + `GraphicsCapabilitiesStore`
 (`Src/Engine/WPR.Engine.Graphics/`). Measured in `FnaGraphicsBackend.PublishCapabilities` at the
 first presented frame — the earliest point where a device exists *and* has demonstrably worked —
-and surfaced as the `graphics` section of `GameInfoActivity`.
+and read by crash reports (`GraphicsBackend`). It used to be shown as the `graphics` section of the per-game info screen (`GameInfoActivity` / `GameInfoDialog`), which was removed on 2026-09-29 along with `WPR.Loader.GameDiagnostics`; a logging run's report is how those facts reach anyone now.
 
 **Why this can live in the engine tier when `IGraphicsBackend` cannot.** The RHI seam speaks
 `Texture2D` and `GraphicsDevice`, game-facing identities the patcher rescopes into
@@ -1869,7 +2147,7 @@ log — grep `error reflecting type` there before concluding a stuck game is a t
 
 **This was a patcher table change (v22), and affected games must be repatched.** Unlike v21 it is
 not identity-binding — a v21 install still launches, it just keeps failing to build the affected
-serializer — so `--repatch-installed` is enough. **The current version is 38**; see the next
+serializer — so `--repatch-installed` is enough. **The current version is 39**; see the next
 section.
 
 ### Windows path separators in game file I/O (patcher v23), a patch that silently skipped (v24), and a game-specific IL guard (v25)
@@ -2991,7 +3269,7 @@ Four things that will bite if you touch this:
 `GraphicsDeviceInformation` and `PreparingDeviceSettingsEventArgs` now live in
 `WPR.Framework.Xna` and are rescoped there by `ApplicationPatcher.WprFrameworkXnaTypes`.
 **This bumped `ApplicationPatcher.Version` to 21, and every game installed before it must be
-repatched or reinstalled** (the current version is 38) —
+repatched or reinstalled** (the current version is 39) —
 a v20 install carries IL naming `[FNA]Microsoft.Xna.Framework.Game`, FNA no longer defines it, and
 the game will TypeLoadException at launch. `--repatch-installed` is enough.
 
@@ -3160,7 +3438,7 @@ progress".
 `[iso-fixup] redirected N … call(s)` is written to the install log per assembly, so the count says
 whether a given game used this path at all.
 
-**This was a patcher table change (v20).** The current version is **38** — see "Windows path
+**This was a patcher table change (v20).** The current version is **39** — see "Windows path
 separators in game file I/O" above for the most recent bumps; this paragraph describes what v20
 itself changed. Unlike v19 it is not identity-binding — a v19 install still launches, it
 just keeps the exclusive share and keeps failing to save. `--repatch-installed` is enough (it
@@ -3236,6 +3514,32 @@ reinstall re-inheriting the shared pool. Before this, the Android prompt claimed
 
 **Patcher table change (v38).** `--repatch-installed` on the desktop, automatic on next launch on
 Android. Not identity-binding: a v37 install launches and simply stays on the shared store.
+
+### A game's own pause looked like the player's (patcher v39, 2026-09-29)
+
+The Treasures of Montezuma's music turned itself off at the start of every level. The game
+keeps the setting in `MediaPlayer.Volume` and `GameData.MusicVolume`, and "music off" means
+"MediaPlayer paused at volume 0". Its options dialog, which is built with the level and so is
+alive before the player opens it, subscribes to `MediaPlayer.MediaStateChanged` with
+`if (BackgroundMusicPlayer.IsPaused) musicSlider = 0`. That is meant to mirror the phone's own
+music controls pausing the game. But every level start (and level complete, and game over)
+plays a track and immediately calls `Pause()` for the jingle, resuming 5 s later. The dialog
+took that pause for the player's, the slider's change callback wrote 0 to both places, and the
+resume played at volume 0.
+
+`ApplicationPatcher.ApplyMontezumaMusicSliderFixup` empties that handler. It finds it by shape,
+because the names are unprintable: a method that calls `MediaPlayer.add_MediaStateChanged`, then
+the `(object, EventArgs)` method it takes `ldftn` of that reads
+`BackgroundMusicPlayer.get_IsPaused`. That is safe because nothing outside a game can pause WPR's
+`MediaPlayer` (`GameHasControl` is always true), so the handler only ever saw the game's own pauses.
+
+Reproduced and verified on the `WPR_Verify` emulator: set music to 0.9 in the main-menu options,
+start a level, and the in-game options showed 0 before the fix and 0.9 after. Only the one method
+body differs in the patched assembly's IL. The install log says
+`[montezuma-fixup] emptied 1 options-dialog MediaStateChanged handler(s)`.
+
+**Patcher table change (v39).** It rewrites game IL, so a v38 install keeps the old handler.
+`--repatch-installed` on the desktop; Android repatches on next launch. Not identity-binding.
 
 ### The game loop floors `TargetElapsedTime` at one 60 Hz frame
 

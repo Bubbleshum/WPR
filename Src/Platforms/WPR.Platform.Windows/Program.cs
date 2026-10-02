@@ -26,6 +26,9 @@ namespace WPR.Platform.Windows
             Configuration.Current = new Configuration(Path.Combine(Environment.GetFolderPath(
                 Environment.SpecialFolder.LocalApplicationData), "WPR"));
 
+            // What "send a report" attaches. Games run in this process on the desktop, so one file.
+            SessionLog.Start(Configuration.Current.DataPath(SessionLog.FolderName), "launcher");
+
             // Resolve bundled data against the executable's own directory, NOT the process
             // working directory. The build's "Copy pre-made database" target drops Database\
             // next to the .exe; AppContext.BaseDirectory always points there regardless of

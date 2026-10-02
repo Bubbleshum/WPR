@@ -9,11 +9,12 @@ namespace WPR.Common
         private class ConfigurationPrivate
         {
             public string DataStorePath;
+            // No longer read: the gamertag is the WPR Hub one or the guest name (EffectiveGamerTag).
+            // Kept so old config.json files still load.
             public String GamerTag;
-            // Absolute path to the user-selected gamer picture (PNG/JPG). Consumed by
-            // Microsoft.Xna.Framework.GamerServices.GamerProfile.GetGamerPicture(), which is
-            // what WP7 titles like Fruit Ninja call via Texture2D.FromStream. Null/missing
-            // file → GetGamerPicture returns Stream.Null and the game falls back to no avatar.
+            // The WPR Hub gamerpic the hub module saved, while signed in (EffectiveGamerPicturePath).
+            // Consumed by GamerProfile.GetGamerPicture(), which is what WP7 titles like Fruit Ninja
+            // call via Texture2D.FromStream. There is no longer a local picture to choose.
             public string? GamerPicturePath;
             public string? RegistrationToken;
             public string? UserEmail;
@@ -64,6 +65,34 @@ namespace WPR.Common
             // A string rather than an enum because WPR.Common must not reference
             // WPR.Engine.Graphics; the head that consumes it maps the name onto GraphicsDriver.
             public string? GraphicsDriver;
+
+            // WPR Hub (the online backend). All three are read live by WPR.Online.Hub, so a change
+            // applies without restarting WPR.
+            //
+            // HubUrl: null = the official hub (DefaultHubUrl).
+            public string? HubUrl;
+            // The device token from hub sign-in. Null = signed out; leaderboard scores still queue
+            // locally and go up the first time a token appears.
+            public string? HubAccessToken;
+            // The hub username that token belongs to, for display only (the hub is the truth).
+            public string? HubUsername;
+            // Automatic crash reports, and uploading any game package the hub has never seen
+            // (at install and after a crash). Nullable so an absent key reads as the default,
+            // ON - the TiltSimulationEnabled precedent. Named ...Enabled rather than
+            // ServerLogging because a build of 2026-09-27 wrote "ServerLogging": false into
+            // config.json as its off-by-default, and that must not read as a choice.
+            public bool? ServerLoggingEnabled;
+            // Appear offline to WPR Hub friends. Null (absent) = no.
+            public bool? HubAppearOffline;
+            // Minutes between "how did it run?" questions. Null (absent) = the default (60);
+            // 0 = never ask; -1 = after every game.
+            public int? RatingPromptCooldownMinutes;
+            // Look for a newer WPR release on GitHub and announce it (WPR.Shell.AppUpdates).
+            // Null (absent) = on, the TiltSimulationEnabled precedent.
+            public bool? UpdateCheckEnabled;
+            // The gamertag games see while signed out of WPR Hub: "player" and six digits, made
+            // once per install (see EffectiveGamerTag).
+            public string? GuestGamerTag;
         };
 
         private const string ConfigurationFilePath = "config.json";
@@ -77,6 +106,7 @@ namespace WPR.Common
             set => _ConfPrivate!.DataStorePath = value;
         }
 
+        /// <summary>No longer read; see <see cref="EffectiveGamerTag"/>.</summary>
         public string? GamerTag
         {
             get => _ConfPrivate!.GamerTag;
@@ -87,6 +117,43 @@ namespace WPR.Common
         {
             get => _ConfPrivate!.GamerPicturePath;
             set => _ConfPrivate!.GamerPicturePath = string.IsNullOrEmpty(value) ? null : value;
+        }
+
+        /// <summary>Signed in to WPR Hub: a device token is held.</summary>
+        public bool IsHubSignedIn => !string.IsNullOrEmpty(HubAccessToken);
+
+        /// <summary>
+        /// The gamertag games see. Signed in it is the WPR Hub gamertag, chosen at sign-up; signed
+        /// out it is this install's <see cref="GuestGamerTag"/>. There is no gamertag setting: the
+        /// old <see cref="GamerTag"/> value is no longer read.
+        /// </summary>
+        public string EffectiveGamerTag =>
+            IsHubSignedIn && !string.IsNullOrWhiteSpace(HubUsername) ? HubUsername! : GuestGamerTag;
+
+        /// <summary>
+        /// The gamer picture games see: the WPR Hub gamerpic when signed in (saved by the hub
+        /// module into <see cref="GamerPicturePath"/>), and null signed out, which makes
+        /// <c>GamerProfile.GetGamerPicture</c> hand back the bundled default.
+        /// </summary>
+        public string? EffectiveGamerPicturePath => IsHubSignedIn ? GamerPicturePath : null;
+
+        /// <summary>
+        /// "player" and six digits, e.g. <c>player482913</c>, made once per install and kept.
+        /// WPR Hub never lets a real account take a "player" + digits name (and its own
+        /// generated names were four digits), so this can never be mistaken for a real player.
+        /// It stays on the device: scores made while signed out are sent under the account at
+        /// the next sign-in, never under this name.
+        /// </summary>
+        public string GuestGamerTag
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(_ConfPrivate!.GuestGamerTag))
+                {
+                    _ConfPrivate.GuestGamerTag = "player" + System.Security.Cryptography.RandomNumberGenerator.GetInt32(100000, 1000000);
+                }
+                return _ConfPrivate.GuestGamerTag!;
+            }
         }
 
         public string? RegistrationToken
@@ -201,6 +268,101 @@ namespace WPR.Common
             set => _ConfPrivate!.GraphicsDriver = string.IsNullOrWhiteSpace(value) ? null : value!.Trim();
         }
 
+        /// <summary>The official WPR Hub, used unless the player sets another.</summary>
+        public const string DefaultHubUrl = "https://wpr.it-stacks.com/";
+
+        /// <summary>
+        /// WPR Hub's base URL. Reads as <see cref="DefaultHubUrl"/> when unset; assigning empty (or
+        /// the default itself) goes back to following the default, so a future change of official
+        /// hub is not pinned by an old config.json.
+        /// </summary>
+        public string HubUrl
+        {
+            // Normalised on read too: a build of 2026-09-27 stored whatever was typed, bare hosts included.
+            get => NormaliseHubUrl(_ConfPrivate!.HubUrl) ?? DefaultHubUrl;
+            set
+            {
+                string? normalised = NormaliseHubUrl(value);
+                _ConfPrivate!.HubUrl = normalised == null || normalised.TrimEnd('/') == DefaultHubUrl.TrimEnd('/') ? null : normalised;
+            }
+        }
+
+        /// <summary>
+        /// <see cref="HubUrl"/> as a URI, or null when it cannot be made into an http(s) one. A
+        /// bare host (<c>wpr.it-stacks.com</c>) is read as https: that is what people type into
+        /// the box, and rejecting it silently switched every online feature off.
+        /// </summary>
+        public Uri? HubUri =>
+            Uri.TryCreate(NormaliseHubUrl(HubUrl), UriKind.Absolute, out Uri? uri) && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp)
+                ? uri
+                : null;
+
+        /// <summary>Trimmed, with <c>https://</c> added when no scheme was typed. Null for blank.</summary>
+        private static string? NormaliseHubUrl(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return null;
+            string trimmed = value!.Trim();
+            return trimmed.Contains("://") ? trimmed : "https://" + trimmed.TrimStart('/');
+        }
+
+        /// <summary>The WPR Hub device token, or null when signed out.</summary>
+        public string? HubAccessToken
+        {
+            get => _ConfPrivate!.HubAccessToken;
+            set => _ConfPrivate!.HubAccessToken = string.IsNullOrWhiteSpace(value) ? null : value!.Trim();
+        }
+
+        /// <summary>The signed-in hub username, for display. Null when signed out.</summary>
+        public string? HubUsername
+        {
+            get => _ConfPrivate!.HubUsername;
+            set => _ConfPrivate!.HubUsername = string.IsNullOrWhiteSpace(value) ? null : value;
+        }
+
+        /// <summary>
+        /// Automatic crash reports to WPR Hub, and uploading any game package the hub has no copy
+        /// of (at install, and after a crash). <b>On by default</b>; the settings pages turn it off.
+        /// </summary>
+        public bool ServerLogging
+        {
+            get => _ConfPrivate!.ServerLoggingEnabled ?? true;
+            set => _ConfPrivate!.ServerLoggingEnabled = value;
+        }
+
+        /// <summary>Default for <see cref="RatingPromptCooldownMinutes"/>: one question an hour.</summary>
+        public const int DefaultRatingPromptCooldownMinutes = 60;
+
+        /// <summary>
+        /// How long WPR waits after asking "how did it run?" before it asks about another game, in
+        /// minutes; <b>0 means never ask, -1 after every game</b>. Chosen on both settings pages. Stored as null while it is
+        /// the default, so a change of default reaches players who never touched it.
+        /// </summary>
+        public int RatingPromptCooldownMinutes
+        {
+            get => _ConfPrivate!.RatingPromptCooldownMinutes is { } m && m >= -1 ? m : DefaultRatingPromptCooldownMinutes;
+            set => _ConfPrivate!.RatingPromptCooldownMinutes = value == DefaultRatingPromptCooldownMinutes ? null : Math.Max(-1, value);
+        }
+
+        /// <summary>
+        /// Appear offline to WPR Hub friends: they see the player as offline, last seen when they were
+        /// last visibly online. Read live by the presence heartbeat. Off by default.
+        /// </summary>
+        public bool HubAppearOffline
+        {
+            get => _ConfPrivate!.HubAppearOffline == true;
+            set => _ConfPrivate!.HubAppearOffline = value ? true : null;
+        }
+
+        /// <summary>
+        /// Whether WPR looks for a newer release on GitHub and tells the player about it. On by
+        /// default; stored as null when on, so a config.json written before this existed reads as on.
+        /// </summary>
+        public bool UpdateCheckEnabled
+        {
+            get => _ConfPrivate!.UpdateCheckEnabled != false;
+            set => _ConfPrivate!.UpdateCheckEnabled = value ? null : false;
+        }
+
         public static event EventHandler<string?>? GameLibraryPathChanged;
 
         public static Configuration? Current { get; set; }
@@ -229,6 +391,15 @@ namespace WPR.Common
             if (DataStorePath == null)
             {
                 DataStorePath = PrivateDataFolder;
+            }
+
+            // Fix the guest gamertag on first load and write it straight away, so the launcher and
+            // Android's :game process (each with its own copy of this object) read the same one.
+            if (string.IsNullOrEmpty(_ConfPrivate.GuestGamerTag))
+            {
+                _ = GuestGamerTag;
+                try { Save(); }
+                catch (Exception ex) { Log.Warn(LogCategory.Common, $"Could not save the guest gamertag: {ex.Message}"); }
             }
         }
 

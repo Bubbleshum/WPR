@@ -115,16 +115,34 @@ namespace WPR.Platform.Android
             MessageBoxUtils.MainActivity = this;
             ServicesSetup.Start();
 
+            // WPR Hub: send what an earlier session queued - including a crash report the :game
+            // process wrote on its way down, which only a launcher that lives on can send.
+            _ = WPR.Engine.Online.OnlineBackend.FlushAsync();
+
+            // "Online" on WPR Hub while signed in. GameLauncher suspends it while the :game
+            // process, which has its own, speaks for this device.
+            WPR.Engine.Online.OnlineBackend.Presence?.Start();
+
             RequestNotificationPermissionIfNeeded();
+
+            // A newer WPR on GitHub: notified once per release. AppUpdates asks at most every
+            // twelve hours, so the same call on every resume below costs nothing in between.
+            Native.UpdateNotifier.CheckInBackground(this);
 
             // Anything that asks to launch a game through the shared UI abstraction rather
             // than calling GameLauncher directly still works.
-            _LaunchRequestHandler = (_, args) => RunOnUiThread(() => GameLauncher.Launch(this, args.Target));
+            _LaunchRequestHandler = (_, args) => RunOnUiThread(() => GameLauncher.Launch(this, args.Target, args.Diagnostic));
             ApplicationLaunchRequest.Incoming += _LaunchRequestHandler;
 
             LayoutTiles();
             WireTiles();
             PaintAccent();
+
+            // The counts could not be read before this point: the first OnResume runs straight
+            // after OnCreate, while the worker is still seeding the databases, so that read failed
+            // and the tiles said 0 until the next time Start was resumed.
+            _StartupFinished = true;
+            RefreshTileCounts();
 
             global::Android.Util.Log.Info("WPR", "MainActivity OnCreate completed (native shell)");
         }
@@ -195,6 +213,24 @@ namespace WPR.Platform.Android
             // underneath it — so repaint here rather than leaving stale tiles behind.
             PaintAccent();
             RefreshTileCounts();
+
+            // Coming back from reading messages (or a game): beat now rather than at the next
+            // interval, so the unread and online counts on the tiles catch up in seconds.
+            if (_StartupFinished && !string.IsNullOrEmpty(Configuration.Current?.HubAccessToken))
+            {
+                HubSetup.Current?.Presence.Resume();
+                _ = RepaintLiveTilesSoonAsync();
+            }
+
+            // Only after start-up: Configuration.Current (where the check keeps its state) is not
+            // there before it. The first check runs from FinishStartupOnUiThread.
+            if (_StartupFinished) Native.UpdateNotifier.CheckInBackground(this);
+        }
+
+        private async Task RepaintLiveTilesSoonAsync()
+        {
+            await Task.Delay(3000);
+            if (!IsDestroyed && _StartupFinished) RefreshHubTile();
         }
 
         /// <summary>
@@ -214,7 +250,7 @@ namespace WPR.Platform.Android
 
             foreach (int id in new[]
                      {
-                         Resource.Id.tileGames, Resource.Id.tileAdd,
+                         Resource.Id.tileGames, Resource.Id.tileHub, Resource.Id.tileMessages, Resource.Id.tileAdd,
                          Resource.Id.tileAchievements, Resource.Id.tileSettings,
                          Resource.Id.tileAbout,
                      })
@@ -224,6 +260,12 @@ namespace WPR.Platform.Android
                 layout.Height = tile;
                 view.LayoutParameters = layout;
             }
+
+            // The gamerscore medallion: a thin white ring around the "G".
+            var ring = new global::Android.Graphics.Drawables.GradientDrawable();
+            ring.SetShape(global::Android.Graphics.Drawables.ShapeType.Oval);
+            ring.SetStroke(Math.Max(1, (int)(1.5f * metrics.Density)), global::Android.Graphics.Color.White);
+            FindViewById<View>(Resource.Id.tileHubScoreBadge)!.Background = ring;
         }
 
         /// <summary>
@@ -235,9 +277,11 @@ namespace WPR.Platform.Android
         {
             FindViewById<TextView>(Resource.Id.appTitle)!.SetTextColor(WpTheme.Accent);
 
-            // Games and add are the two things you came here to do, so they take the full
+            // Games, the hub, messages and add are the things you came here to do, so they take the full
             // accent; the rest use the muted variant so the grid has a clear focal point.
             WpTheme.PaintTile(FindViewById<View>(Resource.Id.tileGames)!, primary: true);
+            WpTheme.PaintTile(FindViewById<View>(Resource.Id.tileMessages)!, primary: true);
+            WpTheme.PaintTile(FindViewById<View>(Resource.Id.tileHub)!, primary: true);
             WpTheme.PaintTile(FindViewById<View>(Resource.Id.tileAdd)!, primary: true);
             WpTheme.PaintTile(FindViewById<View>(Resource.Id.tileAchievements)!, primary: false);
             WpTheme.PaintTile(FindViewById<View>(Resource.Id.tileSettings)!, primary: false);
@@ -251,13 +295,30 @@ namespace WPR.Platform.Android
             View achievements = FindViewById<View>(Resource.Id.tileAchievements)!;
             View settings = FindViewById<View>(Resource.Id.tileSettings)!;
             View about = FindViewById<View>(Resource.Id.tileAbout)!;
+            View hub = FindViewById<View>(Resource.Id.tileHub)!;
+            View messages = FindViewById<View>(Resource.Id.tileMessages)!;
 
-            foreach (View tile in new[] { games, add, achievements, settings, about })
+            foreach (View tile in new[] { games, hub, messages, add, achievements, settings, about })
             {
                 WpTheme.ApplyTilt(tile);
             }
 
             games.Click += (_, _) => StartActivity(new Intent(this, typeof(GamesActivity)));
+            // Signed out, the tile is the way in: straight to sign in / sign up.
+            // The social page handles signed out itself (with a way to sign in). It opens on
+            // messages when some are unread, since that is what the tile's number is counting.
+            messages.Click += (_, _) => SocialActivity.Open(this,
+                (HubSetup.Current?.Presence.LastBeat?.UnreadMessages ?? 0) > 0 ? SocialActivity.PivotMessages : SocialActivity.PivotFriends);
+            hub.Click += (_, _) => StartActivity(new Intent(this,
+                string.IsNullOrEmpty(Configuration.Current?.HubAccessToken) ? typeof(SignInActivity) : typeof(HubActivity)));
+
+            // The logo replaces the glyph and "wpr hub" label on the signed-out face, and the label
+            // on the gamer card, since it spells out the name itself.
+            HubLogo.ApplyWhite(this, FindViewById<ImageView>(Resource.Id.tileHubLogo)!, FindViewById<View>(Resource.Id.tileHubGlyph));
+            HubLogo.ApplyWhite(this, FindViewById<ImageView>(Resource.Id.tileHubCardLogo)!, FindViewById<View>(Resource.Id.tileHubCardName));
+            FindViewById<View>(Resource.Id.tileHubName)!.Visibility =
+                HubLogo.LoadWhite(this) != null ? ViewStates.Gone : ViewStates.Visible;
+
             achievements.Click += (_, _) => StartActivity(new Intent(this, typeof(AchievementsActivity)));
             settings.Click += (_, _) => StartActivity(new Intent(this, typeof(SettingsActivity)));
             about.Click += (_, _) => StartActivity(new Intent(this, typeof(AboutActivity)));
@@ -267,9 +328,17 @@ namespace WPR.Platform.Android
             add.Click += (_, _) => XapInstallFlow.StartPicker(this);
         }
 
+        /// <summary>
+        /// Set on the UI thread once start-up has seeded the databases. Until then there is
+        /// nothing to count, and reading would race the worker that is writing them.
+        /// </summary>
+        private bool _StartupFinished;
+
         /// <summary>Live-tile numbers: installed games, and achievements earned so far.</summary>
         private void RefreshTileCounts()
         {
+            if (!_StartupFinished) return;
+
             int games = 0;
             int earned = 0;
 
@@ -278,11 +347,110 @@ namespace WPR.Platform.Android
             try { games = WPR.Models.ApplicationContext.Current.Applications!.Count(); }
             catch (Exception ex) { WPR.Common.Log.Warn(LogCategory.AppList, $"Could not count installed games: {ex.Message}"); }
 
-            try { earned = AchievementContext.Current!.Achievements!.AsNoTracking().Count(a => a.IsEarned); }
+            try
+            {
+                var earnedRows = AchievementContext.Current!.Achievements!.AsNoTracking().Where(a => a.IsEarned);
+                earned = earnedRows.Count();
+                _GamerScore = earnedRows.Sum(a => a.GamerScore);
+            }
             catch (Exception ex) { WPR.Common.Log.Warn(LogCategory.GamerServices, $"Could not count earned achievements: {ex.Message}"); }
 
             FindViewById<TextView>(Resource.Id.tileGamesCount)!.Text = games.ToString();
             FindViewById<TextView>(Resource.Id.tileAchievementsCount)!.Text = earned.ToString();
+            RefreshHubTile();
+        }
+
+        /// <summary>Sum of the gamerscore of every achievement earned on this device, for the gamer card.</summary>
+        private int _GamerScore;
+
+        /// <summary>
+        /// The hub tile. Signed out it is the basic tile, which opens sign-in. Signed in it is a
+        /// gamer card: gamertag, gamerscore and friends online, down the left, with the logo bottom
+        /// right. No gamerpic, by choice: the card is the text alone.
+        ///
+        /// <para>Everything on the card is already on the device, so it draws without a request:
+        /// the gamerscore is this device's earned achievements, and the friends count is the last
+        /// presence heartbeat. The first beat lands a moment after start-up, hence the one delayed
+        /// repaint.</para>
+        /// </summary>
+        private void RefreshHubTile()
+        {
+            RefreshMessagesTile();
+
+            View basic = FindViewById<View>(Resource.Id.tileHubBasic)!;
+            View card = FindViewById<View>(Resource.Id.tileHubCard)!;
+
+            string? username = string.IsNullOrEmpty(Configuration.Current?.HubAccessToken) ? null : Configuration.Current!.HubUsername ?? "signed in";
+            if (username == null)
+            {
+                basic.Visibility = ViewStates.Visible;
+                card.Visibility = ViewStates.Gone;
+                _HubTileRetried = false;
+                return;
+            }
+
+            basic.Visibility = ViewStates.Gone;
+            card.Visibility = ViewStates.Visible;
+            FindViewById<TextView>(Resource.Id.tileHubGamertag)!.Text = username;
+            FindViewById<TextView>(Resource.Id.tileHubScore)!.Text = _GamerScore.ToString("N0");
+
+            var beat = HubSetup.Current?.Presence.LastBeat;
+            TextView status = FindViewById<TextView>(Resource.Id.tileHubStatus)!;
+            if (beat == null)
+            {
+                status.Text = "online";
+            }
+            else
+            {
+                string line = beat.FriendsOnline == 0 ? "no friends online"
+                    : beat.FriendsOnline == 1 ? "1 friend online" : $"{beat.FriendsOnline} friends online";
+                if (beat.PendingFriendRequests > 0)
+                    line += beat.PendingFriendRequests == 1 ? " · 1 friend request" : $" · {beat.PendingFriendRequests} friend requests";
+                if (beat.UnreadMessages > 0)
+                    line += beat.UnreadMessages == 1 ? " · 1 message" : $" · {beat.UnreadMessages} messages";
+                status.Text = line;
+            }
+            // Set from the social page; worth saying on the card, since friends now see "offline".
+            if (Configuration.Current?.HubAppearOffline == true)
+                status.Text = beat == null ? "appearing offline" : "appearing offline · " + status.Text;
+
+            if (beat == null && !_HubTileRetried)
+            {
+                _HubTileRetried = true;
+                _ = RefreshHubTileLaterAsync();
+            }
+        }
+
+        /// <summary>
+        /// The messages tile's live number: unread messages, from the last presence heartbeat, so it
+        /// costs no request. Repainted with the hub tile, including by its one delayed retry.
+        /// </summary>
+        private void RefreshMessagesTile()
+        {
+            TextView count = FindViewById<TextView>(Resource.Id.tileMessagesCount)!;
+            TextView status = FindViewById<TextView>(Resource.Id.tileMessagesStatus)!;
+
+            if (string.IsNullOrEmpty(Configuration.Current?.HubAccessToken))
+            {
+                count.Visibility = ViewStates.Gone;
+                status.Text = "sign in to chat";
+                status.Visibility = ViewStates.Visible;
+                return;
+            }
+
+            int unread = HubSetup.Current?.Presence.LastBeat?.UnreadMessages ?? 0;
+            count.Text = unread.ToString();
+            count.Visibility = unread > 0 ? ViewStates.Visible : ViewStates.Gone;
+            status.Text = unread == 1 ? "1 new message" : $"{unread} new messages";
+            status.Visibility = unread > 0 ? ViewStates.Visible : ViewStates.Gone;
+        }
+
+        private bool _HubTileRetried;
+
+        private async Task RefreshHubTileLaterAsync()
+        {
+            await Task.Delay(5000);
+            if (!IsDestroyed) RefreshHubTile();
         }
 
         protected override void OnActivityResult(int requestCode, Result resultCode, Intent? data)

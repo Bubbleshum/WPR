@@ -54,6 +54,9 @@
   <ItemGroup>
     <!-- Configuration.DataPath — where the live .db files are opened from. -->
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Common\WPR.Common.csproj" />
+    <!-- Online/EfOnlineLocalStore implements WPR.Engine.Online.IOnlineLocalStore: which unlocks and
+         play sessions still await upload to WPR Hub. The contract names no database type. -->
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Online\WPR.Engine.Online.csproj" />
     <!-- The XNA type system, for two things only: the Achievement entity (a game-facing type the
          patcher rescopes into WPR.Framework.Xna, so it cannot live here) and the
          WPR.Xna.Achievements.IAchievementStore seam this project implements.

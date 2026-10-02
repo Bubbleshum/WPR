@@ -1,0 +1,41 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             d:DesignWidth="800"
+             d:DesignHeight="600"
+             x:Class="WPR.Platform.Windows.Pages.HubPage">
+	<!-- The WPR Hub page: profile, friend requests, friends, adding a friend, games. Everything below
+	     the profile is a list of data, so HubPage.axaml.cs builds it; the Android twin is
+	     Native/HubActivity. Hardcoded English, like the settings page's Online section. -->
+	<ScrollViewer HorizontalScrollBarVisibility="Disabled">
+		<StackPanel Margin="20" Spacing="4" MaxWidth="720" HorizontalAlignment="Left">
+			<Image Name="hubLogoImage" Height="56" HorizontalAlignment="Left" Margin="-4,0,0,4" IsVisible="False"/>
+			<TextBlock Name="hubHeaderText" Text="WPR HUB" FontSize="14" LetterSpacing="2"
+			           Foreground="{StaticResource WprAccentBrush}"/>
+
+			<Grid ColumnDefinitions="Auto,*" Margin="0,14,0,0">
+				<Border Grid.Column="0" Width="96" Height="96" CornerRadius="3" ClipToBounds="True"
+				        Background="#33FFFFFF" Margin="0,0,16,0">
+					<Image Name="gamerpicImage" Stretch="UniformToFill"/>
+				</Border>
+				<StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
+					<TextBlock Name="nameText" Text="Not signed in" FontSize="30" FontWeight="Light"
+					           Foreground="White" TextTrimming="CharacterEllipsis"/>
+					<TextBlock Name="summaryText" Foreground="#BFFFFFFF" FontSize="12" TextWrapping="Wrap"/>
+					<StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
+						<Button Name="signInButton" Classes="play" Content="Sign in or sign up"/>
+						<Button Name="gamerpicButton" Content="Gamerpic…" IsVisible="False"/>
+						<Button Name="refreshButton" Content="Refresh" IsVisible="False"/>
+					</StackPanel>
+				</StackPanel>
+			</Grid>
+
+			<TextBlock Name="statusText" Foreground="#BFFFFFFF" FontSize="12" TextWrapping="Wrap"
+			           Margin="0,10,0,0" IsVisible="False"/>
+
+			<StackPanel Name="sectionsPanel" Spacing="2"/>
+		</StackPanel>
+	</ScrollViewer>
+</UserControl>

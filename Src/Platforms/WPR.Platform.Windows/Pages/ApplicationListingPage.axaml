@@ -176,6 +176,11 @@
                 </StackPanel>
               </Button>
               <Button Classes="ghost"
+                      Command="{Binding ChoosenApp.RunWithLoggingCommand}"
+                      Content="Play with logging"
+                      ToolTip.Tip="Play this game with full logging switched on. When the problem happens, press Stop &amp; send report (a small window at the top of the screen): the game closes and the log from this run is sent to WPR Hub, with your user name and paths removed. You get a report code to quote."
+                      IsVisible="{Binding ChoosenApp.IsInstalled}"/>
+              <Button Classes="ghost"
                       Command="{Binding ChoosenApp.EditAppCommand}"
                       Content="{x:Static p:Resources.EditApp}"
                       ToolTip.Tip="{x:Static p:Resources.EditAppToolTip}"
@@ -184,11 +189,6 @@
                       Command="{Binding ChoosenApp.RepatchAppCommand}"
                       Content="Repatch"
                       ToolTip.Tip="Re-run the WPR patcher on this game without re-extracting the XAP. Use this after a WPR update that changed the patcher table, instead of uninstall + reinstall."
-                      IsVisible="{Binding ChoosenApp.IsInstalled}"/>
-              <Button Classes="ghost"
-                      Command="{Binding ChoosenApp.InfoAppCommand}"
-                      Content="Info"
-                      ToolTip.Tip="Product id, install folder, patcher version and achievement catalogue state for this game. Read-only; Copy all puts the report on the clipboard."
                       IsVisible="{Binding ChoosenApp.IsInstalled}"/>
               <Button Classes="ghost"
                       Command="{Binding ChoosenApp.ControlsAppCommand}"

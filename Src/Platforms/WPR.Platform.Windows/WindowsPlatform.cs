@@ -15,7 +15,20 @@ namespace WPR.Platform.Windows
     {
         public override string Name => "Windows";
 
-        public override void Describe(IPlatformCapabilities caps) => caps
+        public override void Describe(IPlatformCapabilities caps)
+        {
+            DescribeDevice(caps);
+
+            // WPR Hub: leaderboards, and crash reports for players who opted in. Sends nothing
+            // until a hub URL is configured. One instance for the process, however many times the
+            // descriptor is applied.
+            Hub ??= WPR.Shell.HubSetup.TryCreate("windows", new Online.DesktopGamePackageSource(), new WPR.Database.Online.EfOnlineLocalStore());
+            if (Hub != null) caps.Online(Hub.Services);
+        }
+
+        private static WPR.Online.Hub.HubOnline? Hub;
+
+        private static void DescribeDevice(IPlatformCapabilities caps) => caps
             // A desktop PC has no motion hardware, so the provider synthesises readings from the
             // keys the Controls page binds. The WP7 Accelerometer shim sees only IAccelerometerProvider
             // and never learns which of the two it got.

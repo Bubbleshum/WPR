@@ -76,11 +76,19 @@ namespace WPR
         private int _compositingBranchReported;
         private bool _hostCompositesPage;
 
+        // Whether the game reads TouchPanel itself — see PumpSilverlightTouch. Starts at zero,
+        // i.e. "not yet known to be quiet", so no touch reaches a game-drawn page until the game
+        // has shown for a while that it is not reading touch on its own.
+        private int _touchReadsSeen;
+        private int _ticksSinceGameReadTouch;
+        private const int GameTouchQuietTicks = 30;
+
         // Silverlight touch routing state — see PumpSilverlightTouch.
         private bool _touchDown;
         private float _lastTouchX;
         private float _lastTouchY;
         private bool _touchFailed;
+        private int _pressesTraced;
 
         /// <param name="onAppCreated">
         /// Raised once the game's <c>Application</c> subclass exists and before the first
@@ -552,11 +560,14 @@ namespace WPR
             if (_compositingBranchReported == state + 1) return;
             _compositingBranchReported = state + 1;
 
-            _trace(gameRasterisedIt
+            string line = gameRasterisedIt
                 ? "[wpr-mixed] the game rasterises this page itself — not compositing."
                 : gamePaintedTheFrame
                     ? "[wpr-mixed] the game painted this frame — not compositing."
-                    : "[wpr-mixed] nothing else painted this frame — compositing the page.");
+                    : "[wpr-mixed] nothing else painted this frame — compositing the page.";
+            _trace(line);
+            // Also to Trace, which reaches the session log in a Release build; _trace does not.
+            System.Diagnostics.Trace.WriteLine(line);
         }
 
         /// <summary>
@@ -587,7 +598,21 @@ namespace WPR
         /// </remarks>
         private void PumpSilverlightTouch()
         {
-            if (!_hostCompositesPage) return;
+            // Did the GAME read touch since this ran last? Our own read is excluded by
+            // resynchronising the count straight after it, below.
+            int reads = TouchPanel.WprReadCount;
+            if (reads != _touchReadsSeen) _ticksSinceGameReadTouch = 0;
+            else if (_ticksSinceGameReadTouch < GameTouchQuietTicks) _ticksSinceGameReadTouch++;
+            _touchReadsSeen = reads;
+
+            // A page the game draws (rasterised through UIElementRenderer or not) still gets
+            // Silverlight input when the game is not reading TouchPanel: on WP7 the tree received input whoever drew it, and a title
+            // like Flappy Bird has no other input path — its menu buttons are Canvases with
+            // MouseLeftButtonDown handlers, drawn through UIElementRenderer. Titles that DO read
+            // TouchPanel on such a page (Pirates!, Big Buck Hunter, The Game of Life) keep the
+            // old behaviour, which is what the double-delivery note above is about.
+            bool gameIsQuiet = _ticksSinceGameReadTouch >= GameTouchQuietTicks;
+            if (!_hostCompositesPage && !gameIsQuiet) return;
 
             UIElement? root = _layoutRoot;
             if (root == null) return;
@@ -595,6 +620,7 @@ namespace WPR
             try
             {
                 TouchCollection touches = TouchPanel.GetState();
+                _touchReadsSeen = TouchPanel.WprReadCount;
 
                 // One finger. WP7 menus are single-touch, and the router models one interaction;
                 // taking the first sample keeps which finger is "the" finger stable for the life
@@ -621,6 +647,11 @@ namespace WPR
                 {
                     case TouchLocationState.Pressed:
                         _touchDown = true;
+                        if (_pressesTraced < 5)
+                        {
+                            _pressesTraced++;
+                            System.Diagnostics.Trace.WriteLine($"[wpr-mixed] Silverlight touch press at ({_lastTouchX:F0},{_lastTouchY:F0}), host composites={_hostCompositesPage}");
+                        }
                         SilverlightTouchRouter.Press(root, _lastTouchX, _lastTouchY);
                         break;
 

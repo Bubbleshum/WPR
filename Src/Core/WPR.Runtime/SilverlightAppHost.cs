@@ -133,7 +133,7 @@ namespace WPR
                 throw new InvalidOperationException(
                     $"Entry-point type '{entryPointTypeName}' not found in '{userAsm.GetName().Name}'.");
 
-            Uri? startPage = TryReadStartPageUri(installFolder);
+            Uri? startPage = SkipInterstitialStartPage(TryReadStartPageUri(installFolder), userAsm);
 
             // Instantiating the App class triggers its generated InitializeComponent → LoadComponent.
             // The user's App.xaml.cs may set Application.Current.RootVisual itself, OR the App.xaml
@@ -307,6 +307,63 @@ namespace WPR
         /// Reads <c>WMAppManifest.xml</c> from the install folder and returns the start page URI
         /// declared by <c>&lt;DefaultTask NavigationPage="..." /&gt;</c>, or null if absent.
         /// </summary>
+        /// <summary>
+        /// Query keys an interstitial start page uses to name the page it hands over to.
+        /// <c>nextPageToLoad</c> is Vserv's (Flappy Bird); the others are the same idea spelt
+        /// the ways other WP7 ad and splash SDKs spell it.
+        /// </summary>
+        private static readonly string[] NextPageQueryKeys =
+            { "nextPageToLoad", "nextPage", "NextPage", "returnPage", "targetPage" };
+
+        /// <summary>
+        /// Replaces a start page that lives in ANOTHER assembly and only exists to show
+        /// something before handing over — a full-screen ad — with the page it hands over to.
+        /// </summary>
+        /// <remarks>
+        /// Flappy Bird's manifest starts at
+        /// <c>VservAdEngineFullScreenSDK;component/VservAdPageView.xaml?…&amp;nextPageToLoad=/MainPage.xaml</c>.
+        /// The game's own code never names that page; it is purely the ad SDK's interstitial,
+        /// which would fetch an ad from a long-dead server and then navigate to
+        /// <c>nextPageToLoad</c>. Page resolution only looks in the game's assembly, so the
+        /// navigation threw and the game never got a page at all.
+        ///
+        /// Deliberately narrow: only a page in a different assembly <b>and</b> carrying a
+        /// next-page parameter is skipped, so an ordinary start page — or one in a library the
+        /// game genuinely starts in — is left alone.
+        /// </remarks>
+        private static Uri? SkipInterstitialStartPage(Uri? startPage, Assembly userAsm)
+        {
+            if (startPage == null) return null;
+            string raw = startPage.OriginalString;
+
+            int component = raw.IndexOf(";component/", StringComparison.OrdinalIgnoreCase);
+            if (component < 0) return startPage;
+            string assemblyName = raw.Substring(0, component).TrimStart('/');
+            if (string.Equals(assemblyName, userAsm.GetName().Name, StringComparison.OrdinalIgnoreCase))
+                return startPage;
+
+            int query = raw.IndexOf('?');
+            if (query < 0) return startPage;
+
+            foreach (string pair in raw.Substring(query + 1).Split('&'))
+            {
+                int eq = pair.IndexOf('=');
+                if (eq <= 0) continue;
+                string key = pair.Substring(0, eq);
+                if (Array.IndexOf(NextPageQueryKeys, key) < 0) continue;
+
+                string next = Uri.UnescapeDataString(pair.Substring(eq + 1)).Trim();
+                if (next.Length == 0) continue;
+
+                var target = new Uri("/" + next.TrimStart('/'), UriKind.Relative);
+                System.Diagnostics.Trace.WriteLine(
+                    $"[wpr-mixed] start page '{raw}' is an interstitial in {assemblyName}; starting at '{target}' instead.");
+                return target;
+            }
+
+            return startPage;
+        }
+
         private static Uri? TryReadStartPageUri(string installFolder)
         {
             string manifestPath = Path.Combine(installFolder, "WMAppManifest.xml");

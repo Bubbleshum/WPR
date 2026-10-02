@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Online.Hub - WPR.Engine.Online over WPR Hub's HTTP API
+    (github.com/Bubbleshum/WPR-Hub).
+
+    A MODULE: it implements the contracts in WPR.Engine.Online and each head plugs it in with
+    caps.Online(...). Plain net10.0 because it is BCL-only (HttpClient + System.Text.Json) and
+    identical on both heads; the platform differences - where the data folder is, how to get a
+    game package back after install - arrive as constructor arguments (HubSettings), never as a
+    reference to a head.
+
+    Client/ is the hub's own C# client library (client/WPR.Hub in the hub repo), brought in here
+    so it is actually compiled and shipped. Two deliberate differences from that copy: there is
+    no default base URI (an unconfigured WPR must send nothing), and its single-process
+    LeaderboardStore / CrashReporter are replaced by HubLeaderboards / HubCrashReporter, whose
+    queues are one file per item so the launcher and Android's :game process can share them
+    without a lock.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <AssemblyName>WPR.Online.Hub</AssemblyName>
+    <RootNamespace>WPR.Online.Hub</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Online\WPR.Engine.Online.csproj" />
+  </ItemGroup>
+
+</Project>

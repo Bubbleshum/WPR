@@ -109,7 +109,8 @@ namespace WPR.Platform.Windows
                         fs,
                         _ => { },
                         _ => new AlwaysTrue(),   // auto-confirm "overwrite existing" (shouldn't fire — these aren't installed)
-                        token);
+                        token,
+                        packageSource: d.XapFilePath);
 
                     if (err == ApplicationInstallError.None)
                     {

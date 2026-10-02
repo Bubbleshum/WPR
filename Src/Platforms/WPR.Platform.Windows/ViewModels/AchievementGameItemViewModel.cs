@@ -17,18 +17,32 @@ namespace WPR.Platform.Windows.ViewModels
         private readonly IReadOnlyList<Achievement> _Achievements;
         private Bitmap? _Icon;
 
-        public AchievementGameItemViewModel(string productId, Application? app, IReadOnlyList<Achievement> achievements)
+        public AchievementGameItemViewModel(string productId, Application? app, IReadOnlyList<Achievement> achievements, string name)
         {
             _ProductId = productId;
             _App = app;
             _Achievements = achievements;
+            _Name = name;
         }
 
         public string ProductId => _ProductId;
         public Application? App => _App;
         public IReadOnlyList<Achievement> Achievements => _Achievements;
 
-        public string Name => _App?.Name ?? _ProductId;
+        /// <summary>
+        /// Resolved by the page (AchievementsPageViewModel.LocalName): the bundled catalogue, then
+        /// the install record, then WPR Hub. Settable because the hub's answer arrives after the
+        /// list is shown.
+        /// </summary>
+        public string Name
+        {
+            get => _Name;
+            set => this.RaiseAndSetIfChanged(ref _Name, value);
+        }
+        private string _Name;
+
+        /// <summary>True while the name is only the product id, i.e. still worth asking WPR Hub about.</summary>
+        public bool NameIsProductId => string.Equals(_Name, _ProductId, System.StringComparison.OrdinalIgnoreCase);
         public string Author => _App?.Author ?? "";
 
         /// <summary>Aggregates for this game, computed once by the shared roll-up. Both shells

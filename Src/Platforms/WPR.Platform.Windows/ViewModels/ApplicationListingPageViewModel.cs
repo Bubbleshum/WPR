@@ -59,7 +59,6 @@ namespace WPR.Platform.Windows.ViewModels
 
         public event EventHandler<ApplicationItemViewModel>? InstallRequested;
         public event EventHandler<ApplicationItemViewModel>? EditRequested;
-        public event EventHandler<ApplicationItemViewModel>? InfoRequested;
         public event EventHandler<ApplicationItemViewModel>? ControlsRequested;
         public event EventHandler<ApplicationItemViewModel>? ClearDataRequested;
 
@@ -296,7 +295,6 @@ namespace WPR.Platform.Windows.ViewModels
                     appItem.InstallRequested += OnAppInstallRequested;
                     appItem.RepatchRequested += OnAppRepatchRequested;
                     appItem.EditRequested += OnAppEditRequested;
-                    appItem.InfoRequested += OnAppInfoRequested;
                     appItem.ControlsRequested += OnAppControlsRequested;
                     appItem.ClearDataRequested += OnAppClearDataRequested;
                 }
@@ -326,12 +324,6 @@ namespace WPR.Platform.Windows.ViewModels
         private void OnAppRepatchRequested(object? sender, ApplicationItemViewModel appItem)
         {
             _ = RepatchApplicationAsync(appItem);
-        }
-
-        private void OnAppInfoRequested(object? sender, ApplicationItemViewModel appItem)
-        {
-            // The page owns dialogs (modal Window lifetime, MainWindow as owner).
-            InfoRequested?.Invoke(this, appItem);
         }
 
         private void OnAppControlsRequested(object? sender, ApplicationItemViewModel appItem)
@@ -527,14 +519,21 @@ namespace WPR.Platform.Windows.ViewModels
                 try
                 {
                     using Stream stream = await openStream();
-                    return await ApplicationInstaller.Install(
+                    ApplicationInstallError result = await ApplicationInstaller.Install(
                         stream,
                         progress => Dispatcher.UIThread.Post(() =>
                         {
                             if (Installing != null) Installing.Progress = progress;
                         }),
                         app => DeleteExistingAppInteraction.Handle(app),
-                        CancelSource.Token);
+                        CancelSource.Token,
+                        // Recorded so WPR Hub can ask for this exact package after a crash.
+                        packageSource: (stream as FileStream)?.Name);
+
+                    // The installer queued an "installed" report for WPR Hub; send it now so a
+                    // build the hub has never seen starts uploading in the background.
+                    if (result == ApplicationInstallError.None) _ = WPR.Engine.Online.OnlineBackend.FlushAsync();
+                    return result;
                 }
                 finally
                 {
