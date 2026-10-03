@@ -127,60 +127,42 @@ namespace Microsoft.Xna.Framework.GamerServices
             return (result as Task<int>)!.Result;
         }
 
-        public static void ShowComposeMessage(PlayerIndex player, string text, IEnumerable<Gamer> recipients)
-        {
-            throw new NotImplementedException();
-        }
+        // The Xbox LIVE overlay screens. On the phone each opened a system page over the game and
+        // returned at once; the game got control back when the player pressed Back. WPR has none
+        // of those pages, so each one returns without doing anything: the game carries on as if
+        // the player had looked and come straight back.
+        //
+        // They used to throw NotImplementedException. Fruit Ninja calls ShowGamerCard when the
+        // player taps their gamerpic on the main menu; it caught the throw and showed its own
+        // error box, but the menu was left half-way through handling the tap and took no more
+        // touches for the rest of the session.
 
-        public static void ShowFriendRequest(PlayerIndex player, Gamer gamer)
-        {
-            throw new NotImplementedException();
-        }
+        public static void ShowComposeMessage(PlayerIndex player, string text, IEnumerable<Gamer> recipients) => OverlayUnavailable(nameof(ShowComposeMessage));
 
-        public static void ShowFriends(PlayerIndex player)
-        {
-            throw new NotImplementedException();
-        }
+        public static void ShowFriendRequest(PlayerIndex player, Gamer gamer) => OverlayUnavailable(nameof(ShowFriendRequest));
 
-        public static void ShowGameInvite(PlayerIndex player, IEnumerable<Gamer> recipients)
-        {
-            throw new NotImplementedException();
-        }
+        public static void ShowFriends(PlayerIndex player) => OverlayUnavailable(nameof(ShowFriends));
 
-        public static void ShowGamerCard(PlayerIndex player, Gamer gamer)
-        {
-            throw new NotImplementedException();
-        }
+        public static void ShowGameInvite(PlayerIndex player, IEnumerable<Gamer> recipients) => OverlayUnavailable(nameof(ShowGameInvite));
 
-        public static void ShowMarketplace(PlayerIndex player)
-        {
-            throw new NotImplementedException();
-        }
+        public static void ShowGamerCard(PlayerIndex player, Gamer gamer) => OverlayUnavailable(nameof(ShowGamerCard));
 
-        public static void ShowMessages(PlayerIndex player)
-        {
-            throw new NotImplementedException();
-        }
+        public static void ShowMarketplace(PlayerIndex player) => OverlayUnavailable(nameof(ShowMarketplace));
 
-        public static void ShowParty(PlayerIndex player)
-        {
-            throw new NotImplementedException();
-        }
+        public static void ShowMessages(PlayerIndex player) => OverlayUnavailable(nameof(ShowMessages));
 
-        public static void ShowPartySessions(PlayerIndex player)
-        {
-            throw new NotImplementedException();
-        }
+        public static void ShowParty(PlayerIndex player) => OverlayUnavailable(nameof(ShowParty));
 
-        public static void ShowPlayerReview(PlayerIndex player, Gamer gamer)
-        {
-            throw new NotImplementedException();
-        }
+        public static void ShowPartySessions(PlayerIndex player) => OverlayUnavailable(nameof(ShowPartySessions));
 
-        public static void ShowPlayers(PlayerIndex player)
-        {
-            throw new NotImplementedException();
-        }
+        public static void ShowPlayerReview(PlayerIndex player, Gamer gamer) => OverlayUnavailable(nameof(ShowPlayerReview));
+
+        public static void ShowPlayers(PlayerIndex player) => OverlayUnavailable(nameof(ShowPlayers));
+
+        // Trace reaches the per-game log in a Release build; without this line "the game asked for
+        // an overlay WPR doesn't have" and "the tap never arrived" look the same from outside.
+        private static void OverlayUnavailable(string overlay) =>
+            Trace.WriteLine($"[wpr-guide] Guide.{overlay}: no Xbox LIVE overlay in WPR; returning to the game.");
 
         public static void ShowSignIn(int paneCount, bool onlineOnly)
         {

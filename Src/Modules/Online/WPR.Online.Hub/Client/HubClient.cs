@@ -63,8 +63,23 @@ public sealed class HubClient : IDisposable
         {
             await Task.Delay(interval, ct).ConfigureAwait(false);
 
-            using var res = await _http.PostAsJsonAsync("api/device/token", new { device_code = code.DeviceCode }, HubJson.Options, ct)
-                .ConfigureAwait(false);
+            // A failed request is not a failed sign-in: poll again next tick. The player spends
+            // this wait in the browser, and Android drops a backgrounded app's sockets, so the
+            // first poll after they come back reuses a dead pooled connection and throws
+            // "Software caused connection abort". The retry opens a fresh one. Safe to repeat:
+            // the hub only consumes the device code when it hands out the token.
+            HttpResponseMessage response;
+            try
+            {
+                response = await _http.PostAsJsonAsync("api/device/token", new { device_code = code.DeviceCode }, HubJson.Options, ct)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception e) when (!ct.IsCancellationRequested
+                                      && e is HttpRequestException or IOException or TaskCanceledException)
+            {
+                continue;
+            }
+            using var res = response;
 
             if (res.IsSuccessStatusCode)
             {

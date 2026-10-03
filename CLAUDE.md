@@ -667,6 +667,34 @@ returning 404. The same hub change made `guessSort` treat `BestScore*` as highes
   (`HubLogo.KeyOutBackground`), because it is not quite even and showed a faint box. Both are
   optional: without them the pages show a "WPR HUB" text header and the tile its glyph.
 
+**Leaderboard reads fill the rating column, and carry gamerpics (2026-10-03).** Almost every WP7
+title posts with `entry.Rating = score` and reads back with `Columns.GetValueInt32("BestScore")`
+(Mirror's Edge, Dream Track Nation: `"BestTime"`); a scan of 34 installed leaderboard games found
+only those two names. Xbox LIVE's standard boards filled that column from the rating, the hub
+stores only what a game set (`extra`, usually null), so every row read 0.
+`LeaderboardEntry.FromRow` now adds `BestScore`/`BestTime` from the rating by the identity's key
+prefix (`RatingColumn`), unless the game wrote that column itself. `GetValueInt32` on a long
+column clamps rather than throwing an `OverflowException` into the game's callback.
+
+`GetGamerPicture` re-encodes every picture to **64x64** (`AtGamerPictureSize`: decode at native
+size, scale in `WritePNGStream`), because WP7 titles draw it at its own size: the hub's 256px
+gamerpic covered a quarter of Fruit Ninja's home screen. **Never use `ReadImageStream`'s
+`forceW`/`forceH` on Android**: FNA3D_Image_Load's resize path `SDL_free`s stb's SIMD-aligned buffer,
+and scudo aborts the process (`Scudo ERROR: corrupted chunk header`, SIGABRT on a worker thread,
+reported only as "the game process exited unexpectedly"). The desktop allocator tolerates it, so a
+Windows test passes. `Texture2D.FromStream(stream, w, h, zoom)` reaches the same path. Done at read time
+rather than download time so installs that already cached the 256 file are fixed too. Leaderboard
+rows now carry their player's hub gamerpic (`LeaderboardRow.Gamerpic`, fetched as the hub's `-64.png`
+variant, hub host only, 5 s each, cached by URL, before the page is returned since games ask for it
+synchronously from draw code); `LeaderboardGamer` overrides `Gamer.IsOtherPlayer`/`PictureBytes`, so
+another player's profile never falls through to the local picture (bundled default when they have
+none). **The friends overload** (`BeginRead(id, gamers, pivot, …)`, Angry Birds' only leaderboard)
+reads the hub's friends view, i.e. WPR Hub friends only, as Xbox LIVE did. A player with no hub
+friends sees only themselves there; a fall-back to the whole board was tried and rejected
+(2026-10-03). Angry Birds also draws the player twice by design: a pinned own-score bar, then the
+list. Verified with the real `LeaderboardReader.Read(identity, signedInGamer, 25)` against the live
+hub: all players returned, `BestScore` equals the rating, distinct pictures per row.
+
 **Achievements, playtime and presence (2026-09-28).**
 
 * **An unlock is always recorded locally first.** "Awaiting upload" means `IsEarned = 1 AND
@@ -1848,16 +1876,59 @@ The fix is `Microsoft.Xna.Framework.Graphics.TextureFormatShim`: store as `Color
 cannot take the requested format, converting both ways. Three things about it:
 
 - **`Texture2D.Format` keeps reporting what the game asked for**, and `storageFormat` on `Texture`
-  is what the driver sees. This is the opposite of `Texture2DReader`'s DXT-to-`Color` substitution,
-  deliberately: that reader owns the whole lifecycle of a content texture, while a game-built one
-  has the game sizing its own arrays from `Format`. Reporting the substitute is exactly what the
-  TEMP block did, and exactly why it dropped every upload.
+  is what the driver sees. Reporting the substitute is exactly what the TEMP block did, and exactly
+  why it dropped every upload. **This now covers DXT content too (2026-10-03, issue #43)** — see
+  "Content textures report the format they shipped in" below; the old claim here that
+  `Texture2DReader` could safely report `Color` because "it owns the texture's whole lifecycle" was
+  wrong.
 - **Round-trip is bit-exact** — 4-bit channels expand by `n*17` (`n<<4|n`, so `>>4` recovers `n`),
   5-bit by `x<<3|x>>2`, 1-bit alpha to 0/255 — because a game that reads a texture, edits it and
   writes it back must get its own bits.
 - **Both write paths are hooked**, `SetData<T>` *and* `SetDataPointerEXT`. The latter is what
   `Texture2D.FromStream` and `TextureCube.DDSFromStreamEXT` use; missing it would leave every
   stream-loaded texture undefined.
+
+#### Content textures report the format they shipped in, even when stored as `Color` (2026-10-03)
+
+No Adreno or Mali GPU has BC formats, on either driver, so on every phone each `Dxt1`/`Dxt3`/`Dxt5`
+texture is stored decompressed. `Texture2DReader` used to decompress it itself and create the
+texture **as `Color`**, so `Texture2D.Format` said `Color`. Games can see that. **Asphalt 5** (issue
+#43) treats `Format == Color` as "recolourable car body" (`bq.a`) and builds the CPU pixel buffer
+only for the first sheet of each car. Every body (`20xx0`) is `Color`, but the interior and wheel
+sheets (`20xx1`, `20xx2`) are `Dxt5`. Reported as `Color`, the wheel sheet was taken for a body with
+a null buffer, and `m1.a(ref c5, bool)` threw an NRE on every frame of the race's loading screen,
+which never finished. The `[wpr-fce]` frame names `m1.a`, because the throwing `bq.a(float…)` is
+inlined into it.
+
+The reader now creates the texture in its shipped format, and `TextureFormatShim` stores DXT as
+`Color` when `FNA3D_SupportsDXT1`/`SupportsS3TC` say no, decompressing on upload through the same
+`DxtUtil`. `[wpr-texfmt]` now prints `Dxt1=` and `Dxt3/Dxt5=`. A DXT texture stored decompressed
+**cannot be read back** (there is no encoder), so `GetData` returns zeros and logs
+`[wpr-texget] GetData refused: … (stored decompressed as Color)`. Real D3D11 also throws on
+`GetData<byte>` of a DXT texture sized for RGBA, so no game can depend on that read. DXT **cube maps**
+were never converted at all before this (`TextureCubeReader` has no decompression), so they now work
+on phones too.
+
+**Why the compat list said Android-playable:** the emulator's GL translator exposes S3TC, so the
+conversion never ran there. **A phone-only texture bug will not reproduce on the emulator.**
+**Reproduce one on the desktop with `WPR_FORCE_NO_DXT=1`** (makes `FnaGraphicsBackend.SupportsDXT1`/
+`SupportsS3TC` answer no) plus `FNA3D_FORCE_DRIVER=OpenGL` + `FNA3D_OPENGL_FORCE_ES3=1`. Under those
+three, the unfixed build reproduced the ticket exactly: streaky car body, loading bar stuck at ~20%,
+982 NREs. The fixed build reaches a live race.
+
+**The upside-down loading screen in the ticket is the same exception.** The game draws each loading
+step as `SetRenderTarget(CGame1.e); hf.b(); SetRenderTarget(null);` and `hf.b()` is the frame that
+threw, so the unbind never ran. FNA3D's GL driver Y-flips everything drawn while a target is bound
+(`MOJOSHADER_glProgramViewportInfo(..., renderTargetBound)`), and `OPENGL_SwapBuffers` rebinds the
+faux backbuffer after every swap without clearing `renderTargetBound`. So the frames went to the
+screen with the render-target flip still on. **A whole screen mirrored top-to-bottom on GL means a
+render target was left bound**, usually by an exception between bind and unbind. The desktop showed
+black at that point rather than a flipped frame.
+`scratchpad/dxtprobe` loads real Asphalt XNBs with DXT support switched off by reflection (`nodxt`)
+and prints `Format`, the stored format and a screen hash per texture; run it from a folder holding
+the desktop head's native DLLs.
+
+No `ApplicationPatcher.Version` bump and no reinstall. This is shim behaviour.
 
 #### Defect 2 — `GetData` on GLES is a NULL call, a silent no-op, or a heap overrun
 
@@ -3381,6 +3452,21 @@ Read it out of the per-game log — the two cold-start signals say so explicitly
 
 No `ApplicationPatcher.Version` bump and no reinstall — no patcher table changed and no IL is
 rewritten. Games pick it up on next launch.
+
+**Only the FIRST `Game.Activated` is the cold start (2026-10-03).** `ApplicationLaunch`'s
+`obj.Activated` lambda called `HandleApplicationStart(anew: true)` on *every* `Game.Activated`, so
+every focus regain (an Android resume, a desktop alt-tab, a `Guide` message box closing)
+re-raised **`Launching`** in every game. It now does that once (for the synthetic post-first-tick
+Activated) and calls `HandleApplicationStart(false)` afterwards, which raises `Activated` only,
+WP7's resume signal. Doodle God was the case that found it, *after* the quirk above was in: Back on
+its main menu shows a "quit?" `Guide.BeginShowMessageBox`, the dialog takes focus on Android, and
+answering NO re-raised `Launching`. Its handler sets a fresh splash image, `Update` sees a splash
+pending, restarts the loader thread, and `ᜁ()` dies in `LoadElementsLoc` on the duplicate
+`Adventurers` key, exactly the crash the quirk was meant to stop. The tell in the session log is
+`Guide.IsTrialMode read #N` straight after `Back asserted`: that read is `DoRequest`, called from
+its `Launching` handler. Its `Activated` handler is guarded by `_1719 == null`, so the resume
+`Activated` is a no-op once the menu exists. Backgrounding during the ~1 s splash (before the
+menu exists) would still run init twice, but WP7 would do the same, and nobody has reported it.
 
 ### Launching one game without the launcher UI
 

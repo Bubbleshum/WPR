@@ -192,7 +192,7 @@ namespace Microsoft.Xna.Framework.GamerServices
             {
                 SignedInGamer me = Gamer.SignedInGamers.Count > 0 ? Gamer.SignedInGamers[0] : null;
                 entries = page.Rows
-                    .Select(row => LeaderboardEntry.FromRow(row.IsMe && me != null ? me : new LeaderboardGamer(row.Username), row.Score, row.Columns))
+                    .Select(row => LeaderboardEntry.FromRow(row.IsMe && me != null ? me : new LeaderboardGamer(row.Username, row.Gamerpic), row.Score, row.Columns, LeaderboardIdentity.Key))
                     .ToList();
             }
             catch (Exception ex)
@@ -242,9 +242,16 @@ namespace Microsoft.Xna.Framework.GamerServices
     /// </summary>
     internal sealed class LeaderboardGamer : Gamer
     {
-        internal LeaderboardGamer(string gamertag)
+        private readonly byte[] _picture;
+
+        internal LeaderboardGamer(string gamertag, byte[] picture)
         {
             Gamertag = gamertag;
+            _picture = picture;
         }
+
+        // GetProfile().GetGamerPicture() is how games draw the picture beside each row.
+        internal override bool IsOtherPlayer => true;
+        internal override byte[] PictureBytes => _picture;
     }
 }

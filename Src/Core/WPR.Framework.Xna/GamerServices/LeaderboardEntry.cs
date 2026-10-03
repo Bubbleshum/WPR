@@ -59,12 +59,14 @@ namespace Microsoft.Xna.Framework.GamerServices
         internal void DisarmCommit() => Interlocked.Exchange(ref _CommitArmed, 0);
 
         /// <summary>Builds a read-only entry from a hub row.</summary>
-        internal static LeaderboardEntry FromRow(Gamer gamer, long rating, System.Collections.Generic.IReadOnlyDictionary<string, string>? columns)
+        /// <param name="leaderboardKey">The board's <see cref="LeaderboardIdentity.Key"/>, which decides
+        /// the column that carries the rating (<see cref="RatingColumn"/>).</param>
+        internal static LeaderboardEntry FromRow(Gamer gamer, long rating, System.Collections.Generic.IReadOnlyDictionary<string, string>? columns, string? leaderboardKey)
         {
             LeaderboardEntry entry = new LeaderboardEntry { _Gamer = gamer, _Rating = rating };
+            entry._Columns!.BeginFillData();
             if (columns != null)
             {
-                entry._Columns!.BeginFillData();
                 foreach (var column in columns)
                 {
                     // Numbers come back as their JSON text, so give games the typed value their
@@ -74,9 +76,32 @@ namespace Microsoft.Xna.Framework.GamerServices
                     else
                         entry._Columns.SetValue(column.Key, column.Value);
                 }
-                entry._Columns.EndFillData();
             }
+
+            // The rating's own column. Games set Rating to post a score but read it back by column
+            // name. Zuma's Revenge, Cut the Rope, Doodle Jump and most others call
+            // Columns.GetValueInt32("BestScore"), and Mirror's Edge reads "BestTime". On Xbox LIVE
+            // the standard leaderboards always filled that column from the rating. The hub stores
+            // only the columns a game set, which for those games is none, so without this every
+            // score on the board read as 0. A value the game wrote itself wins.
+            string? ratingColumn = RatingColumn(leaderboardKey);
+            if (ratingColumn != null && !entry._Columns.ContainsKey(ratingColumn))
+                entry._Columns.SetValue(ratingColumn, rating);
+
+            entry._Columns.EndFillData();
             return entry;
+        }
+
+        /// <summary>
+        /// The column a standard XNA leaderboard keeps its rating in: <c>BestScore</c> for the
+        /// <c>BestScore*</c> keys, <c>BestTime</c> for <c>BestTime*</c>. Null for anything else.
+        /// </summary>
+        internal static string? RatingColumn(string? leaderboardKey)
+        {
+            if (string.IsNullOrEmpty(leaderboardKey)) return null;
+            if (leaderboardKey.StartsWith("BestScore", StringComparison.Ordinal)) return "BestScore";
+            if (leaderboardKey.StartsWith("BestTime", StringComparison.Ordinal)) return "BestTime";
+            return null;
         }
     }
 }

@@ -258,8 +258,10 @@ namespace Microsoft.Xna.Framework.Graphics
                     TextureFormatShim.Encode(
                         Format,
                         source,
+                        sourceLength,
                         staging.AddrOfPinnedObject(),
-                        w * h
+                        w,
+                        h
                     );
                     source = staging.AddrOfPinnedObject();
                     sourceLength = converted.Length;
@@ -343,8 +345,10 @@ namespace Microsoft.Xna.Framework.Graphics
 					TextureFormatShim.Encode(
 						Format,
 						data,
+						dataLength,
 						staging.AddrOfPinnedObject(),
-						w * h
+						w,
+						h
 					);
 					XnaBackend.Graphics.SetTextureData2D(
 						GraphicsDevice.GLDevice,
@@ -453,6 +457,18 @@ namespace Microsoft.Xna.Framework.Graphics
 				Array.Clear(data, startIndex, elementCount);
 				TextureReadback.ReportRefusal(
 					"Texture2D " + Width + "x" + Height + " " + Format + " level " + level
+				);
+				return;
+			}
+
+			/* A DXT texture this device stores decompressed has no blocks left to hand back.
+			 * See TextureFormatShim. */
+			if (!TextureFormatShim.CanReadBack(Format, storageFormat))
+			{
+				Array.Clear(data, startIndex, elementCount);
+				TextureReadback.ReportRefusal(
+					"Texture2D " + Width + "x" + Height + " " + Format +
+					" level " + level + " (stored decompressed as " + storageFormat + ")"
 				);
 				return;
 			}

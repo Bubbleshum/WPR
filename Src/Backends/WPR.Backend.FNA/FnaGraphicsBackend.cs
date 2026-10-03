@@ -81,8 +81,14 @@ namespace WPR.Backend.FNA
 			string glDetail;
 			GlContextProbe.Query(
 				created, out isGles, out packedBgraUsable, out bgra8888Usable, out glDetail);
+			/* DXT support is FNA3D's own answer for every driver, so unlike the two above it
+			 * needs no GL probe. Mobile GPUs have no BC formats at all. */
 			Microsoft.Xna.Framework.Graphics.TextureFormatShim.SetDeviceSupport(
-				packedBgraUsable, bgra8888Usable, glDetail);
+				packedBgraUsable,
+				bgra8888Usable,
+				created != IntPtr.Zero && SupportsDXT1(created) != 0,
+				created != IntPtr.Zero && SupportsS3TC(created) != 0,
+				glDetail);
 			Microsoft.Xna.Framework.Graphics.TextureReadback.SetDeviceSupport(isGles, glDetail);
 
 			return created;
@@ -448,8 +454,14 @@ namespace WPR.Backend.FNA
 			}
 		}
 
-		public byte SupportsDXT1(IntPtr device) => F3D.FNA3D_SupportsDXT1(device);
-		public byte SupportsS3TC(IntPtr device) => F3D.FNA3D_SupportsS3TC(device);
+		/* WPR_FORCE_NO_DXT=1 makes this device answer as every phone GPU does: no BC formats, so
+		 * DXT content is stored decompressed. Desktop GPUs always have DXT, which is why a phone-only
+		 * texture bug never reproduces there without it (issue #43, Asphalt 5). Read once. */
+		private static readonly bool ForceNoDxt =
+			Environment.GetEnvironmentVariable("WPR_FORCE_NO_DXT") == "1";
+
+		public byte SupportsDXT1(IntPtr device) => ForceNoDxt ? (byte) 0 : F3D.FNA3D_SupportsDXT1(device);
+		public byte SupportsS3TC(IntPtr device) => ForceNoDxt ? (byte) 0 : F3D.FNA3D_SupportsS3TC(device);
 		public byte SupportsBC7(IntPtr device) => F3D.FNA3D_SupportsBC7(device);
 		public byte SupportsHardwareInstancing(IntPtr device) => F3D.FNA3D_SupportsHardwareInstancing(device);
 		public byte SupportsNoOverwrite(IntPtr device) => F3D.FNA3D_SupportsNoOverwrite(device);

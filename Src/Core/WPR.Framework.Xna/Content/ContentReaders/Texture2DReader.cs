@@ -98,19 +98,12 @@ namespace Microsoft.Xna.Framework.Content
 
 			GraphicsDevice device = reader.ContentManager.GetGraphicsDevice();
 
-			// Check to see if we need to convert the surface data
-			SurfaceFormat convertedFormat = surfaceFormat;
-			if (	surfaceFormat == SurfaceFormat.Dxt1 &&
-				XnaBackend.Graphics.SupportsDXT1(device.GLDevice) == 0	)
-			{
-				convertedFormat = SurfaceFormat.Color;
-			}
-			else if (	(	surfaceFormat == SurfaceFormat.Dxt3 ||
-						surfaceFormat == SurfaceFormat.Dxt5	) &&
-					XnaBackend.Graphics.SupportsS3TC(device.GLDevice) == 0	)
-			{
-				convertedFormat = SurfaceFormat.Color;
-			}
+			/* Created in the format the content shipped in, even on a device with no DXT support.
+			 * Texture2D stores it as Color there and decompresses on upload, while Format keeps
+			 * saying Dxt1/Dxt3/Dxt5. This reader used to decompress here and create the texture
+			 * AS Color, which games can see — Asphalt 5 keys its car recolouring on
+			 * Format == Color and threw every frame. See TextureFormatShim.
+			 */
 
 			// Check for duplicate instances
 			if (existingInstance == null)
@@ -120,7 +113,7 @@ namespace Microsoft.Xna.Framework.Content
 					width,
 					height,
 					levelCountOutput > 1,
-					convertedFormat
+					surfaceFormat
 				);
 			}
 			else
@@ -177,41 +170,6 @@ namespace Microsoft.Xna.Framework.Content
 						);
 						levelDataSizeInBytes = levelData.Length;
 					}
-				}
-
-				// Convert the image data if required
-				if (convertedFormat != surfaceFormat)
-				{
-					// May already be read in by 'x' conversion
-					if (levelData == null)
-					{
-						levelData = reader.ReadBytes(levelDataSizeInBytes);
-					}
-					if (surfaceFormat == SurfaceFormat.Dxt1)
-					{
-						levelData = DxtUtil.DecompressDxt1(
-							levelData,
-							levelWidth,
-							levelHeight
-						);
-					}
-					else if (surfaceFormat == SurfaceFormat.Dxt3)
-					{
-						levelData = DxtUtil.DecompressDxt3(
-							levelData,
-							levelWidth,
-							levelHeight
-						);
-					}
-					else if (surfaceFormat == SurfaceFormat.Dxt5)
-					{
-						levelData = DxtUtil.DecompressDxt5(
-							levelData,
-							levelWidth,
-							levelHeight
-						);
-					}
-					levelDataSizeInBytes = levelData.Length;
 				}
 
 				int levelDataByteOffset = 0;

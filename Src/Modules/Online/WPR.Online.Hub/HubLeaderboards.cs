@@ -116,8 +116,9 @@ public sealed class HubLeaderboards : ILeaderboardService
             Client.LeaderboardPage page = await hub.GetLeaderboardAsync(titleId, boardKey, hubView,
                 Math.Clamp(limit, 1, 100), Math.Max(0, offset), ct).ConfigureAwait(false);
 
+            byte[]?[] pictures = await Task.WhenAll(page.Entries.Select(e => GamerpicAsync(hub, e.GamerpicUrl, ct))).ConfigureAwait(false);
             List<LeaderboardRow> rows = page.Entries
-                .Select(e => new LeaderboardRow(e.Rank, e.Username, e.Score, e.Me, Flatten(e.Extra)))
+                .Select((e, i) => new LeaderboardRow(e.Rank, e.Username, e.Score, e.Me, Flatten(e.Extra), pictures[i]))
                 .ToList();
             return new LeaderboardPage(rows, page.Leaderboard.Players);
         }
@@ -170,6 +171,42 @@ public sealed class HubLeaderboards : ILeaderboardService
         finally
         {
             _flushGate.Release();
+        }
+    }
+
+    // Gamerpics by URL, for the life of the process. The URL carries a content hash, so an entry
+    // never goes stale, and a leaderboard screen re-reads the same players on every page.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte[]> _gamerpics = new();
+
+    /// <summary>Hub gamerpic URLs end in <c>-&lt;size&gt;.png</c>; the hub also serves 64px, a WP7 gamer picture's size.</summary>
+    private static readonly System.Text.RegularExpressions.Regex GamerpicSize = new(@"-\d+\.png$");
+
+    /// <summary>
+    /// A player's gamerpic, or null. Only from the configured hub's own host (the rule for every
+    /// image this module downloads), at most a few seconds each, and never an exception: a
+    /// missing picture must not cost the game its leaderboard.
+    /// </summary>
+    private async Task<byte[]?> GamerpicAsync(HubClient hub, string? url, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(url)
+            || !Uri.TryCreate(url, UriKind.Absolute, out Uri? uri)
+            || !string.Equals(uri.Host, hub.BaseUri.Host, StringComparison.OrdinalIgnoreCase)) return null;
+
+        string small = GamerpicSize.Replace(url, "-64.png");
+        if (_gamerpics.TryGetValue(small, out byte[]? cached)) return cached;
+
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(5));
+            byte[] bytes = await hub.GetPublicBytesAsync(small, timeout.Token).ConfigureAwait(false);
+            _gamerpics[small] = bytes;
+            return bytes;
+        }
+        catch (Exception e) when (e is HubException or HttpRequestException or TaskCanceledException)
+        {
+            _connection.Log($"could not fetch a leaderboard gamerpic ({small}): {e.Message}");
+            return null;
         }
     }
 

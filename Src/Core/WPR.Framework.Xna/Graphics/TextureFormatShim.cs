@@ -48,16 +48,31 @@ namespace Microsoft.Xna.Framework.Graphics
 	/// which the swizzle-table binary patch trick cannot reconcile. Managed keeps them identical.
 	/// </para>
 	/// <para>
-	/// <b><see cref="Texture2D.Format"/> keeps reporting what the game asked for.</b> This is the
-	/// opposite of what <c>Texture2DReader</c> does when it decompresses DXT to <c>Color</c>, and
-	/// deliberately so: that reader owns the whole lifecycle of a content texture — it creates it,
-	/// performs the only <c>SetData</c>, and nothing ever reads it back — whereas a texture the
-	/// game constructed has the game sizing its own arrays from <c>Format</c>. Reporting
-	/// <c>Color</c> there is precisely what caused the bug this replaces: an
+	/// <b><see cref="Texture2D.Format"/> keeps reporting what the game asked for.</b> Reporting the
+	/// substitute is precisely what caused the bug this replaces: an
 	/// <c>//Experimental! RnD / TEMP</c> block in <see cref="Texture2D"/>'s constructor rewrote
 	/// <c>Bgra4444</c> to <c>Color</c> without converting anything, so <c>SetData</c>'s
 	/// <c>requiredBytes</c> check saw 4 bytes per pixel against the game's 2, bailed out, and
 	/// uploaded nothing — on every driver and both platforms.
+	/// </para>
+	/// <para>
+	/// <b>DXT is handled here too, and that applies the same rule to content textures.</b> A device
+	/// without BC support (every Adreno and Mali, on either driver) stores <c>Dxt1</c>/<c>Dxt3</c>/
+	/// <c>Dxt5</c> as <c>Color</c>, decompressing on upload. <c>Texture2DReader</c> used to do that
+	/// decompression itself and create the texture <i>as</i> <c>Color</c>, on the reasoning that it
+	/// owned the texture's whole lifecycle and nothing would read the format back. Games do:
+	/// <b>Asphalt 5</b> (issue #43) treats <c>Format == Color</c> as "this is a recolourable car
+	/// body" and builds a CPU pixel buffer only for the first texture it loads that way. Its body
+	/// sheets are genuinely <c>Color</c>, but its interior and wheel sheets are <c>Dxt5</c>; reported
+	/// as <c>Color</c>, the wheel sheet was taken for a body with no pixel buffer, and the recolour
+	/// threw a <c>NullReferenceException</c> on every frame of the race's loading screen, which
+	/// therefore never finished. The format a game sees must be the format it shipped.
+	/// </para>
+	/// <para>
+	/// The DXT direction is upload-only: a DXT texture stored decompressed cannot be read back as
+	/// blocks without a recompressor, so <see cref="CanReadBack"/> says no and
+	/// <c>GetData</c> returns zeros with a warning. Before this, the same read on these devices
+	/// returned RGBA pixels into an array the game had sized for blocks — wrong in a different way.
 	/// </para>
 	/// <para>
 	/// Round-trip is bit-exact, which is the property that matters for a game that reads a texture
@@ -76,6 +91,8 @@ namespace Microsoft.Xna.Framework.Graphics
 		 */
 		private static bool convertPackedShorts = true;
 		private static bool convertBgra8888 = true;
+		private static bool convertDxt1 = true;
+		private static bool convertS3tc = true;
 
 		/// <summary>
 		/// True when at least one format still needs converting on this device, so the common
@@ -83,7 +100,7 @@ namespace Microsoft.Xna.Framework.Graphics
 		/// </summary>
 		internal static bool Enabled
 		{
-			get { return convertPackedShorts || convertBgra8888; }
+			get { return convertPackedShorts || convertBgra8888 || convertDxt1 || convertS3tc; }
 		}
 
 		/// <summary>
@@ -94,10 +111,14 @@ namespace Microsoft.Xna.Framework.Graphics
 		internal static void SetDeviceSupport(
 			bool packedBgraUsable,
 			bool bgra8888Usable,
+			bool dxt1Usable,
+			bool s3tcUsable,
 			string detail
 		) {
 			convertPackedShorts = !packedBgraUsable;
 			convertBgra8888 = !bgra8888Usable;
+			convertDxt1 = !dxt1Usable;
+			convertS3tc = !s3tcUsable;
 
 			/* One line per launch, unconditionally including the "nothing to convert" case:
 			 * "this conversion did not run" and "it ran and did nothing" are otherwise
@@ -107,6 +128,8 @@ namespace Microsoft.Xna.Framework.Graphics
 				"[wpr-texfmt] device texture formats — packed 16-bit (Bgr565/Bgra5551/Bgra4444)=" +
 				Describe(packedBgraUsable) +
 				" BGRA8888=" + Describe(bgra8888Usable) +
+				" Dxt1=" + Describe(dxt1Usable) +
+				" Dxt3/Dxt5=" + Describe(s3tcUsable) +
 				" (" + detail + "); conversion " +
 				(Enabled ? "ENABLED" : "not needed")
 			);
@@ -125,6 +148,8 @@ namespace Microsoft.Xna.Framework.Graphics
 		{
 			convertPackedShorts = true;
 			convertBgra8888 = true;
+			convertDxt1 = true;
+			convertS3tc = true;
 		}
 
 		/// <summary>
@@ -143,9 +168,33 @@ namespace Microsoft.Xna.Framework.Graphics
 				case SurfaceFormat.ColorBgraEXT:
 					return convertBgra8888 ? SurfaceFormat.Color : requested;
 
+				case SurfaceFormat.Dxt1:
+					return convertDxt1 ? SurfaceFormat.Color : requested;
+
+				case SurfaceFormat.Dxt3:
+				case SurfaceFormat.Dxt5:
+					return convertS3tc ? SurfaceFormat.Color : requested;
+
 				default:
 					return requested;
 			}
+		}
+
+		/// <summary>
+		/// True when a texture of <paramref name="requested"/>, stored as
+		/// <paramref name="storage"/>, can be read back in the game's format. False only for a
+		/// block-compressed format stored decompressed: going back would need a DXT encoder.
+		/// </summary>
+		internal static bool CanReadBack(SurfaceFormat requested, SurfaceFormat storage)
+		{
+			return storage == requested || !IsBlockCompressed(requested);
+		}
+
+		private static bool IsBlockCompressed(SurfaceFormat format)
+		{
+			return	format == SurfaceFormat.Dxt1 ||
+				format == SurfaceFormat.Dxt3 ||
+				format == SurfaceFormat.Dxt5;
 		}
 
 		/// <summary>
@@ -158,16 +207,28 @@ namespace Microsoft.Xna.Framework.Graphics
 		}
 
 		/// <summary>
-		/// Converts <paramref name="pixelCount"/> pixels of <paramref name="requested"/> at
-		/// <paramref name="source"/> into 32-bit <see cref="SurfaceFormat.Color"/> (R, G, B, A
-		/// bytes) at <paramref name="destination"/>.
+		/// Converts a <paramref name="width"/> x <paramref name="height"/> rect of
+		/// <paramref name="requested"/> at <paramref name="source"/> into 32-bit
+		/// <see cref="SurfaceFormat.Color"/> (R, G, B, A bytes) at <paramref name="destination"/>,
+		/// which must hold <c>width * height * 4</c> bytes. <paramref name="sourceLength"/> bounds
+		/// the read for the block-compressed formats, whose size is not a whole number of bytes
+		/// per pixel.
 		/// </summary>
 		internal static unsafe void Encode(
 			SurfaceFormat requested,
 			IntPtr source,
+			int sourceLength,
 			IntPtr destination,
-			int pixelCount
+			int width,
+			int height
 		) {
+			if (IsBlockCompressed(requested))
+			{
+				EncodeBlocks(requested, source, sourceLength, destination, width, height);
+				return;
+			}
+
+			int pixelCount = width * height;
 			byte* dst = (byte*) destination;
 
 			if (requested == SurfaceFormat.ColorBgraEXT)
@@ -231,10 +292,47 @@ namespace Microsoft.Xna.Framework.Graphics
 			}
 		}
 
+		/* DXT -> Color through the same decompressor Texture2DReader used before this moved here.
+		 * A short source (a game handing over less than a whole rect of blocks) is padded with
+		 * zeros rather than read past, so the worst it can do is a black tail.
+		 */
+		private static void EncodeBlocks(
+			SurfaceFormat requested,
+			IntPtr source,
+			int sourceLength,
+			IntPtr destination,
+			int width,
+			int height
+		) {
+			int blockBytes = requested == SurfaceFormat.Dxt1 ? 8 : 16;
+			int expected = ((width + 3) / 4) * ((height + 3) / 4) * blockBytes;
+			byte[] blocks = new byte[expected];
+			System.Runtime.InteropServices.Marshal.Copy(
+				source, blocks, 0, Math.Min(expected, Math.Max(sourceLength, 0)));
+
+			byte[] pixels;
+			if (requested == SurfaceFormat.Dxt1)
+			{
+				pixels = DxtUtil.DecompressDxt1(blocks, width, height);
+			}
+			else if (requested == SurfaceFormat.Dxt3)
+			{
+				pixels = DxtUtil.DecompressDxt3(blocks, width, height);
+			}
+			else
+			{
+				pixels = DxtUtil.DecompressDxt5(blocks, width, height);
+			}
+
+			System.Runtime.InteropServices.Marshal.Copy(
+				pixels, 0, destination, width * height * 4);
+		}
+
 		/// <summary>
 		/// The inverse of <see cref="Encode"/>: converts <paramref name="pixelCount"/> pixels of
 		/// 32-bit <see cref="SurfaceFormat.Color"/> back into <paramref name="requested"/>, so a
-		/// game reads back exactly the bits it wrote.
+		/// game reads back exactly the bits it wrote. Not valid for a block-compressed format;
+		/// callers check <see cref="CanReadBack"/> first.
 		/// </summary>
 		internal static unsafe void Decode(
 			SurfaceFormat requested,
