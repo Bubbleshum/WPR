@@ -46,14 +46,26 @@ namespace WPR.Platform.Android.Native
         /// </summary>
         public static void EnsureInitialized(Context context)
         {
+            bool first;
             lock (Gate)
             {
-                if (_Initialized) return;
+                first = !_Initialized;
                 _Initialized = true;
             }
 
-            SetupConfigurationAndDatabase(context);
-            SetupDllPatchForCecil(context);
+            if (first)
+            {
+                SetupConfigurationAndDatabase(context);
+                SetupDllPatchForCecil(context);
+            }
+
+            // Every launcher screen but Start calls this from OnCreate, on the UI thread, and any
+            // of them can be the first screen of a recreated process - so compose the platform
+            // here too, or the hub, transcoder and notifications are simply never registered.
+            // MainActivity calls this from a worker and composes on the UI thread itself
+            // afterwards, so the worker case is deliberately left alone.
+            if (global::Android.OS.Looper.MyLooper() == global::Android.OS.Looper.MainLooper)
+                ServicesSetup.EnsureStarted();
         }
 
         private static void SetupConfigurationAndDatabase(Context context)

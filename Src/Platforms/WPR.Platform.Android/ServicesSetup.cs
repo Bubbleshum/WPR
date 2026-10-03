@@ -8,8 +8,26 @@ namespace WPR.Platform.Android
 {
     public static class ServicesSetup
     {
+        private static bool _Started;
+
+        /// <summary>
+        /// Runs <see cref="Start"/> unless this process has already composed the platform. For the
+        /// launcher screens other than Start: Android can recreate the process straight into any
+        /// of them (typically sign-in, after the browser it opened pushed WPR out of memory), and
+        /// without this nothing was ever composed there, so the hub was missing ("WPR Hub is not
+        /// available in this copy of WPR") along with the transcoder, notifications and vibration.
+        /// A hub that failed to compose because configuration was not loaded yet is retried.
+        /// </summary>
+        public static void EnsureStarted()
+        {
+            if (_Started && WPR.Shell.HubSetup.Current != null) return;
+            Start();
+        }
+
         public static void Start()
         {
+            _Started = true;
+
             // Everything this platform HAS is declared in one place — see AndroidPlatform, which
             // is meant to be read against the Windows head's WindowsPlatform. The composition root
             // turns that into registry writes; this head no longer knows which registries exist.
