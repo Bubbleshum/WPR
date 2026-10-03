@@ -25,9 +25,13 @@ namespace GameRun
             // teardown path (Game.Exit -> Run returns -> ordered teardown -> ALC unload) rather
             // than being killed mid-frame.
             int exitAfter = 0;
+            // Optional: after N seconds, flip Game.IsActive false then true on the game thread -
+            // what a focus loss/gain does (a Guide message box on Android, an alt-tab here).
+            int focusBlip = 0;
             for (int i = 1; i + 1 < args.Length; i++)
             {
                 if (args[i] == "--exit-after") int.TryParse(args[i + 1], out exitAfter);
+                if (args[i] == "--focus-blip") int.TryParse(args[i + 1], out focusBlip);
             }
 
             Configuration.Current = new Configuration(Path.Combine(
@@ -60,6 +64,22 @@ namespace GameRun
                 {
                     Console.Error.WriteLine($"[gamerun] {exitAfter}s elapsed - RequestExit()");
                     host.RequestExit();
+                });
+            }
+
+            if (focusBlip > 0)
+            {
+                Task.Delay(TimeSpan.FromSeconds(focusBlip)).ContinueWith(_ =>
+                {
+                    Microsoft.Xna.Framework.WprGameThread.Post(() =>
+                    {
+                        var g = WPR.ApplicationLaunch.CurrentGame;
+                        var prop = typeof(Microsoft.Xna.Framework.Game).GetProperty("IsActive");
+                        Console.Error.WriteLine("[gamerun] focus blip: IsActive=false");
+                        prop.SetValue(g, false);
+                        Console.Error.WriteLine("[gamerun] focus blip: IsActive=true");
+                        prop.SetValue(g, true);
+                    });
                 });
             }
 

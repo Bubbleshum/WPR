@@ -68,6 +68,8 @@ namespace Microsoft.Xna.Framework.GamerServices
                 profile.Region = System.Globalization.RegionInfo.CurrentRegion;
                 profile.Reputation = 100.0f;
                 profile.Motto = "";
+                profile.IsOtherPlayer = IsOtherPlayer;
+                profile.PictureBytes = PictureBytes;
 
                 if (callback != null)
                 {
@@ -87,6 +89,12 @@ namespace Microsoft.Xna.Framework.GamerServices
         }
 
         public GamerProfile GetProfile() => EndGetProfile(BeginGetProfile(null, null));
+
+        /// <summary>True for a gamer that is not the player on this device (a leaderboard row).</summary>
+        internal virtual bool IsOtherPlayer => false;
+
+        /// <summary>This gamer's picture as encoded image bytes, when it is not the local player's.</summary>
+        internal virtual byte[] PictureBytes => null;
 
         public override string ToString()
         {

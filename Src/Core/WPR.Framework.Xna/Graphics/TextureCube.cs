@@ -179,8 +179,10 @@ namespace Microsoft.Xna.Framework.Graphics
 				TextureFormatShim.Encode(
 					Format,
 					source,
+					sourceLength,
 					staging.AddrOfPinnedObject(),
-					width * height
+					width,
+					height
 				);
 				source = staging.AddrOfPinnedObject();
 				sourceLength = converted.Length;
@@ -243,8 +245,10 @@ namespace Microsoft.Xna.Framework.Graphics
 					TextureFormatShim.Encode(
 						Format,
 						data,
+						dataLength,
 						staging.AddrOfPinnedObject(),
-						width * height
+						width,
+						height
 					);
 					XnaBackend.Graphics.SetTextureDataCube(
 						GraphicsDevice.GLDevice,
@@ -354,7 +358,8 @@ namespace Microsoft.Xna.Framework.Graphics
 
 			/* On OpenGL ES this entry point is a NULL call unconditionally — unlike the 2D one it
 			 * has no render-target diversion to fall into. See TextureReadback. */
-			if (!TextureReadback.CanServeCube())
+			if (	!TextureReadback.CanServeCube() ||
+				!TextureFormatShim.CanReadBack(Format, storageFormat)	)
 			{
 				Array.Clear(data, startIndex, elementCount);
 				TextureReadback.ReportRefusal(

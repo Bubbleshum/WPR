@@ -802,11 +802,28 @@ namespace WPR
                         WprTrace($"[wpr-trace] ApplicationLaunch: boot Activated suppressed for {app.ProductId} (GameLifecycleQuirks)");
                     }
 
+                    // Only the FIRST Game.Activated is the cold start (the one Game.Tick synthesises
+                    // after the first tick). Every later one is a focus regain: an Android resume, a
+                    // desktop alt-tab, or a Guide message box closing. Those are a WP7 resume and must
+                    // raise Activated only. Raising Launching again re-runs the game's cold-start
+                    // handler: Doodle God's restarts its splash, the splash restarts its loader
+                    // thread, and that thread dies in Settings.LoadElementsLoc on a duplicate key
+                    // the moment the player answers NO to its own "quit?" dialog.
+                    bool coldStartDelivered = false;
                     WprTrace("[wpr-trace] ApplicationLaunch: subscribing to obj.Activated");
                     obj.Activated += (obj, args) =>
                     {
-                        WprTrace($"[wpr-trace] ApplicationLaunch: obj.Activated fired -> HandleApplicationStart(true, raiseActivated: {raiseBootActivated})");
-                        PhoneApplicationService.Current!.HandleApplicationStart(true, raiseBootActivated);
+                        if (!coldStartDelivered)
+                        {
+                            coldStartDelivered = true;
+                            WprTrace($"[wpr-trace] ApplicationLaunch: obj.Activated fired -> HandleApplicationStart(true, raiseActivated: {raiseBootActivated})");
+                            PhoneApplicationService.Current!.HandleApplicationStart(true, raiseBootActivated);
+                        }
+                        else
+                        {
+                            WprTrace("[wpr-trace] ApplicationLaunch: obj.Activated fired again -> resume, HandleApplicationStart(false)");
+                            PhoneApplicationService.Current!.HandleApplicationStart(false);
+                        }
                     };
 
                     // FNA only raises Game.Activated when the SDL window receives a focus event.

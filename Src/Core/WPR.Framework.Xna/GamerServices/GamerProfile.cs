@@ -44,8 +44,25 @@ namespace Microsoft.Xna.Framework.GamerServices
         /// 3. <see cref="Stream.Null"/> as a last resort. Callers' inner try/catch around
         ///    FromStream is expected to handle this and skip the picture.
         /// </summary>
+        /// <summary>Set for another player (a leaderboard row): their picture is theirs, never the local one.</summary>
+        internal bool IsOtherPlayer;
+
+        /// <summary>Another player's picture from WPR Hub, as encoded image bytes; null when they have none.</summary>
+        internal byte[] PictureBytes;
+
         public Stream GetGamerPicture()
         {
+            // Another player (a leaderboard row, Zuma's Revenge draws one per entry): their hub
+            // gamerpic, or the bundled default. Falling through to the local player's picture would
+            // put your face beside every name on the board.
+            if (IsOtherPlayer)
+            {
+                if (PictureBytes is { Length: > 0 }) return AtGamerPictureSize(new MemoryStream(PictureBytes, writable: false));
+                IReadOnlyList<string> stock = GamerPictureDefaults.Ids;
+                Stream other = stock.Count > 0 ? GamerPictureDefaults.Open(stock[0]) : null;
+                return other != null ? AtGamerPictureSize(other) : Stream.Null;
+            }
+
             string? configured = Configuration.Current?.EffectiveGamerPicturePath;
             if (!string.IsNullOrEmpty(configured))
             {
@@ -53,12 +70,12 @@ namespace Microsoft.Xna.Framework.GamerServices
                 {
                     string id = GamerPictureDefaults.ExtractId(configured)!;
                     Stream? embedded = GamerPictureDefaults.Open(id);
-                    if (embedded != null) return embedded;
+                    if (embedded != null) return AtGamerPictureSize(embedded);
                     Log.Warn(LogCategory.Common, $"GamerProfile.GetGamerPicture: bundled default '{id}' not found, falling back");
                 }
                 else if (File.Exists(configured))
                 {
-                    try { return File.OpenRead(configured); }
+                    try { return AtGamerPictureSize(File.OpenRead(configured)); }
                     catch (Exception ex) { Log.Warn(LogCategory.Common, $"GamerProfile.GetGamerPicture: failed to open {configured}: {ex.Message}"); }
                 }
             }
@@ -81,10 +98,75 @@ namespace Microsoft.Xna.Framework.GamerServices
             if (defaults.Count > 0)
             {
                 Stream? fallback = GamerPictureDefaults.Open(defaults[0]);
-                if (fallback != null) return fallback;
+                if (fallback != null) return AtGamerPictureSize(fallback);
             }
 
             return Stream.Null;
+        }
+
+        /// <summary>The size of a gamer picture on Windows Phone 7 (and Xbox LIVE of the time).</summary>
+        private const int GamerPictureSize = 64;
+
+        /// <summary>
+        /// Re-encode <paramref name="source"/> as a 64x64 PNG unless it already is one.
+        /// </summary>
+        /// <remarks>
+        /// Every gamer picture a WP7 title ever received was 64x64, and titles draw it at its own
+        /// size: Fruit Ninja puts it on its home screen through <c>Texture2D.FromStream</c> and a
+        /// plain <c>SpriteBatch.Draw</c>, so the hub's 256x256 gamerpic covered a quarter of the
+        /// screen. Scaling here rather than downloading the hub's 64px variant also covers every
+        /// install that already has the 256 file cached, and the bundled defaults. FNA3D's image
+        /// codec is device-independent, so this needs no graphics device. Any failure hands back
+        /// the original bytes: a big picture is better than none.
+        /// </remarks>
+        private static Stream AtGamerPictureSize(Stream source)
+        {
+            MemoryStream original = new MemoryStream();
+            using (source) source.CopyTo(original);
+
+            if (!WPR.Xna.Rhi.XnaBackend.HasGraphics)
+            {
+                original.Position = 0;
+                return original;
+            }
+            var graphics = WPR.Xna.Rhi.XnaBackend.Graphics;
+
+            IntPtr pixels = IntPtr.Zero;
+            try
+            {
+                // Decode at native size and let the PNG writer scale. Do NOT pass forceW/forceH
+                // here: FNA3D_Image_Load's resize path frees stb's SIMD-aligned buffer with plain
+                // SDL_free, which Android's scudo allocator reports as heap corruption and aborts
+                // the process (Fruit Ninja died on launch, 2026-10-03). The write path scales
+                // through an ordinary surface and never frees the caller's buffer, which is the
+                // route Texture2D.SaveAsPng already takes.
+                original.Position = 0;
+                pixels = graphics.ReadImageStream(original, out int width, out int height, out _);
+                if (pixels != IntPtr.Zero && width > 0 && height > 0)
+                {
+                    if (width == GamerPictureSize && height == GamerPictureSize)
+                    {
+                        original.Position = 0;
+                        return original;
+                    }
+                    MemoryStream scaled = new MemoryStream();
+                    graphics.WritePNGStream(scaled, width, height, GamerPictureSize, GamerPictureSize, pixels);
+                    scaled.Position = 0;
+                    return scaled;
+                }
+                Log.Warn(LogCategory.Common, $"GamerProfile.GetGamerPicture: could not decode the picture ({width}x{height}); using it as it is");
+            }
+            catch (Exception ex)
+            {
+                Log.Warn(LogCategory.Common, $"GamerProfile.GetGamerPicture: could not scale the picture: {ex.Message}");
+            }
+            finally
+            {
+                if (pixels != IntPtr.Zero) graphics.FreeImage(pixels);
+            }
+
+            original.Position = 0;
+            return original;
         }
 
         public int GamerScore

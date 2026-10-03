@@ -51,7 +51,11 @@ namespace WPR.Engine.Online
     }
 
     /// <summary>One ranked row. <see cref="IsMe"/> marks the signed-in player's own entry.</summary>
-    public sealed record LeaderboardRow(int Rank, string Username, long Score, bool IsMe, IReadOnlyDictionary<string, string>? Columns);
+    /// <param name="Gamerpic">The player's gamerpic as PNG bytes, or null when they have none or it
+    /// could not be fetched. Fetched before the page is handed back, because games ask for it
+    /// synchronously from their draw code.</param>
+    public sealed record LeaderboardRow(int Rank, string Username, long Score, bool IsMe, IReadOnlyDictionary<string, string>? Columns,
+        byte[]? Gamerpic = null);
 
     /// <param name="Rows">This page, best first.</param>
     /// <param name="TotalPlayers">Everyone on the board, not just this page.</param>

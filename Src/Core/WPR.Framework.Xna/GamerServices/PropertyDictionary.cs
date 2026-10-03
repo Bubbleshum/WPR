@@ -128,9 +128,15 @@ namespace Microsoft.Xna.Framework.GamerServices
             // Absent key, or a property holding no value -> default(T). Convert.ChangeType would
             // throw on null. See the note on GetValueStream.
             object value = property?.GetValue();
-            return value == null
-                ? default(T)
-                : (T)Convert.ChangeType(value, typeof(T), (IFormatProvider)CultureInfo.InvariantCulture);
+            if (value == null) return default(T);
+
+            // Leaderboard columns from WPR Hub arrive as longs, and games read most of them with
+            // GetValueInt32. A score past int range would otherwise throw out of the game's own
+            // leaderboard callback; clamp it instead.
+            if (typeof(T) == typeof(int) && value is long wide)
+                return (T)(object)(int)Math.Clamp(wide, int.MinValue, int.MaxValue);
+
+            return (T)Convert.ChangeType(value, typeof(T), (IFormatProvider)CultureInfo.InvariantCulture);
         }
 
         public void SetValue(string key, int value) => this.SetTypedValue<int>(key, value);
