@@ -63,8 +63,25 @@ public sealed class HubClient : IDisposable
         {
             await Task.Delay(interval, ct).ConfigureAwait(false);
 
-            using var res = await _http.PostAsJsonAsync("api/device/token", new { device_code = code.DeviceCode }, HubJson.Options, ct)
-                .ConfigureAwait(false);
+            // A dropped connection is not an answer, so poll again. The player is in the browser
+            // approving the key for the whole wait, and on Android that puts WPR in the background,
+            // where the OS may cut its sockets ("Software caused connection abort") or the network
+            // may change underneath it. Failing here threw away a key the player was in the middle
+            // of approving; the next poll still collects the token once they have.
+            HttpResponseMessage res;
+            try
+            {
+                res = await _http.PostAsJsonAsync("api/device/token", new { device_code = code.DeviceCode }, HubJson.Options, ct)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested
+                                       && ex is HttpRequestException or IOException or TaskCanceledException)
+            {
+                // TaskCanceledException without our token cancelled is HttpClient's own timeout.
+                continue;
+            }
+
+            using HttpResponseMessage response = res;
 
             if (res.IsSuccessStatusCode)
             {
