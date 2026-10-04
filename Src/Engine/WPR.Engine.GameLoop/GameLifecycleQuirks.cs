@@ -57,6 +57,19 @@ namespace WPR.Engine.GameLoop
                 // Battlewagon needs, so the flag cannot be changed to !anew — the two titles
                 // want opposite answers from one signal, which is what this table is for.
                 "bd6d46cf-4177-4de0-93c3-610f450fc403",
+
+                // AE 3D Motor (bb5f1317…, AE Mobile). A third shape: the Activated handler is a
+                // tombstone RESTORE. ThreeDMotoGame_PhoneApplicationServiceActivated does
+                // Screens.Clear(), then reads the VariableBank its Deactivated handler saved and
+                // dereferences it. At a cold start nothing was saved, so it NREs straight after
+                // the Clear() — taking with it the SplashScreen that Launching had just added,
+                // and never adding its own. The screen stack is left empty: a white window, two
+                // draw calls a frame, and no exception escaping anything (PhoneApplicationService
+                // swallows it). A genuine resume still works, because Deactivated saved the bank.
+                // Archer and Funny Bounce ship the same AEMobile.WP7.GameFramework, but Archer
+                // never subscribes the framework's PhoneApplicationServiceActivated, so this is
+                // the title's handler and not the framework's.
+                "bb5f1317-735d-4e60-a100-9c3f1692ee7c",
             };
 
         /// <summary>

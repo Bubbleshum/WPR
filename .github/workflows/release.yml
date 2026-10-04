@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version, e.g. 0.1.0 (no leading v). Overrides $(WprVersion) from Src/Directory.Build.props."
+        description: "Version, e.g. 0.1.0 (no leading v). Overrides $(WprVersion) from Src/Directory.Build.props (never pass it as -p:Version)."
         required: true
         type: string
       android_version_code:
@@ -95,6 +95,14 @@ jobs:
       #
       # A plain `dotnet build` does not reproduce it: no RID, no runtime pack, no failure. Only
       # this publish does. The android leg is built by the android job, which has the workload.
+      #
+      # The version goes in as -p:WprVersion, NEVER -p:Version. A command-line property is
+      # global: it beats every project's own <Version>, including the ones that are part of a
+      # WP7 assembly identity (Microsoft.Phone and Microsoft.Devices.Sensors 8.0.0, System.Device
+      # 2.0.5.0). With -p:Version=0.2.02 the release shipped Microsoft.Phone 0.2.2.0; a game
+      # asking for Microsoft.Phone 7.0.0.0 then cannot bind a LOWER version, and dies with
+      # FileNotFoundException at its first Microsoft.Phone type (issue #63: Gravity Guy and
+      # iStunt 2). Only the heads read $(WprVersion), so this sets the product version alone.
       - name: Publish (self-contained win-x64)
         shell: pwsh
         run: >
@@ -105,7 +113,7 @@ jobs:
           --self-contained true
           -o publish/desktop
           -p:SolutionDir=${{ github.workspace }}/Src/
-          -p:Version=${{ needs.validate.outputs.version }}
+          -p:WprVersion=${{ needs.validate.outputs.version }}
           -p:IncludeAndroidTargets=false
           -maxcpucount:1
           -nodeReuse:false

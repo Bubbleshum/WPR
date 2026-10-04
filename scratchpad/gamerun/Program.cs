@@ -28,8 +28,11 @@ namespace GameRun
             // Optional: after N seconds, flip Game.IsActive false then true on the game thread -
             // what a focus loss/gain does (a Guide message box on Android, an alt-tab here).
             int focusBlip = 0;
+            string script = null, outDir = null;
             for (int i = 1; i + 1 < args.Length; i++)
             {
+                if (args[i] == "--script") script = args[i + 1];
+                if (args[i] == "--out") outDir = args[i + 1];
                 if (args[i] == "--exit-after") int.TryParse(args[i + 1], out exitAfter);
                 if (args[i] == "--focus-blip") int.TryParse(args[i + 1], out focusBlip);
             }
@@ -58,6 +61,15 @@ namespace GameRun
             Console.Error.WriteLine("[gamerun] achievement store registered");
 
             var host = new FnaGameHost(app);
+            if (script != null)
+            {
+                // Before RunAsync: the host wraps its input backend with the synthetic-touch
+                // injector only when a keyboard-emulation host is registered at that point.
+                var s = new Script(script, outDir ?? Path.Combine(Path.GetTempPath(), "gamerun-shots"), () => host.PressBackButton());
+                WPR.Xna.Rhi.XnaBackend.SetKeyboardEmulation(s);
+                WPR.Engine.Sensors.SensorBackend.SetAccelerometer(s);
+                Console.Error.WriteLine("[gamerun] script registered");
+            }
             if (exitAfter > 0)
             {
                 Task.Delay(TimeSpan.FromSeconds(exitAfter)).ContinueWith(_ =>

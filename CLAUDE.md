@@ -1376,7 +1376,7 @@ Nothing can be learned inside such a launch. It can only be learned across one �
 | stage | site |
 | --- | --- |
 | decide | `AndroidPlatform.ChosenGraphicsDriver()` — "this device cannot do Vulkan" is a fact about the device, which is what a `PlatformDescriptor` states |
-| mark attempting | `FnaGameHost.RunAsync`, immediately after `GraphicsDriverSelection.Apply` |
+| mark attempting | `FnaPlatformBackend.CreateWindow`, first call (FNA3D's first contact with the driver); `FnaGameHost` passes it the requested driver |
 | mark working | `FnaGraphicsBackend.SwapBuffers`, first call only |
 
 All three already sat in assemblies referencing `WPR.Engine.Graphics`, so this needed **no new
@@ -1413,11 +1413,85 @@ Four more things that are deliberate:
   Its own line-based file beside `fna3d_driver.txt`, readable with `adb shell cat`.
 - **An unparseable file reads as "no verdict".** The worst a torn write can do is let the preferred
   driver be tried again; this file may cost a device its first choice, never its only one.
+- **The mark goes down at the first window creation, not at the start of the launch
+  (2026-10-04).** `ApplicationLaunch.Start` refuses a Silverlight UI app or a native WinRT app
+  before any `Game` exists, so such a launch never touches the driver and never presents a frame.
+  Marked at the top of `FnaGameHost.RunAsync`, it left a pending mark, and once strikes became
+  sticky one tap on an unsupported title condemned Vulkan for good. Seen on the S24 the day 0.2.03
+  was built: every later game ran on OpenGL, where Doodle God then crashed. Anything new that can
+  end a launch must either come after `CreateWindow` or not care about the probe.
 
 **What it cannot see**, and this is not a gap to be closed by tuning it: a driver that initialises,
 presents, and dies a minute later is marked working at frame one and never demoted. **3D Brick
 Breaker Revolution is exactly that case** — see the descriptor-pool section below. The Settings
 picker remains the answer there; the two mechanisms are complementary and neither replaces the other.
+
+**A strike is sticky (2026-10-04, issue #51).** The first version stored only the LAST launch, so the
+demotion undid itself: Vulkan dies pending → next launch OpenGL → its first frame writes `ok` over
+the mark → the launch after is Vulkan again. Every other launch crashed. A driver that leaves a
+pending mark is now written as `condemned=<driver>` and carried through every later write until that
+driver itself presents a frame, `Clear()` (the Settings picker), or the device key changes. The key
+is now `Build.FINGERPRINT + "|wpr " + versionName`, so a WPR update — which may carry the fix —
+retries Vulkan. Recognise a repeat in a logging-run report by `driver=` alternating between runs.
+
+**FNA3D's Vulkan driver now asks before enabling optional features (2026-10-04, issue #51).**
+`VULKAN_INTERNAL_CreateLogicalDevice` turned on `occlusionQueryPrecise`, `fillModeNonSolid` and
+`samplerAnisotropy` unconditionally; a Mali-G57-class phone (realme RMX3938) lacks one, so
+`vkCreateDevice` returned `VK_ERROR_FEATURE_NOT_PRESENT` and **no** game could create a device. Each
+is now enabled only when `vkGetPhysicalDeviceFeatures` reports it, with a fallback at its one use
+site (wireframe → solid fill, anisotropic → linear, precise → imprecise query), and FNA3D logs
+`Vulkan device lacks optional features: …` once. `libFNA3D.so` rebuilt for all three ABIs (swizzle
+check passes); **the Windows `FNA3D.dll` was not**, which only matters for forced Vulkan on desktop.
+Not run on a Mali device yet: no device here lacks these features.
+
+**FNA3D's GL driver gives worker threads their own shared contexts on Android (2026-10-04).**
+Bejeweled Live+ deadlocked on OpenGL: its `ResourceManager.LoadingProc` thread holds the manager's
+lock while `ContentManager.Load` → `CreateTexture2D` waits in `ForceToMainThread`'s queue, and
+`GameMain.Update` → `ResourceManager.LoadImage` blocks on that lock, so no swap ever drains the queue
+(the "game thread blocks on the worker" case under "A suppressed draw starves FNA3D's off-thread
+command queue"). Now `ForceToMainThread` first tries a pool of **two** contexts created at device
+creation with `SDL_GL_SHARE_WITH_CURRENT_CONTEXT`: the worker borrows one, runs the same command via
+`FNA3D_ExecuteCommand`, `glFinish()`es and releases it. Only texture create/upload (2D, 3D, cube)
+and vertex/index buffer create/upload go there; effects (MojoShader is not thread-safe), readbacks
+(FBOs are not shared) and renderbuffers keep the queue. Things that are load-bearing:
+
+- **Surfaceless `eglMakeCurrent`, called directly through `SDL_LoadObject("libEGL.so")`.** EGL lets a
+  window surface be current on one thread only, and SDL's Android `GLES_MakeCurrent` turns
+  `(NULL window, ctx)` into `(NULL, NULL)`, so `SDL_GL_MakeCurrent` cannot do it. Needs
+  `EGL_KHR_surfaceless_context`; if the call fails the pool disables itself and the queue carries on.
+- **A thread-local flag (`OPENGL_INTERNAL_OnWorkerContext`) does two jobs**: it lets the re-entered
+  function past its `threadID` check, and it makes `BindTexture`/`BindVertexBuffer`/`BindIndexBuffer`
+  bind raw instead of touching the renderer's binding cache, which describes the DEVICE context.
+- **`__ANDROID__` only.** Desktop would need WGL/GLX `MakeCurrent` instead, and `FNA3D.dll` cannot be
+  rebuilt here. `FNA3D_OPENGL_WORKER_CONTEXTS=0` disables it, but it must reach the native environ:
+  `setprop debug.mono.env` did NOT (the pool still came up), so an A/B needs a rebuilt `.so`.
+- **Known gap:** a worker updating a texture the device context already has bound may not be seen
+  until it is re-bound (GL's cross-context visibility rule). Loading creates new textures, so this
+  has not shown up.
+
+Verified on the `WPR_Verify` emulator (`OpenGL ES 3.1` translator), Release APK, OpenGL forced:
+log line `OpenGL worker contexts: 2`, Bejeweled Live+ menu → Classic → live board → a scored match.
+A/B with the pool off: Bejeweled black (hung). The Treasures of Montezuma (clear colour only) and
+Galactic Reign (black) look **identical with the pool on and off** on that emulator's GL, so their GL
+problem is separate and pre-existing. One run of Galactic Reign after Montezuma reported a crash
+that five repeats, including that exact sequence, did not reproduce.
+
+**Update, same day: that "separate problem" was FNA3D trusting stub entry points on ES (issue #62).**
+`GL_PROC_EXT` marks a feature supported when `SDL_GL_GetProcAddress` returns non-NULL, but Android's
+`eglGetProcAddress` may return a stub for an unimplemented function — the emulator's logs
+`E libEGL: called unimplemented OpenGL ES API` and does nothing. On the emulator (ES **3.1**) that
+made `supports_ARB_draw_elements_base_vertex` true, so every indexed draw with a base vertex drew
+nothing: Archer black, Montezuma clear-colour only, Galactic Reign black. `OPENGL_INTERNAL_VerifyESCapabilities`
+(called in `LoadEntryPoints` when `useES3`) now requires ES 3.2 or `GL_OES/EXT_draw_elements_base_vertex`
+for base-vertex draws (the attribute-offset fallback already existed) and forces `supports_NonES3`
+/ `supports_NonES3NonCore` to 0. `glColorMaski` (ES 3.2 too) was deliberately left alone: it is
+called behind an `SDL_assert` only, so a stub is safer than NULL. **The recogniser: the stub message
+roughly once a second, from the render thread, on a game that shows nothing on GL** — and a native
+`debuggerd -b` showing the render thread in `OPENGL_SwapBuffers` → `dequeueBuffer` is a symptom of
+that, not a cause. Verified: Archer title screen and Montezuma main menu on emulator GL, zero stub
+messages, Bejeweled still plays. **Galactic Reign's crash is unrelated**: a stack overflow in its own
+`ScreenManager.DoNavigation` → `DispatchHelper.Dispatch` → our inline `Dispatcher.BeginInvoke` loop,
+seen on either driver, ~2 in 9 launches.
 
 ### Capabilities, not driver names (2026-09-18)
 
@@ -3468,6 +3542,22 @@ its `Launching` handler. Its `Activated` handler is guarded by `_1719 == null`, 
 `Activated` is a no-op once the menu exists. Backgrounding during the ~1 s splash (before the
 menu exists) would still run init twice, but WP7 would do the same, and nobody has reported it.
 
+**The pre-`Run` priming pass is skipped for a game that already owns a device (2026-10-04).**
+`ApplicationLaunch` raises the cold start twice as a rule: a "priming" `HandleApplicationStart(true)`
+before `Game.Run`, then again on the first synthesised `Activated`. A game that calls
+`GraphicsDeviceManager.ApplyChanges()` in its constructor already has a device at the priming
+point, and `Game.Run` disposes it and creates the real one (`IGraphicsDeviceManager.CreateDevice`
+recreates from scratch, as XNA's did). Anything its `Launching` handler loaded is then on a freed
+device, and the first draw that samples it is an **access violation in `FNA3D_VerifySampler`**,
+reported as `Fatal error. 0xC0000005` with no managed exception. **AE 3D Motor** (`bb5f1317…`) is
+the reference case: `Launching` pushes a `SplashScreen` that loads its textures at once. Such games
+now get `Launching` once, after the first frame (`[wpr-trace] … skipping the pre-Run lifecycle
+priming`). Measured over the installed library: AE 3D Motor, ilomilo, Mirror's Edge, Skulls of the
+Shogun and Tower Bloxx New York create a device in a constructor; ilomilo and Skulls subscribe to
+the lifecycle, harmlessly, and all five run. AE 3D Motor is also in `GameLifecycleQuirks`: its
+`Activated` handler is a tombstone restore that clears the screen stack and then NREs on a saved
+`VariableBank` that does not exist at a cold start, which is a white screen.
+
 ### Launching one game without the launcher UI
 
 Driving the Avalonia list to reproduce a game bug is slow and stops working the moment the
@@ -3486,6 +3576,20 @@ workstation locks. A ~60-line console app that references `WPR.Backend.FNA` + `W
 achievements or the keyboard tilt emulator. `FNA3D_FORCE_DRIVER=<name>` in the parent shell is
 inherited by the child, which is how another head's driver gets reproduced on Windows — set it to
 `Vulkan` to run what Android runs, or `OpenGL` to reach the GL-only failure modes.
+
+### `Type.GetType` from a game resolves through the runtime's parser (2026-10-04)
+
+`WPR.WindowsCompability.Type2.GetType`, the target of every patched `Type.GetType(string, bool)`,
+split the name on commas and stepped through the pieces four at a time. A generic argument carries
+its own assembly-qualified name inside `[[…]]`, so it rebuilt
+``List`1[[Microsoft.Xna.Framework.Vector2, Microsoft.Xna.Framework, …]], mscorlib, …`` as
+`…Vector2, FNA, mscorlib` and the runtime threw `FileLoadException: 'FNA,  mscorlib'`. **Skulls of
+the Shogun** died on it loading `Content/Maps/Overworld Map/Overworld_Map.apt` (SharpSerializer).
+It also mapped XNA assembly names to `FNA`, which defines no XNA type since the spine move. Now
+`Type.GetType(name, assemblyResolver, typeResolver)` does the parsing: XNA names resolve to
+`WPR.Framework.Xna`, others by simple name in the caller's ALC, then every ALC, then the Default
+binder (which maps WP7's `mscorlib, Version=2.0.5.0`). `Type2Tests` covers the shapes. Eight
+installed titles call it; all that the harness can run still start. Shim behaviour, no patcher bump.
 
 ### Isolated storage always opens shared (patcher v20)
 

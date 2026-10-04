@@ -27,6 +27,15 @@ namespace WPR.Engine.Graphics
     /// they would have to force-close inside that window. If a real device ever argues otherwise,
     /// the knob is to require N consecutive pendings rather than one.</para>
     ///
+    /// <para><b>A strike is sticky (2026-10-04, issue #51).</b> The first version kept only the
+    /// LAST launch, so the demotion undid itself: Vulkan dies pending, the next launch runs OpenGL,
+    /// its first frame writes "ok" over the pending mark, and the launch after that is back on
+    /// Vulkan. Every other launch crashed, on a Mali-G57 phone whose Vulkan driver could not create
+    /// a device at all. A driver that leaves a pending mark is now recorded as <c>condemned</c>, and
+    /// that line is carried through every later write until the condemned driver itself presents a
+    /// frame (only possible through an explicit choice, which is the user saying it works), until
+    /// <see cref="Clear"/>, or until the device key changes.</para>
+    ///
     /// <para><b>What it cannot see.</b> A driver that initialises, presents, and dies a minute
     /// later while drawing the actual scene is marked working at frame one and never demoted. That
     /// class of device is what the user-facing graphics setting exists for; the two mechanisms are
@@ -97,19 +106,17 @@ namespace WPR.Engine.Graphics
                     deviceKey = _deviceKey;
                 }
 
-                ProbeRecord? record = Read(directory);
-                if (record == null || !record.Value.IsPending)
-                {
-                    return null;
-                }
-
                 /* A verdict earned on a different system image says nothing about this one. */
-                if (!string.Equals(record.Value.Device, deviceKey, StringComparison.Ordinal))
+                ProbeRecord? record = SameDevice(Read(directory), deviceKey);
+                if (record == null)
                 {
                     return null;
                 }
 
-                return string.IsNullOrEmpty(record.Value.Requested) ? null : record.Value.Requested;
+                /* The condemned driver first: it is the one that failed and has not worked since,
+                 * whatever the last launch ran on. */
+                return record.Value.Condemned
+                       ?? (record.Value.IsPending ? record.Value.Requested : null);
             }
         }
 
@@ -138,9 +145,12 @@ namespace WPR.Engine.Graphics
                 ? "(automatic)"
                 : record.Value.Requested!;
 
-            return record.Value.IsPending
+            string last = record.Value.IsPending
                 ? "last launch asked for " + requested + " and never presented a frame"
                 : "last launch ran on " + actual + " (asked for " + requested + ")";
+            return record.Value.Condemned == null
+                ? last
+                : last + "; " + record.Value.Condemned + " failed earlier and is avoided";
         }
 
         /// <summary>
@@ -162,7 +172,17 @@ namespace WPR.Engine.Graphics
                 _markedWorking = false;
             }
 
-            Write(directory, deviceKey, requestedDriver, actual: null, pending: true);
+            /* The previous record is read before it is replaced: if that launch never presented a
+             * frame, this is the moment its driver becomes condemned, and the condemnation has to
+             * outlive the record that proved it. */
+            ProbeRecord? previous = SameDevice(Read(directory), deviceKey);
+            string? condemned = previous?.Condemned;
+            if (previous != null && previous.Value.IsPending && previous.Value.Requested != null)
+            {
+                condemned = previous.Value.Requested;
+            }
+
+            Write(directory, deviceKey, requestedDriver, actual: null, pending: true, condemned);
         }
 
         /// <summary>
@@ -197,10 +217,19 @@ namespace WPR.Engine.Graphics
                 deviceKey = _deviceKey;
             }
 
-            ProbeRecord? record = Read(directory);
+            ProbeRecord? record = SameDevice(Read(directory), deviceKey);
             string? requested = record?.Requested;
 
-            Write(directory, deviceKey, requested, actualDriver, pending: false);
+            /* A frame from the condemned driver itself clears the condemnation: it only runs here
+             * now when someone chose it explicitly, and it has just shown that it works. */
+            string? condemned = record?.Condemned;
+            if (condemned != null &&
+                string.Equals(condemned, actualDriver, StringComparison.OrdinalIgnoreCase))
+            {
+                condemned = null;
+            }
+
+            Write(directory, deviceKey, requested, actualDriver, pending: false, condemned);
         }
 
         /// <summary>
@@ -239,19 +268,29 @@ namespace WPR.Engine.Graphics
 
         private readonly struct ProbeRecord
         {
-            internal ProbeRecord(string? device, string? requested, string? actual, bool isPending)
+            internal ProbeRecord(
+                string? device, string? requested, string? actual, bool isPending, string? condemned)
             {
                 Device = device;
                 Requested = requested;
                 Actual = actual;
                 IsPending = isPending;
+                Condemned = condemned;
             }
 
             internal string? Device { get; }
             internal string? Requested { get; }
             internal string? Actual { get; }
             internal bool IsPending { get; }
+            internal string? Condemned { get; }
         }
+
+        /* A record from another device key is treated as absent, so nothing is carried across a
+         * firmware (or WPR) update. */
+        private static ProbeRecord? SameDevice(ProbeRecord? record, string? deviceKey) =>
+            record != null && string.Equals(record.Value.Device, deviceKey, StringComparison.Ordinal)
+                ? record
+                : null;
 
         /* Line-based rather than JSON on purpose. This project has no package references at all and
          * GraphicsDriverPreference already reads its override file with a bare File.ReadAllText, so
@@ -276,6 +315,7 @@ namespace WPR.Engine.Graphics
                 string? requested = null;
                 string? actual = null;
                 string? verdict = null;
+                string? condemned = null;
 
                 foreach (string line in File.ReadAllLines(path))
                 {
@@ -292,6 +332,7 @@ namespace WPR.Engine.Graphics
                     else if (key == "requested") requested = value;
                     else if (key == "actual") actual = value;
                     else if (key == "verdict") verdict = value;
+                    else if (key == "condemned") condemned = value;
                 }
 
                 if (verdict == null)
@@ -303,7 +344,8 @@ namespace WPR.Engine.Graphics
                     device,
                     Blank(requested),
                     Blank(actual),
-                    string.Equals(verdict, VerdictPending, StringComparison.Ordinal));
+                    string.Equals(verdict, VerdictPending, StringComparison.Ordinal),
+                    Blank(condemned));
             }
             catch (Exception)
             {
@@ -319,7 +361,8 @@ namespace WPR.Engine.Graphics
             string? deviceKey,
             string? requested,
             string? actual,
-            bool pending)
+            bool pending,
+            string? condemned)
         {
             if (directory == null)
             {
@@ -332,7 +375,8 @@ namespace WPR.Engine.Graphics
                     "device=" + (deviceKey ?? "") + "\n" +
                     "requested=" + (requested ?? "") + "\n" +
                     "actual=" + (actual ?? "") + "\n" +
-                    "verdict=" + (pending ? VerdictPending : VerdictWorking) + "\n";
+                    "verdict=" + (pending ? VerdictPending : VerdictWorking) + "\n" +
+                    "condemned=" + (condemned ?? "") + "\n";
 
                 /* Temp-then-replace so a process that dies mid-write cannot leave a file that
                  * parses into a verdict nobody reached. */

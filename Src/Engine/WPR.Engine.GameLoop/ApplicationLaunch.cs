@@ -833,14 +833,39 @@ namespace WPR
                     // the game then sits on a "not initialised" black screen because its
                     // Application_Launching handler is where it builds its scene graph.
                     // Fire the lifecycle once, unconditionally, right at startup as a safety net.
-                    WprTrace($"[wpr-trace] ApplicationLaunch: priming PhoneApplicationService.HandleApplicationStart(true, raiseActivated: {raiseBootActivated}) before Game.Run");
-                    try
+                    //
+                    // Not when the game already owns a GraphicsDevice. A title that calls
+                    // GraphicsDeviceManager.ApplyChanges() in its constructor gets a device there,
+                    // and Game.Run disposes it and creates the real one (IGraphicsDeviceManager.
+                    // CreateDevice recreates from scratch, as XNA's did). Anything a Launching
+                    // handler loads here would sit on the doomed device, and the first draw that
+                    // samples it is an access violation inside FNA3D_VerifySampler, not an
+                    // exception. AE 3D Motor is the reference case: its Launching handler pushes a
+                    // SplashScreen that loads its textures straight away. The post-first-tick
+                    // Activated below still delivers the cold start, once, on the device the game
+                    // keeps, which is also the only time WP7 itself ever raised Launching. Measured
+                    // 2026-10-04: of the installed library, AE 3D Motor, ilomilo, Skulls of the
+                    // Shogun, Mirror's Edge and Tower Bloxx New York create a device in a
+                    // constructor; only ilomilo (Launching just logs) and Skulls (Activated with
+                    // preserved=true only sets a flag) subscribe to the lifecycle at all.
+                    bool ownsDeviceBeforeRun =
+                        (obj.Services.GetService(typeof(Microsoft.Xna.Framework.Graphics.IGraphicsDeviceService))
+                            as Microsoft.Xna.Framework.Graphics.IGraphicsDeviceService)?.GraphicsDevice != null;
+                    if (ownsDeviceBeforeRun)
                     {
-                        PhoneApplicationService.Current!.HandleApplicationStart(true, raiseBootActivated);
+                        WprTrace("[wpr-trace] ApplicationLaunch: game created its GraphicsDevice in its constructor; skipping the pre-Run lifecycle priming (Run recreates the device)");
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        WprTrace("[wpr-ex] HandleApplicationStart priming threw: " + ex);
+                        WprTrace($"[wpr-trace] ApplicationLaunch: priming PhoneApplicationService.HandleApplicationStart(true, raiseActivated: {raiseBootActivated}) before Game.Run");
+                        try
+                        {
+                            PhoneApplicationService.Current!.HandleApplicationStart(true, raiseBootActivated);
+                        }
+                        catch (Exception ex)
+                        {
+                            WprTrace("[wpr-ex] HandleApplicationStart priming threw: " + ex);
+                        }
                     }
 
                     // The last backend hook before Run. On FNA this is where the WP7 orientation

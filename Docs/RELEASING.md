@@ -29,14 +29,15 @@ installed on the runner.
 ## Where the version number lives
 
 **One place: `<WprVersion>` in [`Src/Directory.Build.props`](../Src/Directory.Build.props).**
-It is currently `0.1.0`. Everything else derives from it:
+It is bumped to the release being worked towards (the comment above it lists every bump).
+Everything else derives from it:
 
 | Consumer | How |
 | --- | --- |
 | Windows exe | `$(Version)` + `$(InformationalVersion)` (`<WprVersion>-<WprVersionSuffix>`) |
 | Windows UI | `AppVersion.Display` reads `InformationalVersion` back at runtime — the window title and About page are **not** hardcoded |
 | Android APK | `$(ApplicationDisplayVersion)` → `android:versionName` |
-| Release build | `release.yml` overrides `-p:Version` / `-p:ApplicationDisplayVersion` from the `version` input |
+| Release build | `release.yml` overrides `-p:WprVersion` (desktop; never `-p:Version`, which would also rewrite the WP7 assembly identities) / `-p:ApplicationDisplayVersion` (Android) from the `version` input |
 
 So a release does **not** require editing any file — type the version into the workflow. Bump
 `WprVersion` anyway so local builds report what you are working towards.
