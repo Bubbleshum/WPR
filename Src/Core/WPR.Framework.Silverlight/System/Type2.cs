@@ -16,36 +16,37 @@ namespace WPR.WindowsCompability
                 throw new ArgumentNullException("Type name is null!");
             }
 
-            var stuffs = typeName.Split(',');
-            if (stuffs.Length >= 2)
+            // Look the caller up HERE: this method is NoInlining, so the calling assembly is the
+            // game code whose Type.GetType call the patcher redirected to us.
+            Assembly? caller = null;
+            try
             {
-                bool patched = false;
-                for (int i = 1; i < stuffs.Length; i += 4)
-                {
-                    if (stuffs[i].Contains("Microsoft.Xna.Framework"))
-                    {
-                        if (!stuffs[i].Equals("Microsoft.Xna.Framework.GamerServices"))
-                        {
-                            stuffs[i] = "FNA";
-                            patched = true;
-                        }
-                    }
-                }
-                if (patched)
-                {
-                    typeName = stuffs[0];
-                    for (int i = 1; i < stuffs.Length; i += 4)
-                    {
-                        typeName += $", {stuffs[i]}";
-                    }
-                }
+                caller = Assembly.GetCallingAssembly();
             }
+            catch { /* every lookup below degrades to the unordered scan */ }
 
-            // If the type is assembly-qualified, search every loaded ALC for an assembly
-            // matching the simple name and look the type up via Assembly.GetType — a pure
-            // managed lookup that doesn't trigger the CLR's cross-ALC collectibility
-            // check. Falling through to Type.GetType has the binder treat *some* assembly
-            // up the stack as the "requesting assembly":
+            // An assembly-qualified name is resolved by the runtime's own type-name parser, with
+            // WPR supplying the assembly for every name in it. The parser is the only thing that
+            // gets nesting right: a generic argument carries its own assembly-qualified name in
+            // [[...]], so commas do not delimit anything on their own. The hand-rolled split this
+            // replaces assumed "type, assembly, version, culture, token" and stepped through the
+            // pieces four at a time; given
+            //   List`1[[Microsoft.Xna.Framework.Vector2, Microsoft.Xna.Framework, Version=…,
+            //   Culture=…, PublicKeyToken=…]], mscorlib, Version=…
+            // it glued the pieces back together as "List`1[[…Vector2, FNA, mscorlib", which the
+            // runtime rejects as "The given assembly name was invalid. File name: 'FNA,  mscorlib'".
+            // Skulls of the Shogun is the reference case: its SharpSerializer world map
+            // (Content/Maps/Overworld Map/Overworld_Map.apt) names exactly that type, and the
+            // unhandled throw on its loading thread killed the game at the first map.
+            //
+            // It also renamed the XNA assemblies to "FNA", which has been wrong since the spine
+            // relocation: FNA defines no XNA API at all now, and every Microsoft.Xna.Framework.*
+            // type a game can name lives in WPR.Framework.Xna (see the resolver below).
+            //
+            // WPR hands the parser the Assembly objects itself and the type is then looked up with
+            // Assembly.GetType — a pure managed lookup that doesn't trigger the CLR's cross-ALC
+            // collectibility check. Letting the binder load the assemblies has it treat *some*
+            // assembly up the stack as the "requesting assembly":
             //
             //  - When the caller is the main user DLL (collectible userAlc), Type.GetType
             //    sees this method's assembly (WPR.WindowsCompability — non-collectible,
@@ -56,46 +57,31 @@ namespace WPR.WindowsCompability
             //    Type.GetType again routes through Default ALC's resolver, which returns
             //    the userAlc-loaded assembly, and the CLR rejects the resulting Default→
             //    userAlc reference. The Krome→AsteroidsDeluxe crash is this case.
-            //
-            // Searching AssemblyLoadContext.All catches both: we hand back the right
-            // Assembly object and call .GetType on it directly, bypassing the binder.
-            int commaIdx = typeName.IndexOf(',');
-            if (commaIdx >= 0)
+            if (typeName.IndexOf(',') >= 0)
             {
-                string typeOnly = typeName.Substring(0, commaIdx).Trim();
-                string asmSimpleName = typeName.Substring(commaIdx + 1).Trim().Split(',')[0].Trim();
-
-                // Resolve against the CALLER's own ALC first. Matching on simple name
-                // across every ALC in the process is unsafe: when two games are resident
-                // at once, each ships its own copy of a common dependency (e.g.
-                // SkinnedModel) under the same simple name but a different version and
-                // contents. A blind AssemblyLoadContext.All scan can hand ilomilo
-                // Ghostscape's SkinnedModel 1.0.0.1 — which has no PAnimTrigger and a
-                // different AnimationClip.Read — so the lookup throws TypeLoadException /
-                // MissingMethodException against the wrong assembly. Searching the
-                // requesting assembly's ALC first binds the sibling that actually shipped
-                // with the caller; the broad All scan stays only as the cross-ALC
-                // fallback (a Default-ALC helper resolving a type in the collectible user
-                // assembly — see the Krome -> AsteroidsDeluxe note above).
                 AssemblyLoadContext? callerAlc = null;
                 try
                 {
-                    callerAlc = AssemblyLoadContext.GetLoadContext(Assembly.GetCallingAssembly());
+                    if (caller != null) callerAlc = AssemblyLoadContext.GetLoadContext(caller);
                 }
-                catch { /* fall through to the unordered scan below */ }
+                catch { /* fall through to the unordered scan */ }
 
-                if (callerAlc != null)
+                Type? resolved = null;
+                try
                 {
-                    var t = FindTypeInAlc(callerAlc, asmSimpleName, typeOnly);
-                    if (t != null) return t;
+                    resolved = Type.GetType(
+                        typeName,
+                        name => ResolveAssembly(name, callerAlc),
+                        (asm, name, ignoreCase) =>
+                            asm != null ? asm.GetType(name, false, ignoreCase)
+                                        : caller?.GetType(name, false, ignoreCase),
+                        throwOnError: false);
                 }
-
-                foreach (var alc in AssemblyLoadContext.All)
+                catch (Exception) when (!throwOnError)
                 {
-                    if (ReferenceEquals(alc, callerAlc)) continue; // already searched above
-                    var t = FindTypeInAlc(alc, asmSimpleName, typeOnly);
-                    if (t != null) return t;
+                    // A malformed name; WP7's Type.GetType(name, false) answered null for that.
                 }
+                if (resolved != null) return resolved;
             }
             else
             {
@@ -123,13 +109,6 @@ namespace WPR.WindowsCompability
                 // first (this is exactly the assembly the CLR would have treated as the
                 // requesting assembly if the call had not been redirected here). CoreLib
                 // types still resolve via the Type.GetType fall-through below.
-                Assembly? caller = null;
-                try
-                {
-                    caller = Assembly.GetCallingAssembly();
-                }
-                catch { /* fall through to Type.GetType below */ }
-
                 if (caller != null)
                 {
                     var t = caller.GetType(typeName, throwOnError: false);
@@ -140,17 +119,65 @@ namespace WPR.WindowsCompability
             return Type.GetType(typeName, throwOnError);
         }
 
-        // Return the first type matching <paramref name="typeOnly"/> from an assembly in
-        // <paramref name="alc"/> whose simple name equals <paramref name="asmSimpleName"/>,
-        // or null if none of that ALC's assemblies carry the type.
-        private static Type? FindTypeInAlc(AssemblyLoadContext alc, string asmSimpleName, string typeOnly)
+        // The assembly a name inside a type name refers to.
+        //
+        // * Any Microsoft.Xna.Framework* assembly is WPR.Framework.Xna. That is where the patcher
+        //   rescopes every XNA type a game binds (WprFrameworkXnaTypes), so a type name written
+        //   by the game at runtime has to land in the same place. The WP7 GraphicsDeviceManager
+        //   override is in WPR.Backend.FNA, but it derives from the WPR.Framework.Xna type of the
+        //   same name, which is what a serialised name means anyway.
+        // * Anything else is looked for by simple name in the CALLER's load context first, then
+        //   in every context. Matching on simple name across every ALC in the process is unsafe:
+        //   when two games are resident at once, each ships its own copy of a common dependency
+        //   (e.g. SkinnedModel) under the same simple name but a different version and contents.
+        //   A blind AssemblyLoadContext.All scan can hand ilomilo Ghostscape's SkinnedModel
+        //   1.0.0.1 — which has no PAnimTrigger and a different AnimationClip.Read — so the lookup
+        //   throws TypeLoadException / MissingMethodException against the wrong assembly. The
+        //   broad scan stays as the cross-ALC fallback (a Default-ALC helper resolving a type in
+        //   the collectible user assembly — see the Krome -> AsteroidsDeluxe note above).
+        // * Framework names (mscorlib, System, System.Core, …, at WP7's 2.0.5.0 or desktop 4.0.0.0)
+        //   go to the Default context's binder, which maps them to their facades; Assembly.GetType
+        //   follows the facades' type forwarders into CoreLib.
+        private static Assembly? ResolveAssembly(AssemblyName name, AssemblyLoadContext? callerAlc)
+        {
+            string? simple = name.Name;
+            if (string.IsNullOrEmpty(simple)) return null;
+
+            if (simple.StartsWith("Microsoft.Xna.Framework", StringComparison.OrdinalIgnoreCase))
+            {
+                return typeof(Microsoft.Xna.Framework.Vector2).Assembly;
+            }
+
+            if (callerAlc != null)
+            {
+                Assembly? own = FindAssembly(callerAlc, simple);
+                if (own != null) return own;
+            }
+
+            foreach (var alc in AssemblyLoadContext.All)
+            {
+                if (ReferenceEquals(alc, callerAlc)) continue; // already searched above
+                Assembly? found = FindAssembly(alc, simple);
+                if (found != null) return found;
+            }
+
+            try
+            {
+                return AssemblyLoadContext.Default.LoadFromAssemblyName(new AssemblyName(simple));
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static Assembly? FindAssembly(AssemblyLoadContext alc, string simpleName)
         {
             foreach (var asm in alc.Assemblies)
             {
-                if (string.Equals(asm.GetName().Name, asmSimpleName, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(asm.GetName().Name, simpleName, StringComparison.OrdinalIgnoreCase))
                 {
-                    var t = asm.GetType(typeOnly, throwOnError: false);
-                    if (t != null) return t;
+                    return asm;
                 }
             }
             return null;
