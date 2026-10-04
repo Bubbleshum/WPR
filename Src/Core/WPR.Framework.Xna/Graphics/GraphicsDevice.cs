@@ -662,6 +662,7 @@ namespace Microsoft.Xna.Framework.Graphics
 			{
 				_wprDrawCallsThisFrame = 0;
 			}
+			FrameCapture.Raise(this);
 			XnaBackend.Graphics.SwapBuffers(
 				GLDevice,
 				null,
@@ -680,6 +681,7 @@ namespace Microsoft.Xna.Framework.Graphics
 			{
 				overrideWindowHandle = PresentationParameters.DeviceWindowHandle;
 			}
+			FrameCapture.Raise(this);
 			XnaBackend.Graphics.SwapBuffers(
 				GLDevice,
 				sourceRectangle,
