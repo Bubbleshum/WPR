@@ -81,15 +81,14 @@ namespace WPR.Backend.FNA
                 GraphicsDriverSelection.Apply(requestedDriver);
             }
 
-            // Drop the crash breadcrumb here and nowhere earlier: this is the last instruction
-            // before anything can reach the driver, and the first call into it (PrepareWindowAttributes)
-            // already builds a throwaway device to test the waters — so a hostile driver can take
-            // the process down well before FNA3D_CreateDevice, with no exception and no log. It is
-            // retired at the first presented frame in FnaGraphicsBackend.SwapBuffers, so the
+            // The driver crash breadcrumb is dropped by the platform backend registered below, on
+            // the first CreateWindow: that is the first call that reaches the driver
+            // (PrepareWindowAttributes builds a throwaway device), and anything before it, such as
+            // ApplicationLaunch refusing an unsupported title, must not count against the driver.
+            // It is retired at the first presented frame in FnaGraphicsBackend.SwapBuffers, so the
             // pending window is device creation plus one frame rather than a play session.
             // Inert on a platform whose head never configured the probe (Windows declares no
             // driver at all), which is the usual absent-means-unavailable rule.
-            WPR.Engine.Graphics.GraphicsDriverProbe.MarkAttempting(requestedDriver);
 
             // 5c-0 (Plans/STAGE5C-SCOPE.md): publish the FNA graphics RHI so the WPR-owned XNA
             // runtime (WPR.Framework.Xna) can reach the GPU through IGraphicsBackend without
@@ -100,7 +99,7 @@ namespace WPR.Backend.FNA
             // Spine relocation step 1: Game and GraphicsDeviceManager reach the window and the
             // event pump through this instead of naming FNAPlatform. Registered FIRST — Game's
             // ctor calls CreateWindow, so an unset slot here is a launch failure, not a late one.
-            XnaBackend.SetPlatform(new FnaPlatformBackend());
+            XnaBackend.SetPlatform(new FnaPlatformBackend(requestedDriver));
             // Synthetic touch is layered over the real input backend rather than beside it: the
             // injector has to be the last writer inside UpdateTouchPanelState, which only a
             // decorator can guarantee. The engine decides whether to wrap (a head registered a

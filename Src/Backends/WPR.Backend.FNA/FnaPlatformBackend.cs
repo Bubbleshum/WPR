@@ -40,7 +40,44 @@ namespace WPR.Backend.FNA
                 (host?.GetType().FullName ?? "null"),
                 nameof(host));
 
-        public GameWindow CreateWindow() => FNAPlatform.CreateWindow();
+        private readonly bool _markDriverAttempt;
+        private readonly string? _requestedDriver;
+        private bool _driverAttemptMarked;
+
+        /// <summary>A backend that does not touch the graphics driver crash breadcrumb.</summary>
+        public FnaPlatformBackend()
+        {
+        }
+
+        /// <summary>
+        /// A backend that drops the driver crash breadcrumb
+        /// (<see cref="WPR.Engine.Graphics.GraphicsDriverProbe.MarkAttempting"/>) on the first
+        /// <see cref="CreateWindow"/>, for <paramref name="requestedDriver"/> (null = automatic).
+        /// </summary>
+        public FnaPlatformBackend(string? requestedDriver)
+        {
+            _markDriverAttempt = true;
+            _requestedDriver = requestedDriver;
+        }
+
+        public GameWindow CreateWindow()
+        {
+            // The breadcrumb goes down HERE, at the first contact with the graphics driver:
+            // FNAPlatform.CreateWindow calls FNA3D_PrepareWindowAttributes, which builds a
+            // throwaway device to test the waters, so a hostile driver can take the process down
+            // from this call on. Marking any earlier, as FnaGameHost.RunAsync did, also counted
+            // launches that ended before the driver was touched at all: ApplicationLaunch refuses a
+            // Silverlight UI app or a native WinRT app before the game is constructed, that launch
+            // presented no frame, and since the strike became sticky (issue #51) one tap on such a
+            // title condemned Vulkan on the phone for good. Reported on a Galaxy S24 on
+            // 2026-10-04: an unsupported Silverlight XAP moved every later game to OpenGL.
+            if (_markDriverAttempt && !_driverAttemptMarked)
+            {
+                _driverAttemptMarked = true;
+                WPR.Engine.Graphics.GraphicsDriverProbe.MarkAttempting(_requestedDriver);
+            }
+            return FNAPlatform.CreateWindow();
+        }
 
         public void DisposeWindow(GameWindow window) => FNAPlatform.DisposeWindow(window);
 

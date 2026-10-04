@@ -1376,7 +1376,7 @@ Nothing can be learned inside such a launch. It can only be learned across one â
 | stage | site |
 | --- | --- |
 | decide | `AndroidPlatform.ChosenGraphicsDriver()` â€” "this device cannot do Vulkan" is a fact about the device, which is what a `PlatformDescriptor` states |
-| mark attempting | `FnaGameHost.RunAsync`, immediately after `GraphicsDriverSelection.Apply` |
+| mark attempting | `FnaPlatformBackend.CreateWindow`, first call (FNA3D's first contact with the driver); `FnaGameHost` passes it the requested driver |
 | mark working | `FnaGraphicsBackend.SwapBuffers`, first call only |
 
 All three already sat in assemblies referencing `WPR.Engine.Graphics`, so this needed **no new
@@ -1413,6 +1413,13 @@ Four more things that are deliberate:
   Its own line-based file beside `fna3d_driver.txt`, readable with `adb shell cat`.
 - **An unparseable file reads as "no verdict".** The worst a torn write can do is let the preferred
   driver be tried again; this file may cost a device its first choice, never its only one.
+- **The mark goes down at the first window creation, not at the start of the launch
+  (2026-10-04).** `ApplicationLaunch.Start` refuses a Silverlight UI app or a native WinRT app
+  before any `Game` exists, so such a launch never touches the driver and never presents a frame.
+  Marked at the top of `FnaGameHost.RunAsync`, it left a pending mark, and once strikes became
+  sticky one tap on an unsupported title condemned Vulkan for good. Seen on the S24 the day 0.2.03
+  was built: every later game ran on OpenGL, where Doodle God then crashed. Anything new that can
+  end a launch must either come after `CreateWindow` or not care about the probe.
 
 **What it cannot see**, and this is not a gap to be closed by tuning it: a driver that initialises,
 presents, and dies a minute later is marked working at frame one and never demoted. **3D Brick
