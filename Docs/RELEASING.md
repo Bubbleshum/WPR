@@ -36,7 +36,7 @@ It is currently `0.1.0`. Everything else derives from it:
 | Windows exe | `$(Version)` + `$(InformationalVersion)` (`<WprVersion>-<WprVersionSuffix>`) |
 | Windows UI | `AppVersion.Display` reads `InformationalVersion` back at runtime — the window title and About page are **not** hardcoded |
 | Android APK | `$(ApplicationDisplayVersion)` → `android:versionName` |
-| Release build | `release.yml` overrides `-p:Version` / `-p:ApplicationDisplayVersion` from the `version` input |
+| Release build | `release.yml` overrides `-p:WprVersion` (desktop; never `-p:Version`, which would also rewrite the WP7 assembly identities) / `-p:ApplicationDisplayVersion` (Android) from the `version` input |
 
 So a release does **not** require editing any file — type the version into the workflow. Bump
 `WprVersion` anyway so local builds report what you are working towards.

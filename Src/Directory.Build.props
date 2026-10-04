@@ -31,7 +31,7 @@
       * WPR.Platform.Windows  — $(Version) / $(InformationalVersion); the UI reads the latter back
         at runtime via AppVersion.Display, so the window title and About page cannot drift again.
       * WPR.Platform.Android  — $(ApplicationDisplayVersion), i.e. the APK versionName.
-      * .github/workflows/release.yml — overrides both with -p:Version / -p:ApplicationDisplayVersion
+      * .github/workflows/release.yml — overrides both with -p:WprVersion / -p:ApplicationDisplayVersion
         from the dispatch input, so a release does not require editing this file. Bump it here
         anyway so local/dev builds report the version you are actually working towards.
 
@@ -39,6 +39,9 @@
     WP7 assembly identity (WPR.Framework.Devices.Location is 2.0.5.0 to match System.Device), and
     those must keep their own value. Project-level properties win over this file, but the heads are
     the only things that should carry the product version, so they opt in explicitly.
+    A COMMAND-LINE -p:Version is a different matter: it is a global property and beats the
+    project-level pins too. Releases shipped Microsoft.Phone 0.2.2.0 that way until 0.2.03, which
+    no game asking for 7.0.0.0 can bind (issue #63). Override $(WprVersion) instead.
   -->
   <PropertyGroup>
     <!-- 0.1.0 -> 0.1.01 on 2026-08-31, -> 0.1.02 on 2026-09-03, -> 0.1.03 on 2026-09-05,
