@@ -70,6 +70,7 @@ GL_PROC(BaseGL, void, glDrawBuffers, (GLsizei a, const GLenum *b))
 GL_PROC(BaseGL, void, glDrawRangeElements, (GLenum a, GLuint b, GLuint c, GLsizei d, GLenum e, const GLvoid *f))
 GL_PROC(BaseGL, void, glEnable, (GLenum a))
 GL_PROC(BaseGL, void, glEnableVertexAttribArray, (GLint a))
+GL_PROC(BaseGL, void, glFinish, (void)) /* WPR: worker contexts */
 GL_PROC(BaseGL, void, glFrontFace, (GLenum a))
 GL_PROC(BaseGL, void, glGenBuffers, (GLint a, GLuint *b))
 GL_PROC(BaseGL, void, glGenTextures, (GLsizei a, GLuint *b))

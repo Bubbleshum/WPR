@@ -151,6 +151,34 @@ typedef struct OpenGLVertexAttribute
 	uint32_t currentStride;
 } OpenGLVertexAttribute;
 
+/* WPR: worker contexts (2026-10-04, issue #51).
+ *
+ * Upstream FNA3D funnels every GL call made off the device thread through
+ * ForceToMainThread, which parks the caller until the next SwapBuffers. A
+ * game whose loading thread holds a lock the game thread then waits on can
+ * never reach that swap, and hangs: Bejeweled Live+ does exactly that, from
+ * its very first Update. Vulkan and D3D11 have no such queue.
+ *
+ * So texture and buffer creation/upload from another thread run on a GL
+ * context of their own, shared with the device's: the worker borrows one of
+ * a small pool, runs the very same command body the main thread would have
+ * run, glFinish()es, and hands it back. Only those commands use it; effects
+ * (MojoShader state is not thread-safe), readbacks (they use framebuffer
+ * objects, which are not shared) and renderbuffers keep the queue.
+ *
+ * Android/EGL only. A worker makes its context current with NO surface
+ * (EGL_KHR_surfaceless_context), because EGL lets a window surface be
+ * current on one thread at a time, and the device thread already has it.
+ * SDL's Android MakeCurrent drops the context when given no window, so this
+ * calls eglMakeCurrent itself. Anything that fails disables the pool and the
+ * queue carries on exactly as before. FNA3D_OPENGL_WORKER_CONTEXTS=0 turns
+ * it off for A/B testing.
+ */
+#define WPR_WORKER_CONTEXT_COUNT 2
+typedef unsigned int (*WPR_PFN_eglMakeCurrent)(void*, void*, void*, void*);
+typedef void* (*WPR_PFN_eglGetCurrentDisplay)(void);
+typedef void* (*WPR_PFN_eglGetCurrentContext)(void);
+
 typedef struct OpenGLRenderer /* Cast from FNA3D_Renderer* */
 {
 	/* Associated FNA3D_Device */
@@ -294,6 +322,16 @@ typedef struct OpenGLRenderer /* Cast from FNA3D_Renderer* */
 	SDL_threadID threadID;
 	FNA3D_Command *commands;
 	SDL_mutex *commandsLock;
+
+	/* WPR: worker contexts, see OPENGL_INTERNAL_BeginWorkerCall */
+	SDL_GLContext workerContexts[WPR_WORKER_CONTEXT_COUNT];
+	uint8_t workerContextBusy[WPR_WORKER_CONTEXT_COUNT];
+	int32_t workerContextCount;
+	SDL_mutex *workerContextsLock;
+	void *eglLibrary;
+	void *eglDisplay;
+	WPR_PFN_eglMakeCurrent eglMakeCurrent;
+	WPR_PFN_eglGetCurrentContext eglGetCurrentContext;
 	OpenGLTexture *disposeTextures;
 	SDL_mutex *disposeTexturesLock;
 	OpenGLRenderbuffer *disposeRenderbuffers;
@@ -1105,8 +1143,26 @@ static inline void BindFramebuffer(OpenGLRenderer *renderer, GLuint handle)
 	}
 }
 
+/* WPR: nonzero on a worker thread that is running a command on a borrowed
+ * worker context. The bind helpers below must then leave the renderer's
+ * binding cache alone: it describes the DEVICE context, and the worker's
+ * context has bindings of its own.
+ */
+static SDL_TLSID workerContextTLS = 0;
+
+static inline uint8_t OPENGL_INTERNAL_OnWorkerContext(void)
+{
+	return	workerContextTLS != 0 &&
+		SDL_TLSGet(workerContextTLS) != NULL;
+}
+
 static inline void BindTexture(OpenGLRenderer *renderer, OpenGLTexture* tex)
 {
+	if (OPENGL_INTERNAL_OnWorkerContext())
+	{
+		renderer->glBindTexture(tex->target, tex->handle);
+		return;
+	}
 	if (tex->target != renderer->textures[0]->target)
 	{
 		renderer->glBindTexture(renderer->textures[0]->target, 0);
@@ -1120,6 +1176,11 @@ static inline void BindTexture(OpenGLRenderer *renderer, OpenGLTexture* tex)
 
 static inline void BindVertexBuffer(OpenGLRenderer *renderer, GLuint handle)
 {
+	if (OPENGL_INTERNAL_OnWorkerContext())
+	{
+		renderer->glBindBuffer(GL_ARRAY_BUFFER, handle);
+		return;
+	}
 	if (handle != renderer->currentVertexBuffer)
 	{
 		renderer->glBindBuffer(GL_ARRAY_BUFFER, handle);
@@ -1129,6 +1190,11 @@ static inline void BindVertexBuffer(OpenGLRenderer *renderer, GLuint handle)
 
 static inline void BindIndexBuffer(OpenGLRenderer *renderer, GLuint handle)
 {
+	if (OPENGL_INTERNAL_OnWorkerContext())
+	{
+		renderer->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, handle);
+		return;
+	}
 	if (handle != renderer->currentIndexBuffer)
 	{
 		renderer->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, handle);
@@ -1162,11 +1228,113 @@ static inline void ApplySRGBFlag(OpenGLRenderer *renderer, uint8_t state)
 	ToggleGLState(renderer, GL_FRAMEBUFFER_SRGB_EXT, state);
 }
 
+static uint8_t OPENGL_INTERNAL_BeginWorkerCall(OpenGLRenderer *renderer)
+{
+	int32_t i, slot = -1;
+
+	if (renderer->workerContextCount == 0)
+	{
+		return 0;
+	}
+
+	/* A thread that already has a context current (ours or anyone's) is
+	 * not one we can lend a context to without disturbing it.
+	 */
+	if (renderer->eglGetCurrentContext() != NULL)
+	{
+		return 0;
+	}
+
+	SDL_LockMutex(renderer->workerContextsLock);
+	for (i = 0; i < renderer->workerContextCount; i += 1)
+	{
+		if (!renderer->workerContextBusy[i])
+		{
+			renderer->workerContextBusy[i] = 1;
+			slot = i;
+			break;
+		}
+	}
+	SDL_UnlockMutex(renderer->workerContextsLock);
+
+	if (slot < 0)
+	{
+		return 0; /* All lent out; the queue still works. */
+	}
+
+	if (!renderer->eglMakeCurrent(
+		renderer->eglDisplay,
+		NULL, /* EGL_NO_SURFACE */
+		NULL,
+		renderer->workerContexts[slot]
+	)) {
+		FNA3D_LogWarn(
+			"OpenGL worker context could not be made current; off-thread GPU calls go back to the main-thread queue"
+		);
+		SDL_LockMutex(renderer->workerContextsLock);
+		renderer->workerContextBusy[slot] = 0;
+		renderer->workerContextCount = 0; /* Never try again */
+		SDL_UnlockMutex(renderer->workerContextsLock);
+		return 0;
+	}
+
+	SDL_TLSSet(workerContextTLS, (void*) (intptr_t) (slot + 1), NULL);
+	return 1;
+}
+
+static void OPENGL_INTERNAL_EndWorkerCall(OpenGLRenderer *renderer)
+{
+	int32_t slot = (int32_t) (intptr_t) SDL_TLSGet(workerContextTLS) - 1;
+
+	/* The device context only sees our writes once they are complete. */
+	renderer->glFinish();
+
+	renderer->eglMakeCurrent(renderer->eglDisplay, NULL, NULL, NULL);
+	SDL_TLSSet(workerContextTLS, NULL, NULL);
+
+	SDL_LockMutex(renderer->workerContextsLock);
+	renderer->workerContextBusy[slot] = 0;
+	SDL_UnlockMutex(renderer->workerContextsLock);
+}
+
+static inline uint8_t OPENGL_INTERNAL_RunsOnWorkerContext(FNA3D_Command *command)
+{
+	switch (command->type)
+	{
+		case FNA3D_COMMAND_CREATETEXTURE2D:
+		case FNA3D_COMMAND_CREATETEXTURE3D:
+		case FNA3D_COMMAND_CREATETEXTURECUBE:
+		case FNA3D_COMMAND_SETTEXTUREDATA2D:
+		case FNA3D_COMMAND_SETTEXTUREDATA3D:
+		case FNA3D_COMMAND_SETTEXTUREDATACUBE:
+		case FNA3D_COMMAND_GENVERTEXBUFFER:
+		case FNA3D_COMMAND_GENINDEXBUFFER:
+		case FNA3D_COMMAND_SETVERTEXBUFFERDATA:
+		case FNA3D_COMMAND_SETINDEXBUFFERDATA:
+			return 1;
+		default:
+			return 0;
+	}
+}
+
 static inline void ForceToMainThread(
 	OpenGLRenderer *renderer,
 	FNA3D_Command *command
 ) {
 	FNA3D_Command *curr;
+
+	/* WPR: run it here, on a context of our own, when we can. The command
+	 * re-enters the same driver function, whose thread check lets it
+	 * through because OPENGL_INTERNAL_OnWorkerContext() is now true.
+	 */
+	if (	OPENGL_INTERNAL_RunsOnWorkerContext(command) &&
+		OPENGL_INTERNAL_BeginWorkerCall(renderer)	)
+	{
+		FNA3D_ExecuteCommand(renderer->parentDevice, command);
+		OPENGL_INTERNAL_EndWorkerCall(renderer);
+		return;
+	}
+
 	command->semaphore = SDL_CreateSemaphore(0);
 
 	SDL_LockMutex(renderer->commandsLock);
@@ -1221,6 +1389,7 @@ static void OPENGL_GetBackbufferSize(
 static void OPENGL_DestroyDevice(FNA3D_Device *device)
 {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) device->driverData;
+	int32_t i;
 
 	if (renderer->useCoreProfile)
 	{
@@ -1252,6 +1421,20 @@ static void OPENGL_DestroyDevice(FNA3D_Device *device)
 	SDL_DestroyMutex(renderer->disposeIndexBuffersLock);
 	SDL_DestroyMutex(renderer->disposeEffectsLock);
 	SDL_DestroyMutex(renderer->disposeQueriesLock);
+
+	/* WPR: worker contexts */
+	for (i = 0; i < renderer->workerContextCount; i += 1)
+	{
+		SDL_GL_DeleteContext(renderer->workerContexts[i]);
+	}
+	if (renderer->workerContextsLock != NULL)
+	{
+		SDL_DestroyMutex(renderer->workerContextsLock);
+	}
+	if (renderer->eglLibrary != NULL)
+	{
+		SDL_UnloadObject(renderer->eglLibrary);
+	}
 
 	SDL_GL_DeleteContext(renderer->context);
 
@@ -3636,7 +3819,8 @@ static FNA3D_Texture* OPENGL_CreateTexture2D(
 	int32_t levelWidth, levelHeight, i;
 	FNA3D_Command cmd;
 
-	if (renderer->threadID != SDL_ThreadID())
+	if (	renderer->threadID != SDL_ThreadID() &&
+		!OPENGL_INTERNAL_OnWorkerContext()	) /* WPR */
 	{
 		cmd.type = FNA3D_COMMAND_CREATETEXTURE2D;
 		cmd.createTexture2D.format = format;
@@ -3716,7 +3900,8 @@ static FNA3D_Texture* OPENGL_CreateTexture3D(
 
 	SDL_assert(renderer->supports_3DTexture);
 
-	if (renderer->threadID != SDL_ThreadID())
+	if (	renderer->threadID != SDL_ThreadID() &&
+		!OPENGL_INTERNAL_OnWorkerContext()	) /* WPR */
 	{
 		cmd.type = FNA3D_COMMAND_CREATETEXTURE3D;
 		cmd.createTexture3D.format = format;
@@ -3769,7 +3954,8 @@ static FNA3D_Texture* OPENGL_CreateTextureCube(
 	int32_t levelSize, i, l;
 	FNA3D_Command cmd;
 
-	if (renderer->threadID != SDL_ThreadID())
+	if (	renderer->threadID != SDL_ThreadID() &&
+		!OPENGL_INTERNAL_OnWorkerContext()	) /* WPR */
 	{
 		cmd.type = FNA3D_COMMAND_CREATETEXTURECUBE;
 		cmd.createTextureCube.format = format;
@@ -3902,7 +4088,8 @@ static void OPENGL_SetTextureData2D(
 	int32_t packSize;
 	FNA3D_Command cmd;
 
-	if (renderer->threadID != SDL_ThreadID())
+	if (	renderer->threadID != SDL_ThreadID() &&
+		!OPENGL_INTERNAL_OnWorkerContext()	) /* WPR */
 	{
 		cmd.type = FNA3D_COMMAND_SETTEXTUREDATA2D;
 		cmd.setTextureData2D.texture = texture;
@@ -3994,7 +4181,8 @@ static void OPENGL_SetTextureData3D(
 
 	SDL_assert(renderer->supports_3DTexture);
 
-	if (renderer->threadID != SDL_ThreadID())
+	if (	renderer->threadID != SDL_ThreadID() &&
+		!OPENGL_INTERNAL_OnWorkerContext()	) /* WPR */
 	{
 		cmd.type = FNA3D_COMMAND_SETTEXTUREDATA3D;
 		cmd.setTextureData3D.texture = texture;
@@ -4045,7 +4233,8 @@ static void OPENGL_SetTextureDataCube(
 	GLenum glFormat;
 	FNA3D_Command cmd;
 
-	if (renderer->threadID != SDL_ThreadID())
+	if (	renderer->threadID != SDL_ThreadID() &&
+		!OPENGL_INTERNAL_OnWorkerContext()	) /* WPR */
 	{
 		cmd.type = FNA3D_COMMAND_SETTEXTUREDATACUBE;
 		cmd.setTextureDataCube.texture = texture;
@@ -4572,7 +4761,8 @@ static FNA3D_Buffer* OPENGL_GenVertexBuffer(
 	GLuint handle;
 	FNA3D_Command cmd;
 
-	if (renderer->threadID != SDL_ThreadID())
+	if (	renderer->threadID != SDL_ThreadID() &&
+		!OPENGL_INTERNAL_OnWorkerContext()	) /* WPR */
 	{
 		cmd.type = FNA3D_COMMAND_GENVERTEXBUFFER;
 		cmd.genVertexBuffer.dynamic = dynamic;
@@ -4659,7 +4849,8 @@ static void OPENGL_SetVertexBufferData(
 	OpenGLBuffer *glBuffer = (OpenGLBuffer*) buffer;
 	FNA3D_Command cmd;
 
-	if (renderer->threadID != SDL_ThreadID())
+	if (	renderer->threadID != SDL_ThreadID() &&
+		!OPENGL_INTERNAL_OnWorkerContext()	) /* WPR */
 	{
 		cmd.type = FNA3D_COMMAND_SETVERTEXBUFFERDATA;
 		cmd.setVertexBufferData.buffer = buffer;
@@ -4773,7 +4964,8 @@ static FNA3D_Buffer* OPENGL_GenIndexBuffer(
 	GLuint handle;
 	FNA3D_Command cmd;
 
-	if (renderer->threadID != SDL_ThreadID())
+	if (	renderer->threadID != SDL_ThreadID() &&
+		!OPENGL_INTERNAL_OnWorkerContext()	) /* WPR */
 	{
 		cmd.type = FNA3D_COMMAND_GENINDEXBUFFER;
 		cmd.genIndexBuffer.dynamic = dynamic;
@@ -4847,7 +5039,8 @@ static void OPENGL_SetIndexBufferData(
 	OpenGLBuffer *glBuffer = (OpenGLBuffer*) buffer;
 	FNA3D_Command cmd;
 
-	if (renderer->threadID != SDL_ThreadID())
+	if (	renderer->threadID != SDL_ThreadID() &&
+		!OPENGL_INTERNAL_OnWorkerContext()	) /* WPR */
 	{
 		cmd.type = FNA3D_COMMAND_SETINDEXBUFFERDATA;
 		cmd.setIndexBufferData.buffer = buffer;
@@ -5493,6 +5686,50 @@ static FNA3D_Texture* OPENGL_CreateSysTexture(
 
 /* Load GL Entry Points */
 
+/* WPR (2026-10-04, issue #62): on OpenGL ES a non-NULL entry point proves
+ * nothing. Android's eglGetProcAddress may hand back a stub for a function
+ * the driver does not implement (the emulator's prints "called unimplemented
+ * OpenGL ES API" and does nothing), so "the pointer loaded" made FNA3D think
+ * an ES 3.1 driver had ES 3.2's base-vertex draws. Every indexed draw with a
+ * base vertex then drew nothing: Archer, The Treasures of Montezuma and
+ * Galactic Reign showed a black or empty screen on OpenGL. These are the
+ * features that are core only from ES 3.2 or come from an extension; each
+ * already has a fallback when unsupported. (glColorMaski, ES 3.2 too, is left
+ * alone: it is called behind an assert only, so a stub is safer than NULL.)
+ */
+static uint8_t OPENGL_INTERNAL_ESVersionAtLeast(
+	OpenGLRenderer *renderer,
+	int32_t major,
+	int32_t minor
+) {
+	const char *version = (const char*) renderer->glGetString(GL_VERSION);
+	int32_t maj = 0, min = 0;
+	if (	version == NULL ||
+		SDL_sscanf(version, "OpenGL ES %d.%d", &maj, &min) != 2	)
+	{
+		return 0;
+	}
+	return (maj > major) || (maj == major && min >= minor);
+}
+
+static void OPENGL_INTERNAL_VerifyESCapabilities(OpenGLRenderer *renderer)
+{
+	uint8_t es32 = OPENGL_INTERNAL_ESVersionAtLeast(renderer, 3, 2);
+
+	/* Desktop GL only; never in any version of ES. */
+	renderer->supports_NonES3 = 0;
+	renderer->supports_NonES3NonCore = 0;
+
+	if (	renderer->supports_ARB_draw_elements_base_vertex &&
+		!es32 &&
+		!SDL_GL_ExtensionSupported("GL_OES_draw_elements_base_vertex") &&
+		!SDL_GL_ExtensionSupported("GL_EXT_draw_elements_base_vertex")	)
+	{
+		renderer->supports_ARB_draw_elements_base_vertex = 0;
+		FNA3D_LogInfo("OpenGL ES: no base-vertex draws, offsetting vertex attributes instead");
+	}
+}
+
 static inline void LoadEntryPoints(
 	OpenGLRenderer *renderer,
 	const char *driverInfo,
@@ -5634,6 +5871,12 @@ static inline void LoadEntryPoints(
 			renderer->supports_EXT_draw_buffers2 = 1;
 		}
 		#undef LOAD_COLORMASK
+	}
+
+	/* WPR: see OPENGL_INTERNAL_VerifyESCapabilities */
+	if (renderer->useES3)
+	{
+		OPENGL_INTERNAL_VerifyESCapabilities(renderer);
 	}
 
 	/* Possibly bogus if a game never uses render targets? */
@@ -5882,6 +6125,91 @@ void OPENGL_GetDrawableSize(void* window, int32_t *w, int32_t *h)
 
 #if defined(__IPHONEOS__) || defined(__TVOS__)
 	SDL_GL_DeleteContext(tempContext);
+#endif
+}
+
+/* WPR: see OPENGL_INTERNAL_BeginWorkerCall. Called on the device thread
+ * with the device context current, which is what makes the new contexts
+ * share its objects.
+ */
+static void OPENGL_INTERNAL_CreateWorkerContexts(
+	OpenGLRenderer *renderer,
+	SDL_Window *window
+) {
+#ifdef __ANDROID__
+	WPR_PFN_eglGetCurrentDisplay getDisplay;
+	int32_t share, i;
+
+	renderer->workerContextCount = 0;
+	renderer->workerContextsLock = SDL_CreateMutex();
+
+	if (!SDL_GetHintBoolean("FNA3D_OPENGL_WORKER_CONTEXTS", SDL_TRUE))
+	{
+		FNA3D_LogInfo("OpenGL worker contexts: disabled by FNA3D_OPENGL_WORKER_CONTEXTS");
+		return;
+	}
+	if (!renderer->isEGL)
+	{
+		return;
+	}
+
+	renderer->eglLibrary = SDL_LoadObject("libEGL.so");
+	if (renderer->eglLibrary == NULL)
+	{
+		return;
+	}
+	renderer->eglMakeCurrent = (WPR_PFN_eglMakeCurrent) SDL_LoadFunction(
+		renderer->eglLibrary,
+		"eglMakeCurrent"
+	);
+	renderer->eglGetCurrentContext = (WPR_PFN_eglGetCurrentContext) SDL_LoadFunction(
+		renderer->eglLibrary,
+		"eglGetCurrentContext"
+	);
+	getDisplay = (WPR_PFN_eglGetCurrentDisplay) SDL_LoadFunction(
+		renderer->eglLibrary,
+		"eglGetCurrentDisplay"
+	);
+	if (	renderer->eglMakeCurrent == NULL ||
+		renderer->eglGetCurrentContext == NULL ||
+		getDisplay == NULL	)
+	{
+		return;
+	}
+	renderer->eglDisplay = getDisplay();
+	if (renderer->eglDisplay == NULL)
+	{
+		return;
+	}
+
+	if (workerContextTLS == 0)
+	{
+		workerContextTLS = SDL_TLSCreate();
+	}
+
+	SDL_GL_GetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, &share);
+	SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 1);
+	for (i = 0; i < WPR_WORKER_CONTEXT_COUNT; i += 1)
+	{
+		/* Creating a context makes it current, so put ours back. */
+		renderer->workerContexts[i] = SDL_GL_CreateContext(window);
+		SDL_GL_MakeCurrent(window, renderer->context);
+		if (renderer->workerContexts[i] == NULL)
+		{
+			break;
+		}
+		renderer->workerContextCount += 1;
+	}
+	SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, share);
+
+	FNA3D_LogInfo(
+		"OpenGL worker contexts: %d (off-thread texture/buffer calls no longer wait for a frame)",
+		renderer->workerContextCount
+	);
+#else
+	(void) window;
+	renderer->workerContextCount = 0;
+	renderer->workerContextsLock = NULL;
 #endif
 }
 
@@ -6242,6 +6570,11 @@ FNA3D_Device* OPENGL_CreateDevice(
 	renderer->disposeIndexBuffersLock = SDL_CreateMutex();
 	renderer->disposeEffectsLock = SDL_CreateMutex();
 	renderer->disposeQueriesLock = SDL_CreateMutex();
+
+	OPENGL_INTERNAL_CreateWorkerContexts(
+		renderer,
+		(SDL_Window*) presentationParameters->deviceWindowHandle
+	);
 
 	/* Return the FNA3D_Device */
 	return result;

@@ -31,9 +31,13 @@ namespace WPR.Platform.Android
             // Point the crash breadcrumb at its storage before anything asks it a question —
             // ChosenGraphicsDriver() below reads it. Keyed on Build.Fingerprint, which changes with
             // any system image update, so a driver condemned by a firmware that is no longer
-            // installed gets another chance instead of inheriting the verdict for ever.
+            // installed gets another chance instead of inheriting the verdict for ever. The WPR
+            // version is part of the key for the same reason: since 2026-10-04 a condemnation is
+            // sticky, and a WPR update may carry the FNA3D fix that makes the driver work (the
+            // Mali feature request in issue #51 was exactly that), so it earns another try too.
             WPR.Engine.Graphics.GraphicsDriverProbe.Configure(
-                _externalFilesDirectory, global::Android.OS.Build.Fingerprint);
+                _externalFilesDirectory,
+                global::Android.OS.Build.Fingerprint + "|wpr " + InstalledVersion());
 
             // Same directory, same cross-process reason: a device can only be measured in the
             // :game process and the diagnostics screen that shows it lives in the launcher.
@@ -161,6 +165,13 @@ namespace WPR.Platform.Android
         /// leave that person with no way out again.</para>
         /// </summary>
         private static WPR.Online.Hub.HubOnline? Hub;
+
+        /// <summary>The installed versionName, or "unknown" without a context.</summary>
+        private string InstalledVersion()
+        {
+            global::Android.Content.Context? context = _context ?? global::Android.App.Application.Context;
+            return context == null ? "unknown" : Native.UpdateNotifier.InstalledVersion(context);
+        }
 
         private static GraphicsDriver ChosenGraphicsDriver()
         {

@@ -1437,6 +1437,15 @@ typedef struct VulkanRenderer
 	uint8_t debugMode;
 	VulkanExtensions supports;
 
+	/* WPR: optional VkPhysicalDeviceFeatures, enabled only when the device
+	 * reports them. Requesting an unsupported one fails vkCreateDevice with
+	 * VK_ERROR_FEATURE_NOT_PRESENT, and Mali reports no fillModeNonSolid
+	 * (issue #51: every game died on a Mali-G57 before its first frame).
+	 */
+	uint8_t supportsFillModeNonSolid;
+	uint8_t supportsSamplerAnisotropy;
+	uint8_t supportsOcclusionQueryPrecise;
+
 	uint8_t submitCounter; /* used so we don't clobber data being used by GPU */
 
 	/* Threading */
@@ -2808,6 +2817,7 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(VulkanRenderer *renderer)
 	VkResult vulkanResult;
 	VkDeviceCreateInfo deviceCreateInfo;
 	VkPhysicalDeviceFeatures deviceFeatures;
+	VkPhysicalDeviceFeatures supportedFeatures;
 	VkPhysicalDevicePortabilitySubsetFeaturesKHR portabilityFeatures;
 	const char **deviceExtensions;
 
@@ -2824,10 +2834,35 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(VulkanRenderer *renderer)
 
 	/* specifying used device features */
 
+	/* WPR: ask only for what the device has. Each of these is optional in
+	 * Vulkan and each has a fallback below (solid fill, plain filtering,
+	 * imprecise occlusion queries), whereas asking for a missing one fails
+	 * device creation outright.
+	 */
+	SDL_zero(supportedFeatures);
+	renderer->vkGetPhysicalDeviceFeatures(
+		renderer->physicalDevice,
+		&supportedFeatures
+	);
+	renderer->supportsOcclusionQueryPrecise = supportedFeatures.occlusionQueryPrecise ? 1 : 0;
+	renderer->supportsFillModeNonSolid = supportedFeatures.fillModeNonSolid ? 1 : 0;
+	renderer->supportsSamplerAnisotropy = supportedFeatures.samplerAnisotropy ? 1 : 0;
+	if (	!renderer->supportsOcclusionQueryPrecise ||
+		!renderer->supportsFillModeNonSolid ||
+		!renderer->supportsSamplerAnisotropy	)
+	{
+		FNA3D_LogWarn(
+			"Vulkan device lacks optional features: occlusionQueryPrecise=%d fillModeNonSolid=%d samplerAnisotropy=%d",
+			renderer->supportsOcclusionQueryPrecise,
+			renderer->supportsFillModeNonSolid,
+			renderer->supportsSamplerAnisotropy
+		);
+	}
+
 	SDL_zero(deviceFeatures);
-	deviceFeatures.occlusionQueryPrecise = VK_TRUE;
-	deviceFeatures.fillModeNonSolid = VK_TRUE;
-	deviceFeatures.samplerAnisotropy = VK_TRUE;
+	deviceFeatures.occlusionQueryPrecise = renderer->supportsOcclusionQueryPrecise;
+	deviceFeatures.fillModeNonSolid = renderer->supportsFillModeNonSolid;
+	deviceFeatures.samplerAnisotropy = renderer->supportsSamplerAnisotropy;
 
 	/* Creating the logical device */
 
@@ -8008,9 +8043,10 @@ static VkPipeline VULKAN_INTERNAL_FetchPipeline(VulkanRenderer *renderer)
 	rasterizerInfo.flags = 0;
 	rasterizerInfo.depthClampEnable = VK_FALSE;
 	rasterizerInfo.rasterizerDiscardEnable = VK_FALSE;
-	rasterizerInfo.polygonMode = XNAToVK_PolygonMode[
-		renderer->rasterizerState.fillMode
-	];
+	/* WPR: WireFrame needs fillModeNonSolid; without it, draw solid. */
+	rasterizerInfo.polygonMode = renderer->supportsFillModeNonSolid ?
+		XNAToVK_PolygonMode[renderer->rasterizerState.fillMode] :
+		VK_POLYGON_MODE_FILL;
 	rasterizerInfo.cullMode = XNAToVK_CullMode[
 		renderer->rasterizerState.cullMode
 	];
@@ -9257,7 +9293,13 @@ static VkSampler VULKAN_INTERNAL_FetchSamplerState(
 		samplerState->addressW
 	];
 	createInfo.mipLodBias = samplerState->mipMapLevelOfDetailBias;
-	createInfo.anisotropyEnable = (samplerState->filter == FNA3D_TEXTUREFILTER_ANISOTROPIC);
+	/* WPR: anisotropic filtering needs samplerAnisotropy; without it, the
+	 * sampler keeps its linear filters.
+	 */
+	createInfo.anisotropyEnable = (
+		renderer->supportsSamplerAnisotropy &&
+		samplerState->filter == FNA3D_TEXTUREFILTER_ANISOTROPIC
+	);
 	createInfo.maxAnisotropy = SDL_min(
 		(float) SDL_max(1, samplerState->maxAnisotropy),
 		renderer->physicalDeviceProperties.properties.limits.maxSamplerAnisotropy
@@ -12009,7 +12051,10 @@ static void VULKAN_QueryBegin(FNA3D_Renderer *driverData, FNA3D_Query *query)
 		renderer->currentCommandBufferContainer->commandBuffer,
 		renderer->queryPool,
 		vulkanQuery->index,
-		VK_QUERY_CONTROL_PRECISE_BIT
+		/* WPR: PRECISE needs occlusionQueryPrecise. */
+		renderer->supportsOcclusionQueryPrecise ?
+			VK_QUERY_CONTROL_PRECISE_BIT :
+			0
 	));
 }
 
