@@ -29,7 +29,8 @@ installed on the runner.
 ## Where the version number lives
 
 **One place: `<WprVersion>` in [`Src/Directory.Build.props`](../Src/Directory.Build.props).**
-It is currently `0.1.0`. Everything else derives from it:
+It is bumped to the release being worked towards (the comment above it lists every bump).
+Everything else derives from it:
 
 | Consumer | How |
 | --- | --- |

@@ -6,7 +6,7 @@
 
 **Play your old Windows Phone games again, on a PC or an Android phone.**
 
-`0.1.*` · [Compatibility list](https://bubbleshum.github.io/WPR/) · [MIT licensed](LICENSE)
+`0.2.*` · [Compatibility list](https://bubbleshum.github.io/WPR/) · [MIT licensed](LICENSE)
 
 </div>
 
@@ -80,11 +80,14 @@ will be familiar if you ever owned one:
 | 📳 **Rumble** | Games that buzzed on the phone buzz again on Android, with a switch in settings to turn it off |
 | 🖥️ **Windows and Android** | Runs on a desktop PC and on an Android phone or tablet |
 | 🗂️ **A real library** | Box art, publisher, search, and install / repatch / uninstall per game |
-| 👤 **A gamer profile** | Set a gamertag, a gamer picture and an accent colour — games that ask for them get real answers instead of blanks |
+| 🌐 **WPR Hub** | Sign in with GitHub, Microsoft or Google and your gamertag and gamer picture follow you into every game. Achievements and playtime sync to your account, and online leaderboards work again — with other players' scores and pictures |
+| 👥 **Friends and messages** | Add friends, see who's online and what they're playing, and message them, from inside WPR on Windows and Android. On Android you can also appear offline |
 | 🔄 **The right way up** | Landscape games get a landscape screen and fill it, rather than being squeezed upright into a letterboxed box |
 | 🕹️ **Several kinds of game** | XNA games (the best supported), Silverlight games, games that mix the two, GameMaker exports, and a rail for launching rebuilt native ports |
-| 🛟 **Gets itself out of trouble** | If a game on Android dies before it draws anything, WPR notices and quietly starts the next one on a safer graphics mode — and you can pick one yourself in settings |
-| 📝 **Diagnostics that help** | A per-game log written on every launch, so problems can actually be reported |
+| 💾 **Saves kept per game** | Each game gets its own save storage, so two games can't overwrite each other. Clear one game's data, or keep your saves when you uninstall and get them back on reinstall |
+| 🛟 **Gets itself out of trouble** | If a game on Android dies before it draws anything, WPR switches that phone to a safer graphics mode and remembers it until a fix arrives — and you can pick one yourself in settings |
+| 📝 **Reports that help** | Crashes are reported automatically (switch it off in settings). For anything else, **Play with logging** records a run and sends it with one tap, and gives you a code to quote |
+| 🔔 **Tells you about updates** | On Android, WPR checks for a new release and shows what changed in it on the About page |
 | 📦 **Nothing else to install** | The Windows installer bundles the .NET runtime and every native library the games need |
 
 What changed in each release is in [`Docs/ReleaseNotes/`](Docs/ReleaseNotes), and older
@@ -134,7 +137,7 @@ dotnet build Src/Platforms/WPR.Platform.Windows/WPR.Platform.Windows.csproj -c D
 ```
 
 The app appears at
-`Src/Platforms/WPR.Platform.Windows/bin/Debug/net8.0-windows10.0.17763.0/WPR.Platform.Windows.exe`.
+`Src/Platforms/WPR.Platform.Windows/bin/Debug/net10.0-windows10.0.17763.0/WPR.Platform.Windows.exe`.
 
 If you'd rather have a packaged build, there's a script that does it in one go:
 
@@ -179,9 +182,10 @@ supported and won't be.
   needs may not be reimplemented yet.
 - **Android trails the desktop.** It builds and runs, but far fewer games have
   been tried there.
-- **If you update WPR and a game suddenly stops working,** reinstall that game
-  from inside WPR. Games are prepared once when installed, so a change to how
-  that preparation works doesn't reach a game that's already set up.
+- **If you update WPR and a game suddenly stops working,** repatch it from its
+  page in WPR, or reinstall it if that doesn't help. Games are prepared once when
+  installed; Android re-prepares an out-of-date game by itself on its next launch,
+  Windows does it when you click **Repatch**.
 - **No support is offered.** This is a spare-time project, shared as-is.
 
 ## Documentation
