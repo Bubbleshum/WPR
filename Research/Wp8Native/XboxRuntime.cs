@@ -275,6 +275,16 @@ namespace WPR.Wp8Native
 
                 [InspectableSlots + 7] = ("GetAvatarManifestAsync", () =>
                     ReturnObject(AsyncOperation("GetAvatarManifestAsync", 0))),
+
+                // IAsyncOperation<Boolean> CanPerformActionAsync(String action, UInt64 targetXuid).
+                // The UInt64 takes the even pair r2:r3, so the out-parameter is the first stack word.
+                // Yes: a privilege check that comes back "no" makes the game offer to explain why.
+                [InspectableSlots + 15] = ("CanPerformActionAsync", () =>
+                {
+                    XboxCalls.Add($"CanPerformActionAsync({(Arg(1) == 0 ? "" : _strings.ReadText(Arg(1)))}) -> true");
+                    WriteOut(4, AsyncOperation("CanPerformActionAsync", 0, getResults: () => ReturnBoolean(true)));
+                    Return(HResultOk);
+                }),
             });
 
         /// <summary><c>Microsoft.Xbox.IUserStatus</c> - presence, not sign-in state.</summary>
@@ -381,7 +391,7 @@ namespace WPR.Wp8Native
         /// nothing, so a zero result covers both.
         /// </para>
         /// </remarks>
-        private long AsyncOperation(string name, long result)
+        private long AsyncOperation(string name, long result, Action? getResults = null)
         {
             long[] self = new long[1];
             long[] asyncInfo = [AsyncInfo(name)];
@@ -412,6 +422,13 @@ namespace WPR.Wp8Native
                     [InspectableSlots + 1] = ("get_Completed", () => ReturnObject(0)),
                     [InspectableSlots + 2] = ("GetResults", () =>
                     {
+                        if (getResults is not null)
+                        {
+                            // A value result (Boolean, UInt32...) written by the caller's own rules.
+                            getResults();
+                            return;
+                        }
+
                         if (result != 0)
                         {
                             ReturnObject(result);

@@ -264,6 +264,27 @@ namespace WPR.Wp8Native
                 return;
             }
 
+            // With guest threads, an infinite wait really waits: the thread blocks and whoever
+            // will set the event runs. Only if nothing else can run does it fall through.
+            if (milliseconds == 0xFFFFFFFF)
+            {
+                _frame.Return(WaitObject0);
+                if (_emulator.BlockCurrentThread(
+                        () => e.Signalled,
+                        () =>
+                        {
+                            _satisfied++;
+                            if (!e.ManualReset)
+                            {
+                                e.Signalled = false;
+                            }
+                        },
+                        why: $"event {(e.Name.Length > 0 ? e.Name : $"0x{handle:X8}")}"))
+                {
+                    return;
+                }
+            }
+
             // Set the answer first: YieldToDeferredWork takes over the return path only if it
             // found something to run, and this value has to be already in place if it did not.
             _timedOut++;

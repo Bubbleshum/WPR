@@ -18,7 +18,7 @@ namespace WPR.Wp8Native
     /// and returns immediately. That boundary is where a real backend would bridge into
     /// managed implementations of Win32, COM and WinRT.
     /// </remarks>
-    public sealed class ArmEmulator : IDisposable
+    public sealed partial class ArmEmulator : IDisposable
     {
         // Address space layout. Chosen to sit clear of a typical 0x00400000 image base.
         private const long StackBase = 0x50000000L;

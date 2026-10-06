@@ -132,7 +132,31 @@ namespace WPR.Wp8Native
                 _emulator.Direct3D.FrameBuilt += OnFrameBuilt;
                 _emulator.WinRt.XboxHost = _xboxHost;
                 Log($"running on {_emulator.Cpu.Capabilities.Name}");
-                fault = _emulator.RunEntryPoint(long.MaxValue / 4);
+                if (image.IsDll)
+                {
+                    // A Direct3D/XAML title: the game is a WinRT component, and the host plays the
+                    // managed page that would have activated it (Research/Wp8Native/XamlInterop.cs).
+                    string directory = Path.GetDirectoryName(_executable)!;
+                    XamlShell? shell = XamlShells.ForComponent(_executable);
+                    if (shell is null)
+                    {
+                        fault = $"{Path.GetFileName(_executable)} is a Direct3D/XAML component WPR has no page description for yet";
+                    }
+                    else
+                    {
+                        WinmdReader metadata = WinmdReader.Load(Directory.GetFiles(directory, "*.winmd"));
+                        long start = _emulator.WinRt.StartComponent(image, metadata, shell);
+                        fault = _emulator.Run(start, long.MaxValue / 4);
+                        foreach (string line in _emulator.WinRt.ComponentLog.Take(60))
+                        {
+                            Log($"[xaml] {line}");
+                        }
+                    }
+                }
+                else
+                {
+                    fault = _emulator.RunEntryPoint(long.MaxValue / 4);
+                }
             }
             catch (Exception ex)
             {

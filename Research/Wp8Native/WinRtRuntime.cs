@@ -605,7 +605,11 @@ namespace WPR.Wp8Native
         /// return, because a delegate invocation is a tail call into emulated code and only
         /// completes as an event.
         /// </remarks>
-        private bool DeliverInput(long resumeAt)
+        private bool DeliverInput(long resumeAt) => DeliverInput(() => _emulator.ContinueAt(resumeAt), _coreWindow);
+
+        /// <param name="continueWith">Run once the handler has returned, in place of resuming a caller.</param>
+        /// <param name="sender">The event's sender: the CoreWindow, or a XAML manipulation host.</param>
+        private bool DeliverInput(Action continueWith, long sender)
         {
             // Anything a live host has injected goes first, and does not depend on the
             // scripted taps being enabled at all - a window with a mouse replaces the script.
@@ -715,7 +719,7 @@ namespace WPR.Wp8Native
             _emulator.CallEmulated(
                 $"CoreWindow::{name}",
                 invoke,
-                [handler, _coreWindow, PointerArgs()],
+                [handler, sender, PointerArgs()],
                 onReturn: () =>
                 {
                     if (capture)
@@ -725,7 +729,7 @@ namespace WPR.Wp8Native
                             $"   {name} returned 0x{Arg(0):X8} after {made.Count} call(s): {Condense(made)}");
                     }
 
-                    _emulator.ContinueAt(resumeAt);
+                    continueWith();
                 });
 
             return true;
@@ -885,6 +889,12 @@ namespace WPR.Wp8Native
         private static readonly int ResolutionScale =
             int.TryParse(Environment.GetEnvironmentVariable("WPR_RESSCALE"), out int scale) && scale > 0 ? scale : 100;
 
+        /// <summary>
+        /// Overrides <c>WPR_ROTATE</c> for this run. A Direct3D/XAML title's page is landscape,
+        /// so its pointer positions are already in the landscape space and want <c>none</c>.
+        /// </summary>
+        public string? PointerRotation { get; set; }
+
         private static readonly string Rotation =
             (Environment.GetEnvironmentVariable("WPR_ROTATE") ?? "ccw").Trim().ToLowerInvariant();
 
@@ -901,12 +911,12 @@ namespace WPR.Wp8Native
         /// window is <see cref="Direct3DRuntime.BackBufferWidth"/> by
         /// <see cref="Direct3DRuntime.BackBufferHeight"/>; they are transposes of each other.
         /// </remarks>
-        private static (float X, float Y) ToWindow(float landscapeX, float landscapeY)
+        private (float X, float Y) ToWindow(float landscapeX, float landscapeY)
         {
             float windowWidth = Direct3DRuntime.BackBufferWidth;
             float windowHeight = Direct3DRuntime.BackBufferHeight;
 
-            return Rotation switch
+            return (PointerRotation ?? Rotation) switch
             {
                 "none" => (landscapeX, landscapeY),
                 "cw" => (landscapeY, windowHeight - landscapeX),

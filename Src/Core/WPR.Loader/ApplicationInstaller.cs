@@ -88,7 +88,10 @@ namespace WPR
                     string normalized = runtimeRaw.Replace(" ", "");
                     if (Enum.TryParse(normalized, ignoreCase: true, out Models.ApplicationType parsed))
                     {
-                        preview.ApplicationType = parsed;
+                        preview.ApplicationType = parsed == Models.ApplicationType.Silverlight &&
+                                                  NativeXamlComponent.Find(archive, appNode) != null
+                            ? Models.ApplicationType.ModernNative
+                            : parsed;
                     }
                 }
 
@@ -209,9 +212,19 @@ namespace WPR
                 // fires and misreports it as MissingManifestFiles ("missing manifest files!").
                 // They also have no managed entry point: what runs is the ARM executable named by
                 // the default task, hosted by WPR.Engine.Wp8Native on the dynarmic JIT.
+                // A Direct3D/XAML title: "Silverlight" in the manifest, a native ARM component in
+                // fact. It installs and runs as a native title, with the component as its image.
+                string? xamlComponent = runtimeTypeParsed == ApplicationType.Silverlight
+                    ? NativeXamlComponent.Find(archive, appNode!)
+                    : null;
+                if (xamlComponent != null)
+                {
+                    runtimeTypeParsed = ApplicationType.ModernNative;
+                }
+
                 bool isNative = runtimeTypeParsed == ApplicationType.ModernNative;
-                string? nativeImage = null;
-                if (isNative)
+                string? nativeImage = xamlComponent;
+                if (isNative && nativeImage == null)
                 {
                     nativeImage = (appNode!.SelectSingleNode("//DefaultTask") as XmlElement)?.GetAttribute("ImagePath");
                     if (string.IsNullOrWhiteSpace(nativeImage) ||

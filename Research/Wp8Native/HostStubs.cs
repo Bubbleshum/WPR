@@ -270,6 +270,11 @@ namespace WPR.Wp8Native
                 // HRESULT GetActivationFactoryByPCWSTR(void* className, Guid& iid, void** factory)
                 ["?GetActivationFactoryByPCWSTR@@YAJPAXAAVGuid@Platform@@PAPAX@Z"] = ActivateFactory,
 
+                // HRESULT Platform::Details::GetActivationFactory(ModuleBase*, HSTRING, IActivationFactory**):
+                // a C++/CX component DLL's DllGetActivationFactory, answered from its own creator map.
+                ["?GetActivationFactory@Details@Platform@@YAJPAVModuleBase@1WRL@Microsoft@@PAUHSTRING__@@PAPAUIActivationFactory@@@Z"]
+                    = () => _winRt.ModuleGetActivationFactory(),
+
                 // --- memory and string ---
                 // These have to be real. Returning 0 from memcpy or strlen does not fail
                 // loudly, it quietly corrupts whatever the image was building, and the
@@ -343,6 +348,15 @@ namespace WPR.Wp8Native
             Rtti.RegisterInto(_handlers);
             Extras = new CrtExtras(emulator, _frame);
             Extras.RegisterInto(_handlers);
+            Concurrency = new ConcurrencyLibrary(emulator, _frame);
+            Concurrency.RegisterInto(_handlers);
+            _winRt.RegisterEventSources(_handlers);
+            // After the others: it replaces their single-threaded sleep and thread-id answers.
+            Threads = new ThreadLibrary(emulator, _frame);
+            if (Environment.GetEnvironmentVariable("WPR_NOTHREADS") is null)
+            {
+                Threads.RegisterInto(_handlers);
+            }
 
             // FILE* __iob_func(void): the CRT's stdin/stdout/stderr array. Three zeroed FILEs
             // that the file library does not know, so fprintf(stderr, ...) writes nowhere -
@@ -383,6 +397,10 @@ namespace WPR.Wp8Native
         public StreamLibrary Streams { get; private set; } = null!;
 
         public RttiLibrary Rtti { get; private set; } = null!;
+
+        public ConcurrencyLibrary Concurrency { get; private set; } = null!;
+
+        public ThreadLibrary Threads { get; private set; } = null!;
 
         public CrtExtras Extras { get; private set; } = null!;
 
@@ -787,6 +805,15 @@ namespace WPR.Wp8Native
 
             if (CatchCandidates.Count == 0)
             {
+                // Escaping a background thread ends that thread, as an unhandled exception in a
+                // worker would on a device that kept the app alive - not the whole run. Angry
+                // Birds' network thread throws HttpRequestException with no catch of its own once
+                // threads really run; before they did, it simply never started.
+                if (_emulator.EndCurrentGuestThread($"uncaught {Thrown.TypeName}"))
+                {
+                    return;
+                }
+
                 _emulator.Stop(
                     $"the image threw {Thrown.TypeName}; unwound {ThrowStack.Count} frames, " +
                     "no matching catch found");

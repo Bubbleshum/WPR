@@ -1745,6 +1745,17 @@ namespace WPR.Wp8Native
 
         private void Present()
         {
+            DeliverFrame();
+            Return(HResultOk);
+        }
+
+        /// <summary>
+        /// A frame is finished: count it and hand it to whoever is drawing. Called by the
+        /// swapchain's Present for an exe title, and by the Direct3D/XAML host after each Draw
+        /// for a component title, which has no swapchain of its own.
+        /// </summary>
+        public void DeliverFrame()
+        {
             PresentCount++;
             if (PresentCount == 1)
             {
@@ -1787,8 +1798,29 @@ namespace WPR.Wp8Native
                     Note($"frame delivery failed: {ex.Message}");
                 }
             }
+        }
 
-            Return(HResultOk);
+        /// <summary>
+        /// The device and immediate context a Direct3D/XAML title is handed by
+        /// <c>DrawingSurfaceBackgroundGrid</c>: the host creates them, not the game.
+        /// </summary>
+        public (long Device, long Context) CreateHostDevice()
+        {
+            ComObject device = NewObject("Device");
+            long devicePointer = CreateInterface(device, "ID3D11Device1", DeviceSlots, DeviceMethods());
+            ComObject context = NewObject("Context");
+            _immediateContext = CreateInterface(context, "ID3D11DeviceContext1", ContextSlots, ContextMethods());
+            DeviceCreated = true;
+            Note($"host device 0x{devicePointer:X8}, context 0x{_immediateContext:X8}, feature level 9_3");
+            return (devicePointer, _immediateContext);
+        }
+
+        /// <summary>A render target view over the back buffer, the third argument of <c>Draw</c>.</summary>
+        public long CreateHostRenderTargetView()
+        {
+            BackBufferPointer();
+            ComObject view = NewObject("RenderTargetView_Host");
+            return CreateInterface(view, "ID3D11RenderTargetView", ViewSlots, ViewMethods());
         }
 
         /// <summary>Stopwatch ticks spent rasterising frames for <see cref="FramePresented"/>.</summary>

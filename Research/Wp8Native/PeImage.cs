@@ -60,6 +60,16 @@ namespace WPR.Wp8Native
         public IReadOnlyList<PeSection> Sections => _sections;
         public IReadOnlyList<ImportedFunction> Imports { get; }
 
+        /// <summary>Exported functions by name, as RVAs (Thumb bit included).</summary>
+        /// <remarks>
+        /// Only a DLL has any. A WP8 Direct3D/XAML title ships its game as a WinRT component DLL,
+        /// entered through <c>DllGetActivationFactory</c> rather than an entry point.
+        /// </remarks>
+        public IReadOnlyDictionary<string, uint> Exports { get; }
+
+        /// <summary>IMAGE_FILE_DLL in the file header's characteristics.</summary>
+        public bool IsDll { get; }
+
         /// <summary>
         /// The entry point address once mapped. The low bit is the ARM Thumb-state flag,
         /// so this value is passed to the emulator as-is rather than being masked off.
@@ -81,6 +91,7 @@ namespace WPR.Wp8Native
             Machine = U16(peOffset + 4);
             ushort sectionCount = U16(peOffset + 6);
             ushort optionalHeaderSize = U16(peOffset + 20);
+            IsDll = (U16(peOffset + 22) & 0x2000) != 0;
 
             int opt = peOffset + 24;
             ushort magic = U16(opt);
@@ -96,6 +107,7 @@ namespace WPR.Wp8Native
             Subsystem     = U16(opt + 68);
 
             int dataDirectories = opt + 96;
+            uint exportDirRva = U32(dataDirectories);
             uint importDirRva = U32(dataDirectories + 1 * 8);
 
             // Directory 3 is the exception directory: on ARM, the .pdata table of
@@ -117,6 +129,42 @@ namespace WPR.Wp8Native
             }
 
             Imports = importDirRva == 0 ? Array.Empty<ImportedFunction>() : ReadImports(importDirRva);
+            Exports = exportDirRva == 0 ? new Dictionary<string, uint>() : ReadExports(exportDirRva);
+        }
+
+        private Dictionary<string, uint> ReadExports(uint exportDirRva)
+        {
+            Dictionary<string, uint> exports = new(StringComparer.Ordinal);
+            if (RvaToOffset(exportDirRva) is not { } dir)
+            {
+                return exports;
+            }
+
+            uint functionCount = U32(dir + 20);
+            uint nameCount = U32(dir + 24);
+            int? functions = RvaToOffset(U32(dir + 28));
+            int? names = RvaToOffset(U32(dir + 32));
+            int? ordinals = RvaToOffset(U32(dir + 36));
+            if (functions is null || names is null || ordinals is null)
+            {
+                return exports;
+            }
+
+            for (int i = 0; i < nameCount; i++)
+            {
+                if (RvaToOffset(U32(names.Value + (i * 4))) is not { } nameOffset)
+                {
+                    continue;
+                }
+
+                ushort ordinal = U16(ordinals.Value + (i * 2));
+                if (ordinal < functionCount)
+                {
+                    exports[ReadCString(nameOffset)] = U32(functions.Value + (ordinal * 4));
+                }
+            }
+
+            return exports;
         }
 
         public static PeImage Load(string path) => new(File.ReadAllBytes(path));

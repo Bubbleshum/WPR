@@ -630,6 +630,12 @@ namespace WPR.Wp8Native
         {
             string from = ReadWide(0);
             string to = ReadWide(1);
+            if (Environment.GetEnvironmentVariable("WPR_MOVETRACE") is not null)
+            {
+                var calls = _emulator.CallOrder;
+                Console.Error.WriteLine($"[move] {from} -> {to}; preceding: " +
+                    string.Join(" | ", calls.Skip(Math.Max(0, calls.Count - 3000)).Select(c => c.Split((char)33)[^1]).Where(c => c is not ("memcpy" or "memmove" or "memset" or "strlen" or "??2@YAPAXI@Z" or "??3@YAXPAX@Z" or "_lock" or "_unlock"))));
+            }
 
             try
             {

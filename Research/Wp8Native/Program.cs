@@ -191,11 +191,43 @@ if (Environment.GetEnvironmentVariable("WPR_UNHANDLED") == "1")
     return 0;
 }
 
-string? fault = emulator.RunEntryPoint(budget);
+// A Direct3D/XAML title is a WinRT component DLL, not an exe: the host activates its class
+// and plays the managed page (XamlShells) instead of calling an entry point.
+XamlShell? shell = image.IsDll ? XamlShells.ForComponent(path) : null;
+string? fault;
+if (shell is not null)
+{
+    string componentDir = Path.GetDirectoryName(Path.GetFullPath(path))!;
+    WinmdReader metadata = WinmdReader.Load(Directory.GetFiles(componentDir, "*.winmd"));
+    long start = emulator.WinRt.StartComponent(image, metadata, shell);
+    fault = emulator.Run(start, budget);
+}
+else
+{
+    fault = emulator.RunEntryPoint(budget);
+}
+
 runClock.Stop();
 clock.Stop();
 
 Console.WriteLine($"  stopped       {fault ?? emulator.StopReason ?? "instruction budget exhausted"}");
+if (shell is not null)
+{
+    Console.WriteLine($"  xaml host     {emulator.WinRt.ComponentFrames:N0} frame(s) drawn");
+    foreach (string line in emulator.WinRt.ComponentLog)
+    {
+        Console.WriteLine($"      {line}");
+    }
+}
+
+if (emulator.GuestThreadsStarted > 0)
+{
+    Console.WriteLine($"  threads       {emulator.GuestThreadsStarted} started, {emulator.ThreadSwitches:N0} switch(es)");
+    foreach (string line in emulator.ThreadLog)
+    {
+        Console.WriteLine($"      {line}");
+    }
+}
 List<string> damagedAfter = emulator.VerifyTrapPage();
 Console.WriteLine($"  trap page     {(damagedAfter.Count == 0 ? "still intact after the run" : $"{damagedAfter.Count} slots DAMAGED")}");
 foreach (string bad in damagedAfter.Take(4))

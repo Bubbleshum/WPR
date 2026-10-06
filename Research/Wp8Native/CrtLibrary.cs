@@ -278,7 +278,10 @@ namespace WPR.Wp8Native
             handlers["?wait@Concurrency@@YAXI@Z"] = () =>
             {
                 _frame.Return(0);
-                _emulator.YieldToDeferredWork();
+                if (!_emulator.BlockCurrentThread(() => true))
+                {
+                    _emulator.YieldToDeferredWork();
+                }
             };
 
             // A cancellation registration is another object the caller keeps and later
