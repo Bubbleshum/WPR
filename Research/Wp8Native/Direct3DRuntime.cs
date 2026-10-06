@@ -651,7 +651,7 @@ namespace WPR.Wp8Native
             // Index 3 is pClassLinkage, which is almost always null, so this wrote nothing
             // and answered S_OK: the image kept whatever its own memory already held where
             // the shader pointer belonged.
-            [12] = ("CreateVertexShader", MakeChild("VertexShader", outIndex: 4)),
+            [12] = ("CreateVertexShader", CreateVertexShader),
             [13] = ("CreateGeometryShader", MakeChild("GeometryShader", outIndex: 4)),
             [16] = ("CreateHullShader", MakeChild("HullShader", outIndex: 4)),
             [17] = ("CreateDomainShader", MakeChild("DomainShader", outIndex: 4)),
@@ -664,7 +664,7 @@ namespace WPR.Wp8Native
             [20] = ("CreateBlendState", MakeChild("BlendState", outIndex: 2)),
             [21] = ("CreateDepthStencilState", MakeChild("DepthStencilState", outIndex: 2)),
             [22] = ("CreateRasterizerState", MakeChild("RasterizerState", outIndex: 2)),
-            [23] = ("CreateSamplerState", MakeChild("SamplerState", outIndex: 2)),
+            [23] = ("CreateSamplerState", CreateSamplerState),
             [24] = ("CreateQuery", MakeChild("Query", outIndex: 2)),
             [25] = ("CreatePredicate", MakeChild("Predicate", outIndex: 2)),
             [29] = ("CheckFormatSupport", () =>
@@ -835,6 +835,7 @@ namespace WPR.Wp8Native
                 _emulator.WriteMemory(
                     resource.Storage, _emulator.ReadMemory(source, (int)resource.StorageSize));
                 resource.HasContent = true;
+                resource.Version++;
             }
             catch (Exception)
             {
@@ -866,6 +867,7 @@ namespace WPR.Wp8Native
                 }
 
                 resource.HasContent = true;
+                resource.Version++;
             }
             catch (Exception)
             {
@@ -976,12 +978,28 @@ namespace WPR.Wp8Native
         {
             [7] = ("VSSetConstantBuffers", () =>
             {
-                // (StartSlot, NumBuffers, ppConstantBuffers)
-                if (Arg(2) > 0 && Arg(3) != 0)
+                // (StartSlot, NumBuffers, ppConstantBuffers) - only cb0 feeds the position.
+                if (Arg(1) == 0 && Arg(2) > 0 && Arg(3) != 0)
                 {
                     _boundConstants = ResourceAt(_emulator.ReadUInt32(Arg(3), 0));
                 }
 
+                Return(HResultOk);
+            }),
+            [10] = ("PSSetSamplers", () =>
+            {
+                // (StartSlot, NumSamplers, ppSamplers) - slot 0 is the one the sprite shaders sample.
+                if (Arg(1) == 0 && Arg(2) > 0 && Arg(3) != 0)
+                {
+                    _boundSampler = _samplers.GetValueOrDefault(_emulator.ReadUInt32(Arg(3), 0));
+                }
+
+                Return(HResultOk);
+            }),
+            [11] = ("VSSetShader", () =>
+            {
+                // (pVertexShader, ppClassInstances, NumClassInstances)
+                _boundVertexShader = _vertexShaders.GetValueOrDefault(Arg(1));
                 Return(HResultOk);
             }),
             [8] = ("PSSetShaderResources", () =>
@@ -1068,6 +1086,14 @@ namespace WPR.Wp8Native
                     Viewport = (
                         BitConverter.ToSingle(_emulator.ReadMemory(viewports + 8, 4)),
                         BitConverter.ToSingle(_emulator.ReadMemory(viewports + 12, 4)));
+
+                    byte[] raw = _emulator.ReadMemory(viewports, 16);
+                    string described = $"viewport x={BitConverter.ToSingle(raw, 0)} y={BitConverter.ToSingle(raw, 4)} " +
+                                       $"w={BitConverter.ToSingle(raw, 8)} h={BitConverter.ToSingle(raw, 12)}";
+                    if (_viewportsSeen.Add(described))
+                    {
+                        Note(described);
+                    }
                 }
 
                 Return(HResultOk);
@@ -1090,6 +1116,7 @@ namespace WPR.Wp8Native
                                 destination.Storage,
                                 _emulator.ReadMemory(Arg(4), (int)destination.StorageSize));
                             destination.HasContent = true;
+                            destination.Version++;
                         }
                         catch (Exception)
                         {
@@ -1156,11 +1183,185 @@ namespace WPR.Wp8Native
                 _boundTexture,
                 _boundLayout,
                 ReadTransform(),
-                _topology)));
+                _topology)
+            {
+                WrapU = _boundSampler?.WrapU ?? false,
+                WrapV = _boundSampler?.WrapV ?? false,
+            }));
+        }
+
+        /// <summary>A sampler's addressing, which is all the rasteriser takes from it.</summary>
+        private sealed record SamplerAddressing(bool WrapU, bool WrapV);
+
+        private readonly HashSet<string> _viewportsSeen = new();
+
+        private readonly Dictionary<long, SamplerAddressing> _samplers = new();
+        private SamplerAddressing? _boundSampler;
+
+        /// <summary>
+        /// HRESULT CreateSamplerState(const D3D11_SAMPLER_DESC*, ID3D11SamplerState**). The desc is
+        /// Filter, AddressU, AddressV, AddressW, ...; address 1 is WRAP, 2 MIRROR, 3 CLAMP.
+        /// </summary>
+        /// <remarks>
+        /// Dropped before, so everything was sampled clamp - and a game that tiles a texture
+        /// across a big polygon by running its UVs past 1 got the edge texel smeared over the
+        /// whole thing: Angry Birds Classic's ground came out a flat dark brown.
+        /// </remarks>
+        private void CreateSamplerState()
+        {
+            long desc = Arg(1);
+            MakeChild("SamplerState", outIndex: 2)();
+            long outPointer = Arg(2);
+            if (desc == 0 || outPointer == 0)
+            {
+                return;
+            }
+
+            uint addressU = _emulator.ReadUInt32(desc + 4, 3);
+            uint addressV = _emulator.ReadUInt32(desc + 8, 3);
+            long sampler = _emulator.ReadUInt32(outPointer, 0);
+            if (sampler != 0)
+            {
+                _samplers[sampler] = new SamplerAddressing(addressU is 1 or 2, addressV is 1 or 2);
+            }
         }
 
         /// <summary>
-        /// The first sixteen floats of the bound vertex constant buffer, as a matrix.
+        /// How a vertex shader turns its input position into clip space: the cb0 register its
+        /// matrix starts at, and whether it multiplies by rows (mul/mad: v.x*c0 + v.y*c1 + ...)
+        /// rather than taking dot products (dp4 c0..c3).
+        /// </summary>
+        private sealed record VertexTransform(int BaseRegister, bool ByRows);
+
+        private readonly Dictionary<long, VertexTransform> _vertexShaders = new();
+        private VertexTransform? _boundVertexShader;
+
+        /// <summary>Vertex shaders seen, and what was read out of them, for the report.</summary>
+        public List<string> VertexShaderNotes { get; } = new();
+
+        /// <summary>
+        /// HRESULT CreateVertexShader(pShaderBytecode, BytecodeLength, pClassLinkage, ppVertexShader).
+        /// The bytecode used to be dropped here; now it is read for the one fact the rasteriser
+        /// needs, which matrix the position goes through.
+        /// </summary>
+        /// <remarks>
+        /// Rovio's sprite shaders carry WORLDTM, VIEWTM, PROJTM and TOTALTM in cb0 and transform
+        /// by TOTALTM - registers 12-15 - with mul/mad. Reading the first sixteen floats instead
+        /// picked WORLDTM, which leaves out the camera: Angry Birds Classic's backgrounds stopped
+        /// short of the screen edge whenever the camera zoomed, and its menu showed sky colour
+        /// across the right third. Rio got away with it because its first matrix happened to be
+        /// the one that mattered.
+        /// </remarks>
+        private void CreateVertexShader()
+        {
+            long bytecode = Arg(1);
+            long length = Arg(2);
+            MakeChild("VertexShader", outIndex: 4)();
+
+            long outPointer = Arg(4);
+            if (outPointer == 0 || bytecode == 0 || length <= 0 || length > 1024 * 1024)
+            {
+                return;
+            }
+
+            long shader = _emulator.ReadUInt32(outPointer, 0);
+            VertexTransform? how = AnalyseVertexShader(_emulator.ReadMemory(bytecode, (int)length));
+            if (shader != 0 && how is not null)
+            {
+                _vertexShaders[shader] = how;
+            }
+
+            VertexShaderNotes.Add(how is null
+                ? $"vertex shader 0x{shader:X8}: no cb0 transform found"
+                : $"vertex shader 0x{shader:X8}: position by cb0[{how.BaseRegister}..{how.BaseRegister + 3}], {(how.ByRows ? "mul/mad" : "dp4")}");
+        }
+
+        /// <summary>
+        /// Finds the first dp4/mul/mad in the shader program that reads cb0, and from the
+        /// registers it and its neighbours read, the matrix's base.
+        /// </summary>
+        private static VertexTransform? AnalyseVertexShader(byte[] dxbc)
+        {
+            int chunk = -1;
+            for (int i = 0; i + 8 <= dxbc.Length; i += 4)
+            {
+                uint tag = BitConverter.ToUInt32(dxbc, i);
+                if (tag == 0x52444853 /* SHDR */ || tag == 0x58454853 /* SHEX */)
+                {
+                    chunk = i;
+                    break;
+                }
+            }
+
+            if (chunk < 0)
+            {
+                return null;
+            }
+
+            int size = BitConverter.ToInt32(dxbc, chunk + 4);
+            int start = chunk + 8;
+            int end = Math.Min(dxbc.Length, start + size);
+            int at = start + 8; // version, length
+
+            bool? byRows = null;
+            var registers = new List<int>();
+
+            while (at + 4 <= end && registers.Count < 4)
+            {
+                uint opcodeToken = BitConverter.ToUInt32(dxbc, at);
+                int opcode = (int)(opcodeToken & 0x7FF);
+                int tokens = (int)((opcodeToken >> 24) & 0x7F);
+                if (opcode == 0x35 /* customdata */)
+                {
+                    tokens = BitConverter.ToInt32(dxbc, at + 4);
+                }
+
+                if (tokens <= 0)
+                {
+                    break;
+                }
+
+                bool interesting = opcode is 0x11 /* dp4 */ or 0x38 /* mul */ or 0x32 /* mad */;
+                if (interesting)
+                {
+                    for (int t = 1; t < tokens - 2 && at + ((t + 2) * 4) < end; t++)
+                    {
+                        uint operand = BitConverter.ToUInt32(dxbc, at + (t * 4));
+                        int type = (int)((operand >> 12) & 0xFF);
+                        int dimension = (int)((operand >> 20) & 0x3);
+                        int representation0 = (int)((operand >> 22) & 0x7);
+                        int representation1 = (int)((operand >> 25) & 0x7);
+                        int extended = (operand & 0x80000000u) != 0 ? 1 : 0;
+                        if (type == 8 /* constant buffer */ && dimension == 2 && representation0 == 0 && representation1 == 0
+                            && at + ((t + 2 + extended) * 4) < end)
+                        {
+                            int slot = BitConverter.ToInt32(dxbc, at + ((t + 1 + extended) * 4));
+                            int register = BitConverter.ToInt32(dxbc, at + ((t + 2 + extended) * 4));
+                            if (slot == 0 && register is >= 0 and < 4096)
+                            {
+                                byRows ??= opcode != 0x11;
+                                registers.Add(register);
+                            }
+
+                            t += 2 + extended;
+                        }
+                    }
+                }
+
+                at += tokens * 4;
+            }
+
+            if (byRows is null || registers.Count == 0)
+            {
+                return null;
+            }
+
+            int lowest = registers.Min();
+            return new VertexTransform(lowest - (lowest % 4), byRows.Value);
+        }
+
+        /// <summary>
+        /// The bound vertex shader's position matrix out of cb0, as the rasteriser applies it.
         /// </summary>
         /// <remarks>
         /// Standing in for the vertex shader, which this layer does not run. A 2D engine
@@ -1171,21 +1372,46 @@ namespace WPR.Wp8Native
         /// </remarks>
         private float[]? ReadTransform()
         {
-            if (_boundConstants is null || _boundConstants.Storage == 0 || _boundConstants.StorageSize < 64)
+            // Which four registers of cb0 the bound vertex shader multiplies the position by,
+            // and how. Without a shader to go by, the first four, as dot products.
+            VertexTransform how = _boundVertexShader ?? new VertexTransform(0, ByRows: false);
+            long offset = how.BaseRegister * 16L;
+
+            if (_boundConstants is null || _boundConstants.Storage == 0 || _boundConstants.StorageSize < offset + 64)
             {
                 return null;
             }
 
             try
             {
-                byte[] raw = _emulator.ReadMemory(_boundConstants.Storage, 64);
+                byte[] raw = _emulator.ReadMemory(_boundConstants.Storage + offset, 64);
                 float[] matrix = new float[16];
                 for (int i = 0; i < 16; i++)
                 {
-                    matrix[i] = BitConverter.ToSingle(raw, i * 4);
+                    // mul/mad form: out = v.x*c[n] + v.y*c[n+1] + ... - each register is a row
+                    // of coefficients for one INPUT component. The rasteriser computes
+                    // out.x = dot(v, m[0..3]), so transpose to put it in that shape.
+                    int source = how.ByRows ? ((i % 4) * 4) + (i / 4) : i;
+                    matrix[i] = BitConverter.ToSingle(raw, source * 4);
                     if (!float.IsFinite(matrix[i]))
                     {
                         return null;
+                    }
+                }
+
+                // The full transform renders into the PORTRAIT swapchain, rotated: a WP8 game
+                // draws landscape by turning its scene a quarter into the 480x800 buffer, and the
+                // phone's panel is what made it look upright. The raster here is landscape, so
+                // turn the clip-space result back: x' = -y, y' = x (WPR_UNROTATE=0 to see it raw,
+                // =cw for the other direction).
+                if (_boundVertexShader is not null && BackBufferWidth < BackBufferHeight && Unrotate != "0")
+                {
+                    bool clockwise = Unrotate == "cw";
+                    float[] rowX = matrix[0..4], rowY = matrix[4..8];
+                    for (int c = 0; c < 4; c++)
+                    {
+                        matrix[c] = clockwise ? rowY[c] : -rowY[c];
+                        matrix[4 + c] = clockwise ? -rowX[c] : rowX[c];
                     }
                 }
 
@@ -1196,6 +1422,9 @@ namespace WPR.Wp8Native
                 return null;
             }
         }
+
+        private static readonly string Unrotate =
+            (Environment.GetEnvironmentVariable("WPR_UNROTATE") ?? "ccw").Trim().ToLowerInvariant();
 
         /// <summary>
         /// HRESULT Map(pResource, Subresource, MapType, MapFlags, D3D11_MAPPED_SUBRESOURCE*).
@@ -1239,6 +1468,7 @@ namespace WPR.Wp8Native
             else if (resource is not null)
             {
                 resource.HasContent = true;
+                resource.Version++;
             }
 
             _emulator.WriteUInt32(mapped + 0, (uint)buffer);
@@ -1526,11 +1756,31 @@ namespace WPR.Wp8Native
             // A live host wants every frame, not a photograph of one. Rasterising here is a
             // few milliseconds for a 2D title, and it runs on the emulator's thread - the
             // subscriber gets a private copy and must marshal it to wherever it draws.
+            // A host with a GPU takes the draw list and does the pixels itself. That is the
+            // fast path: the software rasteriser below costs more than the game.
+            if (FrameBuilt is { } gpu)
+            {
+                try
+                {
+                    long started = System.Diagnostics.Stopwatch.GetTimestamp();
+                    FrameDrawList list = Frame.BuildDrawList(_emulator);
+                    RasteriseTicks += System.Diagnostics.Stopwatch.GetTimestamp() - started;
+                    gpu(list);
+                }
+                catch (Exception ex)
+                {
+                    Note($"frame delivery failed: {ex.Message}");
+                }
+            }
+
             if (FramePresented is { } subscriber)
             {
                 try
                 {
-                    subscriber(Frame.Rasterise(_emulator, out _), FrameCapture.Width, FrameCapture.Height);
+                    long started = System.Diagnostics.Stopwatch.GetTimestamp();
+                    byte[] pixels = Frame.Rasterise(_emulator, out _);
+                    RasteriseTicks += System.Diagnostics.Stopwatch.GetTimestamp() - started;
+                    subscriber(pixels, FrameCapture.Width, FrameCapture.Height);
                 }
                 catch (Exception ex)
                 {
@@ -1540,6 +1790,12 @@ namespace WPR.Wp8Native
 
             Return(HResultOk);
         }
+
+        /// <summary>Stopwatch ticks spent rasterising frames for <see cref="FramePresented"/>.</summary>
+        public long RasteriseTicks { get; private set; }
+
+        /// <summary>Raised with each presented frame as a GPU draw list.</summary>
+        public event Action<FrameDrawList>? FrameBuilt;
 
         /// <summary>Raised with the rasterised RGBA pixels of each presented frame.</summary>
         public event Action<byte[], int, int>? FramePresented;

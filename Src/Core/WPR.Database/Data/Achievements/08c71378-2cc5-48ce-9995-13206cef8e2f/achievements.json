@@ -1,5 +1,27 @@
 {
   "Name": "Angry Birds Seasons",
   "Description": "Rovio's holiday edition of Angry Birds, adding a fresh episode of levels for each season of the year.",
-  "Achievements": []
+  "KeySource": "xbox-id",
+  "Achievements": [
+    {"Key": "1", "Name": "Pig Popper", "GamerScore": 10, "Description": "Smash 300 pigs"},
+    {"Key": "2", "Name": "Haunted Ham", "GamerScore": 10, "Description": "Finish Trick or Treat"},
+    {"Key": "3", "Name": "Pumpkin Smasher", "GamerScore": 10, "Description": "Smash 300 pumpkins"},
+    {"Key": "4", "Name": "Holiday Spirit", "GamerScore": 10, "Description": "Finish all Season's Greedings levels"},
+    {"Key": "5", "Name": "The Grinch", "GamerScore": 10, "Description": "Smash 1000 presents"},
+    {"Key": "6", "Name": "All's Fair in Love and War", "GamerScore": 10, "Description": "Finish Hogs and Kisses"},
+    {"Key": "7", "Name": "Chocolate Lover", "GamerScore": 10, "Description": "Break 300 chocolate boxes"},
+    {"Key": "8", "Name": "It's all Hunky Dory!", "GamerScore": 10, "Description": "Finish Go Green, Get Lucky"},
+    {"Key": "9", "Name": "Leprechaun's Secret", "GamerScore": 10, "Description": "Break 300 pots of gold"},
+    {"Key": "10", "Name": "Hardboiled Egg", "GamerScore": 10, "Description": "Finish Easter Eggs"},
+    {"Key": "11", "Name": "Bunny Hunter", "GamerScore": 10, "Description": "Pop 300 Piggy Bunnies"},
+    {"Key": "12", "Name": "Oh, Those Summer Nights", "GamerScore": 10, "Description": "Finish all Summer Pignic levels"},
+    {"Key": "13", "Name": "Oops a Daisy", "GamerScore": 10, "Description": "Pick 300 flowers"},
+    {"Key": "14", "Name": "Bright Side of the Moon", "GamerScore": 10, "Description": "Finish Moon Festival"},
+    {"Key": "15", "Name": "Shut the Lights!", "GamerScore": 10, "Description": "Break 300 lanterns"},
+    {"Key": "16", "Name": "Eggxorcist", "GamerScore": 10, "Description": "Finish Ham'o'ween"},
+    {"Key": "17", "Name": "Lovely Bones", "GamerScore": 10, "Description": "Break 300 skeletons"},
+    {"Key": "18", "Name": "All Around the Globe", "GamerScore": 10, "Description": "Unlock Orange Bird"},
+    {"Key": "19", "Name": "Merry Happy!", "GamerScore": 10, "Description": "Finish Wreck the Halls"},
+    {"Key": "20", "Name": "Cookie Crumbler", "GamerScore": 10, "Description": "Break 300 Cookies"}
+  ]
 }

@@ -126,6 +126,16 @@ namespace WPR.Wp8Native
         /// <summary>Ticks per second reported to the image: one microsecond of resolution.</summary>
         private const long PerformanceFrequency = 1_000_000;
 
+        /// <summary>
+        /// Where the image's local folder lives on the host. A temp folder by default, which is
+        /// right for the probe; an Android host points it at the app's own storage, because the
+        /// cache directory can be cleared under a running game.
+        /// </summary>
+        public static string SandboxRoot { get; set; } =
+            Environment.GetEnvironmentVariable("WPR_SANDBOX") is { Length: > 0 } configured
+                ? configured
+                : Path.Combine(Path.GetTempPath(), "wpr-wp8-sandbox");
+
         public HostStubs(ArmEmulator emulator, WinRtRuntime winRt, HStringHeap strings, string imageDirectory)
         {
             _emulator = emulator;
@@ -141,7 +151,7 @@ namespace WPR.Wp8Native
                 emulator,
                 _frame,
                 readRoot: imageDirectory,
-                writeRoot: Path.Combine(Path.GetTempPath(), "wpr-wp8-sandbox"));
+                writeRoot: SandboxRoot);
 
             _handlers = new Dictionary<string, Action>(StringComparer.Ordinal)
             {
@@ -325,6 +335,28 @@ namespace WPR.Wp8Native
             // them and none of them are specific to this image.
             _crt = new CrtLibrary(emulator, _frame);
             _crt.RegisterInto(_handlers);
+            Maths = new MathLibrary(emulator, _frame);
+            Maths.RegisterInto(_handlers);
+            Streams = new StreamLibrary(emulator, _frame);
+            Streams.RegisterInto(_handlers);
+            Rtti = new RttiLibrary(emulator, _frame);
+            Rtti.RegisterInto(_handlers);
+            Extras = new CrtExtras(emulator, _frame);
+            Extras.RegisterInto(_handlers);
+
+            // FILE* __iob_func(void): the CRT's stdin/stdout/stderr array. Three zeroed FILEs
+            // that the file library does not know, so fprintf(stderr, ...) writes nowhere -
+            // where answering 0 made it write through a null FILE.
+            _handlers["__iob_func"] = () =>
+            {
+                if (_iob == 0)
+                {
+                    _iob = emulator.AllocateHeap(3 * 0x20);
+                    emulator.WriteMemory(_iob, new byte[3 * 0x20]);
+                }
+
+                Return(_iob);
+            };
             Files.RegisterInto(_handlers);
             _sync = new SyncLibrary(emulator, _frame);
             _sync.RegisterInto(_handlers);
@@ -341,6 +373,22 @@ namespace WPR.Wp8Native
         /// delivered, so the caller carried on with a value it should never have seen.
         /// </summary>
         public IReadOnlyList<string> UndeliveredThrows => _undeliveredThrows;
+
+        /// <summary>
+        /// Imports that reached no handler and were answered with zero, with call counts. The
+        /// list of places where the image was told something nobody decided to tell it.
+        /// </summary>
+        public MathLibrary Maths { get; private set; } = null!;
+
+        public StreamLibrary Streams { get; private set; } = null!;
+
+        public RttiLibrary Rtti { get; private set; } = null!;
+
+        public CrtExtras Extras { get; private set; } = null!;
+
+        private long _iob;
+
+        public Dictionary<string, int> DefaultedCalls { get; } = new(StringComparer.Ordinal);
 
         private readonly List<string> _constructedExceptions = new();
 
@@ -490,10 +538,28 @@ namespace WPR.Wp8Native
             }
         }
 
+        /// <summary>
+        /// Whether an import has a real implementation, as opposed to reaching the shaped
+        /// constructor stand-in or the default "return 0". Static: it answers for imports the
+        /// run never reached, which is the point - a gap found before it is executed.
+        /// </summary>
+        public bool IsImplemented(string function) =>
+            _handlers.ContainsKey(function) ||
+            ComStubs.ContainsKey(function) ||
+            function is "D3D11CreateDevice" or "XAudio2Create" or "#1" ||
+            (function.StartsWith("??0", StringComparison.Ordinal) &&
+             function.Contains("Exception@Platform@@", StringComparison.Ordinal));
+
         public void Dispatch(string fullName)
         {
             int split = fullName.IndexOf('!');
             string function = split >= 0 ? fullName[(split + 1)..] : fullName;
+
+            // Imports by ordinal are only unique per DLL.
+            if (function.StartsWith('#') && Extras.TryWinsock(fullName))
+            {
+                return;
+            }
 
             if (_handlers.TryGetValue(function, out Action? handler))
             {
@@ -570,6 +636,7 @@ namespace WPR.Wp8Native
             // Everything else returns zero. For a function returning void or a handle
             // nobody checks that is harmless; for anything else it is a lie the caller
             // will eventually notice, which is exactly what this probe measures.
+            DefaultedCalls[function] = DefaultedCalls.TryGetValue(function, out int calls) ? calls + 1 : 1;
             Return(0);
         }
 
@@ -707,6 +774,7 @@ namespace WPR.Wp8Native
             ThrowStack = _emulator.Unwinder.Walk(
                 pc: _emulator.ReturnAddress & ~1L,
                 liveRegisters: coreRegisters.Select(_emulator.ReadRegister).ToArray());
+            ThrowStack = ContinueThroughCatchFunclet(ThrowStack);
 
             ThrownText = ReadableStringsIn(Arg(0), 0x100);
 
@@ -785,10 +853,18 @@ namespace WPR.Wp8Native
                 return;
             }
 
-            // The funclet reads the caught object out of its own frame, not a register.
+            // The funclet reads the caught object out of its own frame, not a register - and
+            // on ARM the catch-object offset (always negative) is relative to the stack pointer
+            // at the function's ENTRY, i.e. above its whole frame, not to the post-prologue sp
+            // the continuation resumes on. Measured on Angry Birds Classic: frame 0xD0 bytes,
+            // offset -0x84, and the funclet reads the reference at r7+0x4C = sp+0xD0-0x84.
+            // Writing it relative to the inner sp put it below the stack, and the handler's
+            // e.what() called through whatever stale word sat at r7+0x4C. Earlier titles only
+            // got away with it because their handlers never read the object.
             if (candidate.CatchObjectOffset != 0)
             {
-                _emulator.WriteUInt32(frame + candidate.CatchObjectOffset, (uint)thrown.Object);
+                long entrySp = candidate.Frame.FramePointer + candidate.Frame.FrameBytes;
+                _emulator.WriteUInt32(entrySp + candidate.CatchObjectOffset, (uint)thrown.Object);
             }
 
             // Destructors first, innermost outwards, then the catch itself.
@@ -854,11 +930,53 @@ namespace WPR.Wp8Native
         /// Here that was a std::vector destructor walking a std::string, in a loop that
         /// destroyed twelve megabytes of heap before the runaway detector caught it.
         /// </remarks>
-        private void EnterFunclet(long funclet, UnwoundFrame frame, string name, Action onReturn)
+        private long EnterFunclet(long funclet, UnwoundFrame frame, string name, Action onReturn)
         {
             RestoreCalleeSaved(frame);
             _emulator.WriteRegister(Arm.UC_ARM_REG_SP, _funcletStack);
-            _emulator.CallEmulated(name, funclet, [0, frame.FramePointer], onReturn);
+            return _emulator.CallEmulated(name, funclet, [0, frame.FramePointer], onReturn, recycle: true);
+        }
+
+        /// <summary>
+        /// Catch funclets currently running, innermost last: the trap each will return to, and
+        /// the frames of the throw that entered it which lie above its establisher.
+        /// </summary>
+        private readonly List<(long ReturnTrap, IReadOnlyList<UnwoundFrame> Outer)> _activeCatches = new();
+
+        /// <summary>
+        /// A throw from inside a catch block.
+        /// </summary>
+        /// <remarks>
+        /// The host calls a catch funclet with lr at a return trap, so a walk from a throw inside
+        /// one goes a frame or two and stops at that trap - "return address is not in executable
+        /// code" - and the search used to give up there with "no matching catch". On a device the
+        /// search would carry on into the establisher's callers. Those are exactly the frames of
+        /// the original throw above the establisher, which were recorded when the catch was
+        /// entered, so they are spliced on here. The establisher itself is skipped: its
+        /// try/catch is the one being executed, and offering it again loops. The abandoned
+        /// funclet never returns, so its context is dropped along with any inside it.
+        /// Angry Birds Space hits this on its first episode screen: a Lua error caught and
+        /// rethrown as a scene error.
+        /// </remarks>
+        private IReadOnlyList<UnwoundFrame> ContinueThroughCatchFunclet(IReadOnlyList<UnwoundFrame> walked)
+        {
+            if (walked.Count == 0 || _activeCatches.Count == 0)
+            {
+                return walked;
+            }
+
+            UnwoundFrame last = walked[^1];
+            long stoppedAt = last.Address & ~1L;
+            int index = _activeCatches.FindLastIndex(c => (c.ReturnTrap & ~1L) == stoppedAt);
+            if (index < 0)
+            {
+                return walked;
+            }
+
+            IReadOnlyList<UnwoundFrame> outer = _activeCatches[index].Outer;
+            _activeCatches.RemoveRange(index, _activeCatches.Count - index);
+            TransferLog.Add($"   throw from inside a catch funclet: continuing the search in {outer.Count} outer frame(s)");
+            return [.. walked.Take(walked.Count - 1), .. outer];
         }
 
         /// <summary>
@@ -903,9 +1021,29 @@ namespace WPR.Wp8Native
         {
             // The code after the catch belongs to the establisher frame and expects its own
             // r4-r11, not whatever the last cleanup funclet left in them.
-            EnterFunclet(funclet | 1, candidate.Frame, "catch funclet",
+            IReadOnlyList<UnwoundFrame> stack = ThrowStack;
+            int establisher = -1;
+            for (int i = 0; i < stack.Count; i++)
+            {
+                if (ReferenceEquals(stack[i], candidate.Frame))
+                {
+                    establisher = i;
+                    break;
+                }
+            }
+
+            IReadOnlyList<UnwoundFrame> outer = establisher < 0 ? [] : stack.Skip(establisher + 1).ToList();
+            long returnTrap = 0;
+
+            returnTrap = EnterFunclet(funclet | 1, candidate.Frame, "catch funclet",
                 onReturn: () =>
                 {
+                    int done = _activeCatches.FindLastIndex(c => c.ReturnTrap == returnTrap);
+                    if (done >= 0)
+                    {
+                        _activeCatches.RemoveRange(done, _activeCatches.Count - done);
+                    }
+
                     long continuation = Arg(0);
                     long stack = _emulator.ReadRegister(Arm.UC_ARM_REG_SP);
 
@@ -929,6 +1067,8 @@ namespace WPR.Wp8Native
                     _emulator.WriteRegister(Arm.UC_ARM_REG_SP, frame);
                     _emulator.ContinueAt(continuation);
                 });
+
+            _activeCatches.Add((returnTrap, outer));
         }
 
         /// <summary>What the image threw, once it has thrown.</summary>

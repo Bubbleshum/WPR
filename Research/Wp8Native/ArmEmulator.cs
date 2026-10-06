@@ -2,6 +2,10 @@ using UnicornEngine.Const;
 
 namespace WPR.Wp8Native
 {
+    // Inside the namespace on purpose: when WPR.Common is referenced (the engine build), a
+    // file-level alias loses to the WPR.Common namespace and Common.UC_* stops resolving.
+    using Common = UnicornEngine.Const.Common;
+
     /// <summary>
     /// Hosts one ARMv7 Thumb-2 image on an emulated CPU and traps every call that
     /// leaves it.
@@ -181,10 +185,15 @@ namespace WPR.Wp8Native
         /// <c>WPR_CPU=dynarmic</c> selects the JIT; anything else is Unicorn, the engine the
         /// probe was written against and the reference every dynarmic run is compared to.
         /// </summary>
+#if WPR_NO_UNICORN
+        // The runtime build carries no Unicorn (GPLv2 - it must never ship), so there is no choice.
+        private static IArmCpu CreateCpu() => new DynarmicArmCpu();
+#else
         private static IArmCpu CreateCpu() =>
             string.Equals(Environment.GetEnvironmentVariable("WPR_CPU"), "dynarmic", StringComparison.OrdinalIgnoreCase)
                 ? new DynarmicArmCpu()
                 : new UnicornArmCpu();
+#endif
 
         /// <summary>Imports called, in execution order, with duplicates preserved.</summary>
         /// <summary>
@@ -1230,6 +1239,9 @@ namespace WPR.Wp8Native
 
             /// <summary>Where a host-to-emulated call comes back to. Plumbing, not a call.</summary>
             Return,
+
+            /// <summary>A <see cref="Return"/> whose slot goes back on the free list once it fires.</summary>
+            RecycledReturn,
         }
 
         private sealed record TrapSlot(string Name, TrapKind Kind, Action? Handler);
@@ -1330,6 +1342,16 @@ namespace WPR.Wp8Native
         /// address that the original caller was going to use.
         /// </remarks>
         public long CallEmulated(string debugName, long function, ReadOnlySpan<long> arguments, Action onReturn)
+            => CallEmulated(debugName, function, arguments, onReturn, recycle: false);
+
+        /// <param name="recycle">
+        /// Give the return trap back once it has fired. Every C++ throw calls one funclet per
+        /// cleanup plus the catch, and a 64 KB trap page is 16,384 slots: a title that throws
+        /// for control flow (Angry Birds Space throws dozens per screen change) used to be on a
+        /// clock. Only for callers that never refer to the trap again - fault domains keep
+        /// theirs, so they do not recycle.
+        /// </param>
+        public long CallEmulated(string debugName, long function, ReadOnlySpan<long> arguments, Action onReturn, bool recycle)
         {
             if (arguments.Length > 4)
             {
@@ -1348,7 +1370,9 @@ namespace WPR.Wp8Native
                 _cpu.RegWrite(argumentRegisters[i], arguments[i]);
             }
 
-            long returnTrap = AllocateTrapSlot($"{debugName}<-return", TrapKind.Return, onReturn);
+            long returnTrap = recycle && _freeReturnTraps.Count > 0
+                ? ReuseReturnTrap($"{debugName}<-return", onReturn)
+                : AllocateTrapSlot($"{debugName}<-return", recycle ? TrapKind.RecycledReturn : TrapKind.Return, onReturn);
 
             _cpu.RegWrite(Arm.UC_ARM_REG_LR, ThumbEntry(returnTrap));
             _cpu.RegWrite(Arm.UC_ARM_REG_R12, function);
@@ -1490,6 +1514,24 @@ namespace WPR.Wp8Native
         /// </summary>
         public void ContinueAt(long address) => _cpu.RegWrite(Arm.UC_ARM_REG_R12, address);
 
+        private readonly Stack<long> _freeReturnTraps = new();
+
+        /// <summary>
+        /// A recycled slot needs no new code: every slot is the same svc ; bx r12, and only the
+        /// host-side table says what it means.
+        /// </summary>
+        private long ReuseReturnTrap(string name, Action onReturn)
+        {
+            long slot = _freeReturnTraps.Pop();
+            _traps[slot] = new TrapSlot(name, TrapKind.RecycledReturn, onReturn);
+            return slot;
+        }
+
+        /// <summary>Whether an address is a return trap still waiting to fire.</summary>
+        public bool IsPendingReturnTrap(long address)
+            => _traps.TryGetValue(address & ~1L, out TrapSlot? slot) &&
+               slot.Kind is TrapKind.Return or TrapKind.RecycledReturn;
+
         private long AllocateTrapSlot(string name, TrapKind kind, Action? handler)
         {
             if (_trapNext + 4 > TrapBase + TrapSize)
@@ -1554,6 +1596,19 @@ namespace WPR.Wp8Native
 
                     _cpu.MemWrite(slotAddress, BitConverter.GetBytes((uint)cell));
                     DataImportCells.Add($"{import.FullName} -> variable at 0x{cell:X8}");
+                    continue;
+                }
+
+                // std::cerr / cout / clog are objects, not functions: the IAT slot holds the
+                // object's address. A trap there makes the game use trap-page memory as an
+                // ostream. Give it a real, disabled one (see StreamLibrary).
+                if (import.Name.StartsWith("?cerr@std@@3", StringComparison.Ordinal) ||
+                    import.Name.StartsWith("?cout@std@@3", StringComparison.Ordinal) ||
+                    import.Name.StartsWith("?clog@std@@3", StringComparison.Ordinal))
+                {
+                    long stream = StreamLibrary.BuildDisabledOstream(this);
+                    _cpu.MemWrite(slotAddress, BitConverter.GetBytes((uint)stream));
+                    DataImportCells.Add($"{import.FullName} -> disabled ostream at 0x{stream:X8}");
                     continue;
                 }
 
@@ -1626,6 +1681,11 @@ namespace WPR.Wp8Native
 
                 case TrapKind.VtableMethod:
                     _vtableCalls.Add(slot.Name);
+                    if (_vtableCalls.Count > 4096)
+                    {
+                        // Bounded: a live host makes millions of these over a session.
+                        _vtableCalls.RemoveRange(0, 2048);
+                    }
                     if (_captures.Count > 0)
                     {
                         _captures.Peek().Add(slot.Name);
@@ -1636,6 +1696,13 @@ namespace WPR.Wp8Native
                 // Return traps are plumbing for a host-to-emulated call, not calls the
                 // image made; counting them buries the real trace.
                 case TrapKind.Return:
+                    break;
+
+                // Fires once: free the slot now, before the handler runs, so a handler that
+                // immediately calls back into emulated code can take the same slot again.
+                case TrapKind.RecycledReturn:
+                    _traps.Remove(address);
+                    _freeReturnTraps.Push(address);
                     break;
             }
 
@@ -2081,15 +2148,33 @@ namespace WPR.Wp8Native
                 return false;
             }
 
+            // A jump to a page that was never mapped is a wild branch - a corrupt function
+            // pointer or return address - never code that is merely late to arrive. Mapping a
+            // zero page for it is the worst answer available: zeros decode as Thumb no-ops, the
+            // translator slides through page after freshly mapped page, never finishes a block,
+            // and so never even honours a halt. Angry Birds Classic sat in exactly that at
+            // 0x4F01xxxx with its CPU unstoppable. Stop here, while lr still names the caller.
+            if (kind == FaultKind.FetchUnmapped)
+            {
+                long from = _cpu.RegRead(Arm.UC_ARM_REG_LR);
+                UncontainedNullCall ??= $"jumped to unmapped 0x{address:X8} (lr 0x{from:X8})" +
+                                        Newline + "                " + DescribeNullCall() +
+                                        Newline + "                code addresses on the stack:" +
+                                        Newline + ScanStack(96);
+                StopReason ??= $"jumped to unmapped memory at 0x{address:X8}, lr 0x{from:X8}";
+                _cpu.Stop();
+                return true;
+            }
+
             long page = address & ~(PageSize - 1);
 
             // The null page is mapped readable but never executable, so that tolerating a
             // null read does not quietly license a null call later: without this the page
             // is already mapped by the time anything jumps to it, the zeros decode as
             // Thumb no-ops, and the run spins to the end of its budget with nothing to say.
-            int protection = page < NullPageLimit
-                ? Common.UC_PROT_READ | Common.UC_PROT_WRITE
-                : Common.UC_PROT_ALL;
+            // Lazily mapped pages are data, so none of them is executable: the same reasoning
+            // as the null page, for the same reason (see the wild-branch stop above).
+            int protection = Common.UC_PROT_READ | Common.UC_PROT_WRITE;
 
             try
             {

@@ -11,6 +11,12 @@
 #include <string>
 #include <vector>
 
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <sys/mman.h>
+#endif
+
 #include <dynarmic/interface/A32/a32.h>
 #include <dynarmic/interface/A32/config.h>
 #include <dynarmic/interface/A32/coprocessor.h>
@@ -33,12 +39,36 @@ struct Memory {
     std::vector<uint8_t*> host;                                   // per page, null = unmapped
     std::vector<uint8_t>  prot;                                   // per page
     std::array<uint8_t*, kPages>* fast;                           // dynarmic's page table
-    std::vector<std::unique_ptr<uint8_t[]>> blocks;              // what host points into
+    std::vector<std::pair<uint8_t*, size_t>> blocks;              // what host points into
 
     Memory() : host(kPages, nullptr), prot(kPages, 0), fast(new std::array<uint8_t*, kPages>()) {
         fast->fill(nullptr);
     }
-    ~Memory() { delete fast; }
+    ~Memory() {
+        for (auto& [base, size] : blocks) release(base, size);
+        delete fast;
+    }
+
+    // Zero-filled pages straight from the OS, committed only when first touched. The guest
+    // heap is a gigabyte; new[] + memset would make every byte of it resident at start-up,
+    // which a phone answers by killing the process.
+    static uint8_t* reserve(size_t size) {
+#ifdef _WIN32
+        return static_cast<uint8_t*>(VirtualAlloc(nullptr, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
+#else
+        void* p = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+        return p == MAP_FAILED ? nullptr : static_cast<uint8_t*>(p);
+#endif
+    }
+
+    static void release(uint8_t* base, size_t size) {
+#ifdef _WIN32
+        (void)size;
+        VirtualFree(base, 0, MEM_RELEASE);
+#else
+        munmap(base, size);
+#endif
+    }
 
     static uint32_t page(uint32_t address) { return address >> kPageBits; }
 
@@ -194,7 +224,15 @@ template <typename T> void Callbacks::write(std::uint32_t address, T value) {
     std::memcpy(h, &value, sizeof(T));
 }
 
+// The last address the translator fetched code from, and how many fetches there have been.
+// Diagnostic only: a run that hangs inside the JIT without retiring an instruction - and
+// ignores a halt - is stuck translating, and this says where.
+std::atomic<std::uint32_t> g_lastFetch{0};
+std::atomic<std::uint64_t> g_fetches{0};
+
 std::optional<std::uint32_t> Callbacks::MemoryReadCode(std::uint32_t vaddr) {
+    g_lastFetch.store(vaddr, std::memory_order_relaxed);
+    g_fetches.fetch_add(1, std::memory_order_relaxed);
     uint8_t* h = resolve(cpu_, vaddr, WPRCPU_ACCESS_FETCH, 4, WPRCPU_PROT_EXEC);
     if (h == nullptr) return std::nullopt;
     std::uint32_t value;
@@ -235,6 +273,9 @@ extern "C" {
 
 WPRCPU_API int wprcpu_abi_version(void) { return 1; }
 
+WPRCPU_API uint32_t wprcpu_last_fetch(void) { return g_lastFetch.load(std::memory_order_relaxed); }
+WPRCPU_API uint64_t wprcpu_fetch_count(void) { return g_fetches.load(std::memory_order_relaxed); }
+
 WPRCPU_API wprcpu* wprcpu_create(const wprcpu_callbacks* callbacks) {
     auto* cpu = new Cpu();
     if (callbacks) cpu->host = *callbacks;
@@ -273,10 +314,9 @@ WPRCPU_API int wprcpu_map(wprcpu* handle, uint32_t address, uint32_t size, int p
         if (cpu->memory.host[p] != nullptr) return 0;   // overlapping an existing mapping
     }
 
-    auto block = std::make_unique<uint8_t[]>(size);
-    std::memset(block.get(), 0, size);
-    uint8_t* base = block.get();
-    cpu->memory.blocks.push_back(std::move(block));
+    uint8_t* base = Memory::reserve(size);
+    if (base == nullptr) return 0;
+    cpu->memory.blocks.emplace_back(base, size);
 
     for (uint32_t p = first, i = 0; i < count; p++, i++) {
         cpu->memory.host[p] = base + size_t(i) * kPageSize;

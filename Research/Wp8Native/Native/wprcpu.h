@@ -53,6 +53,10 @@ typedef struct wprcpu_callbacks {
 
 WPRCPU_API int wprcpu_abi_version(void);
 
+// Diagnostics: the last guest address the translator fetched, and the fetch count.
+WPRCPU_API uint32_t wprcpu_last_fetch(void);
+WPRCPU_API uint64_t wprcpu_fetch_count(void);
+
 WPRCPU_API wprcpu* wprcpu_create(const wprcpu_callbacks* callbacks);
 WPRCPU_API void wprcpu_destroy(wprcpu* cpu);
 

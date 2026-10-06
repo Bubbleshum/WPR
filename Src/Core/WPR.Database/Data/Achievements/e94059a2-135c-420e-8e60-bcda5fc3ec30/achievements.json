@@ -1,5 +1,27 @@
 {
   "Name": "Angry Birds Rio",
   "Description": "Angry Birds crossed with the film Rio: free caged birds and take on marmosets instead of pigs.",
-  "Achievements": []
+  "KeySource": "xbox-id",
+  "Achievements": [
+    {"Key": "1", "Name": "Breakout!", "GamerScore": 10, "Description": "Clear all Smugglers' Den levels"},
+    {"Key": "2", "Name": "Jungle Fever", "GamerScore": 10, "Description": "Clear all Jungle Escape levels"},
+    {"Key": "3", "Name": "Beach Life", "GamerScore": 10, "Description": "Clear all Beach Volley levels"},
+    {"Key": "4", "Name": "Samba!", "GamerScore": 10, "Description": "Clear all Carnival Upheaval levels"},
+    {"Key": "5", "Name": "Going Somewhere?", "GamerScore": 10, "Description": "Clear all Airfield Chase levels"},
+    {"Key": "6", "Name": "Victory!", "GamerScore": 10, "Description": "Clear all Smugglers' Plane levels"},
+    {"Key": "7", "Name": "Birds vs. Monkeys!", "GamerScore": 10, "Description": "Clear all Market Mayhem levels"},
+    {"Key": "8", "Name": "A Star is Born", "GamerScore": 10, "Description": "Earn 40 stars in total"},
+    {"Key": "9", "Name": "Rising Star", "GamerScore": 10, "Description": "Earn 100 stars in total"},
+    {"Key": "10", "Name": "Star Performer", "GamerScore": 10, "Description": "Earn 150 stars in total"},
+    {"Key": "11", "Name": "Mega Star", "GamerScore": 10, "Description": "Earn 280 stars in total"},
+    {"Key": "12", "Name": "Stellarvore", "GamerScore": 10, "Description": "Earn 500 stars in total"},
+    {"Key": "13", "Name": "Birds of a Feather", "GamerScore": 10, "Description": "Unlock Blu and Jewel"},
+    {"Key": "14", "Name": "Aerophobia", "GamerScore": 10, "Description": "Unlock Blu"},
+    {"Key": "15", "Name": "Fruit Salad", "GamerScore": 10, "Description": "Collect 6 different golden fruits"},
+    {"Key": "16", "Name": "Enthusiastic Player", "GamerScore": 10, "Description": "Play for 30 minutes in total"},
+    {"Key": "17", "Name": "Dedicated Player", "GamerScore": 10, "Description": "Play for 2 hours in total"},
+    {"Key": "18", "Name": "Half-a-Millionaire", "GamerScore": 10, "Description": "Earn 500 000 points in total"},
+    {"Key": "19", "Name": "6 Million Dollar Bird", "GamerScore": 10, "Description": "Earn 6 000 000 points in total"},
+    {"Key": "20", "Name": "Multi-Millionaire", "GamerScore": 10, "Description": "Earn 17 500 000 points in total"}
+  ]
 }

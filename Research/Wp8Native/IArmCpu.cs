@@ -64,6 +64,16 @@ public interface IArmCpu : IDisposable
 
     void RegWrite(int register, long value);
 
+    // ---- VFP, for the hard-float calling convention ----------------------------------------
+    /// <summary>
+    /// Single-precision register <c>s{index}</c>, as raw bits. 0..63 covers all of d0..d31:
+    /// <c>d{n}</c> is <c>s{2n}</c> (low word) and <c>s{2n+1}</c> (high word). Windows on ARM
+    /// passes float and double arguments and results here, not in r0-r3.
+    /// </summary>
+    uint VfpRead(int index);
+
+    void VfpWrite(int index, uint bits);
+
     // ---- guest memory, host side -----------------------------------------------------------
     /// <summary>Maps zero-filled pages. Throws if any page in the range is already mapped.</summary>
     void MemMap(long address, long size, int protection);

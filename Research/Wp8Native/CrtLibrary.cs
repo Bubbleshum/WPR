@@ -88,6 +88,47 @@ namespace WPR.Wp8Native
 
             RegisterFormatting(handlers);
             RegisterConcurrency(handlers);
+            RegisterManipulators(handlers);
+        }
+
+        private long _noopManipulator;
+
+        /// <summary>
+        /// iostream manipulators: <c>std::setw</c>, <c>std::setprecision</c>.
+        /// </summary>
+        /// <remarks>
+        /// Each returns an <c>_Smanip&lt;streamsize&gt;</c> by value - through a hidden result
+        /// pointer in r0, with the 64-bit argument in the r2:r3 pair - and the caller then calls
+        /// the struct's function pointer itself (operator&lt;&lt; is inlined). The default stub
+        /// answered 0 and wrote nothing, so the struct stayed zero and the caller branched to
+        /// address 0: Angry Birds Classic died there before its first frame. The function
+        /// pointer handed back is a host no-op - the ostream these feed is a stand-in, so a
+        /// width has nowhere to go.
+        /// </remarks>
+        private void RegisterManipulators(Dictionary<string, Action> handlers)
+        {
+            void Smanip()
+            {
+                if (_noopManipulator == 0)
+                {
+                    _noopManipulator = ArmEmulator.ThumbEntry(
+                        _emulator.RegisterVtableMethod("std::_Smanip<streamsize>::_Pfun (no-op)", () => _frame.Return(0)));
+                }
+
+                long result = _frame.Arg(0);
+                if (result != 0)
+                {
+                    _emulator.WriteUInt32(result, (uint)_noopManipulator);
+                    _emulator.WriteUInt32(result + 4, 0);
+                    _emulator.WriteUInt32(result + 8, (uint)_frame.Arg(2));
+                    _emulator.WriteUInt32(result + 12, (uint)_frame.Arg(3));
+                }
+
+                _frame.Return(result);
+            }
+
+            handlers["?setw@std@@YA?AU?$_Smanip@_J@1@_J@Z"] = Smanip;
+            handlers["?setprecision@std@@YA?AU?$_Smanip@_J@1@_J@Z"] = Smanip;
         }
 
         /// <summary>

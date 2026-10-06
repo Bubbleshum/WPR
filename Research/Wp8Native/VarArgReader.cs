@@ -38,7 +38,24 @@ namespace WPR.Wp8Native
             _emulator = emulator;
             _stackPointer = emulator.ReadRegister(Arm.UC_ARM_REG_SP);
             _position = firstVariadicPosition;
+            _registerCount = CoreRegisters.Length;
         }
+
+        private VarArgReader(ArmEmulator emulator, long vaList, bool fromList)
+        {
+            _emulator = emulator;
+            _stackPointer = vaList;
+            _position = 0;
+            _registerCount = 0;
+        }
+
+        /// <summary>
+        /// Arguments from a <c>va_list</c>: on ARM a plain pointer to the next argument in memory,
+        /// which is what vsprintf and friends receive.
+        /// </summary>
+        public static VarArgReader FromList(ArmEmulator emulator, long vaList) => new(emulator, vaList, fromList: true);
+
+        private readonly int _registerCount;
 
         public uint NextUInt32() => ReadAt(_position++);
 
@@ -46,8 +63,12 @@ namespace WPR.Wp8Native
 
         public ulong NextUInt64()
         {
-            // A 64-bit value occupies an even-aligned pair.
-            if ((_position & 1) != 0)
+            // A 64-bit value occupies an even-aligned pair - of registers, or in a va_list of
+            // memory, which is the same thing measured from the address.
+            bool misaligned = _registerCount == 0
+                ? ((_stackPointer + (_position * 4L)) & 7) != 0
+                : (_position & 1) != 0;
+            if (misaligned)
             {
                 _position++;
             }
@@ -65,8 +86,8 @@ namespace WPR.Wp8Native
         public long NextPointer() => NextUInt32();
 
         private uint ReadAt(int position)
-            => position < CoreRegisters.Length
+            => position < _registerCount
                 ? (uint)_emulator.ReadRegister(CoreRegisters[position])
-                : _emulator.ReadUInt32(_stackPointer + ((position - CoreRegisters.Length) * 4));
+                : _emulator.ReadUInt32(_stackPointer + ((position - _registerCount) * 4));
     }
 }

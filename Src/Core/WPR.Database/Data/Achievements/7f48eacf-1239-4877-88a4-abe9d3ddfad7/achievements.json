@@ -1,5 +1,27 @@
 {
   "Name": "Angry Birds Star Wars",
   "Description": "Angry Birds recast as the original Star Wars trilogy, with lightsabers, blasters and the Force in place of the usual abilities.",
-  "Achievements": []
+  "KeySource": "xbox-id",
+  "Achievements": [
+    {"Key": "6", "Name": "Jedi Initiate", "GamerScore": 10, "Description": "50 blocks smashed with saber"},
+    {"Key": "7", "Name": "Jedi Knight", "GamerScore": 10, "Description": "500 blocks smashed with saber"},
+    {"Key": "8", "Name": "Jedi Master", "GamerScore": 10, "Description": "2000 blocks smashed with saber"},
+    {"Key": "9", "Name": "Force Learner", "GamerScore": 10, "Description": "2000 blocks threw with force"},
+    {"Key": "10", "Name": "Ultimate Laser Shooter", "GamerScore": 10, "Description": "1000 blocks smashed with laser"},
+    {"Key": "11", "Name": "Skilled Pilot", "GamerScore": 10, "Description": "500 blocks smashed with Pilot"},
+    {"Key": "12", "Name": "Magnificent Grumble", "GamerScore": 10, "Description": "300 blocks smashed with Chewbacca"},
+    {"Key": "13", "Name": "Prominent Jedi", "GamerScore": 10, "Description": "Three lasers deflected with saber"},
+    {"Key": "14", "Name": "Target Shooter", "GamerScore": 10, "Description": "Three pigs shot with a single blaster shot"},
+    {"Key": "15", "Name": "Star Bird Fan", "GamerScore": 10, "Description": "Angry Birds Star Wars played for 5 hours"},
+    {"Key": "16", "Name": "True Star Bird Fan", "GamerScore": 10, "Description": "Angry Birds Star Wars played for 15 hours"},
+    {"Key": "17", "Name": "Star Bird Addict", "GamerScore": 10, "Description": "Angry Birds Star Wars played for 30 hours"},
+    {"Key": "18", "Name": "Fly Bird Fly", "GamerScore": 10, "Description": "5000 birds launched"},
+    {"Key": "19", "Name": "There's No-one Here", "GamerScore": 10, "Description": "Stormtrooper shot another trooper"},
+    {"Key": "20", "Name": "Imperial Entanglement", "GamerScore": 10, "Description": "Stormtrooper popped with Tie Fighter's wing"},
+    {"Key": "21", "Name": "Walking Carpet", "GamerScore": 10, "Description": "Same turret shot Chewbacca 6 times"},
+    {"Key": "22", "Name": "Simple Pigs and Nonsense", "GamerScore": 10, "Description": "300 stormtroopers popped"},
+    {"Key": "23", "Name": "The Birds Will Be With You", "GamerScore": 10, "Description": "10 levels completed with one bird"},
+    {"Key": "24", "Name": "Lack of Faith", "GamerScore": 10, "Description": "Level restarted 100 times"},
+    {"Key": "25", "Name": "Pork side of the Force", "GamerScore": 10, "Description": "Level failed 10 times with one pig left"}
+  ]
 }

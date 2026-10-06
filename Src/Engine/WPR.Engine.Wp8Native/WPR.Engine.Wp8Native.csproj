@@ -1,0 +1,59 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Engine.Wp8Native - WP8 "Modern Native" titles (ARMv7 Thumb-2 PE + WinRT/D3D11/XAudio2)
+    hosted as an XNA Game, so they run in the same window, graphics stack, input and lifecycle as
+    every XNA title: GameActivity/SDL + FNA3D (Vulkan/GL) on Android, D3D11 on Windows.
+
+    The runtime itself - PE loader, trap table, CRT, maths, WinRT and Direct3D stand-ins - is the
+    research probe under Research/Wp8Native, compiled in from there rather than copied, with
+    WPR_NO_UNICORN defined: Unicorn is GPLv2 and must never ship, so UnicornArmCpu is left out
+    and the CPU is always the dynarmic JIT (0BSD), through the wprcpu C shim:
+      * Android: libwprcpu.so in WPR.Platform.Android/Libraries/<abi>/ (Research/Wp8Native/Native/android)
+      * Windows: Research/Wp8Native/wprcpu.dll, committed (cross-compiled from WSL); copied to the
+        output when present. Without it a native title fails at launch with DllNotFoundException.
+
+    Only Wp8NativeGame.cs lives here - the XNA side: it draws the runtime's FrameDrawList through
+    the framework's GraphicsDevice and feeds TouchPanel into the guest.
+  -->
+
+  <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <TargetFrameworks>net10.0;net10.0-android</TargetFrameworks>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(OS)' == 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <TargetFrameworks>net10.0-windows10.0.17763.0;net10.0-android</TargetFrameworks>
+  </PropertyGroup>
+  <PropertyGroup>
+    <AssemblyName>WPR.Engine.Wp8Native</AssemblyName>
+    <RootNamespace>WPR.Wp8Native</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <DefineConstants>$(DefineConstants);WPR_NO_UNICORN</DefineConstants>
+    <!-- Research sources: nullable and analyser noise they were written with. -->
+    <NoWarn>$(NoWarn);CS8602;CS8600;CS8603;CS8604;CS0414;CA2014;CA1416;CA1422</NoWarn>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net10.0-android'">24.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Wp8ProbeDir>$(MSBuildThisFileDirectory)..\..\..\Research\Wp8Native\</Wp8ProbeDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="$(Wp8ProbeDir)*.cs" Exclude="$(Wp8ProbeDir)Program.cs;$(Wp8ProbeDir)UnicornArmCpu.cs"
+             Link="Runtime\%(Filename)%(Extension)" />
+    <Compile Include="$(Wp8ProbeDir)Runtime\UnicornConst.cs" Link="Runtime\UnicornConst.cs" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetPlatformIdentifier)' != 'android' And Exists('$(Wp8ProbeDir)wprcpu.dll')">
+    <None Include="$(Wp8ProbeDir)wprcpu.dll" Link="wprcpu.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Xna\WPR.Framework.Xna.csproj" />
+  </ItemGroup>
+
+</Project>

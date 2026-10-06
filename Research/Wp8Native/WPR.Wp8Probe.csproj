@@ -32,6 +32,8 @@
   <ItemGroup>
     <Compile Remove="Desktop\**" />
     <None Remove="Desktop\**" />
+    <Compile Remove="Runtime\**" />
+    <None Remove="Runtime\**" />
   </ItemGroup>
 
   <ItemGroup>

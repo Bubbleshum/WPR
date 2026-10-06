@@ -49,6 +49,23 @@ public sealed class UnicornArmCpu : IArmCpu
 
     public void RegWrite(int register, long value) => _uc.RegWrite(register, value);
 
+    // Unicorn exposes the VFP bank as d0..d31 (UC_ARM_REG_D0 = 14); s{2n}/s{2n+1} are d{n}'s halves.
+    private const int UcArmRegD0 = 14;
+
+    public uint VfpRead(int index)
+    {
+        long d = _uc.RegRead(UcArmRegD0 + (index >> 1));
+        return (uint)((index & 1) == 0 ? d : d >> 32);
+    }
+
+    public void VfpWrite(int index, uint bits)
+    {
+        int register = UcArmRegD0 + (index >> 1);
+        ulong d = (ulong)_uc.RegRead(register);
+        d = (index & 1) == 0 ? (d & 0xFFFFFFFF00000000UL) | bits : (d & 0xFFFFFFFFUL) | ((ulong)bits << 32);
+        _uc.RegWrite(register, unchecked((long)d));
+    }
+
     public void MemMap(long address, long size, int protection) => _uc.MemMap(address, size, protection);
 
     public void MemProtect(long address, long size, int protection) => _uc.MemProtect(address, size, protection);

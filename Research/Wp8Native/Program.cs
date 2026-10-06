@@ -159,6 +159,38 @@ if (Environment.GetEnvironmentVariable("WPR_SCREENSHOT") is { Length: > 0 } shot
 
 Stopwatch clock = Stopwatch.StartNew();
 Stopwatch runClock = Stopwatch.StartNew();
+// WPR_WATCHDOG=<seconds>: halt the CPU from another thread after that long, so a run stuck
+// somewhere that retires no instructions still ends with a report and a final PC.
+if (int.TryParse(Environment.GetEnvironmentVariable("WPR_WATCHDOG"), out int watchdogSeconds) && watchdogSeconds > 0)
+{
+    _ = Task.Delay(TimeSpan.FromSeconds(watchdogSeconds)).ContinueWith(_ =>
+    {
+        Console.Error.WriteLine($"[watchdog] {watchdogSeconds}s elapsed - halting the CPU");
+        if (emulator.Cpu is DynarmicArmCpu)
+        {
+            for (int i = 0; i < 5; i++)
+            {
+                Console.Error.WriteLine(
+                    $"[watchdog] translator last fetched 0x{DynarmicNative.wprcpu_last_fetch():X8}, " +
+                    $"{DynarmicNative.wprcpu_fetch_count():N0} fetches so far");
+                Thread.Sleep(500);
+            }
+        }
+        emulator.Cpu.Stop();
+    });
+}
+
+// WPR_UNHANDLED=1: list every import this image declares that has no implementation, and stop.
+if (Environment.GetEnvironmentVariable("WPR_UNHANDLED") == "1")
+{
+    foreach (string name in image.Imports.Select(i => i.Name).Distinct().Where(n => !emulator.Stubs.IsImplemented(n)).Order())
+    {
+        Console.WriteLine($"UNHANDLED {name}");
+    }
+
+    return 0;
+}
+
 string? fault = emulator.RunEntryPoint(budget);
 runClock.Stop();
 clock.Stop();
@@ -194,6 +226,15 @@ Console.WriteLine($"  graphics      {emulator.Direct3D.Summary()}");
 if (emulator.Direct3D.ScreenshotSummary is not null)
 {
     Console.WriteLine($"  screenshot    {emulator.Direct3D.ScreenshotSummary}");
+    if (Environment.GetEnvironmentVariable("WPR_DRAWS") == "1")
+    {
+        Console.WriteLine("                -- every draw of the captured frame --");
+        foreach (string line in emulator.Direct3D.Frame.LastFrameDraws)
+        {
+            Console.WriteLine($"                {line}");
+        }
+    }
+
     foreach (string note in emulator.Direct3D.Frame.Notes)
     {
         Console.WriteLine($"                {note}");
@@ -226,6 +267,27 @@ foreach (string line in emulator.InputDelivered)
 {
     Console.WriteLine($"  input         {line}");
 }
+foreach (string line in emulator.Stubs.Maths.Trace)
+{
+    Console.WriteLine($"  maths         {line}");
+}
+
+foreach (string line in emulator.Direct3D.VertexShaderNotes.Take(12))
+{
+    Console.WriteLine($"  shader        {line}");
+}
+
+foreach (string line in emulator.Stubs.Streams.Log.Take(12))
+{
+    Console.WriteLine($"  streams       {line}");
+}
+
+Console.WriteLine($"  DEFAULTED     {emulator.Stubs.DefaultedCalls.Count} import(s) reached no handler and were answered with 0:");
+foreach (var (name, calls) in emulator.Stubs.DefaultedCalls.OrderByDescending(p => p.Value))
+{
+    Console.WriteLine($"       {calls,8:N0}  {name}");
+}
+
 if (emulator.UndeliveredThrows.Count > 0)
 {
     Console.WriteLine($"  UNDELIVERED   {emulator.UndeliveredThrows.Count} throw(s) the runtime was asked for and did not deliver;");

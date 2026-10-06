@@ -101,6 +101,10 @@ public sealed class DynarmicArmCpu : IArmCpu
         }
     }
 
+    public uint VfpRead(int index) => _cpu.ExtReg(index);
+
+    public void VfpWrite(int index, uint bits) => _cpu.SetExtReg(index, bits);
+
     public void MemMap(long address, long size, int protection)
     {
         // Unicorn and the shim agree on READ=1 WRITE=2 EXEC=4.

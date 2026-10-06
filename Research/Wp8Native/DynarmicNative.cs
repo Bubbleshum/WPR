@@ -55,6 +55,12 @@ internal static unsafe class DynarmicNative
     public static extern int wprcpu_abi_version();
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    public static extern uint wprcpu_last_fetch();
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    public static extern ulong wprcpu_fetch_count();
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     public static extern IntPtr wprcpu_create(Callbacks* callbacks);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
