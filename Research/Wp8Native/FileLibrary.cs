@@ -103,6 +103,97 @@ namespace WPR.Wp8Native
             handlers["FlushFileBuffers"] = () => _frame.Return(1);
             handlers["SetFileInformationByHandle"] = () => _frame.Return(1);
             handlers["GetFileInformationByHandleEx"] = () => _frame.Return(0);
+            // Directory search. Unimplemented, these answered 0 - which for _wfindnext means
+            // "found another" - so a game listing a folder looped for ever on a black screen
+            // (Angry Birds Space, Classic, Seasons, Star Wars II and Stella all import them).
+            handlers["_wfindfirst64i32"] = () => FindFirst(wide: true);
+            handlers["_findfirst64i32"] = () => FindFirst(wide: false);
+            handlers["_wfindnext64i32"] = () => FindNext(wide: true);
+            handlers["_findnext64i32"] = () => FindNext(wide: false);
+            handlers["_findclose"] = () =>
+            {
+                int handle = (int)_frame.Arg(0);
+                _searchRoots.Remove(handle);
+                _frame.Return(_searches.Remove(handle) ? 0 : -1);
+            };
+            handlers["RemoveDirectoryW"] = RemoveDirectory;
+
+            // int _mkdir(const char*): 0, or -1 with errno.
+            handlers["_mkdir"] = () =>
+            {
+                string host = Resolve(ReadNarrow(0), out _);
+                try
+                {
+                    bool existed = Directory.Exists(host);
+                    Directory.CreateDirectory(host);
+                    _frame.Return(existed ? 0xFFFFFFFFL : 0);
+                }
+                catch (Exception)
+                {
+                    _frame.Return(0xFFFFFFFFL);
+                }
+            };
+
+            // BOOL DeleteFileW(LPCWSTR): only inside the writable sandbox - never the package.
+            handlers["DeleteFileW"] = () =>
+            {
+                string host = Resolve(ReadWide(0), out bool writable);
+                if (writable && File.Exists(host))
+                {
+                    try
+                    {
+                        File.Delete(host);
+                        _frame.Return(1);
+                        return;
+                    }
+                    catch (IOException)
+                    {
+                    }
+                }
+
+                _lastError = ErrorFileNotFound;
+                _frame.Return(0);
+            };
+
+            // int getc(FILE*) / int ungetc(int, FILE*): one byte, through the same file pointer
+            // fread uses.
+            handlers["getc"] = () =>
+            {
+                OpenFile? file = Find(_frame.Arg(0));
+                if (file is null)
+                {
+                    _frame.Return(0xFFFFFFFFL);
+                    return;
+                }
+
+                file.Stream.Position = file.FilePointer;
+                int c = file.Stream.ReadByte();
+                if (c < 0)
+                {
+                    file.AtEof = true;
+                    _frame.Return(0xFFFFFFFFL);
+                    return;
+                }
+
+                file.FilePointer++;
+                _frame.Return(c);
+            };
+            handlers["ungetc"] = () =>
+            {
+                OpenFile? file = Find(_frame.Arg(1));
+                int c = _frame.SignedArg(0);
+                if (file is null || c < 0 || file.FilePointer == 0)
+                {
+                    _frame.Return(0xFFFFFFFFL);
+                    return;
+                }
+
+                file.FilePointer--;
+                file.AtEof = false;
+                _frame.Return(c & 0xFF);
+            };
+            handlers["_errno"] = () => _frame.Return(ErrnoAddress());
+
             handlers["GetLastError"] = () => _frame.Return(_lastError);
             handlers["SetLastError"] = () => { _lastError = (int)_frame.Arg(0); _frame.Return(0); };
         }
@@ -575,6 +666,155 @@ namespace WPR.Wp8Native
         }
 
         private string ReadNarrow(int argument) => _frame.ReadNarrowString(_frame.Arg(argument));
+
+        private readonly Dictionary<int, Queue<(FileSystemInfo Entry, string Name)>> _searches = new();
+        private readonly Dictionary<int, string> _searchRoots = new();
+        private int _nextSearch = 1;
+        private long _errnoAddress;
+        private const int Enoent = 2;
+
+        /// <summary>errno lives in guest memory, since callers read it through _errno().</summary>
+        private long ErrnoAddress()
+        {
+            if (_errnoAddress == 0)
+            {
+                _errnoAddress = _emulator.AllocateHeap(16);
+            }
+
+            return _errnoAddress;
+        }
+
+        /// <summary>
+        /// intptr_t _wfindfirst64i32(const wchar_t* spec, _wfinddata64i32_t* data): lists the real
+        /// folder the spec resolves to, filtered by its wildcard, "." and ".." first as the
+        /// Windows CRT returns them. -1 with errno ENOENT when nothing matches.
+        /// </summary>
+        private void FindFirst(bool wide)
+        {
+            string spec = wide ? ReadWide(0) : ReadNarrow(0);
+            long data = _frame.Arg(1);
+
+            string normalised = spec.Replace('\\', '/');
+            int slash = normalised.LastIndexOf('/');
+            string folder = slash >= 0 ? normalised[..slash] : string.Empty;
+            string pattern = slash >= 0 ? normalised[(slash + 1)..] : normalised;
+            if (pattern.Length == 0)
+            {
+                pattern = "*";
+            }
+
+            string host = folder.Length == 0 ? _readRoot : Resolve(folder, out _);
+            var found = new Queue<(FileSystemInfo, string)>();
+            if (Directory.Exists(host))
+            {
+                var directory = new DirectoryInfo(host);
+                if (Matches(".", pattern)) found.Enqueue((directory, "."));
+                if (Matches("..", pattern)) found.Enqueue((directory.Parent ?? directory, ".."));
+                foreach (FileSystemInfo entry in directory.EnumerateFileSystemInfos()
+                             .Where(e => Matches(e.Name, pattern))
+                             .OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase))
+                {
+                    found.Enqueue((entry, entry.Name));
+                }
+            }
+
+            if (found.Count == 0)
+            {
+                _emulator.WriteUInt32(ErrnoAddress(), Enoent);
+                _frame.Return(0xFFFFFFFFL);
+                return;
+            }
+
+            int handle = _nextSearch++;
+            (FileSystemInfo first, string name) = found.Dequeue();
+            WriteFindData(data, first, name, wide);
+            _searches[handle] = found;
+            _searchRoots[handle] = host;
+            _frame.Return(handle);
+        }
+
+        private void FindNext(bool wide)
+        {
+            int handle = (int)_frame.Arg(0);
+            if (!_searches.TryGetValue(handle, out var queue) || queue.Count == 0)
+            {
+                _emulator.WriteUInt32(ErrnoAddress(), Enoent);
+                _frame.Return(0xFFFFFFFFL);
+                return;
+            }
+
+            (FileSystemInfo entry, string name) = queue.Dequeue();
+            WriteFindData(_frame.Arg(1), entry, name, wide);
+            _frame.Return(0);
+        }
+
+        /// <summary>
+        /// _wfinddata64i32_t on ARM: attrib at 0, three __time64_t at 8/16/24 (8-aligned),
+        /// _fsize_t size at 32, then name[260] at 36 - wchar_t or char.
+        /// </summary>
+        private void WriteFindData(long data, FileSystemInfo entry, string name, bool wide)
+        {
+            if (data == 0)
+            {
+                return;
+            }
+
+            bool isDirectory = entry is DirectoryInfo;
+            uint attributes = isDirectory ? 0x10u : 0x20u;
+            if (entry.Attributes.HasFlag(FileAttributes.ReadOnly))
+            {
+                attributes |= 0x01;
+            }
+
+            static long Unix(DateTime t) => new DateTimeOffset(t.ToUniversalTime()).ToUnixTimeSeconds();
+            uint size = entry is FileInfo file ? (uint)Math.Min(file.Length, uint.MaxValue) : 0u;
+
+            byte[] block = new byte[wide ? 36 + 520 : 36 + 260];
+            BitConverter.GetBytes(attributes).CopyTo(block, 0);
+            BitConverter.GetBytes(Unix(entry.CreationTimeUtc)).CopyTo(block, 8);
+            BitConverter.GetBytes(Unix(entry.LastAccessTimeUtc)).CopyTo(block, 16);
+            BitConverter.GetBytes(Unix(entry.LastWriteTimeUtc)).CopyTo(block, 24);
+            BitConverter.GetBytes(size).CopyTo(block, 32);
+
+            byte[] encoded = wide ? System.Text.Encoding.Unicode.GetBytes(name) : System.Text.Encoding.Latin1.GetBytes(name);
+            Array.Copy(encoded, 0, block, 36, Math.Min(encoded.Length, block.Length - 36 - (wide ? 2 : 1)));
+            _emulator.WriteMemory(data, block);
+        }
+
+        /// <summary>DOS wildcards: * and ?, case-insensitive; "*.*" matches everything.</summary>
+        private static bool Matches(string name, string pattern)
+        {
+            if (pattern is "*" or "*.*")
+            {
+                return true;
+            }
+
+            string regex = "^" + System.Text.RegularExpressions.Regex.Escape(pattern)
+                .Replace(@"\*", ".*").Replace(@"\?", ".") + "$";
+            return System.Text.RegularExpressions.Regex.IsMatch(
+                name, regex, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        }
+
+        /// <summary>BOOL RemoveDirectoryW(LPCWSTR): only ever inside the writable sandbox.</summary>
+        private void RemoveDirectory()
+        {
+            string host = Resolve(ReadWide(0), out bool writable);
+            try
+            {
+                if (writable && Directory.Exists(host))
+                {
+                    Directory.Delete(host, recursive: false);
+                    _frame.Return(1);
+                    return;
+                }
+            }
+            catch (IOException)
+            {
+            }
+
+            _lastError = ErrorFileNotFound;
+            _frame.Return(0);
+        }
 
         private string ReadWide(int argument) => _emulator.ReadUtf16String(_frame.Arg(argument), 1024);
     }

@@ -80,7 +80,7 @@ namespace WPR.Wp8Native
                         // ResolutionScale.Scale100Percent. WVGA is unscaled.
                         if (ArmEmulator.IsStackAddress(Arg(1)))
                         {
-                            _emulator.WriteUInt32(Arg(1), 100);
+                            _emulator.WriteUInt32(Arg(1), (uint)ResolutionScale);
                         }
 
                         Return(HResultOk);
@@ -89,7 +89,7 @@ namespace WPR.Wp8Native
                     {
                         if (ArmEmulator.IsStackAddress(Arg(1)))
                         {
-                            _emulator.WriteSingle(Arg(1), 96f);
+                            _emulator.WriteSingle(Arg(1), 96f * ResolutionScale / 100f);
                         }
 
                         Return(HResultOk);
@@ -105,6 +105,7 @@ namespace WPR.Wp8Native
             RegisterStore();
             RegisterHostInformation();
             RegisterAppModelObjects();
+            RegisterCameras();
         }
 
         /// <summary>
@@ -877,6 +878,13 @@ namespace WPR.Wp8Native
         /// <c>ccw</c> (default - the device turned so its buttons are on the right, WP8's
         /// "Landscape"), <c>cw</c> ("LandscapeFlipped"), or <c>none</c>.
         /// </summary>
+        /// <summary>
+        /// DisplayProperties.ResolutionScale: 100 is WVGA (480x800), 150 is 720p, 160 is WXGA.
+        /// WPR_RESSCALE overrides it.
+        /// </summary>
+        private static readonly int ResolutionScale =
+            int.TryParse(Environment.GetEnvironmentVariable("WPR_RESSCALE"), out int scale) && scale > 0 ? scale : 100;
+
         private static readonly string Rotation =
             (Environment.GetEnvironmentVariable("WPR_ROTATE") ?? "ccw").Trim().ToLowerInvariant();
 
@@ -1495,6 +1503,49 @@ namespace WPR.Wp8Native
         /// across runs, because a game that sees a different device on every launch will
         /// treat its own saved state as someone else's.
         /// </remarks>
+        /// <summary>
+        /// The WP8 camera statics, answering as a device with no cameras: every list - capture
+        /// resolutions, preview resolutions, sensor locations - is empty.
+        /// </summary>
+        /// <remarks>
+        /// Angry Birds Stella asks <c>AudioVideoCaptureDevice.GetAvailableCaptureResolutions</c>
+        /// during start-up (statics slot 11) and calls get_Size on the answer. The generic
+        /// stand-in left the out-parameter null, and the game called through it before its first
+        /// frame. An empty list is the truthful answer for a PC, and the game is written for it:
+        /// phones without a front camera existed.
+        /// </remarks>
+        private void RegisterCameras()
+        {
+            foreach (string className in new[]
+            {
+                "Windows.Phone.Media.Capture.AudioVideoCaptureDevice",
+                "Windows.Phone.Media.Capture.PhotoCaptureDevice",
+            })
+            {
+                var slots = new Dictionary<int, (string, Action)>();
+                for (int slot = InspectableSlots; slot < InspectableSlots + 16; slot++)
+                {
+                    int captured = slot;
+                    slots[slot] = ($"slot{captured} (empty list)", () =>
+                    {
+                        // (arg, T** out) or (T** out): fill whichever is the stack out-parameter.
+                        if (ArmEmulator.IsStackAddress(Arg(2)))
+                        {
+                            WriteOut(2, EmptyVectorView());
+                        }
+                        else if (ArmEmulator.IsStackAddress(Arg(1)))
+                        {
+                            WriteOut(1, EmptyVectorView());
+                        }
+
+                        Return(HResultOk);
+                    });
+                }
+
+                _factories[className] = CreateDiscoveryObject(className + "Statics", slotCount: InspectableSlots + 16, known: slots);
+            }
+        }
+
         private void RegisterHostInformation()
         {
             _factories["Windows.Phone.System.Analytics.HostInformation"] = CreateDiscoveryObject(
@@ -1530,8 +1581,38 @@ namespace WPR.Wp8Native
                 slotCount: 12,
                 known: new Dictionary<int, (string, Action)>
                 {
+                    // An empty map: iterating it ends at once (see the listing below).
+                    [InspectableSlots + 0] = ("get_ProductLicenses", () =>
+                    {
+                        WriteOut(1, EmptyVectorView());
+                        Return(HResultOk);
+                    }),
                     [InspectableSlots + 1] = ("get_IsActive", Boolean(true)),
                     [InspectableSlots + 2] = ("get_IsTrial", Boolean(false)),
+                });
+
+            // IListingInformation: get_CurrentMarket 6, get_Description 7, get_ProductListings 8,
+            // get_FormattedPrice 9, get_Name 10, get_AgeRating 11. A listing with no products and
+            // empty strings - a store that answered, with nothing for sale.
+            //
+            // Angry Birds Star Wars loads this at start-up and iterates ProductListings. Answered
+            // by the generic stand-in, the iterator's HasCurrent came back true for ever and the
+            // game spun on it - 400 MB of logged placeholder calls and no first frame.
+            long listing = CreateDiscoveryObject(
+                "IListingInformation",
+                slotCount: 12,
+                known: new Dictionary<int, (string, Action)>
+                {
+                    [InspectableSlots + 0] = ("get_CurrentMarket", () => { WriteOut(1, 0); Return(HResultOk); }),
+                    [InspectableSlots + 1] = ("get_Description", () => { WriteOut(1, 0); Return(HResultOk); }),
+                    [InspectableSlots + 2] = ("get_ProductListings", () =>
+                    {
+                        WriteOut(1, EmptyVectorView());
+                        Return(HResultOk);
+                    }),
+                    [InspectableSlots + 3] = ("get_FormattedPrice", () => { WriteOut(1, 0); Return(HResultOk); }),
+                    [InspectableSlots + 4] = ("get_Name", () => { WriteOut(1, 0); Return(HResultOk); }),
+                    [InspectableSlots + 5] = ("get_AgeRating", () => { WriteOut(1, 0); Return(HResultOk); }),
                 });
 
             // ICurrentAppStatics: get_LicenseInformation 6, get_LinkUri 7, get_AppId 8, then
@@ -1548,6 +1629,13 @@ namespace WPR.Wp8Native
                             _emulator.WriteUInt32(Arg(1), (uint)license);
                         }
 
+                        Return(HResultOk);
+                    }),
+
+                    // LoadListingInformationAsync(IAsyncOperation<ListingInformation>** out)
+                    [InspectableSlots + 5] = ("LoadListingInformationAsync", () =>
+                    {
+                        WriteOut(1, AsyncOperation("LoadListingInformationAsync", listing));
                         Return(HResultOk);
                     }),
                 });

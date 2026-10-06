@@ -264,6 +264,8 @@
     <!-- Links a game opens (WebBrowserTask), declared through caps.UriLauncher(...). No manifest
          change: ACTION_VIEW needs no permission. -->
     <ProjectReference Include="..\..\Modules\Launchers\WPR.Launchers.AndroidIntent\WPR.Launchers.AndroidIntent.csproj" />
+    <!-- libwprcpu.so (Libraries/<abi>/) is the dynarmic CPU behind WPR.Engine.Wp8Native, which
+         runs WP8 "Modern Native" titles as an XNA Game. Built from Research/Wp8Native/Native/android. -->
   </ItemGroup>
 
   <!--

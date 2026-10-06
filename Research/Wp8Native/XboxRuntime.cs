@@ -25,7 +25,15 @@ namespace WPR.Wp8Native
     public sealed partial class WinRtRuntime
     {
         /// <summary>The synthetic player. A gamertag is 15 characters at most on Xbox.</summary>
-        private const string PlayerGamertag = "WPRPlayer";
+        private const string DefaultGamertag = "WPRPlayer";
+
+        /// <summary>
+        /// What stands behind Xbox Live, when the host has something: WPR's achievement store and
+        /// WPR Hub. Null in the probe, which then reports a player with nothing.
+        /// </summary>
+        public IXboxLiveHost? XboxHost { get; set; }
+
+        private string PlayerGamertag => XboxHost?.Gamertag is { Length: > 0 } tag ? tag : DefaultGamertag;
 
         /// <summary>
         /// A plausible XUID. Real ones are 2533274790395904 upwards - the top bits are a
@@ -247,13 +255,20 @@ namespace WPR.Wp8Native
                 // arguments, so the out-parameter is the fifth and lands on the stack.
                 [InspectableSlots + 5] = ("GetAchievementsAsync", () =>
                 {
-                    WriteOut(5, AsyncOperation("GetAchievementsAsync", Collection("AchievementCollection")));
+                    uint skip = (uint)Arg(1), max = (uint)Arg(2);
+                    bool unlockedOnly = (Arg(3) & 0xFF) != 0;
+                    WriteOut(5, AsyncOperation("GetAchievementsAsync", AchievementCollection(skip, max, unlockedOnly)));
                     Return(HResultOk);
                 }),
 
                 // UnlockAchievementAsync(UInt32)
                 [InspectableSlots + 6] = ("UnlockAchievementAsync", () =>
                 {
+                    uint id = (uint)Arg(1);
+                    XboxCalls.Add($"UnlockAchievementAsync({id})");
+                    try { XboxHost?.UnlockAchievement(id); }
+                    catch (Exception ex) { XboxCalls.Add($"  host threw {ex.GetType().Name}: {ex.Message}"); }
+
                     WriteOut(2, AsyncOperation("UnlockAchievementAsync", 0));
                     Return(HResultOk);
                 }),
@@ -309,14 +324,21 @@ namespace WPR.Wp8Native
                 // Leaderboard) - six arguments, out-parameter seventh.
                 [InspectableSlots + 1] = ("GetLeaderboardAsync", () =>
                 {
-                    WriteOut(7, AsyncOperation("GetLeaderboardAsync", Collection("Leaderboard")));
+                    uint skip = (uint)Arg(1), max = (uint)Arg(2), id = (uint)Arg(3);
+                    bool titleView = (Arg(4) & 0xFF) != 0;
+                    XboxLeaderboardPage? page = null;
+                    try { page = XboxHost?.ReadLeaderboard(id, skip, max, titleView); }
+                    catch (Exception ex) { XboxCalls.Add($"  host threw {ex.GetType().Name}: {ex.Message}"); }
+
+                    XboxCalls.Add($"GetLeaderboardAsync(id={id}, skip={skip}, max={max}, titleView={titleView}) -> {page?.Rows.Count ?? 0} row(s)");
+                    WriteOut(7, AsyncOperation("GetLeaderboardAsync", Leaderboard(id, page)));
                     Return(HResultOk);
                 }),
 
                 // GetSystemLeaderboardAsync(UInt32, UInt32, String, Leaderboard) - four in.
                 [InspectableSlots + 2] = ("GetSystemLeaderboardAsync", () =>
                 {
-                    WriteOut(5, AsyncOperation("GetSystemLeaderboardAsync", Collection("Leaderboard")));
+                    WriteOut(5, AsyncOperation("GetSystemLeaderboardAsync", Leaderboard(0, null)));
                     Return(HResultOk);
                 }),
 
@@ -327,6 +349,13 @@ namespace WPR.Wp8Native
                 // stack). The out-parameter follows it there.
                 [InspectableSlots + 3] = ("PostResultAsync", () =>
                 {
+                    uint id = (uint)Arg(1);
+                    int aggregation = (int)Arg(2);
+                    long value = (long)(((ulong)(uint)Arg(5) << 32) | (uint)Arg(4));
+                    XboxCalls.Add($"PostResultAsync(id={id}, verb={aggregation}, value={value})");
+                    try { XboxHost?.PostResult(id, aggregation, value); }
+                    catch (Exception ex) { XboxCalls.Add($"  host threw {ex.GetType().Name}: {ex.Message}"); }
+
                     WriteOut(6, AsyncOperation("PostResultAsync", 0));
                     Return(HResultOk);
                 }),

@@ -82,6 +82,8 @@
          that was running in that report. -->
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Online\WPR.Engine.Online.csproj" />
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Graphics\WPR.Engine.Graphics.csproj" />
+    <!-- WP8 "Modern Native" titles: Wp8NativeGame, constructed here like MixedModeGame. -->
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Wp8Native\WPR.Engine.Wp8Native.csproj" />
   </ItemGroup>
 
 </Project>

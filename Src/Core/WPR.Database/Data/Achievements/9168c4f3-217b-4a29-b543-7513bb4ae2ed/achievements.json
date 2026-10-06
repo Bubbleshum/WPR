@@ -1,5 +1,27 @@
 {
   "Name": "Angry Birds Classic",
   "Description": "The original: catapult birds at fortified pigs and bring the whole structure down on them.",
-  "Achievements": []
+  "KeySource": "xbox-id",
+  "Achievements": [
+    {"Key": "1", "Name": "Split It!", "GamerScore": 10, "Description": "Unlock Blue bird"},
+    {"Key": "2", "Name": "Speed is the Essence", "GamerScore": 10, "Description": "Unlock Yellow bird"},
+    {"Key": "3", "Name": "Boom Boom!", "GamerScore": 10, "Description": "Unlock Black bird"},
+    {"Key": "4", "Name": "Mother of all Bombs", "GamerScore": 10, "Description": "Unlock White bird"},
+    {"Key": "5", "Name": "Return to Sender", "GamerScore": 10, "Description": "Unlock Boomerang bird"},
+    {"Key": "6", "Name": "Seeing Red", "GamerScore": 10, "Description": "Unlock Big Brother bird"},
+    {"Key": "7", "Name": "Bird Slinger", "GamerScore": 10, "Description": "Shoot 5,000 birds"},
+    {"Key": "8", "Name": "Poached Eggs: Total Destruction", "GamerScore": 10, "Description": "Collect three stars in all levels of the episode"},
+    {"Key": "9", "Name": "Danger Above: Total Destruction", "GamerScore": 10, "Description": "Collect three stars in all levels of the episode"},
+    {"Key": "10", "Name": "Mighty Hoax: Total Destruction", "GamerScore": 10, "Description": "Collect three stars in all levels of the episode"},
+    {"Key": "11", "Name": "The Big Setup: Total Destruction", "GamerScore": 10, "Description": "Collect three stars in all levels of the episode"},
+    {"Key": "12", "Name": "Ham 'Em High: Total Destruction", "GamerScore": 10, "Description": "Collect three stars in all levels of the episode"},
+    {"Key": "13", "Name": "Mine And Dine: Total Destruction", "GamerScore": 10, "Description": "Collect three stars in all levels of the episode"},
+    {"Key": "14", "Name": "Birdday Party: Total Destruction", "GamerScore": 10, "Description": "Collect three stars in all levels of the episode"},
+    {"Key": "15", "Name": "Surf & Turf: Total Destruction", "GamerScore": 10, "Description": "Collect three stars in all levels of the episode"},
+    {"Key": "16", "Name": "Bad Piggies: Total Destruction", "GamerScore": 10, "Description": "Collect three stars in all levels of the episode"},
+    {"Key": "17", "Name": "Angry Birds Fan", "GamerScore": 10, "Description": "Play Angry Birds for 5 hours"},
+    {"Key": "18", "Name": "True Angry Birds Fan", "GamerScore": 10, "Description": "Play Angry Birds for 15 hours"},
+    {"Key": "19", "Name": "Angry Birds Addict", "GamerScore": 10, "Description": "Play Angry Birds for 30 hours"},
+    {"Key": "20", "Name": "Cakemonger", "GamerScore": 10, "Description": "Collect Secret Cake"}
+  ]
 }

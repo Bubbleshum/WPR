@@ -1,5 +1,27 @@
 {
   "Name": "Angry Birds Space",
   "Description": "Angry Birds in zero gravity, where every shot curves through the gravitational pull of nearby planets.",
-  "Achievements": []
+  "KeySource": "xbox-id",
+  "Achievements": [
+    {"Key": "8", "Name": "Name Popper", "GamerScore": 10, "Description": "Pop all name bubbles in credits"},
+    {"Key": "9", "Name": "Centripetal Force", "GamerScore": 10, "Description": "Shoot a bird into a lagrangian point"},
+    {"Key": "10", "Name": "Woodpecker", "GamerScore": 10, "Description": "Smash 5000 wooden blocks"},
+    {"Key": "11", "Name": "Stonecutter", "GamerScore": 10, "Description": "Smash 5000 stone blocks"},
+    {"Key": "12", "Name": "Icepicker", "GamerScore": 10, "Description": "Smash 5000 iced blocks"},
+    {"Key": "13", "Name": "Pig Popper", "GamerScore": 10, "Description": "Pop 1000 pigs"},
+    {"Key": "14", "Name": "Bubble Popper", "GamerScore": 10, "Description": "Pop 1000 bubbles"},
+    {"Key": "15", "Name": "Block Smasher", "GamerScore": 10, "Description": "Smash 50 000 blocks"},
+    {"Key": "16", "Name": "Smash Maniac", "GamerScore": 10, "Description": "Smash 500 000 blocks"},
+    {"Key": "17", "Name": "Space Bird Fan", "GamerScore": 10, "Description": "Play Angry Birds Space for 5 hours"},
+    {"Key": "18", "Name": "True Space Bird Fan", "GamerScore": 10, "Description": "Play Angry Birds Space for 15 hours"},
+    {"Key": "19", "Name": "Space Bird Addict", "GamerScore": 10, "Description": "Play Angry Birds Space for 30 hours"},
+    {"Key": "20", "Name": "Starman", "GamerScore": 10, "Description": "Get 250 stars"},
+    {"Key": "21", "Name": "Bird Launcher", "GamerScore": 10, "Description": "Launch 5000 birds"},
+    {"Key": "22", "Name": "Pigsicle", "GamerScore": 10, "Description": "Freeze 500 pigs"},
+    {"Key": "23", "Name": "Three Hog Night", "GamerScore": 10, "Description": "Freeze 3 pigs with one ice bird"},
+    {"Key": "24", "Name": "Gravitational Escape", "GamerScore": 10, "Description": "Make 100 birds exit atmosphere"},
+    {"Key": "25", "Name": "Big Spook", "GamerScore": 10, "Description": "Make 6 pigs scared with one green bird"},
+    {"Key": "26", "Name": "Banging Heads", "GamerScore": 10, "Description": "Pop pig with another pig"},
+    {"Key": "27", "Name": "Menu Popper", "GamerScore": 10, "Description": "Pop 100 pigs in menus"}
+  ]
 }

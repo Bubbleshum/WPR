@@ -94,6 +94,18 @@ namespace WPR.Database.Achievements
             finally { _Gate.Release(); }
         }
 
+        public async Task<Achievement> AddAsync(Achievement achievement)
+        {
+            await _Gate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                AchievementContext.Current.Achievements!.Add(achievement);
+                await AchievementContext.Current.SaveChangesAsync().ConfigureAwait(false);
+                return achievement;
+            }
+            finally { _Gate.Release(); }
+        }
+
         public async Task SaveChangesAsync()
         {
             await _Gate.WaitAsync().ConfigureAwait(false);

@@ -48,6 +48,12 @@ namespace WPR.Xna.Achievements
 		/// <summary>Earned count and summed gamerscore across every product.</summary>
 		Task<AchievementTotals> GetEarnedTotalsAsync();
 
+		/// <summary>Adds a new row and returns it tracked, so the caller can flip it and then call
+		/// <see cref="SaveChangesAsync"/>. For titles whose catalogue is not known before they
+		/// run: a WP8 native game names its achievements by number at the moment it unlocks
+		/// them, and no row exists until then.</summary>
+		Task<Achievement> AddAsync(Achievement achievement);
+
 		/// <summary>Persists mutations made to entities handed out by this store.</summary>
 		Task SaveChangesAsync();
 	}
