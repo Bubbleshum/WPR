@@ -1114,9 +1114,30 @@ namespace WPR.Wp8Native
                         long resumeAt = _emulator.ReturnAddress;
                         Return(HResultOk);
 
-                        // DeliverInput tail-calls into the image when it has something to
-                        // deliver, and then returns here itself - so nothing may follow it.
-                        DeliverInput(resumeAt);
+                        void Resume()
+                        {
+                            Return(HResultOk);
+                            if (!DeliverInput(resumeAt))
+                            {
+                                _emulator.ContinueAt(resumeAt);
+                            }
+                        }
+
+                        // Every other guest thread gets a turn here, as the XAML frame loop
+                        // gives them: a main loop that never blocks would otherwise starve them,
+                        // and Angry Birds' audio thread sat runnable and silent for ever.
+                        // Then audio - buffers the host finished are reported to the game, which
+                        // is what keeps a stream fed - then input. Each may tail-call into the
+                        // image, so nothing may follow them.
+                        void AudioThenInput()
+                        {
+                            if (!_emulator.XAudio2.Pump(Resume))
+                            {
+                                Resume();
+                            }
+                        }
+
+                        _emulator.RunOtherThreads(AudioThenInput);
                     }),
                 });
 

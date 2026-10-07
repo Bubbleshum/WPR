@@ -40,6 +40,9 @@ namespace WPR.Wp8Native
 
             public bool Finished { get; set; }
             public long ExitCode { get; set; }
+
+            /// <summary>What it is blocked on, when it is.</summary>
+            public string? Why { get; set; }
         }
 
         private const int GuestThreadStackBytes = 1024 * 1024;
@@ -127,6 +130,13 @@ namespace WPR.Wp8Native
         }
 
         /// <summary>
+        /// Raised when a thread is ended from outside (an exception nothing caught) rather than
+        /// returning. Real unwinding would have run its destructors - every lock_guard among them -
+        /// so whoever tracks locks releases the ones it held.
+        /// </summary>
+        public event Action<int>? GuestThreadAbandoned;
+
+        /// <summary>
         /// Ends the current thread if it is a background one, switching to another; false on the
         /// main thread, which has no one to hand the CPU to and whose death ends the run.
         /// </summary>
@@ -140,6 +150,7 @@ namespace WPR.Wp8Native
 
             me.Finished = true;
             ThreadNote($"thread {me.Id} '{me.Name}' ended: {why}");
+            GuestThreadAbandoned?.Invoke(me.Id);
             if (PickNext(me) is not { } next)
             {
                 return false;
@@ -193,9 +204,26 @@ namespace WPR.Wp8Native
 
             me.Ready = ready;
             me.OnResume = onResume;
+            me.Why = why;
             Save(me);
             SwitchTo(next);
             return true;
+        }
+
+        /// <summary>One line per guest thread: running, blocked (on what, from where) or finished.</summary>
+        public IEnumerable<string> DescribeThreads()
+        {
+            foreach (GuestThread t in _threads)
+            {
+                string state = t.Finished ? "finished"
+                    : t == _currentThread ? "running"
+                    : t.Ready is null ? "runnable"
+                    : $"blocked{(t.Why is null ? "" : $" on {t.Why}")}";
+                string where = t.Registers is { } r && t != _currentThread
+                    ? $" resume 0x{r[Index(Arm.UC_ARM_REG_R12)]:X8} lr 0x{r[Index(Arm.UC_ARM_REG_LR)]:X8}"
+                    : "";
+                yield return $"thread {t.Id} '{t.Name}': {state}{where}";
+            }
         }
 
         /// <summary>

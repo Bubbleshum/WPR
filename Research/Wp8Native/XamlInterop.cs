@@ -481,14 +481,24 @@ namespace WPR.Wp8Native
             // gets to the thread pool it was written for - then any input that is due.
             _emulator.DrainDeferredCalls(() => _emulator.RunOtherThreads(() =>
             {
-                if (DeliverBack(PrepareAndDraw) ||
-                    (_manipulationHost != 0 && DeliverInput(PrepareAndDraw, _manipulationHost)))
+                if (_emulator.XAudio2.Pump(InputThenDraw))
                 {
                     return;
                 }
 
-                PrepareAndDraw();
+                InputThenDraw();
             }));
+        }
+
+        private void InputThenDraw()
+        {
+            if (DeliverBack(PrepareAndDraw) ||
+                (_manipulationHost != 0 && DeliverInput(PrepareAndDraw, _manipulationHost)))
+            {
+                return;
+            }
+
+            PrepareAndDraw();
         }
 
         private void PrepareAndDraw()

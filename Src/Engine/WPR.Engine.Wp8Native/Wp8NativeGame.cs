@@ -108,6 +108,7 @@ namespace WPR.Wp8Native
             _white = new Texture2D(GraphicsDevice, 1, 1, false, SurfaceFormat.Color);
             _white.SetData(new[] { Color.White });
 
+            _audio = new Wp8NativeAudio(_log);
             _guest = new Thread(RunGuest, GuestStackBytes)
             {
                 Name = "WP8 guest (dynarmic)",
@@ -121,6 +122,7 @@ namespace WPR.Wp8Native
         // ------------------------------------------------------------------------------
 
         private readonly IXboxLiveHost? _xboxHost;
+        private Wp8NativeAudio? _audio;
 
         private void RunGuest()
         {
@@ -132,6 +134,7 @@ namespace WPR.Wp8Native
                 _emulator = new ArmEmulator(image, Path.GetDirectoryName(_executable)!, collectBlockStats: false);
                 _emulator.Direct3D.FrameBuilt += OnFrameBuilt;
                 _emulator.WinRt.XboxHost = _xboxHost;
+                _emulator.XAudio2.Output = _audio;
                 _emulator.WinRt.BackPressDelivered += handled =>
                 {
                     Log($"back press {(handled ? "kept by the game" : "let through: closing")}");
@@ -217,6 +220,11 @@ namespace WPR.Wp8Native
                     }
                 }
 
+                foreach (string line in emulator.DescribeThreads())
+                {
+                    Log("   " + line);
+                }
+
                 foreach (string line in emulator.Stubs.ThrowHistory.TakeLast(5))
                 {
                     Log("   throw: " + line);
@@ -272,6 +280,7 @@ namespace WPR.Wp8Native
 
             PumpTouch();
             PumpBack();
+            _audio?.Pump();
 
             // One guest frame per tick, never banked beyond two.
             if (_tick.CurrentCount < 2)
@@ -474,7 +483,31 @@ namespace WPR.Wp8Native
 
             long build = _emulator?.Direct3D.RasteriseTicks ?? 0;
             Log($"guest fps={(_presented - _statsPresented) / seconds:0.0} frames={_presented} drawn={_drawn} " +
-                $"drawlist-build total={build * 1000 / System.Diagnostics.Stopwatch.Frequency}ms textures={_textures.Count}");
+                $"drawlist-build total={build * 1000 / System.Diagnostics.Stopwatch.Frequency}ms textures={_textures.Count} " +
+                $"audio: {_emulator?.XAudio2.Summary()} voices={_audio?.VoicesCreated} underruns={_audio?.Underruns} callbacks={_emulator?.XAudio2.CallbacksMade}");
+            // What the audio engine was asked for since the last report (racy read of a list the
+            // guest appends to; a diagnostic, so a missed line is fine).
+            if (_emulator is { } audioOwner)
+            {
+                try
+                {
+                    IReadOnlyList<string> audioLog = audioOwner.XAudio2.Log;
+                    for (; _audioLogged < audioLog.Count && _audioLogged < 64; _audioLogged++)
+                    {
+                        Log($"[audio] {audioLog[_audioLogged]}");
+                    }
+
+                    foreach (string format in audioOwner.XAudio2.UnsupportedFormats.ToArray().Skip(_unsupportedLogged))
+                    {
+                        Log($"[audio] cannot play {format}");
+                        _unsupportedLogged++;
+                    }
+                }
+                catch (Exception)
+                {
+                }
+            }
+
             // A guest that has stopped presenting is either computing (a load) or stuck in a
             // loop. The tail of its host calls says which, and where - read racily from the
             // guest thread's own bookkeeping, which is fine for a diagnostic.
@@ -519,6 +552,8 @@ namespace WPR.Wp8Native
             _statsPresented = _presented;
         }
 
+        private int _audioLogged;
+        private int _unsupportedLogged;
         private long _statsCalls;
         private Dictionary<string, int> _lastCounts = new();
 
@@ -549,6 +584,7 @@ namespace WPR.Wp8Native
                     _emulator?.Dispose();
                 }
 
+                _audio?.Dispose();
                 foreach (var (_, texture) in _textures.Values)
                 {
                     texture.Dispose();

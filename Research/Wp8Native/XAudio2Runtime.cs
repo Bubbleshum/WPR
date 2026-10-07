@@ -11,12 +11,15 @@ namespace WPR.Wp8Native
     /// vtable starts directly at <c>GetVoiceDetails</c>. A builder that reserves the first
     /// three slots would put every voice method three places out.
     ///
-    /// Nothing produces sound. Almost every voice method returns void, so doing nothing is
-    /// indistinguishable from doing it - the exceptions are the two that hand data back,
-    /// <c>GetVoiceDetails</c> and <c>GetState</c>, and both are answered honestly: a voice
-    /// with nothing queued and nothing played.
+    /// Source voices play through <see cref="Output"/> - the host's audio stack - after their
+    /// buffers are converted to 16-bit PCM here (PCM of any width, IEEE float and MS ADPCM).
+    /// Buffers complete when the host has played them, and the voice callbacks
+    /// (<c>OnBufferStart</c>, <c>OnBufferEnd</c>, <c>OnStreamEnd</c>) are made from
+    /// <see cref="Pump"/>, once per frame on the main guest thread, which is how a streaming
+    /// game learns to submit more. With no output (the probe) buffers complete at once, so a
+    /// game still streams as fast as it likes into silence.
     /// </remarks>
-    public sealed class XAudio2Runtime
+    public sealed partial class XAudio2Runtime
     {
         private const long HResultOk = 0;
 
@@ -158,24 +161,42 @@ namespace WPR.Wp8Native
             hasUnknown: true,
             new Dictionary<int, (string, Action)>
             {
-                [3] = ("RegisterForCallbacks", () => Return(HResultOk)),
-                [4] = ("UnregisterForCallbacks", () => Return(HResultOk)),
+                [3] = ("RegisterForCallbacks", () =>
+                {
+                    if (Arg(1) != 0 && !_engineCallbacks.Contains(Arg(1)))
+                    {
+                        _engineCallbacks.Add(Arg(1));
+                        _log.Add($"engine callback 0x{Arg(1):X8} registered");
+                    }
+
+                    Return(HResultOk);
+                }),
+                [4] = ("UnregisterForCallbacks", () =>
+                {
+                    _engineCallbacks.Remove(Arg(1));
+                    Return(HResultOk);
+                }),
+                // CreateSourceVoice(ppSourceVoice, pSourceFormat, Flags, float MaxFrequencyRatio,
+                // pCallback, pSendList, pEffectChain): the float is in s0, so pCallback is the
+                // first stack argument.
                 [5] = ("CreateSourceVoice", () =>
                 {
                     Count("SourceVoice");
-                    Write(Arg(1), (uint)BuildVoice(source: true));
+                    Write(Arg(1), (uint)BuildSourceVoice(Arg(2), Arg(4), Arg(5)));
                     Return(HResultOk);
                 }),
+                // CreateSubmixVoice(ppSubmixVoice, InputChannels, InputSampleRate, Flags,
+                // ProcessingStage, pSendList, pEffectChain).
                 [6] = ("CreateSubmixVoice", () =>
                 {
                     Count("SubmixVoice");
-                    Write(Arg(1), (uint)BuildVoice(source: false));
+                    Write(Arg(1), (uint)BuildMixVoice(mastering: false, Arg(5)));
                     Return(HResultOk);
                 }),
                 [7] = ("CreateMasteringVoice", () =>
                 {
                     Count("MasteringVoice");
-                    _masteringVoice = _masteringVoice != 0 ? _masteringVoice : BuildVoice(source: false);
+                    _masteringVoice = _masteringVoice != 0 ? _masteringVoice : BuildMixVoice(mastering: true, 0);
                     Write(Arg(1), (uint)_masteringVoice);
                     Return(HResultOk);
                 }),
@@ -198,68 +219,6 @@ namespace WPR.Wp8Native
 
         private void Count(string kind)
             => VoicesCreated[kind] = VoicesCreated.GetValueOrDefault(kind) + 1;
-
-        // IXAudio2Voice, with no IUnknown in front of it: GetVoiceDetails 0 through
-        // DestroyVoice 18. IXAudio2SourceVoice continues at Start 19 and ends at
-        // SetSourceSampleRate 28.
-        private const int VoiceSlots = 19;
-
-        private const int SourceVoiceSlots = 29;
-
-        private long BuildVoice(bool source)
-        {
-            Dictionary<int, (string, Action)> methods = new()
-            {
-                [0] = ("GetVoiceDetails", () =>
-                {
-                    // XAUDIO2_VOICE_DETAILS: CreationFlags, ActiveFlags, InputChannels,
-                    // InputSampleRate.
-                    long details = Arg(1);
-                    if (details == 0)
-                    {
-                        return;
-                    }
-
-                    _emulator.WriteUInt32(details + 0, 0);
-                    _emulator.WriteUInt32(details + 4, 0);
-                    _emulator.WriteUInt32(details + 8, 2);
-                    _emulator.WriteUInt32(details + 12, 44100);
-                }),
-                [18] = ("DestroyVoice", () => Return(HResultOk)),
-            };
-
-            if (source)
-            {
-                methods[19] = ("Start", () => Return(HResultOk));
-                methods[20] = ("Stop", () => Return(HResultOk));
-                methods[21] = ("SubmitSourceBuffer", () =>
-                {
-                    BuffersSubmitted++;
-                    Return(HResultOk);
-                });
-                methods[22] = ("FlushSourceBuffers", () => Return(HResultOk));
-                methods[25] = ("GetState", () =>
-                {
-                    // XAUDIO2_VOICE_STATE: pCurrentBufferContext, BuffersQueued,
-                    // SamplesPlayed (64-bit). A voice that reports buffers still queued
-                    // will never be refilled; one that reports none is asked for more,
-                    // which is the behaviour a streaming game is written around.
-                    long state = Arg(1);
-                    if (state == 0)
-                    {
-                        return;
-                    }
-
-                    _emulator.WriteMemory(state, new byte[16]);
-                });
-            }
-
-            return CreateObject(
-                source ? "IXAudio2SourceVoice" : "IXAudio2Voice",
-                source ? SourceVoiceSlots : VoiceSlots,
-                hasUnknown: false,
-                methods);
-        }
 
         /// <summary>A one-line summary of how far audio got.</summary>
         public string Summary()

@@ -30,6 +30,16 @@ namespace WPR.Wp8Native
 
         public ThreadLibrary(ArmEmulator emulator, CallFrame frame)
         {
+            // An abandoned thread's locks would otherwise stay held for ever: Angry Birds' network
+            // thread dies holding a mutex its audio thread then waits on, and the game is silent.
+            emulator.GuestThreadAbandoned += id =>
+            {
+                foreach (long mutex in _mutexes.Where(m => m.Value.Owner == id && m.Value.Count > 0).Select(m => m.Key).ToList())
+                {
+                    _mutexes[mutex] = (0, 0);
+                }
+            };
+
             _emulator = emulator;
             _frame = frame;
         }
