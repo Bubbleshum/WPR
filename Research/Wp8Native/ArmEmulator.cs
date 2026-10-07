@@ -634,6 +634,7 @@ namespace WPR.Wp8Native
             if (_freeBlocks.TryGetValue(aligned, out Stack<long>? bucket) && bucket.Count > 0)
             {
                 long reused = bucket.Pop();
+                _freed.Remove(reused);
                 RecordAllocation(reused, aligned);
                 BytesReused += aligned;
                 return reused;
@@ -993,6 +994,14 @@ namespace WPR.Wp8Native
         private readonly Dictionary<long, int> _blockAt = new();
         private readonly Dictionary<long, Stack<long>> _freeBlocks = new();
 
+        /// <summary>
+        /// Every address currently on a free list, for the double-free check in
+        /// <see cref="FreeHeap"/>. That check used to be <c>bucket.Contains</c>, a linear scan of
+        /// every block freed at that size; a game frees the same few small sizes constantly, so
+        /// the buckets grow into the thousands and every free got slower the longer it ran.
+        /// </summary>
+        private readonly HashSet<long> _freed = new();
+
         /// <summary>Bytes handed back out of the free list rather than taken from the bump.</summary>
         public long BytesReused { get; private set; }
 
@@ -1076,7 +1085,7 @@ namespace WPR.Wp8Native
 
             // Freeing twice would put the same address in the bucket twice and hand it to two
             // callers at once, turning an image bug into an emulator one.
-            if (!bucket.Contains(pointer))
+            if (_freed.Add(pointer))
             {
                 bucket.Push(pointer);
             }

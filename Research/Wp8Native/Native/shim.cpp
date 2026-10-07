@@ -32,9 +32,12 @@ constexpr uint32_t kPageSize = 1u << kPageBits;
 constexpr size_t kPages = size_t{1} << (32 - kPageBits);
 
 // One 32-bit address space: a host pointer per page, a permission byte per page, and which
-// pages the JIT may reach without asking. A page is on the fast path only when it is RWX
-// and unwatched; everything else - the trap page, the null page, nothing at all - goes
-// through the callbacks below, where a decision can be made.
+// pages the JIT may reach without asking. A page is on the fast path when it is readable and
+// writable; everything else - the trap page, read-only pages, nothing at all - goes through
+// the callbacks below, where a decision can be made. Execute permission does not enter into
+// it: the page table serves loads and stores only, and instruction fetch is checked separately
+// in MemoryReadCode. This once required RWX, which sent every heap and stack access (both RW
+// here) through a callback: Angry Birds Space ran at 20-25fps on an S24 that way, 60 without.
 struct Memory {
     std::vector<uint8_t*> host;                                   // per page, null = unmapped
     std::vector<uint8_t>  prot;                                   // per page
@@ -73,7 +76,8 @@ struct Memory {
     static uint32_t page(uint32_t address) { return address >> kPageBits; }
 
     void refresh(uint32_t p) {
-        bool onFastPath = host[p] != nullptr && prot[p] == (WPRCPU_PROT_READ | WPRCPU_PROT_WRITE | WPRCPU_PROT_EXEC);
+        constexpr uint8_t rw = WPRCPU_PROT_READ | WPRCPU_PROT_WRITE;
+        bool onFastPath = host[p] != nullptr && (prot[p] & rw) == rw;
         (*fast)[p] = onFastPath ? host[p] : nullptr;
     }
 };
@@ -293,7 +297,9 @@ WPRCPU_API wprcpu* wprcpu_create(const wprcpu_callbacks* callbacks) {
     config.enable_cycle_counting = true;
     config.always_little_endian = true;
     config.hook_isb = false;
-    config.code_cache_size = 256 * 1024 * 1024;
+    // dynarmic's arm64 backend asserts code_cache_size <= 128 MiB (its branches reach +/-128 MiB),
+    // so 256 aborted every WP8 title on a phone in Jit::Jit. x86_64 has no such limit.
+    config.code_cache_size = 128 * 1024 * 1024;
 
     cpu->jit = std::make_unique<Dynarmic::A32::Jit>(config);
     return reinterpret_cast<wprcpu*>(cpu);
