@@ -39,6 +39,9 @@ namespace WPR.Wp8Native
         /// <summary>The render target the grid asks for: WVGA, portrait, as the device reports it.</summary>
         public SizeF RenderTarget { get; init; } = new(480, 800);
 
+        /// <summary>The page's back-key handler; null when it has none, so a press closes the app.</summary>
+        public XamlBackKey? BackKey { get; init; }
+
     }
 
     public sealed partial class WinRtRuntime
@@ -478,7 +481,8 @@ namespace WPR.Wp8Native
             // gets to the thread pool it was written for - then any input that is due.
             _emulator.DrainDeferredCalls(() => _emulator.RunOtherThreads(() =>
             {
-                if (_manipulationHost != 0 && DeliverInput(PrepareAndDraw, _manipulationHost))
+                if (DeliverBack(PrepareAndDraw) ||
+                    (_manipulationHost != 0 && DeliverInput(PrepareAndDraw, _manipulationHost)))
                 {
                     return;
                 }

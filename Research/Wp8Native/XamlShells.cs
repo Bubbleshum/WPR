@@ -37,7 +37,16 @@ namespace WPR.Wp8Native
                     new("CreateContentProvider"),
                     new("SetManipulationHost", XamlShell.ManipulationHost),
                     new("set_m_enableMusic", true),
-                ]),
+                ])
+            {
+                // MainPage_BackKeyPress: if (!IsSafeToQuit()) { m_backPressed = true; e.Cancel = true; }
+                // and otherwise the press closes the app, whose Application_Closing calls
+                // MainPage.Closing -> FusionMain.Closing.
+                BackKey = new XamlBackKey(
+                    "IsSafeToQuit",
+                    Otherwise: [new("set_m_backPressed", true)],
+                    BeforeQuit: [new("Closing")]),
+            },
         };
 
         public static XamlShell? ForComponent(string componentDll) => Known.GetValueOrDefault(Path.GetFileName(componentDll));

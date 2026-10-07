@@ -1,5 +1,6 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using Microsoft.Xna.Framework.Input.Touch;
 
 namespace WPR.Wp8Native
@@ -131,6 +132,14 @@ namespace WPR.Wp8Native
                 _emulator = new ArmEmulator(image, Path.GetDirectoryName(_executable)!, collectBlockStats: false);
                 _emulator.Direct3D.FrameBuilt += OnFrameBuilt;
                 _emulator.WinRt.XboxHost = _xboxHost;
+                _emulator.WinRt.BackPressDelivered += handled =>
+                {
+                    Log($"back press {(handled ? "kept by the game" : "let through: closing")}");
+                    if (!handled)
+                    {
+                        _closeRequested = true;
+                    }
+                };
                 Log($"running on {_emulator.Cpu.Capabilities.Name}");
                 if (image.IsDll)
                 {
@@ -253,7 +262,16 @@ namespace WPR.Wp8Native
 
         protected override void Update(GameTime gameTime)
         {
+            if (_closeRequested)
+            {
+                // The game let a Back press through, which on WP8 closes the app.
+                _closeRequested = false;
+                Exit();
+                return;
+            }
+
             PumpTouch();
+            PumpBack();
 
             // One guest frame per tick, never banked beyond two.
             if (_tick.CurrentCount < 2)
@@ -280,7 +298,9 @@ namespace WPR.Wp8Native
             TouchLocation? tracked = null;
             foreach (TouchLocation touch in touches)
             {
-                if (_pointerId == -1 && touch.State == TouchLocationState.Pressed)
+                // A finger first seen already Moved still starts a touch: a short tap can go down
+                // and move inside one frame, and its Pressed sample is then never seen here.
+                if (_pointerId == -1 && touch.State is TouchLocationState.Pressed or TouchLocationState.Moved)
                 {
                     _pointerId = touch.Id;
                 }
@@ -307,7 +327,8 @@ namespace WPR.Wp8Native
             float x = Math.Clamp(t.Position.X, 0, FrameCapture.Width - 1);
             float y = Math.Clamp(t.Position.Y, 0, FrameCapture.Height - 1);
 
-            switch (t.State)
+            TouchLocationState state = !_pointerDown && t.State == TouchLocationState.Moved ? TouchLocationState.Pressed : t.State;
+            switch (state)
             {
                 case TouchLocationState.Pressed:
                     _pointerDown = true;
@@ -335,6 +356,26 @@ namespace WPR.Wp8Native
 
         private float _lastX;
         private float _lastY;
+
+        private bool _backWasDown;
+        private volatile bool _closeRequested;
+
+        /// <summary>
+        /// The phone's Back button. It reaches every XNA title as <c>GamePad.Buttons.Back</c> -
+        /// the hardware key on Android, the bound key (Escape) on the desktop - held for at least
+        /// a frame, so a press is the frame it goes down.
+        /// </summary>
+        private void PumpBack()
+        {
+            bool down = GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed;
+            if (down && !_backWasDown && _emulator is { } emulator)
+            {
+                Log("back pressed");
+                emulator.WinRt.InjectBack();
+            }
+
+            _backWasDown = down;
+        }
 
         protected override void Draw(GameTime gameTime)
         {

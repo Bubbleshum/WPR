@@ -97,8 +97,7 @@ namespace WPR.Wp8Native
                 });
             // The WP7/WP8 bezel Back button. Asked for from inside IFrameworkView::Initialize,
             // where the image subscribes to BackPressed along with its other lifecycle events.
-            RegisterDiscoveryClass(
-                "Windows.Phone.UI.Input.HardwareButtons", "IHardwareButtonsStatics", slotCount: 8);
+            _factories["Windows.Phone.UI.Input.HardwareButtons"] = CreateHardwareButtons();
 
             RegisterApplicationData();
             RegisterThreadPool();
@@ -611,6 +610,13 @@ namespace WPR.Wp8Native
         /// <param name="sender">The event's sender: the CoreWindow, or a XAML manipulation host.</param>
         private bool DeliverInput(Action continueWith, long sender)
         {
+            // A Back press goes ahead of any pointer input; it is rare, and answering it late
+            // would let a tap that followed it act on the screen it was meant to leave.
+            if (DeliverBack(continueWith))
+            {
+                return true;
+            }
+
             // Anything a live host has injected goes first, and does not depend on the
             // scripted taps being enabled at all - a window with a mouse replaces the script.
             while (_external.TryDequeue(out PointerStep injected))
