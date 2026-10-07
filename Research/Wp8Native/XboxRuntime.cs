@@ -78,8 +78,60 @@ namespace WPR.Wp8Native
             "Microsoft.Xbox.Foundation.UserIdentity" => UserIdentityFactory(),
             "Microsoft.Xbox.User" => XboxUserFactory(),
             "Microsoft.Xbox.Leaderboards.LeaderboardService" => LeaderboardServiceFactory(),
+            "Microsoft.Xbox.Marketplace.MarketplaceService" => MarketplaceService(),
             _ => null,
         };
+
+        /// <summary>
+        /// <c>Microsoft.Xbox.Marketplace.MarketplaceService</c>, a static class: the factory is the
+        /// statics interface. The store is closed, so every query completes with an empty
+        /// collection and a purchase completes having bought nothing. Modern Combat 4 enumerates
+        /// offers at start-up and dereferenced the operation the stand-in never wrote.
+        /// </summary>
+        /// <remarks>
+        /// Each out-parameter sits after the method's own arguments: a Guid by value takes four
+        /// words and an Int64 or DateTimeOffset starts on an even register or stack word.
+        /// </remarks>
+        private long MarketplaceService() => _marketplace != 0 ? _marketplace : _marketplace = CreateDiscoveryObject(
+            "IMarketplaceServiceStatics",
+            slotCount: 16,
+            known: new Dictionary<int, (string, Action)>
+            {
+                // EnumerateOffersByOfferIdsAsync(IReadOnlyList<String>)
+                [InspectableSlots + 0] = ("EnumerateOffersByOfferIdsAsync", () => Market(2, "EnumerateOffersByOfferIdsAsync", "OfferCollection")),
+
+                // EnumerateOffersAsync(titleId, skip, max, itemTypes, categoryMask, order, ascending)
+                [InspectableSlots + 1] = ("EnumerateOffersAsync", () => Market(8, "EnumerateOffersAsync", "OfferCollection")),
+
+                // ShowPurchaseAsync(Guid): the Guid fills r1-r3 and one stack word.
+                [InspectableSlots + 2] = ("ShowPurchaseAsync", () => Market(5, "ShowPurchaseAsync", null)),
+
+                // GetReceiptsAsync(titleId, skip, max, previousPage)
+                [InspectableSlots + 3] = ("GetReceiptsAsync", () => Market(5, "GetReceiptsAsync", "ReceiptCollection")),
+
+                // GetReceiptsWithDateFilterAsync(titleId, skip, max, DateTimeOffset, previousPage):
+                // r1-r3, then the 16-byte DateTimeOffset at [sp] (8-aligned), previousPage, out.
+                [InspectableSlots + 4] = ("GetReceiptsWithDateFilterAsync", () => Market(9, "GetReceiptsWithDateFilterAsync", "ReceiptCollection")),
+
+                // GetReceiptAsync(titleId, Guid): the Guid takes r2, r3 and two stack words.
+                [InspectableSlots + 5] = ("GetReceiptAsync", () => Market(6, "GetReceiptAsync", null)),
+
+                // GetAssetsAsync(titleId, skip, max, previousPage)
+                [InspectableSlots + 6] = ("GetAssetsAsync", () => Market(5, "GetAssetsAsync", "AssetBalanceCollection")),
+
+                // ConsumeAssetsAsync(titleId, IReadOnlyList<AssetBalance>)
+                [InspectableSlots + 7] = ("ConsumeAssetsAsync", () => Market(3, "ConsumeAssetsAsync", null)),
+            });
+
+        private long _marketplace;
+
+        /// <summary>Completes a Marketplace call: an empty <paramref name="collection"/>, or nothing.</summary>
+        private void Market(int outArgument, string name, string? collection)
+        {
+            XboxCalls.Add($"Marketplace.{name} -> {(collection is null ? "nothing" : "empty " + collection)}");
+            WriteOut(outArgument, AsyncOperation(name, collection is null ? 0 : Collection(collection)));
+            Return(HResultOk);
+        }
 
         /// <summary>
         /// <c>IUserFactory::CreateUser(UInt64 xuid, String gamertag)</c>, or

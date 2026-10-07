@@ -38,6 +38,10 @@ namespace WPR
                 return null;
             }
 
+            // A title may register several native components - Modern Combat 4 lists Gameloft's
+            // promotions library (IGPLib.dll) and a push-notification one ahead of its game. The
+            // game is the one that draws: the first that imports d3d11.dll, else the first found.
+            string? first = null;
             foreach (XmlNode node in paths)
             {
                 string path = node.InnerText.Trim();
@@ -48,17 +52,26 @@ namespace WPR
 
                 ZipArchiveEntry? entry = archive.GetEntry(path)
                     ?? archive.Entries.FirstOrDefault(e => e.FullName.Equals(path, StringComparison.OrdinalIgnoreCase));
-                if (entry != null && IsNativeArm(entry))
+                if (entry != null && IsNativeArm(entry, out bool draws))
                 {
-                    return entry.FullName;
+                    if (draws)
+                    {
+                        return entry.FullName;
+                    }
+
+                    first ??= entry.FullName;
                 }
             }
 
-            return null;
+            return first;
         }
 
-        private static bool IsNativeArm(ZipArchiveEntry entry)
+        private static readonly byte[] D3D11Import = System.Text.Encoding.ASCII.GetBytes("d3d11.dll");
+        private static readonly byte[] D3D11ImportUpper = System.Text.Encoding.ASCII.GetBytes("D3D11.dll");
+
+        private static bool IsNativeArm(ZipArchiveEntry entry, out bool importsD3D11)
         {
+            importsD3D11 = false;
             try
             {
                 using Stream stream = entry.Open();
@@ -78,7 +91,14 @@ namespace WPR
 
                 ushort machine = BitConverter.ToUInt16(d, pe + 4);
                 uint clrHeader = BitConverter.ToUInt32(d, pe + 24 + 96 + 14 * 8);
-                return machine == 0x01C4 && clrHeader == 0;
+                if (machine != 0x01C4 || clrHeader != 0)
+                {
+                    return false;
+                }
+
+                ReadOnlySpan<byte> image = d.AsSpan(0, (int)copy.Length);
+                importsD3D11 = image.IndexOf(D3D11Import) >= 0 || image.IndexOf(D3D11ImportUpper) >= 0;
+                return true;
             }
             catch (Exception)
             {

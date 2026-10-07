@@ -306,6 +306,8 @@ namespace WPR.Wp8Native
                 // Sharing the original is safe for the same reason.
                 ["WindowsDuplicateString"] = () => WriteOutPointer(Arg(1), Arg(0)),
 
+                ["WindowsGetStringLen"] = () => Return(_strings.LengthOf(Arg(0))),
+
                 ["WindowsGetStringRawBuffer"] = () =>
                 {
                     if (Arg(1) != 0)
@@ -374,6 +376,35 @@ namespace WPR.Wp8Native
             Files.RegisterInto(_handlers);
             _sync = new SyncLibrary(emulator, _frame);
             _sync.RegisterInto(_handlers);
+            RegisterPushNotifications();
+        }
+
+        /// <summary>
+        /// Gameloft's PushNotificationWP8.dll, a native library Modern Combat 4 links against: init,
+        /// the channel URI, clean-up. There is no push service, so it reports a channel that never
+        /// opened.
+        /// </summary>
+        private void RegisterPushNotifications()
+        {
+            const string Ns = "@PushNotification@Push@@";
+            _handlers[$"?Init{Ns}SAHXZ"] = () => Return(0);
+            _handlers[$"?CleanUp{Ns}SAXXZ"] = () => Return(0);
+
+            // static std::string GetURI(): returned through a hidden pointer in r0. MSVC 2012's
+            // std::string is a 16-byte small buffer, then size and capacity; empty is size 0,
+            // capacity 15, a NUL in the buffer. Left unwritten, the caller destroys garbage.
+            _handlers[$"?GetURI{Ns}SA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@XZ"] = () =>
+            {
+                long result = Arg(0);
+                if (result != 0)
+                {
+                    _emulator.WriteMemory(result, new byte[16]);
+                    _emulator.WriteUInt32(result + 16, 0);
+                    _emulator.WriteUInt32(result + 20, 15);
+                }
+
+                Return(result);
+            };
         }
 
         /// <summary>

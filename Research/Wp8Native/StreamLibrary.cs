@@ -193,7 +193,42 @@ namespace WPR.Wp8Native
                 long returnTo = _emulator.ReturnAddress;
                 Prefix(self, noSkip, ok => Finish(ok ? 1 : 0, returnTo));
             };
-            handlers[$"??5?${Is}QAAAAV01@AA_K@Z"] = ReadUnsigned64;
+            handlers[$"??5?${Is}QAAAAV01@AA_K@Z"] = () => ReadUnsigned(8);
+            handlers[$"??5?${Is}QAAAAV01@AAK@Z"] = () => ReadUnsigned(4);   // unsigned long&
+            handlers[$"??5?${Is}QAAAAV01@AAI@Z"] = () => ReadUnsigned(4);   // unsigned int&
+            handlers[$"??5?${Is}QAAAAV01@AAG@Z"] = () => ReadUnsigned(2);   // unsigned short&
+
+            // int_type get(): one character, unformatted. Unimplemented, it answered 0 rather
+            // than EOF, and Modern Combat 4's read-to-end loop span for ever.
+            handlers[$"?get@?${Is}QAAHXZ"] = () =>
+            {
+                long self = _frame.Arg(0);
+                long returnTo = _emulator.ReturnAddress;
+                long ios = IosOf(self);
+                long sb = Read32(ios + Buffer);
+                _emulator.WriteUInt64(self + 8, 0); // _Chcount
+                Prefix(self, noSkip: true, ok =>
+                {
+                    if (!ok)
+                    {
+                        Finish(unchecked((uint)Eof), returnTo);
+                        return;
+                    }
+
+                    NextChar(sb, bump: true, c =>
+                    {
+                        if (c == Eof)
+                        {
+                            SetState(ios, EofBit | FailBit);
+                            Finish(unchecked((uint)Eof), returnTo);
+                            return;
+                        }
+
+                        _emulator.WriteUInt64(self + 8, 1);
+                        Finish(c & 0xFF, returnTo);
+                    });
+                });
+            };
         }
 
         // ------------------------------------------------------------------------------
@@ -796,7 +831,8 @@ namespace WPR.Wp8Native
             Skip();
         }
 
-        private void ReadUnsigned64()
+        /// <summary>operator&gt;&gt; for an unsigned integer of <paramref name="width"/> bytes.</summary>
+        private void ReadUnsigned(int width)
         {
             long self = _frame.Arg(0);
             long target = _frame.Arg(1);
@@ -838,7 +874,7 @@ namespace WPR.Wp8Native
                             }
                             else
                             {
-                                _emulator.WriteMemory(target, BitConverter.GetBytes(value));
+                                _emulator.WriteMemory(target, BitConverter.GetBytes(value)[..width]);
                             }
 
                             if (state != GoodBit)

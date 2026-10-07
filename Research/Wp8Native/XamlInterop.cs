@@ -13,6 +13,14 @@ namespace WPR.Wp8Native
     public sealed record XamlShellStep(string Method, params object?[] Arguments);
 
     /// <summary>
+    /// A C# handler the page subscribes to one of the component's events, as data: what it answers
+    /// (for an event whose delegate returns a value) and what it calls back on the component, which
+    /// the host does at the next frame - e.g. "the movie finished" when asked to show one.
+    /// </summary>
+    /// <param name="Returns">bool, int or string; null answers the type's default.</param>
+    public sealed record XamlCallback(object? Returns = null, params XamlShellStep[] Then);
+
+    /// <summary>
     /// What a WP8 Direct3D/XAML title's managed page does with its native component - the C#
     /// half of the game, written out as data so the host can play it.
     /// </summary>
@@ -39,6 +47,12 @@ namespace WPR.Wp8Native
         /// <summary>The render target the grid asks for: WVGA, portrait, as the device reports it.</summary>
         public SizeF RenderTarget { get; init; } = new(480, 800);
 
+        /// <summary>
+        /// A static method that hands back the instance (a singleton's <c>GetInstance</c>), used in
+        /// place of activating one. Null activates.
+        /// </summary>
+        public string? InstanceFrom { get; init; }
+
         /// <summary>The page's back-key handler; null when it has none, so a press closes the app.</summary>
         public XamlBackKey? BackKey { get; init; }
 
@@ -55,6 +69,9 @@ namespace WPR.Wp8Native
         private WinmdReader? _metadata;
         private XamlShell? _shell;
         private long _instance;
+        private long _factory;
+        private readonly Dictionary<string, long> _staticInterfaces = new(StringComparer.Ordinal);
+        private readonly Queue<XamlShellStep> _followUps = new();
         private readonly Dictionary<string, long> _instanceInterfaces = new(StringComparer.Ordinal);
         private long _provider;
         private long _providerNative;
@@ -108,6 +125,24 @@ namespace WPR.Wp8Native
                     if (factory == 0)
                     {
                         Fail("no activation factory");
+                        return;
+                    }
+
+                    _factory = factory;
+                    if (shell.InstanceFrom is { } instanceFrom)
+                    {
+                        InvokeMember(instanceFrom, [], instance =>
+                        {
+                            _instance = instance;
+                            Log($"{instanceFrom}() = instance 0x{_instance:X8}");
+                            if (_instance == 0)
+                            {
+                                Fail($"{instanceFrom} gave nothing");
+                                return;
+                            }
+
+                            RunSteps(shell.Launch, 0, () => RunSteps(shell.Loaded, 0, ConnectProvider));
+                        });
                         return;
                     }
 
@@ -195,6 +230,13 @@ namespace WPR.Wp8Native
                 found = (ManipulationHandlerLayout, ManipulationHandlerLayout.Methods[0]);
             }
 
+            bool isStatic = false;
+            if (found is null && _metadata.FindStaticMethod(className, method) is { } staticMethod)
+            {
+                found = staticMethod;
+                isStatic = true;
+            }
+
             if (found is null)
             {
                 Log($"{method}: not on {className}; skipped");
@@ -203,7 +245,8 @@ namespace WPR.Wp8Native
             }
 
             (WinmdReader.InterfaceLayout layout, WinmdReader.MethodLayout target) = found.Value;
-            WithInterface(layout, pointer =>
+            Action<WinmdReader.InterfaceLayout, Action<long>> resolve = isStatic ? WithStaticInterface : WithInterface;
+            resolve(layout, pointer =>
             {
                 if (pointer == 0)
                 {
@@ -269,7 +312,8 @@ namespace WPR.Wp8Native
                     core.Add(value switch
                     {
                         XamlShell.ManipulationHost => ManipulationHostObject(),
-                        XamlShell.Callback => NoOpDelegate(),
+                        XamlShell.Callback => CallbackDelegate(type, new XamlCallback()),
+                        XamlCallback callback => CallbackDelegate(type, callback),
                         int n => n,
                         uint n => n,
                         long n => n,
@@ -313,6 +357,28 @@ namespace WPR.Wp8Native
                 Log($"{layout.FullName}: {(found.Pointer == 0 ? "no candidate answered" : $"IID {found.Iid} -> 0x{found.Pointer:X8}")}");
                 Remember(found.Pointer);
             }, atLeast: true);
+        }
+
+        /// <summary>A statics interface, from the activation factory by its IID.</summary>
+        private void WithStaticInterface(WinmdReader.InterfaceLayout layout, Action<long> then)
+        {
+            if (_staticInterfaces.TryGetValue(layout.FullName, out long cached))
+            {
+                then(cached);
+                return;
+            }
+
+            if (_factory == 0 || layout.Iid is not { } iid)
+            {
+                then(0);
+                return;
+            }
+
+            QueryInterface(_factory, iid, pointer =>
+            {
+                _staticInterfaces[layout.FullName] = pointer;
+                then(pointer);
+            });
         }
 
         private HashSet<Guid> KnownInstanceIids()
@@ -492,6 +558,15 @@ namespace WPR.Wp8Native
 
         private void InputThenDraw()
         {
+            // Calls the page's handlers make back into the component, a frame after the event.
+            if (_followUps.Count > 0)
+            {
+                XamlShellStep[] steps = [.. _followUps];
+                _followUps.Clear();
+                RunSteps(steps, 0, InputThenDraw);
+                return;
+            }
+
             if (DeliverBack(PrepareAndDraw) ||
                 (_manipulationHost != 0 && DeliverInput(PrepareAndDraw, _manipulationHost)))
             {
@@ -608,6 +683,65 @@ namespace WPR.Wp8Native
                     [InspectableSlots + 5] = ("remove_PointerReleased", () => Return(HResultOk)),
                 });
             return _manipulationHost;
+        }
+
+        /// <summary>Times each handler stand-in was invoked, for the log.</summary>
+        public Dictionary<string, int> CallbacksRaised { get; } = new(StringComparer.Ordinal);
+
+        /// <summary>
+        /// The stand-in for one C# event handler: answers through the delegate's out pointer when it
+        /// returns something (so the component never reads an unset HSTRING or bool), and queues the
+        /// handler's calls back into the component for the next frame.
+        /// </summary>
+        private long CallbackDelegate(string delegateType, XamlCallback callback)
+        {
+            WinmdReader.MethodLayout? invoke = _metadata?.DelegateInvoke(delegateType);
+            string name = delegateType.Split('.')[^1];
+
+            // Invoke(this, args..., retval*): floats travel in VFP registers and take no core slot.
+            int resultArg = -1;
+            if (invoke is not null && invoke.ReturnType != "Void")
+            {
+                resultArg = 1 + invoke.ParameterTypes.Count(t => t is not ("Single" or "Double"));
+            }
+
+            return CreateUnknownObject($"{name} (C# handler)", ("Invoke", () =>
+            {
+                int count = CallbacksRaised[name] = CallbacksRaised.GetValueOrDefault(name) + 1;
+                if (count <= 3)
+                {
+                    Log($"event {name} raised" +
+                        (callback.Then.Length > 0 ? $"; will call {string.Join(", ", callback.Then.Select(t => t.Method))}" : ""));
+                }
+
+                long result = resultArg > 0 ? Arg(resultArg) : 0;
+                if (result != 0)
+                {
+                    long answer = callback.Returns switch
+                    {
+                        bool b => b ? 1 : 0,
+                        int n => n,
+                        string text => text.Length == 0 ? 0 : _strings.Create(text),
+                        _ => 0,
+                    };
+
+                    if (invoke!.ReturnType is "Boolean" or "Byte")
+                    {
+                        _emulator.WriteMemory(result, [(byte)answer]);
+                    }
+                    else
+                    {
+                        _emulator.WriteUInt32(result, (uint)answer);
+                    }
+                }
+
+                foreach (XamlShellStep step in callback.Then)
+                {
+                    _followUps.Enqueue(step);
+                }
+
+                Return(HResultOk);
+            }));
         }
 
         /// <summary>A delegate whose Invoke does nothing: the stand-in for a C# event handler.</summary>

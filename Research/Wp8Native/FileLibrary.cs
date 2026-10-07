@@ -102,7 +102,53 @@ namespace WPR.Wp8Native
             handlers["MoveFileExW"] = MoveFile;
             handlers["FlushFileBuffers"] = () => _frame.Return(1);
             handlers["SetFileInformationByHandle"] = () => _frame.Return(1);
-            handlers["GetFileInformationByHandleEx"] = () => _frame.Return(0);
+            handlers["GetFileInformationByHandleEx"] = GetFileInformationByHandleEx;
+
+            // The Win32 half of a handle from CreateFile2. Gameloft's engine (Modern Combat 4)
+            // does all its I/O through these rather than the CRT.
+            handlers["ReadFile"] = () => Transfer(write: false);
+            handlers["WriteFile"] = () => Transfer(write: true);
+            handlers["SetFilePointerEx"] = SetFilePointerEx;
+
+            // BOOL GetOverlappedResultEx(HANDLE, OVERLAPPED*, DWORD* transferred, DWORD ms, BOOL
+            // alertable): every transfer here completed before ReadFile returned, so the count is
+            // already in InternalHigh.
+            handlers["GetOverlappedResultEx"] = () =>
+            {
+                long overlapped = _frame.Arg(1);
+                if (_frame.Arg(2) != 0)
+                {
+                    _emulator.WriteUInt32(_frame.Arg(2), overlapped == 0 ? 0 : _emulator.ReadUInt32(overlapped + 4));
+                }
+
+                _frame.Return(1);
+            };
+            handlers["GetOverlappedResult"] = handlers["GetOverlappedResultEx"];
+            handlers["GetFileSizeEx"] = () =>
+            {
+                if (!_byPointer.TryGetValue(_frame.Arg(0), out OpenFile? file))
+                {
+                    _lastError = ErrorInvalidHandle;
+                    _frame.Return(0);
+                    return;
+                }
+
+                if (_frame.Arg(1) != 0)
+                {
+                    _emulator.WriteUInt64(_frame.Arg(1), (ulong)file.Stream.Length);
+                }
+
+                _frame.Return(1);
+            };
+            handlers["SetEndOfFile"] = () =>
+            {
+                if (_byPointer.TryGetValue(_frame.Arg(0), out OpenFile? file) && file.Stream.CanWrite)
+                {
+                    file.Stream.SetLength(file.Stream.Position);
+                }
+
+                _frame.Return(1);
+            };
             // Directory search. Unimplemented, these answered 0 - which for _wfindnext means
             // "found another" - so a game listing a folder looped for ever on a black screen
             // (Angry Birds Space, Classic, Seasons, Star Wars II and Stella all import them).
@@ -515,6 +561,153 @@ namespace WPR.Wp8Native
         /// <summary>
         /// HANDLE CreateFile2(PCWSTR name, DWORD access, DWORD share, DWORD creation, ...)
         /// </summary>
+        private const int ErrorInvalidHandle = 6;
+
+        /// <summary>
+        /// BOOL ReadFile/WriteFile(HANDLE, void* buffer, DWORD bytes, DWORD* done, OVERLAPPED*).
+        /// An OVERLAPPED carries the file offset (Offset at +8, OffsetHigh at +12); the call still
+        /// completes before it returns, which an overlapped caller accepts.
+        /// </summary>
+        private void Transfer(bool write)
+        {
+            long buffer = _frame.Arg(1);
+            int count = (int)_frame.Arg(2);
+            long done = _frame.Arg(3);
+            long overlapped = _frame.Arg(4);
+            if (!_byPointer.TryGetValue(_frame.Arg(0), out OpenFile? file))
+            {
+                _lastError = ErrorInvalidHandle;
+                _frame.Return(0);
+                return;
+            }
+
+            try
+            {
+                if (overlapped != 0)
+                {
+                    file.Stream.Position = _emulator.ReadUInt32(overlapped + 8) | ((long)_emulator.ReadUInt32(overlapped + 12) << 32);
+                }
+
+                int moved;
+                if (write)
+                {
+                    file.Stream.Write(_emulator.ReadMemory(buffer, count));
+                    moved = count;
+                }
+                else
+                {
+                    byte[] data = new byte[count];
+                    moved = 0;
+                    while (moved < count)
+                    {
+                        int read = file.Stream.Read(data, moved, count - moved);
+                        if (read == 0)
+                        {
+                            break;
+                        }
+
+                        moved += read;
+                    }
+
+                    if (moved > 0)
+                    {
+                        _emulator.WriteMemory(buffer, moved == count ? data : data[..moved]);
+                    }
+                }
+
+                if (done != 0)
+                {
+                    _emulator.WriteUInt32(done, (uint)moved);
+                }
+
+                if (overlapped != 0)
+                {
+                    // Internal (status) and InternalHigh (bytes transferred).
+                    _emulator.WriteUInt32(overlapped, 0);
+                    _emulator.WriteUInt32(overlapped + 4, (uint)moved);
+                }
+
+                _frame.Return(1);
+            }
+            catch (Exception ex)
+            {
+                Log.Add($"{(write ? "WriteFile" : "ReadFile")}(\"{file.Path}\") -> {ex.GetType().Name}");
+                _lastError = 0x1E; // ERROR_READ_FAULT
+                _frame.Return(0);
+            }
+        }
+
+        /// <summary>
+        /// BOOL SetFilePointerEx(HANDLE, LARGE_INTEGER distance, LARGE_INTEGER* newPosition, DWORD method).
+        /// The 64-bit distance takes the even register pair r2:r3, so the handle is alone in r0
+        /// and the last two arguments are on the stack.
+        /// </summary>
+        private void SetFilePointerEx()
+        {
+            long distance = _frame.Arg(2) | (_frame.Arg(3) << 32);
+            long newPosition = _frame.Arg(4);
+            long method = _frame.Arg(5);
+            if (!_byPointer.TryGetValue(_frame.Arg(0), out OpenFile? file))
+            {
+                _lastError = ErrorInvalidHandle;
+                _frame.Return(0);
+                return;
+            }
+
+            long origin = method switch
+            {
+                1 => file.Stream.Position,
+                2 => file.Stream.Length,
+                _ => 0,
+            };
+
+            long target = origin + distance;
+            if (target < 0)
+            {
+                _lastError = 0x83; // ERROR_NEGATIVE_SEEK
+                _frame.Return(0);
+                return;
+            }
+
+            file.Stream.Position = target;
+            if (newPosition != 0)
+            {
+                _emulator.WriteUInt64(newPosition, (ulong)target);
+            }
+
+            _frame.Return(1);
+        }
+
+        /// <summary>
+        /// BOOL GetFileInformationByHandleEx(HANDLE, FILE_INFO_BY_HANDLE_CLASS, void*, DWORD).
+        /// FileStandardInfo (1) is AllocationSize, EndOfFile, NumberOfLinks, DeletePending,
+        /// Directory; anything else answers zeros.
+        /// </summary>
+        private void GetFileInformationByHandleEx()
+        {
+            long buffer = _frame.Arg(2);
+            int size = (int)_frame.Arg(3);
+            if (!_byPointer.TryGetValue(_frame.Arg(0), out OpenFile? file))
+            {
+                _lastError = ErrorInvalidHandle;
+                _frame.Return(0);
+                return;
+            }
+
+            if (buffer != 0 && size > 0)
+            {
+                _emulator.WriteMemory(buffer, new byte[size]);
+                if (_frame.Arg(1) == 1 && size >= 24)
+                {
+                    _emulator.WriteUInt64(buffer, (ulong)file.Stream.Length);
+                    _emulator.WriteUInt64(buffer + 8, (ulong)file.Stream.Length);
+                    _emulator.WriteUInt32(buffer + 16, 1);
+                }
+            }
+
+            _frame.Return(1);
+        }
+
         private void CreateFile2()
         {
             string path = ReadWide(0);
@@ -547,7 +740,9 @@ namespace WPR.Wp8Native
 
                 FileStream stream = new(
                     host,
-                    wantsWrite ? FileMode.OpenOrCreate : FileMode.Open,
+                    // CREATE_ALWAYS (2) and TRUNCATE_EXISTING (5) start the file empty; a save
+                    // written over a longer one would otherwise keep the old tail.
+                    !wantsWrite ? FileMode.Open : creation is 2 or 5 ? FileMode.Create : FileMode.OpenOrCreate,
                     wantsWrite ? FileAccess.ReadWrite : FileAccess.Read,
                     FileShare.ReadWrite);
 

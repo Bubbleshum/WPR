@@ -47,6 +47,65 @@ namespace WPR.Wp8Native
                     Otherwise: [new("set_m_backPressed", true)],
                     BeforeQuit: [new("Closing")]),
             },
+
+            // Modern Combat 4 (Gameloft). The component is a singleton (Direct3DBackground.GetInstance);
+            // App.Application_Launching sets the licence, MainPage's constructor subscribes nineteen
+            // static events - the C# side of movies, popups, store, Facebook, GLLive and device
+            // queries - and initialises the promotions and Xbox modules; the background's Loaded
+            // handler sets the sizes and hands over the content provider. Answers are what the page
+            // would give on a phone with no network and the game in control of music.
+            ["MC4HybridComponent.dll"] = new XamlShell(
+                "MC4HybridComponent.dll",
+                "MC4Component.Direct3DBackground",
+                Launch:
+                [
+                    new("SetFullVersion", true, false),
+                    new("add_LaunchGLLiveEvent", XamlShell.Callback),
+                    // VideoPlayer plays data/briefing/*.mp4 and reports the end; there is no player
+                    // here yet, so the movie ends at once.
+                    new("add_ShowMovieEvent", new XamlCallback(null, new XamlShellStep("SetShowMovieFinish"))),
+                    new("add_StopMovieEvent", XamlShell.Callback),
+                    new("add_ReplayMovieEvent", XamlShell.Callback),
+                    new("add_LaunchMarketPlaceEvent", XamlShell.Callback),
+                    new("add_LaunchReviewEvent", XamlShell.Callback),
+                    new("add_SetAutoLockScreenEnabledEvent", XamlShell.Callback),
+                    new("add_ShowAlertEvent", XamlShell.Callback),
+                    new("add_FBWallPostEvent", XamlShell.Callback),
+                    new("add_NetworkTypeEnabledEvent", new XamlCallback(0)),
+                    new("add_IsWifiAvailabeEvent", new XamlCallback(false)),
+                    new("add_HideGameloftLogoEvent", new XamlCallback(null, new XamlShellStep("SetLogoVisible", false))),
+                    // Guide.BeginShowMessageBox, answered with the first button (SetPopupResult(index + 1)).
+                    new("add_ShowConfirmMessagePopupEvent", new XamlCallback(null, new XamlShellStep("SetPopupResult", 1))),
+                    new("add_IsPhoneMusicPlayingEvent", new XamlCallback(false)),
+                    new("add_PausePhoneMusicEvent", XamlShell.Callback),
+                    new("add_ResumePhoneMusicEvent", XamlShell.Callback),
+                    new("add_GetDeviceFirmwareVersionEvent", new XamlCallback("8.0.10521.0")),
+                    new("add_GetRegionCodeEvent", new XamlCallback("US")),
+                    new("add_GetDeviceNameEvent", new XamlCallback("WP8")),
+                    new("InitIGPModule"),
+                    new("FakeInitXBLUser"),
+                    new("SetIGPState", false),
+                    new("SetGLLiveState", false),
+                    new("SetPhoneMusicPlaying", false),
+                ],
+                Loaded:
+                [
+                    new("set_WindowBounds", Wvga),
+                    new("set_NativeResolution", Wvga),
+                    new("set_RenderResolution", Wvga),
+                    new("CreateContentProvider"),
+                    new("SetManipulationHost", XamlShell.ManipulationHost),
+                ])
+            {
+                InstanceFrom = "GetInstance",
+                // OnBackKeyPress: e.Cancel = OnBackButtonPressed() (GLLive and the video player are
+                // never open here).
+                BackKey = new XamlBackKey(
+                    "OnBackButtonPressed",
+                    Otherwise: [],
+                    BeforeQuit: [],
+                    QuitWhen: false),
+            },
         };
 
         public static XamlShell? ForComponent(string componentDll) => Known.GetValueOrDefault(Path.GetFileName(componentDll));

@@ -1914,6 +1914,15 @@ namespace WPR.Wp8Native
                     {
                         _emulator.WriteUInt32(Arg(1), (uint)GetPlaceholder($"{interfaceName}::slot{slot}"));
                     }
+                    else if (ArmEmulator.IsStackAddress(Arg(2)) && !LooksLikeDelegate(Arg(1)))
+                    {
+                        // Shaped like Method(scalar, T** out) - Modern Combat 4's
+                        // IGPControl.CreateIGP(int type, IGPControl** result). Treating it as an
+                        // event registration wrote an 8-byte token into a 4-byte out slot, over
+                        // the caller's stack cookie, and the image __fastfail'd. One word, a
+                        // placeholder object, as for an out-pointer in r1.
+                        _emulator.WriteUInt32(Arg(2), (uint)GetPlaceholder($"{interfaceName}::slot{slot}"));
+                    }
                     else if (ArmEmulator.IsStackAddress(Arg(2)))
                     {
                         // Shaped like add_SomeEvent(handler, EventRegistrationToken* token):

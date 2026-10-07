@@ -903,6 +903,12 @@ namespace WPR.Wp8Native
 
             ComObject created = NewObject($"{kind}{ResourcesCreated[kind]}");
             long pointer = CreateInterface(created, interfaceName, slotCount, methods);
+            if (slotCount == ViewSlots)
+            {
+                // Create*View(ID3D11Resource*, desc, out): what GetResource hands back.
+                _viewResources[pointer] = Arg(1);
+            }
+
             _emulator.WriteUInt32(outPointer, (uint)pointer);
             Return(HResultOk);
         };
@@ -918,8 +924,22 @@ namespace WPR.Wp8Native
         // ID3D11Texture2D and ID3D11Buffer both add GetDesc at 10.
         private const int ResourceSlots = 11;
 
+        /// <summary>The resource each view was created over, for ID3D11View::GetResource.</summary>
+        private readonly Dictionary<long, long> _viewResources = new();
+
         private Dictionary<int, (string, Action)> ViewMethods() => new()
         {
+            // void GetResource(ID3D11Resource** ppResource). Modern Combat 4 reads the render
+            // target's texture back from the view it is handed in Draw, to size its frame.
+            [7] = ("GetResource", () =>
+            {
+                if (Arg(1) != 0)
+                {
+                    _emulator.WriteUInt32(Arg(1), (uint)_viewResources.GetValueOrDefault(Arg(0)));
+                }
+
+                Return(0);
+            }),
             [8] = ("GetDesc", () =>
             {
                 // D3D11_RENDER_TARGET_VIEW_DESC opens with Format then ViewDimension. The
@@ -974,7 +994,114 @@ namespace WPR.Wp8Native
 
         private const int ContextSlots = 135;
 
-        private Dictionary<int, (string, Action)> ContextMethods() => new()
+        private Dictionary<int, (string, Action)> ContextMethods()
+        {
+            Dictionary<int, (string, Action)> methods = ContextSetters();
+            AddContextGetters(methods);
+            return methods;
+        }
+
+        /// <summary>
+        /// ID3D11DeviceContext's Get* half, slots 72-109: every one answers "nothing bound" -
+        /// null interfaces, zero counts, the full sample mask. A caller saves state to restore it,
+        /// or compares what is bound before rebinding, and releases whatever it got back; left
+        /// unwritten, the out-parameters were stack garbage, and Modern Combat 4 released one
+        /// (PSGetShaderResources) through a vtable that was not there.
+        /// </summary>
+        private void AddContextGetters(Dictionary<int, (string, Action)> methods)
+        {
+            void Zero(long address, long words)
+            {
+                if (address != 0 && words > 0 && words < 4096)
+                {
+                    _emulator.WriteMemory(address, new byte[words * 4]);
+                }
+            }
+
+            // (StartSlot, Num, T** out)
+            foreach ((int slot, string name) in new[]
+            {
+                (72, "VSGetConstantBuffers"), (73, "PSGetShaderResources"), (75, "PSGetSamplers"),
+                (77, "PSGetConstantBuffers"), (81, "GSGetConstantBuffers"), (84, "VSGetShaderResources"),
+                (85, "VSGetSamplers"), (87, "GSGetShaderResources"), (88, "GSGetSamplers"),
+                (97, "HSGetShaderResources"), (99, "HSGetSamplers"), (100, "HSGetConstantBuffers"),
+                (101, "DSGetShaderResources"), (103, "DSGetSamplers"), (104, "DSGetConstantBuffers"),
+                (105, "CSGetShaderResources"), (106, "CSGetUnorderedAccessViews"), (108, "CSGetSamplers"),
+                (109, "CSGetConstantBuffers"),
+            })
+            {
+                methods[slot] = (name, () => { Zero(Arg(3), Arg(2)); Return(0); });
+            }
+
+            // (T** shader, ID3D11ClassInstance** instances, UINT* numInstances)
+            foreach ((int slot, string name) in new[]
+            {
+                (74, "PSGetShader"), (76, "VSGetShader"), (82, "GSGetShader"),
+                (98, "HSGetShader"), (102, "DSGetShader"), (107, "CSGetShader"),
+            })
+            {
+                methods[slot] = (name, () => { Zero(Arg(1), 1); Zero(Arg(3), 1); Return(0); });
+            }
+
+            // One out-parameter.
+            foreach ((int slot, string name) in new[] { (78, "IAGetInputLayout"), (83, "IAGetPrimitiveTopology"), (94, "RSGetState") })
+            {
+                methods[slot] = (name, () => { Zero(Arg(1), 1); Return(0); });
+            }
+
+            // (StartSlot, Num, ID3D11Buffer**, UINT* strides, UINT* offsets)
+            methods[79] = ("IAGetVertexBuffers", () => { Zero(Arg(3), Arg(2)); Zero(Arg(4), Arg(2)); Zero(Arg(5), Arg(2)); Return(0); });
+
+            // (ID3D11Buffer**, DXGI_FORMAT*, UINT* offset)
+            methods[80] = ("IAGetIndexBuffer", () => { Zero(Arg(1), 1); Zero(Arg(2), 1); Zero(Arg(3), 1); Return(0); });
+
+            // (ID3D11Predicate**, BOOL*)
+            methods[86] = ("GetPredication", () => { Zero(Arg(1), 1); Zero(Arg(2), 1); Return(0); });
+
+            // (NumViews, ID3D11RenderTargetView**, ID3D11DepthStencilView**)
+            methods[89] = ("OMGetRenderTargets", () => { Zero(Arg(2), Arg(1)); Zero(Arg(3), 1); Return(0); });
+
+            // (NumRTVs, RTV**, DSV**, UAVStart, NumUAVs, UAV**)
+            methods[90] = ("OMGetRenderTargetsAndUnorderedAccessViews", () =>
+            {
+                Zero(Arg(2), Arg(1));
+                Zero(Arg(3), 1);
+                Zero(Arg(6), Arg(5));
+                Return(0);
+            });
+
+            // (ID3D11BlendState**, FLOAT BlendFactor[4], UINT* SampleMask)
+            methods[91] = ("OMGetBlendState", () =>
+            {
+                Zero(Arg(1), 1);
+                if (Arg(2) != 0)
+                {
+                    for (int i = 0; i < 4; i++)
+                    {
+                        _emulator.WriteSingle(Arg(2) + (i * 4), 1f);
+                    }
+                }
+
+                if (Arg(3) != 0)
+                {
+                    _emulator.WriteUInt32(Arg(3), 0xFFFFFFFF);
+                }
+
+                Return(0);
+            });
+
+            // (ID3D11DepthStencilState**, UINT* StencilRef)
+            methods[92] = ("OMGetDepthStencilState", () => { Zero(Arg(1), 1); Zero(Arg(2), 1); Return(0); });
+
+            // (NumBuffers, ID3D11Buffer**)
+            methods[93] = ("SOGetTargets", () => { Zero(Arg(2), Arg(1)); Return(0); });
+
+            // (UINT* NumViewports, D3D11_VIEWPORT*) and the scissor equivalent: none set.
+            methods[95] = ("RSGetViewports", () => { Zero(Arg(1), 1); Return(0); });
+            methods[96] = ("RSGetScissorRects", () => { Zero(Arg(1), 1); Return(0); });
+        }
+
+        private Dictionary<int, (string, Action)> ContextSetters() => new()
         {
             [7] = ("VSSetConstantBuffers", () =>
             {
@@ -1818,9 +1945,11 @@ namespace WPR.Wp8Native
         /// <summary>A render target view over the back buffer, the third argument of <c>Draw</c>.</summary>
         public long CreateHostRenderTargetView()
         {
-            BackBufferPointer();
+            long backBuffer = BackBufferPointer();
             ComObject view = NewObject("RenderTargetView_Host");
-            return CreateInterface(view, "ID3D11RenderTargetView", ViewSlots, ViewMethods());
+            long pointer = CreateInterface(view, "ID3D11RenderTargetView", ViewSlots, ViewMethods());
+            _viewResources[pointer] = backBuffer;
+            return pointer;
         }
 
         /// <summary>Stopwatch ticks spent rasterising frames for <see cref="FramePresented"/>.</summary>

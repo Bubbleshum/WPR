@@ -5,15 +5,21 @@ namespace WPR.Wp8Native
     /// <c>OnBackKeyPress</c>/<c>BackKeyPress</c> handler.
     /// </summary>
     /// <param name="QuitIf">
-    /// A boolean method of the component asked first. True means the page lets the press through,
-    /// and the app closes; false means it cancels the press and runs <paramref name="Otherwise"/>.
+    /// A boolean method of the component asked first. When it answers <paramref name="QuitWhen"/>
+    /// the page lets the press through and the app closes; otherwise it cancels the press and runs
+    /// <paramref name="Otherwise"/>.
     /// </param>
     /// <param name="Otherwise">What the page does when it keeps the press for the game.</param>
     /// <param name="BeforeQuit">What the app does on its way out (<c>Application_Closing</c>).</param>
+    /// <param name="QuitWhen">
+    /// The answer that means "close": true for Alex's <c>IsSafeToQuit</c>, false for a method that
+    /// answers <c>e.Cancel</c> (Modern Combat 4's <c>OnBackButtonPressed</c>).
+    /// </param>
     public sealed record XamlBackKey(
         string QuitIf,
         IReadOnlyList<XamlShellStep> Otherwise,
-        IReadOnlyList<XamlShellStep> BeforeQuit);
+        IReadOnlyList<XamlShellStep> BeforeQuit,
+        bool QuitWhen = true);
 
     /// <summary>
     /// The hardware Back button: <c>Windows.Phone.UI.Input.HardwareButtons.BackPressed</c> for an
@@ -123,11 +129,11 @@ namespace WPR.Wp8Native
             {
                 InvokeMember(page.QuitIf, [], quit =>
                 {
-                    if ((quit & 0xFF) != 0)
+                    if (((quit & 0xFF) != 0) == page.QuitWhen)
                     {
                         RunSteps(page.BeforeQuit, 0, () =>
                         {
-                            Report(false, $"{page.QuitIf}() = true");
+                            Report(false, $"{page.QuitIf}() = {page.QuitWhen}");
                             continueWith();
                         });
                         return;
@@ -135,7 +141,7 @@ namespace WPR.Wp8Native
 
                     RunSteps(page.Otherwise, 0, () =>
                     {
-                        Report(true, $"{page.QuitIf}() = false");
+                        Report(true, $"{page.QuitIf}() = {!page.QuitWhen}");
                         continueWith();
                     });
                 });

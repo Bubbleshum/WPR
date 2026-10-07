@@ -225,6 +225,11 @@ namespace WPR.Wp8Native
                     Log("   " + line);
                 }
 
+                foreach (string line in emulator.WinRt.UnimplementedCalls.TakeLast(12))
+                {
+                    Log("   unimplemented: " + line);
+                }
+
                 foreach (string line in emulator.Stubs.ThrowHistory.TakeLast(5))
                 {
                     Log("   throw: " + line);

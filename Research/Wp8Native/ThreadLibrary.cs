@@ -27,6 +27,7 @@ namespace WPR.Wp8Native
         private readonly Dictionary<long, (int Owner, int Count)> _mutexes = new();
         private readonly Dictionary<long, int> _conditionGeneration = new();
         private readonly HashSet<long> _releasedPads = [];
+        private long _trylockPolls;
 
         public ThreadLibrary(ArmEmulator emulator, CallFrame frame)
         {
@@ -65,6 +66,16 @@ namespace WPR.Wp8Native
             handlers["_Thrd_equal"] = () => _frame.Return(_frame.Arg(1) == _frame.Arg(3) ? 1 : 0);
             handlers["_Thrd_lt"] = () => _frame.Return(_frame.Arg(1) < _frame.Arg(3) ? 1 : 0);
             handlers["_Thrd_detach"] = () => _frame.Return(ThrdSuccess);
+
+            // int _Thrd_create(_Thrd_t*, int (*start)(void*), void* arg): the C11-style spelling
+            // underneath std::thread, which Modern Combat 4 calls directly. Unimplemented, it
+            // answered success and started nothing.
+            handlers["_Thrd_create"] = () =>
+            {
+                int id = _emulator.CreateGuestThread("_Thrd_create", _frame.Arg(1), _frame.Arg(2));
+                WriteThread(_frame.Arg(0), id);
+                _frame.Return(ThrdSuccess);
+            };
 
             // int _Thrd_join(_Thrd_t, int* result)
             handlers["_Thrd_join"] = () =>
@@ -108,6 +119,16 @@ namespace WPR.Wp8Native
             {
                 long mutex = _frame.Arg(0);
                 _frame.Return(TryTake(mutex) ? ThrdSuccess : ThrdBusy);
+
+                // A thread polling a lock is waiting for another to change something, which on a
+                // phone the scheduler's preemption would let happen. Threads here switch only
+                // when one blocks, so Modern Combat 4's loader span on trylock/unlock 16 million
+                // times every five seconds while the thread it waited for never ran. Every so
+                // often a poll gives the others a turn; the answer is already in r0.
+                if (++_trylockPolls % 64 == 0)
+                {
+                    _emulator.BlockCurrentThread(() => true);
+                }
             };
             handlers["_Mtx_unlock"] = () =>
             {

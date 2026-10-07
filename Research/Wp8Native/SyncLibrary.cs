@@ -62,13 +62,61 @@ namespace WPR.Wp8Native
         private int _satisfied;
         private int _timedOut;
 
+        private enum Kind
+        {
+            Event,
+            Mutex,
+            Semaphore,
+        }
+
+        /// <summary>A waitable handle: an event, a mutex (owner + recursion) or a semaphore (count).</summary>
         private sealed class Event
         {
+            public Kind Kind { get; init; }
+
             public bool ManualReset { get; init; }
 
             public bool Signalled { get; set; }
 
             public string Name { get; init; } = string.Empty;
+
+            public int Owner { get; set; }
+
+            public int Recursion { get; set; }
+
+            public long Count { get; set; }
+
+            public long Maximum { get; init; }
+        }
+
+        /// <summary>Whether a wait on <paramref name="e"/> by <paramref name="thread"/> would succeed now.</summary>
+        private static bool CanTake(Event e, int thread) => e.Kind switch
+        {
+            Kind.Mutex => e.Owner == 0 || e.Owner == thread,
+            Kind.Semaphore => e.Count > 0,
+            _ => e.Signalled,
+        };
+
+        /// <summary>What a satisfied wait does to the object: resets, takes ownership, or decrements.</summary>
+        private static void Take(Event e, int thread)
+        {
+            switch (e.Kind)
+            {
+                case Kind.Mutex:
+                    e.Owner = thread;
+                    e.Recursion++;
+                    break;
+                case Kind.Semaphore:
+                    e.Count--;
+                    break;
+                default:
+                    if (!e.ManualReset)
+                    {
+                        e.Signalled = false;
+                    }
+
+                    break;
+            }
         }
 
         public void RegisterInto(Dictionary<string, Action> handlers)
@@ -102,6 +150,83 @@ namespace WPR.Wp8Native
                 };
 
                 _frame.Return(handle);
+            };
+
+            // HANDLE CreateMutexExW(SECURITY_ATTRIBUTES*, LPCWSTR name, DWORD flags, DWORD access):
+            // CREATE_MUTEX_INITIAL_OWNER (1) makes the caller the owner. Unimplemented, every mutex
+            // was handle 0 and Modern Combat 4's locks guarded nothing.
+            handlers["CreateMutexExW"] = () =>
+            {
+                long handle = _nextHandle++;
+                bool owned = (_frame.Arg(2) & 1) != 0;
+                _events[handle] = new Event
+                {
+                    Kind = Kind.Mutex,
+                    Name = _frame.Arg(1) == 0 ? string.Empty : _emulator.ReadUtf16String(_frame.Arg(1)),
+                    Owner = owned ? _emulator.CurrentThreadId : 0,
+                    Recursion = owned ? 1 : 0,
+                };
+                _frame.Return(handle);
+            };
+            handlers["CreateMutexW"] = () =>
+            {
+                long handle = _nextHandle++;
+                bool owned = _frame.Arg(1) != 0;
+                _events[handle] = new Event
+                {
+                    Kind = Kind.Mutex,
+                    Owner = owned ? _emulator.CurrentThreadId : 0,
+                    Recursion = owned ? 1 : 0,
+                };
+                _frame.Return(handle);
+            };
+            handlers["ReleaseMutex"] = () =>
+            {
+                if (_events.TryGetValue(_frame.Arg(0), out Event? e) && e.Kind == Kind.Mutex && e.Recursion > 0)
+                {
+                    if (--e.Recursion == 0)
+                    {
+                        e.Owner = 0;
+                    }
+
+                    _frame.Return(1);
+                    return;
+                }
+
+                _frame.Return(0);
+            };
+
+            // HANDLE CreateSemaphoreExW(SECURITY_ATTRIBUTES*, LONG initial, LONG maximum, LPCWSTR name,
+            // DWORD flags, DWORD access).
+            handlers["CreateSemaphoreExW"] = () =>
+            {
+                long handle = _nextHandle++;
+                _events[handle] = new Event
+                {
+                    Kind = Kind.Semaphore,
+                    Count = _frame.SignedArg(1),
+                    Maximum = _frame.SignedArg(2),
+                };
+                _frame.Return(handle);
+            };
+            handlers["CreateSemaphoreW"] = handlers["CreateSemaphoreExW"];
+
+            // BOOL ReleaseSemaphore(HANDLE, LONG count, LONG* previous).
+            handlers["ReleaseSemaphore"] = () =>
+            {
+                if (!_events.TryGetValue(_frame.Arg(0), out Event? e) || e.Kind != Kind.Semaphore)
+                {
+                    _frame.Return(0);
+                    return;
+                }
+
+                if (_frame.Arg(2) != 0)
+                {
+                    _emulator.WriteUInt32(_frame.Arg(2), (uint)e.Count);
+                }
+
+                e.Count = Math.Min(e.Maximum > 0 ? e.Maximum : long.MaxValue, e.Count + _frame.SignedArg(1));
+                _frame.Return(1);
             };
 
             handlers["SetEvent"] = () =>
@@ -252,13 +377,10 @@ namespace WPR.Wp8Native
                 return;
             }
 
-            if (e.Signalled)
+            int me = _emulator.CurrentThreadId;
+            if (CanTake(e, me))
             {
-                if (!e.ManualReset)
-                {
-                    e.Signalled = false;
-                }
-
+                Take(e, me);
                 _satisfied++;
                 _frame.Return(WaitObject0);
                 return;
@@ -270,16 +392,13 @@ namespace WPR.Wp8Native
             {
                 _frame.Return(WaitObject0);
                 if (_emulator.BlockCurrentThread(
-                        () => e.Signalled,
+                        () => CanTake(e, me),
                         () =>
                         {
                             _satisfied++;
-                            if (!e.ManualReset)
-                            {
-                                e.Signalled = false;
-                            }
+                            Take(e, me);
                         },
-                        why: $"event {(e.Name.Length > 0 ? e.Name : $"0x{handle:X8}")}"))
+                        why: $"{e.Kind.ToString().ToLowerInvariant()} {(e.Name.Length > 0 ? e.Name : $"0x{handle:X8}")}"))
                 {
                     return;
                 }

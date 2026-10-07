@@ -29,6 +29,8 @@ namespace WPR.Wp8Native
         private readonly Dictionary<string, InterfaceLayout> _interfaces = new(StringComparer.Ordinal);
         private readonly Dictionary<string, List<string>> _classInterfaces = new(StringComparer.Ordinal);
         private readonly Dictionary<string, string> _defaultInterface = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, List<string>> _staticInterfaces = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, MethodLayout> _delegateInvokes = new(StringComparer.Ordinal);
 
         public static WinmdReader Load(params string[] paths)
         {
@@ -65,6 +67,26 @@ namespace WPR.Wp8Native
                 }
             }
         }
+
+        /// <summary>
+        /// A static method of <paramref name="className"/>: declared on one of the interfaces its
+        /// <c>[Static]</c> attributes name, which the activation factory implements.
+        /// </summary>
+        public (InterfaceLayout Interface, MethodLayout Method)? FindStaticMethod(string className, string method)
+        {
+            foreach (string name in _staticInterfaces.GetValueOrDefault(className) ?? [])
+            {
+                if (Interface(name) is { } layout && layout.Find(method) is { } found)
+                {
+                    return (layout, found);
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>A delegate type's Invoke: its parameters and return type (returned through a trailing out pointer).</summary>
+        public MethodLayout? DelegateInvoke(string delegateType) => _delegateInvokes.GetValueOrDefault(delegateType);
 
         /// <summary>The interface of <paramref name="className"/> that declares <paramref name="method"/>.</summary>
         public (InterfaceLayout Interface, MethodLayout Method)? FindMethod(string className, string method)
@@ -107,6 +129,31 @@ namespace WPR.Wp8Native
                     continue;
                 }
 
+                if (!type.BaseType.IsNil && TypeName(md, type.BaseType) == "System.MulticastDelegate")
+                {
+                    foreach (MethodDefinitionHandle mh in type.GetMethods())
+                    {
+                        MethodDefinition method = md.GetMethodDefinition(mh);
+                        if (md.GetString(method.Name) == "Invoke")
+                        {
+                            (IReadOnlyList<string> parameters, string returns) = Signature(md, method);
+                            _delegateInvokes[name] = new MethodLayout("Invoke", 3, parameters, returns);
+                        }
+                    }
+
+                    continue;
+                }
+
+                foreach (CustomAttributeHandle ah in type.GetCustomAttributes())
+                {
+                    CustomAttribute attribute = md.GetCustomAttribute(ah);
+                    if (AttributeName(md, attribute) == "Windows.Foundation.Metadata.StaticAttribute" &&
+                        StaticInterfaceName(md, attribute) is { } staticName)
+                    {
+                        (_staticInterfaces.TryGetValue(name, out var list) ? list : _staticInterfaces[name] = []).Add(staticName);
+                    }
+                }
+
                 List<string> implemented = new();
                 foreach (InterfaceImplementationHandle ih in type.GetInterfaceImplementations())
                 {
@@ -132,6 +179,19 @@ namespace WPR.Wp8Native
                     _classInterfaces[name] = implemented;
                 }
             }
+        }
+
+        /// <summary>StaticAttribute(Type, UInt32): the Type is serialised as its (possibly assembly-qualified) name.</summary>
+        private static string? StaticInterfaceName(MetadataReader md, CustomAttribute attribute)
+        {
+            BlobReader blob = md.GetBlobReader(attribute.Value);
+            if (blob.Length < 3 || blob.ReadUInt16() != 1)
+            {
+                return null;
+            }
+
+            string? name = blob.ReadSerializedString();
+            return name?.Split(',')[0].Trim();
         }
 
         /// <summary>The IID, from Windows.Foundation.Metadata.GuidAttribute(UInt32, UInt16, UInt16, Byte x8).</summary>

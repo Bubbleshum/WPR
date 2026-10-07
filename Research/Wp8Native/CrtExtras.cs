@@ -83,6 +83,217 @@ namespace WPR.Wp8Native
                 _frame.WriteNarrowString(buffer, fits ? text : text[..(int)Math.Max(0, room)]);
                 _frame.Return(fits ? (uint)text.Length : unchecked((uint)-1));
             };
+            // int vsprintf_s(char* buffer, size_t size, const char* format, va_list): the whole
+            // result or nothing - an overflow empties the buffer and answers -1.
+            handlers["vsprintf_s"] = () =>
+            {
+                long buffer = _frame.Arg(0);
+                long size = _frame.Arg(1);
+                string text = Format(_frame.Arg(2), _frame.Arg(3));
+                if (buffer == 0 || size <= 0 || text.Length >= size)
+                {
+                    if (buffer != 0 && size > 0)
+                    {
+                        _frame.WriteNarrowString(buffer, string.Empty);
+                    }
+
+                    _frame.Return(unchecked((uint)-1));
+                    return;
+                }
+
+                _frame.WriteNarrowString(buffer, text);
+                _frame.Return((uint)text.Length);
+            };
+
+            // int MultiByteToWideChar(CodePage, Flags, const char* source, int sourceBytes,
+            // wchar_t* destination, int destinationChars). A length of -1 means "up to and
+            // including the NUL"; a destination of zero size asks how much room is needed.
+            handlers["MultiByteToWideChar"] = () =>
+            {
+                long source = _frame.Arg(2);
+                int bytes = _frame.SignedArg(3);
+                long destination = _frame.Arg(4);
+                int room = _frame.SignedArg(5);
+                byte[] raw = bytes < 0 ? [.. NarrowBytes(source), 0] : (source == 0 ? [] : _emulator.ReadMemory(source, bytes));
+                System.Text.Encoding encoding = _frame.Arg(0) == 65001 ? System.Text.Encoding.UTF8 : System.Text.Encoding.Latin1;
+                char[] chars = encoding.GetChars(raw);
+                if (room == 0)
+                {
+                    _frame.Return((uint)chars.Length);
+                    return;
+                }
+
+                if (chars.Length > room || destination == 0)
+                {
+                    _frame.Return(0); // ERROR_INSUFFICIENT_BUFFER
+                    return;
+                }
+
+                _emulator.WriteMemory(destination, System.Text.Encoding.Unicode.GetBytes(chars));
+                _frame.Return((uint)chars.Length);
+            };
+
+            // int WideCharToMultiByte(CodePage, Flags, const wchar_t* source, int sourceChars,
+            // char* destination, int destinationBytes, default char*, bool* usedDefault).
+            handlers["WideCharToMultiByte"] = () =>
+            {
+                long source = _frame.Arg(2);
+                int count = _frame.SignedArg(3);
+                long destination = _frame.Arg(4);
+                int room = _frame.SignedArg(5);
+                string text = count < 0 ? WideText(source) + "\0" : (source == 0 ? "" : System.Text.Encoding.Unicode.GetString(_emulator.ReadMemory(source, count * 2)));
+                System.Text.Encoding encoding = _frame.Arg(0) == 65001 ? System.Text.Encoding.UTF8 : System.Text.Encoding.Latin1;
+                byte[] bytes = encoding.GetBytes(text);
+                if (room == 0)
+                {
+                    _frame.Return((uint)bytes.Length);
+                    return;
+                }
+
+                if (bytes.Length > room || destination == 0)
+                {
+                    _frame.Return(0);
+                    return;
+                }
+
+                _emulator.WriteMemory(destination, bytes);
+                _frame.Return((uint)bytes.Length);
+            };
+
+            // int _vsnprintf(char* buffer, size_t count, const char* format, va_list): writes at
+            // most count characters, NUL only if there is room, and answers -1 when it truncates.
+            handlers["_vsnprintf"] = () =>
+            {
+                long buffer = _frame.Arg(0);
+                int count = (int)_frame.Arg(1);
+                string text = Format(_frame.Arg(2), _frame.Arg(3));
+                if (buffer == 0 || count <= 0)
+                {
+                    _frame.Return(count == 0 ? (uint)text.Length : unchecked((uint)-1));
+                    return;
+                }
+
+                byte[] bytes = System.Text.Encoding.Latin1.GetBytes(text);
+                if (bytes.Length < count)
+                {
+                    _emulator.WriteMemory(buffer, [.. bytes, 0]);
+                    _frame.Return((uint)bytes.Length);
+                    return;
+                }
+
+                _emulator.WriteMemory(buffer, bytes[..count]);
+                _frame.Return(bytes.Length == count ? (uint)count : unchecked((uint)-1));
+            };
+
+            // char* strtok(char* text, const char* delimiters): MSVC keeps the position per thread.
+            // Unimplemented it answered NULL, so Modern Combat 4 parsed none of its config files.
+            handlers["strtok"] = () =>
+            {
+                int thread = _emulator.CurrentThreadId;
+                long start = _frame.Arg(0) != 0 ? _frame.Arg(0) : _strtokNext.GetValueOrDefault(thread);
+                (long token, long next) = Tokenise(start, _frame.Arg(1));
+                _strtokNext[thread] = next;
+                _frame.Return(token);
+            };
+
+            // char* strtok_s(char* text, const char* delimiters, char** context).
+            handlers["strtok_s"] = () =>
+            {
+                long context = _frame.Arg(2);
+                long start = _frame.Arg(0) != 0 ? _frame.Arg(0) : (context == 0 ? 0 : _emulator.ReadUInt32(context));
+                (long token, long next) = Tokenise(start, _frame.Arg(1));
+                if (context != 0)
+                {
+                    _emulator.WriteUInt32(context, (uint)next);
+                }
+
+                _frame.Return(token);
+            };
+
+            // char* _strdup(const char*): a malloc'd copy, so the image's own free() releases it.
+            handlers["_strdup"] = () =>
+            {
+                long source = _frame.Arg(0);
+                if (source == 0)
+                {
+                    _frame.Return(0);
+                    return;
+                }
+
+                byte[] bytes = NarrowBytes(source);
+                long copy = _emulator.AllocateHeap(bytes.Length + 1);
+                _emulator.WriteMemory(copy, [.. bytes, 0]);
+                _frame.Return(copy);
+            };
+            handlers["strdup"] = handlers["_strdup"];
+
+            // char* _strlwr / _strupr(char*): in place.
+            handlers["_strlwr"] = () => ChangeCase(_frame.Arg(0), upper: false);
+            handlers["_strupr"] = () => ChangeCase(_frame.Arg(0), upper: true);
+
+            // size_t mbstowcs(wchar_t* destination, const char* source, size_t count).
+            handlers["mbstowcs"] = () =>
+            {
+                string text = System.Text.Encoding.Latin1.GetString(NarrowBytes(_frame.Arg(1)));
+                long destination = _frame.Arg(0);
+                int count = (int)_frame.Arg(2);
+                if (destination == 0)
+                {
+                    _frame.Return((uint)text.Length);
+                    return;
+                }
+
+                string written = text.Length < count ? text + "\0" : text[..count];
+                _emulator.WriteMemory(destination, System.Text.Encoding.Unicode.GetBytes(written));
+                _frame.Return((uint)Math.Min(text.Length, count));
+            };
+
+            // size_t wcstombs(char* destination, const wchar_t* source, size_t count).
+            handlers["wcstombs"] = () =>
+            {
+                byte[] bytes = System.Text.Encoding.Latin1.GetBytes(WideText(_frame.Arg(1)));
+                long destination = _frame.Arg(0);
+                int count = (int)_frame.Arg(2);
+                if (destination == 0)
+                {
+                    _frame.Return((uint)bytes.Length);
+                    return;
+                }
+
+                _emulator.WriteMemory(destination, bytes.Length < count ? [.. bytes, 0] : bytes[..count]);
+                _frame.Return((uint)Math.Min(bytes.Length, count));
+            };
+
+            // int _isnan(double) / _finite(double): the double is in d0.
+            handlers["_isnan"] = () => _frame.Return(double.IsNaN(_frame.DoubleArg(0)) ? 1 : 0);
+            handlers["_finite"] = () => _frame.Return(double.IsFinite(_frame.DoubleArg(0)) ? 1 : 0);
+
+            // BOOL GetUserPreferredUILanguages(DWORD flags, ULONG* count, PZZWSTR buffer, ULONG* size):
+            // one language, en-US, as a double-NUL-terminated list.
+            handlers["GetUserPreferredUILanguages"] = () =>
+            {
+                byte[] list = System.Text.Encoding.Unicode.GetBytes("en-US\0\0");
+                if (_frame.Arg(1) != 0)
+                {
+                    _emulator.WriteUInt32(_frame.Arg(1), 1);
+                }
+
+                long buffer = _frame.Arg(2);
+                long size = _frame.Arg(3);
+                uint room = size == 0 ? 0 : _emulator.ReadUInt32(size);
+                if (size != 0)
+                {
+                    _emulator.WriteUInt32(size, (uint)(list.Length / 2));
+                }
+
+                if (buffer != 0 && room >= list.Length / 2)
+                {
+                    _emulator.WriteMemory(buffer, list);
+                }
+
+                _frame.Return(1);
+            };
+
             handlers["_vscprintf"] = () => _frame.Return((uint)Format(_frame.Arg(0), _frame.Arg(1)).Length);
             handlers["vprintf"] = () => Print(Format(_frame.Arg(0), _frame.Arg(1)));
             handlers["printf"] = () => Print(new PrintfFormatter(_emulator, _frame).Format(Read(0), new VarArgReader(_emulator, 1)));
@@ -469,6 +680,106 @@ namespace WPR.Wp8Native
             }
 
             Insert(1);
+        }
+            private readonly Dictionary<int, long> _strtokNext = new();
+
+        /// <summary>
+        /// One strtok step from <paramref name="start"/>: skips leading delimiters, terminates the
+        /// token in place, and answers it with where the next call resumes (0 at the end).
+        /// </summary>
+        private (long Token, long Next) Tokenise(long start, long delimiters)
+        {
+            if (start == 0)
+            {
+                return (0, 0);
+            }
+
+            HashSet<byte> separators = [.. NarrowBytes(delimiters)];
+            long at = start;
+            while (true)
+            {
+                byte b = _emulator.ReadMemory(at, 1)[0];
+                if (b == 0)
+                {
+                    return (0, 0);
+                }
+
+                if (!separators.Contains(b))
+                {
+                    break;
+                }
+
+                at++;
+            }
+
+            long token = at;
+            while (true)
+            {
+                byte b = _emulator.ReadMemory(at, 1)[0];
+                if (b == 0)
+                {
+                    return (token, 0);
+                }
+
+                if (separators.Contains(b))
+                {
+                    _emulator.WriteMemory(at, [0]);
+                    return (token, at + 1);
+                }
+
+                at++;
+            }
+        }
+
+        private void ChangeCase(long address, bool upper)
+        {
+            byte[] bytes = NarrowBytes(address);
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                char c = (char)bytes[i];
+                bytes[i] = (byte)(upper ? char.ToUpperInvariant(c) : char.ToLowerInvariant(c));
+            }
+
+            if (bytes.Length > 0)
+            {
+                _emulator.WriteMemory(address, bytes);
+            }
+
+            _frame.Return(address);
+        }
+
+        private byte[] NarrowBytes(long address)
+        {
+            List<byte> bytes = [];
+            for (long at = address; address != 0 && bytes.Count < 1 << 20; at++)
+            {
+                byte b = _emulator.ReadMemory(at, 1)[0];
+                if (b == 0)
+                {
+                    break;
+                }
+
+                bytes.Add(b);
+            }
+
+            return [.. bytes];
+        }
+
+        private string WideText(long address)
+        {
+            System.Text.StringBuilder text = new();
+            for (long at = address; address != 0 && text.Length < 1 << 20; at += 2)
+            {
+                char c = (char)BitConverter.ToUInt16(_emulator.ReadMemory(at, 2));
+                if (c == 0)
+                {
+                    break;
+                }
+
+                text.Append(c);
+            }
+
+            return text.ToString();
         }
     }
 }
