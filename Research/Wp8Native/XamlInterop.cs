@@ -352,12 +352,44 @@ namespace WPR.Wp8Native
             // this many methods that the metadata does not explain, and the candidates harvested
             // from the DLL's IID table include its IID; probe them.
             int wantedSlots = WinmdReader.InspectableSlots + layout.Methods.Count;
-            ProbeCandidates(_instance, 0, wantedSlots, exclude: KnownInstanceIids(), found =>
+            void Probe() => ProbeCandidates(_instance, 0, wantedSlots, exclude: KnownInstanceIids(), found =>
             {
                 Log($"{layout.FullName}: {(found.Pointer == 0 ? "no candidate answered" : $"IID {found.Iid} -> 0x{found.Pointer:X8}")}");
                 Remember(found.Pointer);
             }, atLeast: true);
+
+            // The Windows IIDs are fixed, so ask for the known one first. Probing is the fallback,
+            // and it can be fooled: Modern Combat 4's instance answered an unrelated harvested IID
+            // with its main 64-slot vtable, which passed the "at least" check, and
+            // SetManipulationHost then called some other method - the game never subscribed to
+            // touch and its title screen ignored every tap.
+            if (WellKnownIids.TryGetValue(layout.FullName, out Guid known))
+            {
+                QueryInterface(_instance, known, pointer =>
+                {
+                    if (pointer == 0)
+                    {
+                        Probe();
+                        return;
+                    }
+
+                    Log($"{layout.FullName}: IID {known} -> 0x{pointer:X8}");
+                    Remember(pointer);
+                });
+                return;
+            }
+
+            Probe();
         }
+
+        /// <summary>Windows interfaces the component implements but its metadata only names.</summary>
+        private static readonly Dictionary<string, Guid> WellKnownIids = new(StringComparer.Ordinal)
+        {
+            ["Windows.Phone.Input.Interop.IDrawingSurfaceManipulationHandler"] = new("171b7ef7-a96f-4e37-b936-7a0b10f35163"),
+        };
+
+        /// <summary>IDrawingSurfaceBackgroundContentProviderNative, the same in every title seen.</summary>
+        private static readonly Guid BackgroundContentProviderNativeIid = new("262c1892-975a-45aa-8fe7-f25c2c4088e3");
 
         /// <summary>A statics interface, from the activation factory by its IID.</summary>
         private void WithStaticInterface(WinmdReader.InterfaceLayout layout, Action<long> then)
@@ -518,8 +550,22 @@ namespace WPR.Wp8Native
                 return;
             }
 
-            // IDrawingSurfaceBackgroundContentProviderNative: IUnknown plus four methods.
-            ProbeCandidates(_provider, 0, wantedSlots: 7, exclude: [], found =>
+            // IDrawingSurfaceBackgroundContentProviderNative: IUnknown plus four methods. The known
+            // IID first; probing for a seven-slot interface is the fallback.
+            QueryInterface(_provider, BackgroundContentProviderNativeIid, pointer =>
+            {
+                if (pointer != 0)
+                {
+                    ConnectProviderNative((BackgroundContentProviderNativeIid, pointer));
+                    return;
+                }
+
+                ProbeCandidates(_provider, 0, wantedSlots: 7, exclude: [], ConnectProviderNative);
+            });
+        }
+
+        private void ConnectProviderNative((Guid Iid, long Pointer) found)
+        {
             {
                 _providerNative = found.Pointer;
                 Log($"content provider native interface: {(found.Pointer == 0 ? "NOT FOUND" : $"IID {found.Iid} -> 0x{found.Pointer:X8}")}");
@@ -538,7 +584,7 @@ namespace WPR.Wp8Native
                     Log($"Connect = 0x{hr:X8}; drawing");
                     NextFrame();
                 });
-            });
+            }
         }
 
         private void NextFrame()

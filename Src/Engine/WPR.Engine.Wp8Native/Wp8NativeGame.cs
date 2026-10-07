@@ -133,6 +133,13 @@ namespace WPR.Wp8Native
                 PeImage image = PeImage.Load(_executable);
                 _emulator = new ArmEmulator(image, Path.GetDirectoryName(_executable)!, collectBlockStats: false);
                 _emulator.Direct3D.FrameBuilt += OnFrameBuilt;
+                if (UseGpu)
+                {
+                    // The 3D path: the game's own shaders on the host GPU (Wp8GpuReplay).
+                    _emulator.Direct3D.GpuCapture = true;
+                    _emulator.Direct3D.GpuFrameBuilt += OnGpuFrameBuilt;
+                    Log("rendering with the game's shaders on the GPU");
+                }
                 _emulator.WinRt.XboxHost = _xboxHost;
                 _emulator.XAudio2.Output = _audio;
                 _emulator.WinRt.BackPressDelivered += handled =>
@@ -249,6 +256,26 @@ namespace WPR.Wp8Native
             catch (Exception ex)
             {
                 Log($"post-mortem failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>WPR_WP8_GPU=1: replay frames on the GPU with the game's shaders instead of the 2D draw list.</summary>
+        private static readonly bool UseGpu = Environment.GetEnvironmentVariable("WPR_WP8_GPU") == "1";
+
+        private GpuFrame? _latestGpu;
+        private Wp8GpuReplay? _replay;
+
+        private void OnGpuFrameBuilt(GpuFrame frame)
+        {
+            _presented++;
+            lock (_gate)
+            {
+                _latestGpu = frame;
+            }
+
+            if (!_closing)
+            {
+                _tick.Wait(250);
             }
         }
 
@@ -393,6 +420,29 @@ namespace WPR.Wp8Native
 
         protected override void Draw(GameTime gameTime)
         {
+            if (UseGpu)
+            {
+                GpuFrame? gpuFrame;
+                lock (_gate)
+                {
+                    gpuFrame = _latestGpu;
+                }
+
+                if (gpuFrame is null)
+                {
+                    GraphicsDevice.Clear(Color.Black);
+                }
+                else
+                {
+                    _replay ??= new Wp8GpuReplay(GraphicsDevice, _log);
+                    _replay.Render(gpuFrame, GraphicsDevice.PresentationParameters.BackBufferWidth, GraphicsDevice.PresentationParameters.BackBufferHeight);
+                    _drawn++;
+                }
+
+                base.Draw(gameTime);
+                return;
+            }
+
             FrameDrawList? frame;
             lock (_gate)
             {
@@ -489,6 +539,7 @@ namespace WPR.Wp8Native
             long build = _emulator?.Direct3D.RasteriseTicks ?? 0;
             Log($"guest fps={(_presented - _statsPresented) / seconds:0.0} frames={_presented} drawn={_drawn} " +
                 $"drawlist-build total={build * 1000 / System.Diagnostics.Stopwatch.Frequency}ms textures={_textures.Count} " +
+                $"gpu: replayed={_replay?.DrawsReplayed} skipped={_replay?.DrawsSkipped} {_replay?.Statistics()} unrecorded={string.Join(",", _emulator?.Direct3D.GpuSkipped.Select(p => $"{p.Key}:{p.Value}") ?? [])} " +
                 $"audio: {_emulator?.XAudio2.Summary()} voices={_audio?.VoicesCreated} underruns={_audio?.Underruns} callbacks={_emulator?.XAudio2.CallbacksMade}");
             // What the audio engine was asked for since the last report (racy read of a list the
             // guest appends to; a diagnostic, so a missed line is fine).
@@ -590,6 +641,7 @@ namespace WPR.Wp8Native
                 }
 
                 _audio?.Dispose();
+                _replay?.Dispose();
                 foreach (var (_, texture) in _textures.Values)
                 {
                     texture.Dispose();

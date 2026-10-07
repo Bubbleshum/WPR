@@ -20,7 +20,7 @@ namespace WPR.Wp8Native
     /// point of this layer is to get the image through device creation, swap chain creation
     /// and into its main loop, and to say precisely what it does once it is there.
     /// </remarks>
-    public sealed class Direct3DRuntime
+    public sealed partial class Direct3DRuntime
     {
         private const long HResultOk = 0;
         private const long HResultNoInterface = unchecked((int)0x80004002);
@@ -580,7 +580,7 @@ namespace WPR.Wp8Native
 
         private const int DeviceSlots = 50;
 
-        private Dictionary<int, (string, Action)> DeviceMethods() => new()
+        private Dictionary<int, (string, Action)> DeviceCore() => new()
         {
             [3] = ("CreateBuffer", MakeResource("Buffer", outIndex: 3)),
             [4] = ("CreateTexture1D", MakeResource("Texture1D", outIndex: 3)),
@@ -779,7 +779,11 @@ namespace WPR.Wp8Native
                 // its real stride and drops half of each one.
                 resource.PixelBytes = resource.Format switch
                 {
-                    85 or 86 or 115 => 2,
+                    // 8-bit: R8 (61-64) and A8 (65), Modern Combat 4's font. Read at four bytes
+                    // a pixel, each glyph came out as vertical stripes.
+                    61 or 62 or 63 or 64 or 65 => 1,
+                    // 16-bit: B5G6R5, B5G5R5A1, B4G4R4A4, and R8G8 (49-52).
+                    85 or 86 or 115 or 49 or 50 or 51 or 52 => 2,
                     _ => 4,
                 };
 
@@ -998,6 +1002,7 @@ namespace WPR.Wp8Native
         {
             Dictionary<int, (string, Action)> methods = ContextSetters();
             AddContextGetters(methods);
+            HookGpuContext(methods);
             return methods;
         }
 
@@ -1299,7 +1304,7 @@ namespace WPR.Wp8Native
             DrawCalls++;
             Count(indexed ? "DrawIndexed" : "Draw");
 
-            Frame.Record(FrameCapture.Snapshot(_emulator, new FrameCapture.DrawCall(
+            FrameCapture.DrawCall snapshot = FrameCapture.Snapshot(_emulator, new FrameCapture.DrawCall(
                 count,
                 start,
                 baseVertex,
@@ -1314,7 +1319,10 @@ namespace WPR.Wp8Native
             {
                 WrapU = _boundSampler?.WrapU ?? false,
                 WrapV = _boundSampler?.WrapV ?? false,
-            }));
+            });
+
+            Frame.Record(snapshot);
+            GpuRecordDraw(snapshot);
         }
 
         /// <summary>A sampler's addressing, which is all the rasteriser takes from it.</summary>
@@ -1896,7 +1904,7 @@ namespace WPR.Wp8Native
             // subscriber gets a private copy and must marshal it to wherever it draws.
             // A host with a GPU takes the draw list and does the pixels itself. That is the
             // fast path: the software rasteriser below costs more than the game.
-            if (FrameBuilt is { } gpu)
+            if (!DeliverGpuFrame() && FrameBuilt is { } gpu)
             {
                 try
                 {

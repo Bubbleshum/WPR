@@ -852,6 +852,21 @@
                 return;
             }
 
+            if (each == 1)
+            {
+                // Direct3D 11 reads A8 as (0, 0, 0, a) and R8 as (r, 0, 0, 1).
+                byte value = texture[at];
+                (r, g, b, a) = resource.Format == 65 ? ((byte)0, (byte)0, (byte)0, value) : (value, (byte)0, (byte)0, (byte)255);
+                return;
+            }
+
+            if (each == 2 && resource.Format is 49 or 50 or 51 or 52)
+            {
+                // R8G8: (r, g, 0, 1).
+                (r, g, b, a) = (texture[at], texture[at + 1], (byte)0, (byte)255);
+                return;
+            }
+
             if (each == 2)
             {
                 // Little-endian 16-bit. Each channel is expanded rather than shifted: 4 bits

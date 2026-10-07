@@ -135,7 +135,7 @@ namespace WPR.Wp8Native
         /// through <see cref="Sample"/> texel by texel - once per version, so the cost does
         /// not matter.
         /// </summary>
-        private static TextureImage? DecodeRgba(ArmEmulator emulator, Resource? texture)
+        internal static TextureImage? DecodeRgba(ArmEmulator emulator, Resource? texture)
         {
             if (texture is null || texture.Storage == 0)
             {
