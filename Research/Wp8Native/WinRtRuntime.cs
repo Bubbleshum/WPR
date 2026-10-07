@@ -1094,6 +1094,8 @@ namespace WPR.Wp8Native
                         //
                         // Only when something is queued, so that DrainDeferredCalls' continuation
                         // always runs from a return trap rather than inline in this stub.
+                        // HTTP failures join the queue here, once they are due.
+                        _emulator.Stubs.Http.QueueDue();
                         if (_emulator.PendingDeferredCalls > 0)
                         {
                             long resumeAfterDrain = _emulator.ReturnAddress;

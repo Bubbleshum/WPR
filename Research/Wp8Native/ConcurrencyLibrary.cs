@@ -77,6 +77,24 @@ namespace WPR.Wp8Native
                 _frame.Return(0);
             };
             handlers[$"?_Internal_throw_exception@{Base}IBAXXZ"] = () => _frame.Return(0);
+
+            // HRESULT CaptureUiThreadContext(IContextCallback**) - PhoneAppModelHost.dll. WP8's
+            // ppltasks.h asks it, after CoGetApartmentType, whether the calling thread is the UI
+            // thread, and task::wait()/get() then throws invalid_operation("Illegal to wait on a
+            // task in a Windows Runtime STA"). Unimplemented it answered 0 - S_OK - so every
+            // thread looked like the UI thread, including the ConcRT chores that run here on the
+            // main guest thread and are the very code allowed to wait. Angry Birds Stella's sign-in
+            // task died on that throw and its "connecting" board waited for ever. A Direct3D app
+            // has no XAML UI thread to capture, so failing is the truthful answer.
+            handlers["CaptureUiThreadContext"] = () =>
+            {
+                if (_frame.Arg(0) != 0)
+                {
+                    _emulator.WriteUInt32(_frame.Arg(0), 0);
+                }
+
+                _frame.Return(unchecked((int)0x8001010E)); // RPC_E_WRONG_THREAD
+            };
         }
 
         private Queue<long> QueueOf(long self)

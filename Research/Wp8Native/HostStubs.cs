@@ -452,6 +452,11 @@ namespace WPR.Wp8Native
 
         public XAudio2Runtime XAudio2 { get; }
 
+        /// <summary>HTTP requests, which all fail as they would on a phone with no signal.</summary>
+        public OfflineXmlHttpRequest Http => _http ??= new OfflineXmlHttpRequest(_emulator, _frame);
+
+        private OfflineXmlHttpRequest? _http;
+
         private const long CoNotInitialized = unchecked((int)0x800401F0);
         private const long ClassNotRegistered = unchecked((int)0x80040154);
         private const long NoInterface = unchecked((int)0x80004002);
@@ -531,8 +536,9 @@ namespace WPR.Wp8Native
             ["CoGetInterfaceAndReleaseStream"] = () => FailWithNull(Arg(2), NoInterface),
 
             // HRESULT CoCreateInstanceFromApp(rclsid, punkOuter, dwClsCtx, reserved, count,
-            // MULTI_QI*) - six arguments, and nothing here registers a CLSID.
-            ["CoCreateInstanceFromApp"] = () => Return(ClassNotRegistered),
+            // MULTI_QI*) - six arguments. msxml6's HTTP request is the one class answered: a
+            // phone always has it, and being offline is reported later, per request.
+            ["CoCreateInstanceFromApp"] = () => Http.CoCreateInstanceFromApp(otherwise: ClassNotRegistered),
 
             // HRESULT CoGetApartmentType(APTTYPE *pAptType, APTTYPEQUALIFIER *pAptQualifier).
             // One thread, and it behaves like the multithreaded apartment.
@@ -820,16 +826,27 @@ namespace WPR.Wp8Native
             // this, never on the frame they are unwinding to.
             _funcletStack = _emulator.ReadRegister(Arm.UC_ARM_REG_SP) - FuncletStackMargin;
 
+            // `throw;` is _CxxThrowException(NULL, NULL): rethrow the exception the innermost
+            // catch is handling. Read it before the walk, which trims the active catches. Read
+            // as a throw of nothing it had no type, so only catch(...) could match: Angry Birds
+            // Stella rethrows rcs::CloudServiceException that way, and it skipped the typed catch
+            // that handles it, reached its thread wrapper's catch(...) and called std::terminate.
+            ThrownException? rethrown = Arg(0) == 0 && Arg(1) == 0 ? CurrentlyHandled() : null;
+
             ThrowStack = _emulator.Unwinder.Walk(
                 pc: _emulator.ReturnAddress & ~1L,
                 liveRegisters: coreRegisters.Select(_emulator.ReadRegister).ToArray());
             ThrowStack = ContinueThroughCatchFunclet(ThrowStack);
 
-            ThrownText = ReadableStringsIn(Arg(0), 0x100);
+            ThrownText = ReadableStringsIn(rethrown?.Object ?? Arg(0), 0x100);
 
             // r0 is the exception object, r1 its ThrowInfo.
             CxxExceptionModel model = _emulator.ExceptionModel;
-            Thrown = model.ReadThrow(Arg(0), Arg(1));
+            Thrown = rethrown ?? model.ReadThrow(Arg(0), Arg(1));
+            if (rethrown is not null)
+            {
+                TransferLog.Add($"rethrow of the {rethrown.TypeName} being handled");
+            }
             CatchCandidates = model.FindHandlers(ThrowStack, Thrown);
 
             RecordThrow();
@@ -933,7 +950,7 @@ namespace WPR.Wp8Native
                 $"entering catch({candidate.CaughtType}) funclet 0x{candidate.FuncletRva:X8} " +
                 $"with frame 0x{frame:X8}, after {cleanups.Count} cleanup funclet(s)");
 
-            RunCleanups(cleanups, 0, () => EnterCatchFunclet(candidate, frame, funclet));
+            RunCleanups(cleanups, 0, () => EnterCatchFunclet(candidate, frame, funclet, thrown));
         }
 
         /// <summary>
@@ -1000,6 +1017,15 @@ namespace WPR.Wp8Native
         /// the frames of the throw that entered it which lie above its establisher.
         /// </summary>
         private readonly List<(long ReturnTrap, IReadOnlyList<UnwoundFrame> Outer)> _activeCatches = new();
+
+        /// <summary>The exception each running catch funclet is handling, by its return trap.</summary>
+        private readonly Dictionary<long, ThrownException> _handledBy = new();
+
+        /// <summary>The exception the innermost running catch is handling - what `throw;` rethrows.</summary>
+        private ThrownException? CurrentlyHandled() =>
+            _activeCatches.Count > 0 && _handledBy.TryGetValue(_activeCatches[^1].ReturnTrap, out ThrownException? handled)
+                ? handled
+                : null;
 
         /// <summary>
         /// A throw from inside a catch block.
@@ -1075,7 +1101,7 @@ namespace WPR.Wp8Native
             }
         }
 
-        private void EnterCatchFunclet(CatchCandidate candidate, long frame, long funclet)
+        private void EnterCatchFunclet(CatchCandidate candidate, long frame, long funclet, ThrownException thrown)
         {
             // The code after the catch belongs to the establisher frame and expects its own
             // r4-r11, not whatever the last cleanup funclet left in them.
@@ -1127,6 +1153,7 @@ namespace WPR.Wp8Native
                 });
 
             _activeCatches.Add((returnTrap, outer));
+            _handledBy[returnTrap] = thrown;
         }
 
         /// <summary>What the image threw, once it has thrown.</summary>

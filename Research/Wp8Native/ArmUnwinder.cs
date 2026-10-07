@@ -252,6 +252,7 @@ namespace WPR.Wp8Native
             int reg = (int)((unwind >> 16) & 0x7);
             bool savesVfp = ((unwind >> 19) & 1) != 0;
             bool savesLr = ((unwind >> 20) & 1) != 0;
+            bool chainsFrame = ((unwind >> 21) & 1) != 0;
             int stackAdjust = (int)((unwind >> 22) & 0x3FF);
 
             // 0x3F4 and above is not a byte count: the low bits carry a small word count
@@ -263,7 +264,11 @@ namespace WPR.Wp8Native
 
             if (savesVfp)
             {
-                state.Sp += (reg + 1) * 8L;
+                // R=1 with Reg=7 is "no registers saved", not d8-d15.
+                if (reg != 7)
+                {
+                    state.Sp += (reg + 1) * 8L;
+                }
             }
             else
             {
@@ -271,6 +276,16 @@ namespace WPR.Wp8Native
                 {
                     state.Pop(_emulator, r);
                 }
+            }
+
+            // C: the function sets up a frame chain, which adds r11 to the push - after the
+            // callee-saved registers and before lr. Leaving it out made lr's pop read r11's slot:
+            // the "return address" became a stack address, the walk stopped there, and every C++
+            // throw through such a frame was reported uncaught (Angry Birds Stella's rethrown
+            // HttpRequestException, push {r1-r6, r11, lr} at 0xD9739).
+            if (chainsFrame)
+            {
+                state.Pop(_emulator, 11);
             }
 
             if (savesLr)
