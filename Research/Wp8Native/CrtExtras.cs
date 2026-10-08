@@ -51,6 +51,12 @@ namespace WPR.Wp8Native
             };
             handlers["strtol"] = () => ParseInteger(signed: true);
             handlers["atol"] = () => _frame.Return(unchecked((uint)(int)LeadingInteger(Read(0), 10, out _)));
+
+            // int atoi(const char*): the leading integer, stopping at the first non-digit. It used to
+            // parse the whole string, so "80.tga" was not a number and answered 0. Modern Combat 4
+            // reads its caustic animation's frame time as atoi(name after "_time"), got 0 for every
+            // frame, and divided by the zero total the moment the material drew.
+            handlers["atoi"] = handlers["atol"];
             handlers["_wtoi64"] = () => _frame.Return64(LeadingInteger(_emulator.ReadUtf16String(_frame.Arg(0), 64), 10, out _));
             handlers["atof"] = () => _frame.ReturnDouble(LeadingDouble(Read(0), out _));
 

@@ -75,10 +75,7 @@ namespace WPR.Wp8Native
             handlers["strspn"] = () => SpanLength(matching: true);
 
             // --- numbers ---
-            handlers["atoi"] = () => _frame.Return(
-                int.TryParse(Read(0).Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed)
-                    ? parsed
-                    : 0);
+            // atoi is in CrtExtras, beside atol: both read the leading integer and stop.
 
             handlers["strtoul"] = ParseUnsignedLong;
             handlers["strtod"] = ParseDouble;

@@ -619,16 +619,25 @@ namespace WPR.Wp8Native
                 int count = (int)Math.Clamp(Arg(2), 0, 32);
                 var elements = new List<FrameCapture.VertexElement>();
 
+                // D3D11_APPEND_ALIGNED_ELEMENT (0xFFFFFFFF) means "straight after the previous
+                // element in this slot". Stored raw it was offset -1, every attribute after the first
+                // read the wrong bytes, and Modern Combat 4's world drew nowhere.
+                var nextOffset = new Dictionary<int, int>();
                 for (int i = 0; i < count && descs != 0; i++)
                 {
                     long entry = descs + (i * 28);
                     string semantic = _frame.ReadNarrowString(_emulator.ReadUInt32(entry + 0, 0), 32);
+                    uint format = _emulator.ReadUInt32(entry + 8, 0);
+                    int slot = (int)_emulator.ReadUInt32(entry + 12, 0);
+                    uint raw = _emulator.ReadUInt32(entry + 16, 0);
+                    int offset = raw == 0xFFFFFFFF ? nextOffset.GetValueOrDefault(slot) : (int)raw;
+                    nextOffset[slot] = offset + DxgiElementSize(format);
                     elements.Add(new FrameCapture.VertexElement(
                         semantic,
                         _emulator.ReadUInt32(entry + 4, 0),
-                        _emulator.ReadUInt32(entry + 8, 0),
-                        (int)_emulator.ReadUInt32(entry + 16, 0),
-                        (int)_emulator.ReadUInt32(entry + 12, 0)));
+                        format,
+                        offset,
+                        slot));
                 }
 
                 Count("InputLayout");
@@ -1287,6 +1296,22 @@ namespace WPR.Wp8Native
                 Return(HResultOk);
             }),
             [53] = ("ClearDepthStencilView", () => Return(HResultOk)),
+        };
+
+        /// <summary>Bytes in one vertex element of a DXGI format, for resolving APPEND_ALIGNED offsets.</summary>
+        private static int DxgiElementSize(uint format) => format switch
+        {
+            1 or 2 or 3 or 4 => 16,                        // R32G32B32A32
+            5 or 6 or 7 or 8 => 12,                        // R32G32B32
+            9 or 10 or 11 or 12 or 13 or 14 => 8,          // R16G16B16A16
+            15 or 16 or 17 or 18 => 8,                     // R32G32
+            >= 19 and <= 22 => 8,                          // R32G8X24 family
+            >= 23 and <= 47 => 4,                          // R10G10B10A2, R11G11B10, RGBA8, RG16, R32, R24G8
+            >= 48 and <= 59 => 2,                          // RG8, R16
+            >= 60 and <= 65 => 1,                          // R8, A8
+            87 or 88 or 90 or 91 or 92 or 93 => 4,         // BGRA8/BGRX8
+            85 or 86 or 115 => 2,                          // 16-bit packed
+            _ => 4,
         };
 
         private Action CountDraw(string kind) => () =>

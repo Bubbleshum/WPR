@@ -377,6 +377,102 @@ namespace WPR.Wp8Native
             _sync = new SyncLibrary(emulator, _frame);
             _sync.RegisterInto(_handlers);
             RegisterPushNotifications();
+            RegisterAlignedAllocation();
+        }
+
+        /// <summary>Aligned block -> (block actually allocated, size asked for).</summary>
+        private readonly Dictionary<long, (long Block, long Size)> _aligned = new();
+
+        /// <summary>
+        /// _aligned_malloc and friends. Unimplemented they answered NULL, and Modern Combat 4 built
+        /// 83 objects at address 0 - the next virtual call read a "vtable" from there and jumped
+        /// into the DLL's data. The heap's blocks are 16-byte aligned, so alignments up to 16 are
+        /// plain allocations; larger ones over-allocate and remember the block for _aligned_free.
+        /// </summary>
+        private void RegisterAlignedAllocation()
+        {
+            long AllocateAligned(long size, long alignment)
+            {
+                alignment = alignment <= 16 ? 16 : alignment;
+                if (alignment == 16)
+                {
+                    long block = _emulator.AllocateHeap(Math.Max(size, 1));
+                    if (block != 0)
+                    {
+                        _aligned[block] = (block, size);
+                    }
+
+                    return block;
+                }
+
+                long raw = _emulator.AllocateHeap(size + alignment);
+                if (raw == 0)
+                {
+                    return 0;
+                }
+
+                long aligned = (raw + alignment - 1) & ~(alignment - 1);
+                _aligned[aligned] = (raw, size);
+                return aligned;
+            }
+
+            void FreeAligned(long pointer)
+            {
+                if (pointer == 0)
+                {
+                    return;
+                }
+
+                if (_aligned.Remove(pointer, out var entry))
+                {
+                    _emulator.FreeHeap(entry.Block);
+                    return;
+                }
+
+                _emulator.FreeHeap(pointer);
+            }
+
+            // void* _aligned_malloc(size_t size, size_t alignment)
+            _handlers["_aligned_malloc"] = () => Return(AllocateAligned(Arg(0), Arg(1)));
+
+            // void* _aligned_offset_malloc(size_t size, size_t alignment, size_t offset): the
+            // offset is rare enough that aligning the start is the honest approximation.
+            _handlers["_aligned_offset_malloc"] = () => Return(AllocateAligned(Arg(0), Arg(1)));
+
+            _handlers["_aligned_free"] = () =>
+            {
+                FreeAligned(Arg(0));
+                Return(0);
+            };
+
+            // void* _aligned_realloc(void* memblock, size_t size, size_t alignment)
+            _handlers["_aligned_realloc"] = () =>
+            {
+                long old = Arg(0), size = Arg(1), alignment = Arg(2);
+                if (size == 0)
+                {
+                    FreeAligned(old);
+                    Return(0);
+                    return;
+                }
+
+                long fresh = AllocateAligned(size, alignment);
+                if (old != 0 && fresh != 0)
+                {
+                    long keep = _aligned.TryGetValue(old, out var entry) ? Math.Min(entry.Size, size) : 0;
+                    if (keep > 0)
+                    {
+                        _emulator.WriteMemory(fresh, _emulator.ReadMemory(old, (int)keep));
+                    }
+
+                    FreeAligned(old);
+                }
+
+                Return(fresh);
+            };
+
+            // size_t _aligned_msize(void* memblock, size_t alignment, size_t offset)
+            _handlers["_aligned_msize"] = () => Return(_aligned.TryGetValue(Arg(0), out var entry) ? entry.Size : 0);
         }
 
         /// <summary>

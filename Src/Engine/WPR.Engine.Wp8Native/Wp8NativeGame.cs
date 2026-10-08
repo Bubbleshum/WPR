@@ -214,6 +214,63 @@ namespace WPR.Wp8Native
                     $"sp=0x{emulator.ReadRegister(UnicornEngine.Const.Arm.UC_ARM_REG_SP):X8} " +
                     $"r0=0x{emulator.ReadRegister(UnicornEngine.Const.Arm.UC_ARM_REG_R0):X8} " +
                     $"r3=0x{emulator.ReadRegister(UnicornEngine.Const.Arm.UC_ARM_REG_R3):X8}");
+                // Every register that points into the heap: which block, who allocated it, what is in
+                // it. A crash inside the game's own code (a divide by zero, an assert) says nothing
+                // else about the data it choked on.
+                if (emulator.UncontainedNullCall is null)
+                {
+                    int[] registers =
+                    [
+                        UnicornEngine.Const.Arm.UC_ARM_REG_R0, UnicornEngine.Const.Arm.UC_ARM_REG_R1, UnicornEngine.Const.Arm.UC_ARM_REG_R2,
+                        UnicornEngine.Const.Arm.UC_ARM_REG_R3, UnicornEngine.Const.Arm.UC_ARM_REG_R4, UnicornEngine.Const.Arm.UC_ARM_REG_R5,
+                        UnicornEngine.Const.Arm.UC_ARM_REG_R6, UnicornEngine.Const.Arm.UC_ARM_REG_R7, UnicornEngine.Const.Arm.UC_ARM_REG_R8,
+                        UnicornEngine.Const.Arm.UC_ARM_REG_R9, UnicornEngine.Const.Arm.UC_ARM_REG_R10, UnicornEngine.Const.Arm.UC_ARM_REG_R11,
+                        UnicornEngine.Const.Arm.UC_ARM_REG_R12,
+                    ];
+                    for (int i = 0; i < registers.Length; i++)
+                    {
+                        long value = emulator.ReadRegister(registers[i]);
+                        string where = emulator.DescribeAllocation(value);
+                        if (!where.StartsWith("not a block", StringComparison.Ordinal))
+                        {
+                            Log($"   r{i}=0x{value:X8} {where}");
+                            Log("      " + string.Join(" ", Enumerable.Range(0, 16).Select(w => $"{emulator.ReadUInt32(value + (w * 4), 0):X8}")));
+
+                            // One level down: heap pointers in those words, e.g. a vector's elements.
+                            HashSet<long> followed = [];
+                            for (int w = 0; w < 8; w++)
+                            {
+                                long inner = emulator.ReadUInt32(value + (w * 4), 0);
+                                if (inner != value && followed.Add(inner) &&
+                                    !emulator.DescribeAllocation(inner).StartsWith("not a block", StringComparison.Ordinal))
+                                {
+                                    Log($"      [+0x{w * 4:X}] -> 0x{inner:X8}{TypeOf(emulator, inner)}: " +
+                                        string.Join(" ", Enumerable.Range(0, 32).Select(x => $"{emulator.ReadUInt32(inner + (x * 4), 0):X8}")));
+
+                                    // And the objects that block points at (a vector of pointers, say).
+                                    int shown = 0;
+                                    for (int x = 0; x < 32 && shown < 4; x++)
+                                    {
+                                        long deeper = emulator.ReadUInt32(inner + (x * 4), 0);
+                                        if (deeper != inner && followed.Add(deeper) &&
+                                            !emulator.DescribeAllocation(deeper).StartsWith("not a block", StringComparison.Ordinal))
+                                        {
+                                            shown++;
+                                            Log($"         [+0x{x * 4:X}] -> 0x{deeper:X8}{TypeOf(emulator, deeper)}: " +
+                                                string.Join(" ", Enumerable.Range(0, 24).Select(y => $"{emulator.ReadUInt32(deeper + (y * 4), 0):X8}")));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    foreach (string line in emulator.ScanStack(64).Split('\n').Take(16))
+                    {
+                        Log("   stack: " + line.Trim());
+                    }
+                }
+
                 if (emulator.NullCall is { } nullCall)
                 {
                     Log($"   null call to 0x{nullCall.Address:X8} from 0x{nullCall.CalledFrom:X8}");
@@ -242,7 +299,7 @@ namespace WPR.Wp8Native
                     Log("   throw: " + line);
                 }
 
-                foreach (var (name, calls) in emulator.Stubs.DefaultedCalls.OrderByDescending(p => p.Value).Take(25))
+                foreach (var (name, calls) in emulator.Stubs.DefaultedCalls.OrderByDescending(p => p.Value).Take(80))
                 {
                     Log($"   defaulted: {calls,8:N0}  {name}");
                 }
@@ -276,6 +333,30 @@ namespace WPR.Wp8Native
             if (!_closing)
             {
                 _tick.Wait(250);
+            }
+        }
+
+        /// <summary>" (ClassName)" from an object's MSVC RTTI - vtable[-1] is the complete object locator - or "".</summary>
+        private static string TypeOf(ArmEmulator emulator, long objectAddress)
+        {
+            try
+            {
+                long vtable = emulator.ReadUInt32(objectAddress, 0);
+                long locator = vtable == 0 ? 0 : emulator.ReadUInt32(vtable - 4, 0);
+                long descriptor = locator == 0 ? 0 : emulator.ReadUInt32(locator + 12, 0);
+                if (descriptor == 0 || !emulator.IsExecutableCode(emulator.ReadUInt32(vtable, 0)))
+                {
+                    return "";
+                }
+
+                byte[] name = emulator.ReadMemory(descriptor + 8, 64);
+                int end = Array.IndexOf(name, (byte)0);
+                string text = System.Text.Encoding.ASCII.GetString(name, 0, end < 0 ? name.Length : end);
+                return text.StartsWith(".?A", StringComparison.Ordinal) ? $" ({text})" : "";
+            }
+            catch (Exception)
+            {
+                return "";
             }
         }
 

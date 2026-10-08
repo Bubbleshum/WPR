@@ -62,6 +62,15 @@ namespace WPR.Wp8Native
             return text;
         }
 
+        /// <summary>WPR_WP8_GPU_TRACE=N: log every command of the Nth replayed frame.</summary>
+        private static readonly int TraceFrame = int.TryParse(Environment.GetEnvironmentVariable("WPR_WP8_GPU_TRACE"), out int n) ? n : -1;
+
+        private int _frameIndex;
+
+        /// <summary>Depth clears waiting for the first draw that uses their depth view (by view key).</summary>
+        private readonly Dictionary<long, (int Flags, float Depth, byte Stencil)> _pendingDepthClears = new();
+        private string? _skip;
+
         private long _replayTicks;
         private int _framesReplayed;
         private int _commands;
@@ -92,32 +101,55 @@ namespace WPR.Wp8Native
 
         private void RenderFrame(GpuFrame frame, int windowWidth, int windowHeight)
         {
+            bool trace = _frameIndex++ == TraceFrame;
+            int index = 0;
+            void Trace(string line)
+            {
+                if (trace)
+                {
+                    _log?.Invoke($"[wpr-wp8-gpu-trace] {index,4} {line}");
+                }
+            }
+
             RenderTarget2D? current = null;
             RenderTarget2D? backBuffer = null;
             foreach (GpuCommand command in frame.Commands)
             {
+                index++;
                 try
                 {
                     switch (command)
                     {
                         case GpuClearColour clear:
+                            Trace($"clear  {Describe(clear.Target)} ({string.Join(",", clear.Colour.Select(c => c.ToString("0.00")))})");
                             current = Bind(clear.Target, current);
                             backBuffer = clear.Target.IsBackBuffer ? current : backBuffer;
                             _device.Clear(ClearOptions.Target, new Vector4(clear.Colour[0], clear.Colour[1], clear.Colour[2], clear.Colour[3]), 1f, 0);
                             break;
                         case GpuClearDepth clear:
-                            current = Bind(clear.Target, current);
-                            ClearOptions options = ((clear.Flags & 1) != 0 ? ClearOptions.DepthBuffer : 0) | ((clear.Flags & 2) != 0 ? ClearOptions.Stencil : 0);
-                            if (options != 0)
-                            {
-                                _device.Clear(options, Vector4.Zero, clear.Depth, clear.Stencil);
-                            }
-
+                            // A Direct3D depth view is its own texture; here depth belongs to the
+                            // render target it is drawn with. So the clear waits for the next draw
+                            // that uses this depth view, and clears that draw's target's depth. Bound
+                            // as a colour target and cleared there, the back buffer's real depth
+                            // was never cleared, and Modern Combat 4's whole world failed the test.
+                            Trace($"cleard {Describe(clear.Target)} flags {clear.Flags} depth {clear.Depth}");
+                            int flags = clear.Flags | (_pendingDepthClears.TryGetValue(clear.Target.Key, out var earlier) ? earlier.Flags : 0);
+                            _pendingDepthClears[clear.Target.Key] = (flags, clear.Depth, clear.Stencil);
                             break;
                         case GpuDraw draw:
                             current = Bind(draw.Target, current);
                             backBuffer = draw.Target.IsBackBuffer ? current : backBuffer;
-                            if (Draw(draw))
+                            if (draw.DepthTarget is { } depthView && _pendingDepthClears.Remove(depthView.Key, out var pending))
+                            {
+                                ClearOptions options = ((pending.Flags & 1) != 0 ? ClearOptions.DepthBuffer : 0) | ((pending.Flags & 2) != 0 ? ClearOptions.Stencil : 0);
+                                if (options != 0)
+                                {
+                                    _device.Clear(options, Vector4.Zero, pending.Depth, pending.Stencil);
+                                }
+                            }
+
+                            bool drawn = Draw(draw);
+                            if (drawn)
                             {
                                 DrawsReplayed++;
                             }
@@ -126,11 +158,39 @@ namespace WPR.Wp8Native
                                 DrawsSkipped++;
                             }
 
+                            if (trace)
+                            {
+                                Trace($"draw   {Describe(draw.Target)} depth={(draw.DepthTarget is { } d ? Describe(d) : "none")} " +
+                                      $"vs {draw.Vertex.Key:X8} ps {draw.Pixel.Key:X8} idx {draw.Geometry.Indices.Length} topo {draw.Geometry.Topology} " +
+                                      $"tex [{string.Join(" ", draw.Textures.Select(t => $"{t.Key}:{(t.Value.RenderTarget is { } rt ? "rt" + Describe(rt) : t.Value.Image is { } im ? $"{im.Width}x{im.Height}" : "null")}"))}] " +
+                                      $"blend={(draw.Blend is null ? "default" : System.Convert.ToHexString(draw.Blend, 8, 12))} vp={(draw.Viewport is { } vp ? string.Join(",", vp.Take(4)) : "none")} " +
+                                      $"streams={string.Join(",", draw.Geometry.Streams.Select(st => st.Data?.Length ?? -1))} " +
+                                      $"layout={string.Join(",", draw.Geometry.Layout.Select(e => $"{e.Semantic}{e.Index}@{e.Slot}:{e.Offset}/{e.Format}"))} " +
+                                      $"vp6={(draw.Viewport is { } vq ? string.Join(",", vq) : "none")} depthdesc={(draw.DepthStencil is null ? "default" : System.Convert.ToHexString(draw.DepthStencil, 0, 12))} " +
+                                      $"raster={(draw.Rasterizer is null ? "default" : System.Convert.ToHexString(draw.Rasterizer, 0, 12))} " +
+                                      $"{(drawn ? "ok" : "SKIP " + _skip)}");
+                                if (draw.Geometry.Indices.Length > 1000 && _shaders.GetValueOrDefault(draw.Vertex.Key) is { } vsh)
+                                {
+                                    Trace($"   vs maps {string.Join(" ", vsh.ConstantMaps.Select(m => $"cb{m.Buffer}[{m.Start}+{m.Count}]->c{m.Target}"))} inputs {string.Join(" ", vsh.InputRegisters.Select(kv => $"{kv.Key.Semantic}{kv.Key.Index}=v{kv.Value}"))}");
+                                    foreach (var (slot, data) in draw.VertexConstants)
+                                    {
+                                        Trace($"   vs cb{slot} ({data.Length}b): " + string.Join(" ", Enumerable.Range(0, Math.Min(32, data.Length / 4)).Select(f => BitConverter.ToSingle(data, f * 4).ToString("0.###"))));
+                                    }
+
+                                    var st0 = draw.Geometry.Streams[0];
+                                    if (st0.Data is { } pos)
+                                    {
+                                        Trace($"   pos[0..2]: " + string.Join(" ", Enumerable.Range(0, 9).Select(f => BitConverter.ToSingle(pos, f * 4).ToString("0.###"))));
+                                    }
+                                }
+                            }
+
                             break;
                     }
                 }
                 catch (Exception ex)
                 {
+                    Trace($"EXCEPTION {ex.GetType().Name}: {ex.Message}");
                     DrawsSkipped++;
                     Warn("ex:" + ex.GetType().Name + ex.Message, $"replay failed: {ex.GetType().Name}: {ex.Message}");
                 }
@@ -151,6 +211,9 @@ namespace WPR.Wp8Native
             _blit.Draw(backBuffer, new Vector2(0, backBuffer.Width * scale), null, Color.White, -MathHelper.PiOver2, Vector2.Zero, scale, SpriteEffects.None, 0f);
             _blit.End();
         }
+
+        private static string Describe(GpuTarget target)
+            => target.IsBackBuffer ? $"BB{target.Width}x{target.Height}" : $"{target.Key:X8}:{target.Width}x{target.Height}";
 
         private RenderTarget2D Bind(GpuTarget target, RenderTarget2D? current)
         {
@@ -186,16 +249,19 @@ namespace WPR.Wp8Native
 
         private bool Draw(GpuDraw draw)
         {
+            _skip = null;
             Aon9Shader? vertex = Shader(draw.Vertex);
             Aon9Shader? pixel = Shader(draw.Pixel);
             if (vertex is null || pixel is null || vertex.IsPixel || !pixel.IsPixel)
             {
+                _skip = "shader unusable";
                 return false;
             }
 
             Effect? effect = EffectFor(draw.Vertex, vertex, draw.Pixel, pixel);
             if (effect is null)
             {
+                _skip = "no effect";
                 return false;
             }
 
@@ -203,17 +269,20 @@ namespace WPR.Wp8Native
             int[] indices = geometry.Indices;
             if (indices.Length == 0)
             {
+                _skip = "no indices";
                 return false;
             }
 
             if (!PrimitiveFor(geometry.Topology, indices.Length, out PrimitiveType primitive, out int primitives))
             {
                 Warn($"topology {geometry.Topology}", $"topology {geometry.Topology} is not replayed");
+                _skip = "topology";
                 return false;
             }
 
             if (!Streams(geometry, vertex, out VertexBufferBinding[] bindings, out int vertexCount))
             {
+                _skip = "no vertex streams";
                 return false;
             }
 
