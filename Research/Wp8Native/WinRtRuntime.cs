@@ -416,8 +416,12 @@ namespace WPR.Wp8Native
 
         private long _pointerArgs;
 
-        /// <summary>One pointer event: which CoreWindow event, and where.</summary>
-        private readonly record struct PointerStep(int Slot, float X, float Y);
+        /// <summary>
+        /// One pointer event: which CoreWindow event, where, which finger, and whether a live host
+        /// injected it (live events are all delivered in the frame they arrive; a script's are
+        /// paced one a frame).
+        /// </summary>
+        private readonly record struct PointerStep(int Slot, float X, float Y, uint Id = 1, bool Live = false);
 
         /// <summary>
         /// Pointer events still to be delivered, at most one per turn round the main loop.
@@ -451,7 +455,11 @@ namespace WPR.Wp8Native
         /// <see cref="FrameCapture.Height"/> - which is what the image composes in, not the
         /// portrait bounds the device reports.
         /// </remarks>
-        public void InjectPointer(PointerKind kind, float x, float y)
+        /// <param name="id">
+        /// Which finger: every finger down at once needs its own, because a game tells them apart
+        /// by <c>PointerId</c> (Modern Combat 4 moves with one thumb and aims with the other).
+        /// </param>
+        public void InjectPointer(PointerKind kind, float x, float y, uint id = 1)
         {
             int slot = kind switch
             {
@@ -460,7 +468,7 @@ namespace WPR.Wp8Native
                 _ => SlotAddPointerMoved,
             };
 
-            _external.Enqueue(new PointerStep(slot, x, y));
+            _external.Enqueue(new PointerStep(slot, x, y, id, Live: true));
         }
 
         /// <summary>Which scripted gesture runs next, cycling.</summary>
@@ -473,6 +481,9 @@ namespace WPR.Wp8Native
 
         /// <summary>Whether the pointer is down, which is what get_IsInContact answers.</summary>
         private bool _pointerInContact;
+
+        /// <summary>The finger the event being delivered belongs to: get_PointerId.</summary>
+        private uint _pointerId = 1;
 
         /// <summary>
         /// The gesture script, from <c>WPR_INPUT</c>, as a list of already-expanded steps.
@@ -664,6 +675,7 @@ namespace WPR.Wp8Native
             _pointerX = next.X;
             _pointerY = next.Y;
             _pointerInContact = next.Slot != SlotAddPointerReleased;
+            _pointerId = next.Id;
 
             int slot = next.Slot;
             if (!_windowHandlers.TryGetValue(slot, out long handler) || handler == 0)
@@ -733,6 +745,17 @@ namespace WPR.Wp8Native
                         IReadOnlyList<string> made = _emulator.StopCallCapture();
                         InputDelivered.Add(
                             $"   {name} returned 0x{Arg(0):X8} after {made.Count} call(s): {Condense(made)}");
+                    }
+
+                    // Every live event queued this frame goes out this frame. One a frame was
+                    // enough for one finger; with two moving, events arrived twice as fast as
+                    // they left and the controls fell further behind every frame.
+                    while (_pending.Count > 0 && _pending.Peek().Live)
+                    {
+                        if (DeliverInput(continueWith, sender))
+                        {
+                            return;
+                        }
                     }
 
                     continueWith();
@@ -1007,7 +1030,7 @@ namespace WPR.Wp8Native
                     // window; there is none here, so it is the same point. This is the one this
                     // game reads.
                     [InspectableSlots + 2] = ("get_RawPosition", position),
-                    [InspectableSlots + 3] = ("get_PointerId", () => ReturnUInt32(1)),
+                    [InspectableSlots + 3] = ("get_PointerId", () => ReturnUInt32(_pointerId)),
                     [InspectableSlots + 4] = ("get_FrameId", () => ReturnUInt32((uint)ProcessEventsCalls)),
                     [InspectableSlots + 5] = ("get_Timestamp", () =>
                     {

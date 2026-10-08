@@ -55,8 +55,6 @@ namespace WPR.Wp8Native
         private readonly Dictionary<long, (int Version, Texture2D Texture)> _textures = new();
         private VertexPositionColorTexture[] _vertices = new VertexPositionColorTexture[4096];
 
-        private bool _pointerDown;
-        private int _pointerId = -1;
         private long _presented;
         private long _drawn;
         private DateTime _statsAt;
@@ -424,6 +422,9 @@ namespace WPR.Wp8Native
             base.Update(gameTime);
         }
 
+        /// <summary>Fingers currently down, by TouchPanel id, with where they were last reported.</summary>
+        private readonly Dictionary<int, (float X, float Y)> _fingers = new();
+
         private void PumpTouch()
         {
             ArmEmulator? emulator = _emulator;
@@ -433,70 +434,59 @@ namespace WPR.Wp8Native
             }
 
             // TouchPanel positions are in display space, which is the backbuffer - the 800x480
-            // the guest composes in - so they go across unscaled. One finger: the runtime delivers
-            // one pointer, and the first finger down is the one the game follows.
+            // the guest composes in - so they go across unscaled. Every finger is its own pointer,
+            // told apart by PointerId: Modern Combat 4 moves with one thumb and aims with the other.
             TouchCollection touches = TouchPanel.GetState();
-            TouchLocation? tracked = null;
+            HashSet<int>? seen = null;
             foreach (TouchLocation touch in touches)
             {
-                // A finger first seen already Moved still starts a touch: a short tap can go down
-                // and move inside one frame, and its Pressed sample is then never seen here.
-                if (_pointerId == -1 && touch.State is TouchLocationState.Pressed or TouchLocationState.Moved)
+                if (touch.State == TouchLocationState.Invalid)
                 {
-                    _pointerId = touch.Id;
+                    continue;
                 }
 
-                if (touch.Id == _pointerId)
+                (seen ??= []).Add(touch.Id);
+                float x = Math.Clamp(touch.Position.X, 0, FrameCapture.Width - 1);
+                float y = Math.Clamp(touch.Position.Y, 0, FrameCapture.Height - 1);
+                uint id = PointerIdFor(touch.Id);
+                bool down = _fingers.TryGetValue(touch.Id, out var last);
+
+                switch (touch.State)
                 {
-                    tracked = touch;
+                    // A finger first seen already Moved still starts a touch: a short tap can go
+                    // down and move inside one frame, and its Pressed sample is then never seen.
+                    case TouchLocationState.Pressed:
+                    case TouchLocationState.Moved when !down:
+                        _fingers[touch.Id] = (x, y);
+                        Log($"pointer {id} pressed at ({x:0},{y:0}) [{_fingers.Count} down]");
+                        emulator.WinRt.InjectPointer(WinRtRuntime.PointerKind.Pressed, x, y, id);
+                        break;
+                    case TouchLocationState.Moved when x != last.X || y != last.Y:
+                        _fingers[touch.Id] = (x, y);
+                        emulator.WinRt.InjectPointer(WinRtRuntime.PointerKind.Moved, x, y, id);
+                        break;
+                    case TouchLocationState.Released when down:
+                        _fingers.Remove(touch.Id);
+                        Log($"pointer {id} released at ({x:0},{y:0})");
+                        emulator.WinRt.InjectPointer(WinRtRuntime.PointerKind.Released, x, y, id);
+                        break;
                 }
             }
 
-            if (tracked is not { } t)
+            // A finger that vanished without a Released sample (a cancelled gesture) is lifted.
+            foreach (int gone in _fingers.Keys.Where(k => seen is null || !seen.Contains(k)).ToArray())
             {
-                if (_pointerDown)
-                {
-                    // The finger vanished without a Released sample (a cancelled gesture).
-                    _pointerDown = false;
-                    _pointerId = -1;
-                    emulator.WinRt.InjectPointer(WinRtRuntime.PointerKind.Released, _lastX, _lastY);
-                }
-
-                return;
+                (float x, float y) = _fingers[gone];
+                _fingers.Remove(gone);
+                emulator.WinRt.InjectPointer(WinRtRuntime.PointerKind.Released, x, y, PointerIdFor(gone));
             }
-
-            float x = Math.Clamp(t.Position.X, 0, FrameCapture.Width - 1);
-            float y = Math.Clamp(t.Position.Y, 0, FrameCapture.Height - 1);
-
-            TouchLocationState state = !_pointerDown && t.State == TouchLocationState.Moved ? TouchLocationState.Pressed : t.State;
-            switch (state)
-            {
-                case TouchLocationState.Pressed:
-                    _pointerDown = true;
-                    Log($"pointer pressed at ({x:0},{y:0}) [touch raw ({t.Position.X:0},{t.Position.Y:0}), display {TouchPanel.DisplayWidth}x{TouchPanel.DisplayHeight}]");
-                    emulator.WinRt.InjectPointer(WinRtRuntime.PointerKind.Pressed, x, y);
-                    break;
-                case TouchLocationState.Moved when _pointerDown && (x != _lastX || y != _lastY):
-                    emulator.WinRt.InjectPointer(WinRtRuntime.PointerKind.Moved, x, y);
-                    break;
-                case TouchLocationState.Released:
-                    if (_pointerDown)
-                    {
-                        Log($"pointer released at ({x:0},{y:0})");
-                        emulator.WinRt.InjectPointer(WinRtRuntime.PointerKind.Released, x, y);
-                    }
-
-                    _pointerDown = false;
-                    _pointerId = -1;
-                    break;
-            }
-
-            _lastX = x;
-            _lastY = y;
         }
 
-        private float _lastX;
-        private float _lastY;
+        /// <summary>
+        /// A WinRT pointer id for a TouchPanel finger. SDL numbers Android's fingers from 0, and a
+        /// game may well take pointer 0 for "none", so every id moves up one.
+        /// </summary>
+        private static uint PointerIdFor(int touchId) => unchecked((uint)touchId + 1);
 
         private bool _backWasDown;
         private volatile bool _closeRequested;
