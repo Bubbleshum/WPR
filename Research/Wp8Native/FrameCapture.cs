@@ -108,6 +108,15 @@
             /// game rewrites is picked up instead of drawn stale for ever.
             /// </summary>
             public int Version { get; set; }
+
+            /// <summary>The <see cref="Version"/> <see cref="Snapshots"/> were taken at.</summary>
+            internal int SnapshotVersion { get; set; } = -1;
+
+            /// <summary>
+            /// Vertex ranges already copied out at <see cref="SnapshotVersion"/>, so a static
+            /// mesh drawn every frame is copied once rather than once per draw.
+            /// </summary>
+            internal List<(int Offset, int Stride, int First, int Count, byte[] Data)>? Snapshots { get; set; }
         }
 
         /// <summary>One element of a vertex, as CreateInputLayout described it.</summary>
@@ -198,9 +207,27 @@
         private static VertexStream SnapshotStream(
             ArmEmulator emulator, DrawCall call, VertexStream stream, int lowest, int highest)
         {
-            if (stream.Buffer is null || stream.Buffer.Storage == 0 || stream.Stride <= 0)
+            if (stream.Buffer is null || stream.Buffer.Storage == 0 || stream.Stride < 0)
             {
                 return stream;
+            }
+
+            // Stride 0 is legal in Direct3D 11: every vertex reads the same bytes. Modern Combat 4
+            // binds a per-draw colour this way. Dropped, the shader's input had no stream behind
+            // it and the replay's input layout failed to build, so the draw was lost. Keep one
+            // element's worth (up to 16 bytes, the widest format).
+            if (stream.Stride == 0)
+            {
+                long available = stream.Buffer.StorageSize > 0 ? stream.Buffer.StorageSize - stream.Offset : 16;
+                int size = (int)Math.Clamp(available, 0, 16);
+                try
+                {
+                    return size > 0 ? stream with { Data = emulator.ReadMemory(stream.Buffer.Storage + stream.Offset, size) } : stream;
+                }
+                catch (Exception)
+                {
+                    return stream;
+                }
             }
 
             int first = lowest + call.BaseVertex;
@@ -212,12 +239,39 @@
                 return stream;
             }
 
+            // A buffer nothing has written since an earlier draw read it holds the same bytes, so
+            // that draw's copy is reused (snapshots are never written after they are taken). Most
+            // of a 3D scene is static meshes, and copying each one out per draw per frame cost
+            // allocation on this thread and garbage collection pauses on the renderer's.
+            FrameCapture.Resource buffer = stream.Buffer;
+            if (buffer.SnapshotVersion != buffer.Version || buffer.Snapshots is null)
+            {
+                buffer.SnapshotVersion = buffer.Version;
+                (buffer.Snapshots ??= []).Clear();
+            }
+
+            foreach (var known in buffer.Snapshots)
+            {
+                if (known.Offset == stream.Offset && known.Stride == stream.Stride &&
+                    first >= known.First && first + count <= known.First + known.Count)
+                {
+                    return stream with { Data = known.Data, FirstVertex = known.First };
+                }
+            }
+
             try
             {
                 byte[] data = emulator.ReadMemory(
                     stream.Buffer.Storage + stream.Offset + ((long)first * stream.Stride),
                     (int)length);
 
+                // A ring buffer gets many small ranges per version; keep the list short.
+                if (buffer.Snapshots.Count >= 16)
+                {
+                    buffer.Snapshots.Clear();
+                }
+
+                buffer.Snapshots.Add((stream.Offset, stream.Stride, first, count, data));
                 return stream with { Data = data, FirstVertex = first };
             }
             catch (Exception)

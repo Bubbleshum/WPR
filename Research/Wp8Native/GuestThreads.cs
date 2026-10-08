@@ -43,6 +43,9 @@ namespace WPR.Wp8Native
 
             /// <summary>What it is blocked on, when it is.</summary>
             public string? Why { get; set; }
+
+            /// <summary>Instructions retired while this thread held the CPU (WPR_WP8_CALLSTATS only).</summary>
+            public long Retired { get; set; }
         }
 
         private const int GuestThreadStackBytes = 1024 * 1024;
@@ -283,8 +286,32 @@ namespace WPR.Wp8Native
             return null;
         }
 
+        private long _retiredAtSwitch;
+
+        /// <summary>Per-thread retired instructions since the last call, then reset (WPR_WP8_CALLSTATS).</summary>
+        public string TakeThreadUsage()
+        {
+            long now = _cpu.InstructionsRetired;
+            CurrentThread.Retired += now - _retiredAtSwitch;
+            _retiredAtSwitch = now;
+            string line = string.Join(" ", _threads.Where(t => t.Retired > 0).Select(t => $"{t.Id}:{t.Name}={t.Retired / 1_000_000.0:0.0}M"));
+            foreach (GuestThread t in _threads)
+            {
+                t.Retired = 0;
+            }
+
+            return line + $" switches={ThreadSwitches}";
+        }
+
         private void SwitchTo(GuestThread thread)
         {
+            if (HostStubs.CountCalls)
+            {
+                long now = _cpu.InstructionsRetired;
+                CurrentThread.Retired += now - _retiredAtSwitch;
+                _retiredAtSwitch = now;
+            }
+
             RestoreRegisters(thread.Registers!);
             for (int i = 0; i < 64; i++)
             {

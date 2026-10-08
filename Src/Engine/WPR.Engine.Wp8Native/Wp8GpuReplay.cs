@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 
@@ -55,7 +56,8 @@ namespace WPR.Wp8Native
             string text = $"replay {_replayTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, _framesReplayed):0.0}ms/frame " +
                 $"{_commands / Math.Max(1, _framesReplayed)} cmd/frame effects={_effects.Count} targets={_targets.Count} " +
                 $"textures={_textures.Count} vbs={_vertexBuffers.Count} blends={_blends.Count} depths={_depths.Count} " +
-                $"rasters={_rasters.Count} samplers={_samplers.Count} managed={GC.GetTotalMemory(false) / (1024 * 1024)}MB";
+                $"rasters={_rasters.Count} samplers={_samplers.Count} streams: kept={_uploaded.Count(u => u.Value.Buffer is not null)} reused={StreamsReused} uploaded={StreamsUploaded} " +
+                $"managed={GC.GetTotalMemory(false) / (1024 * 1024)}MB gc={GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}";
             _replayTicks = 0;
             _framesReplayed = 0;
             _commands = 0;
@@ -102,6 +104,7 @@ namespace WPR.Wp8Native
         private void RenderFrame(GpuFrame frame, int windowWidth, int windowHeight)
         {
             bool trace = _frameIndex++ == TraceFrame;
+            EvictStreams();
             int index = 0;
             void Trace(string line)
             {
@@ -191,6 +194,13 @@ namespace WPR.Wp8Native
                 catch (Exception ex)
                 {
                     Trace($"EXCEPTION {ex.GetType().Name}: {ex.Message}");
+                    if (trace && command is GpuDraw failed)
+                    {
+                        Trace($"   vs {failed.Vertex.Key:X8} streams={string.Join(",", failed.Geometry.Streams.Select(st => $"{st.Data?.Length ?? -1}/{st.Stride}/{(st.Buffer is null ? "null" : st.Buffer.Storage.ToString("X"))}"))} " +
+                              $"layout={string.Join(",", failed.Geometry.Layout.Select(e => $"{e.Semantic}{e.Index}@{e.Slot}:{e.Offset}/{e.Format}"))} " +
+                              $"inputs={(_shaders.GetValueOrDefault(failed.Vertex.Key) is { } fs ? string.Join(" ", fs.InputRegisters.Select(kv => $"{kv.Key.Semantic}{kv.Key.Index}=v{kv.Value}")) : "?")}");
+                    }
+
                     DrawsSkipped++;
                     Warn("ex:" + ex.GetType().Name + ex.Message, $"replay failed: {ex.GetType().Name}: {ex.Message}");
                 }
@@ -280,7 +290,8 @@ namespace WPR.Wp8Native
                 return false;
             }
 
-            if (!Streams(geometry, vertex, out VertexBufferBinding[] bindings, out int vertexCount))
+            IndexBuffer indexBuffer = IndicesFor(indices, out int lowest, out int vertexCount);
+            if (!Streams(geometry, vertex, lowest + geometry.BaseVertex, vertexCount, out VertexBufferBinding[] bindings))
             {
                 _skip = "no vertex streams";
                 return false;
@@ -294,7 +305,7 @@ namespace WPR.Wp8Native
             _device.BlendState = BlendFor(draw.Blend, draw.BlendFactor);
             _device.DepthStencilState = draw.DepthTarget is null ? DepthStencilState.None : DepthFor(draw.DepthStencil, draw.StencilRef);
             _device.RasterizerState = RasterFor(draw.Rasterizer);
-            if (draw.Viewport is { } v && _device.GetRenderTargets() is { Length: > 0 })
+            if (draw.Viewport is { } v)
             {
                 _device.Viewport = new Viewport((int)v[0], (int)v[1], Math.Max(1, (int)v[2]), Math.Max(1, (int)v[3]))
                 {
@@ -311,8 +322,8 @@ namespace WPR.Wp8Native
 
             effect.CurrentTechnique.Passes[0].Apply();
             _device.SetVertexBuffers(bindings);
-            _device.Indices = IndicesFor(indices, out int lowest);
-            _device.DrawIndexedPrimitives(primitive, -lowest, 0, vertexCount + lowest, 0, primitives);
+            _device.Indices = indexBuffer;
+            _device.DrawIndexedPrimitives(primitive, 0, 0, vertexCount, 0, primitives);
             return true;
         }
 
@@ -407,23 +418,56 @@ namespace WPR.Wp8Native
         // Geometry
         // ------------------------------------------------------------------------------
 
-        /// <summary>
-        /// One vertex buffer per input slot, repacked so every element is in a format FNA accepts
-        /// and named TEXCOORDn after the shader input register its semantic feeds.
-        /// </summary>
-        private bool Streams(FrameCapture.DrawCall geometry, Aon9Shader vertex, out VertexBufferBinding[] bindings, out int vertexCount)
+        /// <summary>How one input slot is repacked for one vertex shader.</summary>
+        private sealed record SlotPlan(
+            int Slot,
+            (int SourceOffset, uint SourceFormat, int Offset, int Size)[] Elements,
+            VertexDeclaration Declaration,
+            string Key,
+            int[] Registers);
+
+        /// <summary>How a layout feeds a vertex shader, and which of its inputs nothing feeds.</summary>
+        private sealed record StreamPlan(SlotPlan[] Slots, int[] Unfed);
+
+        private readonly Dictionary<(object Layout, Aon9Shader Shader), StreamPlan> _streamPlans = new();
+
+        /// <summary>A vertex array already repacked and uploaded, reused while the game keeps drawing it.</summary>
+        private sealed class UploadedStream
         {
-            List<VertexBufferBinding> list = [];
-            vertexCount = int.MaxValue;
+            public VertexBuffer? Buffer;
+            public int FirstSeen;
+            public int LastUsed;
+        }
+
+        private readonly Dictionary<(byte[] Data, int Stride, string Key), UploadedStream> _uploaded = new(UploadedComparer.Instance);
+        private byte[] _scratch = new byte[64 * 1024];
+
+        private sealed class UploadedComparer : IEqualityComparer<(byte[] Data, int Stride, string Key)>
+        {
+            public static readonly UploadedComparer Instance = new();
+
+            public bool Equals((byte[] Data, int Stride, string Key) a, (byte[] Data, int Stride, string Key) b)
+                => ReferenceEquals(a.Data, b.Data) && a.Stride == b.Stride && ReferenceEquals(a.Key, b.Key);
+
+            public int GetHashCode((byte[] Data, int Stride, string Key) k)
+                => HashCode.Combine(RuntimeHelpers.GetHashCode(k.Data), k.Stride, RuntimeHelpers.GetHashCode(k.Key));
+        }
+
+        private StreamPlan PlanFor(FrameCapture.DrawCall geometry, Aon9Shader vertex)
+        {
+            if (_streamPlans.TryGetValue((geometry.Layout, vertex), out StreamPlan? plan))
+            {
+                return plan;
+            }
+
+            var slots = new List<SlotPlan>();
+            var fed = new HashSet<int>();
             foreach (IGrouping<int, FrameCapture.VertexElement> slot in geometry.Layout.GroupBy(e => e.Slot))
             {
-                if (geometry.StreamFor(slot.First()) is not { Data: { } data, Stride: > 0 } stream)
-                {
-                    Warn($"stream {slot.Key}", $"vertex stream {slot.Key} had no data");
-                    continue;
-                }
-
-                List<(FrameCapture.VertexElement Source, VertexElementFormat Format, int Size, int Register)> elements = [];
+                var elements = new List<(int, uint, int, int)>();
+                var declaration = new List<VertexElement>();
+                var registers = new List<int>();
+                int offset = 0;
                 foreach (FrameCapture.VertexElement element in slot)
                 {
                     if (!vertex.InputRegisters.TryGetValue((element.Semantic.ToUpperInvariant(), (int)element.Index), out int register))
@@ -437,50 +481,198 @@ namespace WPR.Wp8Native
                         continue;
                     }
 
-                    elements.Add((element, format.Format, format.Size, register));
+                    elements.Add((element.Offset, element.Format, offset, format.Size));
+                    declaration.Add(new VertexElement(offset, format.Format, VertexElementUsage.TextureCoordinate, register));
+                    registers.Add(register);
+                    fed.Add(register);
+                    offset += format.Size;
                 }
 
-                if (elements.Count == 0)
+                if (elements.Count > 0)
                 {
+                    // Interned so the upload cache can compare keys by reference.
+                    string key = string.Intern(string.Join(";", declaration.Select(d => $"{d.Offset}:{d.VertexElementFormat}:{d.UsageIndex}")));
+                    slots.Add(new SlotPlan(slot.Key, [.. elements], new VertexDeclaration(offset, [.. declaration]), key, [.. registers]));
+                }
+            }
+
+            int[] unfed = vertex.InputRegisters.Values.Where(r => !fed.Contains(r)).Distinct().Order().ToArray();
+            plan = new StreamPlan([.. slots], unfed);
+            _streamPlans[(geometry.Layout, vertex)] = plan;
+            return plan;
+        }
+
+        /// <summary>
+        /// One vertex buffer per input slot, repacked so every element is in a format FNA accepts
+        /// and named TEXCOORDn after the shader input register its semantic feeds. Index 0 of the
+        /// draw is vertex <paramref name="firstVertex"/>; <paramref name="vertexCount"/> vertices are read.
+        /// </summary>
+        /// <remarks>
+        /// A vertex array the capture hands over again on a later frame is a buffer the game has
+        /// not rewritten (the capture reuses its copy), so it is uploaded once into a buffer of
+        /// its own and bound at an offset from then on. One seen for the first time goes through
+        /// the shared dynamic buffer, which is all a buffer rewritten every frame ever needs.
+        /// Repacking and uploading every static mesh on every draw was most of the replay's time.
+        /// </remarks>
+        private bool Streams(FrameCapture.DrawCall geometry, Aon9Shader vertex, int firstVertex, int vertexCount, out VertexBufferBinding[] bindings)
+        {
+            StreamPlan plan = PlanFor(geometry, vertex);
+            var list = new List<VertexBufferBinding>(plan.Slots.Length + 1);
+            List<int>? missing = null;
+            foreach (SlotPlan slot in plan.Slots)
+            {
+                FrameCapture.VertexStream? stream = slot.Slot >= 0 && slot.Slot < geometry.Streams.Count ? geometry.Streams[slot.Slot] : null;
+                int offsetInData = stream is null ? 0 : firstVertex - stream.FirstVertex;
+                if (stream is not { Data: { } data, Stride: >= 0 } ||
+                    (stream.Stride > 0 && (offsetInData < 0 || offsetInData + vertexCount > data.Length / stream.Stride)))
+                {
+                    Warn($"stream {slot.Slot}", $"vertex stream {slot.Slot} had no data");
+                    (missing ??= []).AddRange(slot.Registers);
                     continue;
                 }
 
-                int count = data.Length / stream.Stride;
-                vertexCount = Math.Min(vertexCount, count);
-                int stride = elements.Sum(e => e.Size);
-                byte[] packed = new byte[count * stride];
-                List<VertexElement> declaration = [];
-                int offset = 0;
-                foreach (var e in elements)
+                if (stream.Stride > 0)
                 {
-                    declaration.Add(new VertexElement(offset, e.Format, VertexElementUsage.TextureCoordinate, e.Register));
-                    for (int i = 0; i < count; i++)
+                    var key = (data, stream.Stride, slot.Key);
+                    if (!_uploaded.TryGetValue(key, out UploadedStream? uploaded))
                     {
-                        Convert(data.AsSpan((i * stream.Stride) + e.Source.Offset), e.Source.Format, packed.AsSpan((i * stride) + offset, e.Size));
+                        _uploaded[key] = uploaded = new UploadedStream { FirstSeen = _frameIndex };
                     }
 
-                    offset += e.Size;
+                    uploaded.LastUsed = _frameIndex;
+                    if (uploaded.Buffer is null && uploaded.FirstSeen != _frameIndex)
+                    {
+                        int all = data.Length / stream.Stride;
+                        byte[] packed = Repack(slot, data, stream.Stride, 0, all);
+                        uploaded.Buffer = new VertexBuffer(_device, slot.Declaration, all, BufferUsage.WriteOnly);
+                        uploaded.Buffer.SetData(packed, 0, all * slot.Declaration.VertexStride);
+                        StreamsCached++;
+                    }
+
+                    if (uploaded.Buffer is not null)
+                    {
+                        list.Add(new VertexBufferBinding(uploaded.Buffer, offsetInData));
+                        StreamsReused++;
+                        continue;
+                    }
                 }
 
-                string key = string.Join(";", declaration.Select(d => $"{d.Offset}:{d.VertexElementFormat}:{d.UsageIndex}"));
-                if (!_vertexBuffers.TryGetValue(key, out var cached))
+                // Through the shared dynamic buffer: just this draw's vertices.
+                byte[] scratch = Repack(slot, data, stream.Stride, stream.Stride == 0 ? 0 : offsetInData, vertexCount);
+                if (!_vertexBuffers.TryGetValue(slot.Key, out var cached))
                 {
-                    cached = (new VertexDeclaration(stride, [.. declaration]), null);
+                    cached = (slot.Declaration, null);
                 }
 
-                if (cached.Buffer is null || cached.Buffer.VertexCount < count)
+                if (cached.Buffer is null || cached.Buffer.VertexCount < vertexCount)
                 {
                     cached.Buffer?.Dispose();
-                    cached.Buffer = new DynamicVertexBuffer(_device, cached.Declaration, Math.Max(count, 1024), BufferUsage.WriteOnly);
+                    cached.Buffer = new DynamicVertexBuffer(_device, cached.Declaration, Math.Max(vertexCount, 1024), BufferUsage.WriteOnly);
                 }
 
-                _vertexBuffers[key] = cached;
-                cached.Buffer.SetData(packed, 0, packed.Length, SetDataOptions.Discard);
+                _vertexBuffers[slot.Key] = cached;
+                cached.Buffer.SetData(scratch, 0, vertexCount * slot.Declaration.VertexStride, SetDataOptions.Discard);
                 list.Add(new VertexBufferBinding(cached.Buffer));
+                StreamsUploaded++;
+            }
+
+            // An input the shader reads with nothing feeding it makes Direct3D refuse the whole
+            // input layout, losing the draw. Zeros are what an unbound slot reads on the phone.
+            int[] unfed = missing is null ? plan.Unfed : [.. plan.Unfed.Concat(missing).Distinct().Order()];
+            if (list.Count > 0 && unfed.Length > 0)
+            {
+                Warn("unfed " + string.Join(",", unfed), $"vertex shader inputs v{string.Join(",v", unfed)} have no stream; reading zeros");
+                list.Add(new VertexBufferBinding(ZeroStream(unfed, vertexCount)));
             }
 
             bindings = [.. list];
             return list.Count > 0 && vertexCount > 0;
+        }
+
+        /// <summary>Vertex arrays uploaded once, binds that reused one, and per-draw uploads, since start.</summary>
+        public int StreamsCached { get; private set; }
+
+        public long StreamsReused { get; private set; }
+
+        public long StreamsUploaded { get; private set; }
+
+        /// <summary>
+        /// Repacks <paramref name="count"/> vertices starting at <paramref name="first"/> into the
+        /// scratch buffer (a stride of 0 repeats the one element).
+        /// </summary>
+        private byte[] Repack(SlotPlan slot, byte[] data, int sourceStride, int first, int count)
+        {
+            int stride = slot.Declaration.VertexStride;
+            int length = count * stride;
+            if (_scratch.Length < length)
+            {
+                _scratch = new byte[Math.Max(length, _scratch.Length * 2)];
+            }
+
+            Span<byte> target = _scratch.AsSpan(0, length);
+            foreach (var e in slot.Elements)
+            {
+                bool copy = e.SourceFormat is not (87 or 31 or 11 or 12 or 24 or 35 or 36 or 49 or 51);
+                for (int i = 0; i < count; i++)
+                {
+                    ReadOnlySpan<byte> source = data.AsSpan(((first + i) * sourceStride) + e.SourceOffset);
+                    Span<byte> to = target.Slice((i * stride) + e.Offset, e.Size);
+                    if (copy)
+                    {
+                        source[..e.Size].CopyTo(to);
+                    }
+                    else
+                    {
+                        Convert(source, e.SourceFormat, to);
+                    }
+                }
+            }
+
+            return _scratch;
+        }
+
+        /// <summary>Releases uploaded vertex arrays the game has stopped drawing.</summary>
+        private void EvictStreams()
+        {
+            if (_frameIndex % 120 != 0)
+            {
+                return;
+            }
+
+            List<(byte[], int, string)>? stale = null;
+            foreach (var (key, uploaded) in _uploaded)
+            {
+                if (uploaded.LastUsed < _frameIndex - 120)
+                {
+                    uploaded.Buffer?.Dispose();
+                    (stale ??= []).Add(key);
+                }
+            }
+
+            foreach (var key in stale ?? [])
+            {
+                _uploaded.Remove(key);
+            }
+        }
+
+        private readonly Dictionary<string, VertexBuffer> _zeroStreams = new(StringComparer.Ordinal);
+
+        /// <summary>A zero-filled float4 stream for each of <paramref name="registers"/>, at least <paramref name="count"/> long.</summary>
+        private VertexBuffer ZeroStream(int[] registers, int count)
+        {
+            string key = string.Join(",", registers);
+            if (_zeroStreams.TryGetValue(key, out VertexBuffer? buffer) && buffer.VertexCount >= count)
+            {
+                return buffer;
+            }
+
+            buffer?.Dispose();
+            var declaration = new VertexDeclaration(registers.Select((r, i) => new VertexElement(i * 16, VertexElementFormat.Vector4, VertexElementUsage.TextureCoordinate, r)).ToArray());
+            int size = Math.Max(count, 4096);
+            buffer = new VertexBuffer(_device, declaration, size, BufferUsage.WriteOnly);
+            buffer.SetData(new byte[size * declaration.VertexStride]);
+            _zeroStreams[key] = buffer;
+            return buffer;
         }
 
         /// <summary>DXGI input format to the FNA format it is stored as here, and that format's size.</summary>
@@ -555,43 +747,63 @@ namespace WPR.Wp8Native
 
         private static int U16(ReadOnlySpan<byte> data, int at) => BinaryPrimitives.ReadUInt16LittleEndian(data[at..]);
 
-        private IndexBuffer IndicesFor(int[] indices, out int lowest)
+        private short[] _indexScratch16 = new short[4096];
+        private int[] _indexScratch32 = new int[4096];
+
+        /// <summary>
+        /// The draw's indices rebased to start at 0, and where they started
+        /// (<paramref name="lowest"/>) and how many vertices they span.
+        /// </summary>
+        private IndexBuffer IndicesFor(int[] indices, out int lowest, out int vertexCount)
         {
-            lowest = indices.Min();
-            int highest = indices.Max() - lowest;
-            if (highest < 65536)
+            lowest = int.MaxValue;
+            int highest = int.MinValue;
+            foreach (int index in indices)
             {
-                short[] small = new short[indices.Length];
+                lowest = Math.Min(lowest, index);
+                highest = Math.Max(highest, index);
+            }
+
+            vertexCount = highest - lowest + 1;
+            if (vertexCount <= 65536)
+            {
+                if (_indexScratch16.Length < indices.Length)
+                {
+                    _indexScratch16 = new short[Math.Max(indices.Length, _indexScratch16.Length * 2)];
+                }
+
                 for (int i = 0; i < indices.Length; i++)
                 {
-                    small[i] = unchecked((short)(ushort)(indices[i] - lowest));
+                    _indexScratch16[i] = unchecked((short)(ushort)(indices[i] - lowest));
                 }
 
-                if (_indices16 is null || _indices16.IndexCount < small.Length)
+                if (_indices16 is null || _indices16.IndexCount < indices.Length)
                 {
                     _indices16?.Dispose();
-                    _indices16 = new DynamicIndexBuffer(_device, IndexElementSize.SixteenBits, Math.Max(small.Length, 4096), BufferUsage.WriteOnly);
+                    _indices16 = new DynamicIndexBuffer(_device, IndexElementSize.SixteenBits, Math.Max(indices.Length, 4096), BufferUsage.WriteOnly);
                 }
 
-                _indices16.SetData(small, 0, small.Length, SetDataOptions.Discard);
-                lowest = 0;
+                _indices16.SetData(_indexScratch16, 0, indices.Length, SetDataOptions.Discard);
                 return _indices16;
             }
 
-            int[] large = new int[indices.Length];
+            if (_indexScratch32.Length < indices.Length)
+            {
+                _indexScratch32 = new int[Math.Max(indices.Length, _indexScratch32.Length * 2)];
+            }
+
             for (int i = 0; i < indices.Length; i++)
             {
-                large[i] = indices[i] - lowest;
+                _indexScratch32[i] = indices[i] - lowest;
             }
 
-            if (_indices32 is null || _indices32.IndexCount < large.Length)
+            if (_indices32 is null || _indices32.IndexCount < indices.Length)
             {
                 _indices32?.Dispose();
-                _indices32 = new DynamicIndexBuffer(_device, IndexElementSize.ThirtyTwoBits, Math.Max(large.Length, 4096), BufferUsage.WriteOnly);
+                _indices32 = new DynamicIndexBuffer(_device, IndexElementSize.ThirtyTwoBits, Math.Max(indices.Length, 4096), BufferUsage.WriteOnly);
             }
 
-            _indices32.SetData(large, 0, large.Length, SetDataOptions.Discard);
-            lowest = 0;
+            _indices32.SetData(_indexScratch32, 0, indices.Length, SetDataOptions.Discard);
             return _indices32;
         }
 
@@ -835,6 +1047,16 @@ namespace WPR.Wp8Native
             foreach (var (_, buffer) in _vertexBuffers.Values)
             {
                 buffer?.Dispose();
+            }
+
+            foreach (UploadedStream uploaded in _uploaded.Values)
+            {
+                uploaded.Buffer?.Dispose();
+            }
+
+            foreach (VertexBuffer zero in _zeroStreams.Values)
+            {
+                zero.Dispose();
             }
 
             _indices16?.Dispose();

@@ -622,6 +622,19 @@ namespace WPR.Wp8Native
                 $"drawlist-build total={build * 1000 / System.Diagnostics.Stopwatch.Frequency}ms textures={_textures.Count} " +
                 $"gpu: replayed={_replay?.DrawsReplayed} skipped={_replay?.DrawsSkipped} {_replay?.Statistics()} unrecorded={string.Join(",", _emulator?.Direct3D.GpuSkipped.Select(p => $"{p.Key}:{p.Value}") ?? [])} " +
                 $"audio: {_emulator?.XAudio2.Summary()} voices={_audio?.VoicesCreated} underruns={_audio?.Underruns} callbacks={_emulator?.XAudio2.CallbacksMade}");
+            if (HostStubs.CountCalls)
+            {
+                KeyValuePair<string, long>[] counts;
+                lock (HostStubs.CallCounts)
+                {
+                    counts = HostStubs.CallCounts.ToArray();
+                    HostStubs.CallCounts.Clear();
+                }
+
+                Log("threads: " + _emulator?.TakeThreadUsage());
+                Log("calls/frame: " + string.Join(" ", counts.OrderByDescending(kv => kv.Value).Take(25).Select(kv => $"{kv.Key[(kv.Key.IndexOf('!') + 1)..]}={kv.Value / (double)Math.Max(1, _presented - _statsPresented):0.#}")));
+            }
+
             // What the audio engine was asked for since the last report (racy read of a list the
             // guest appends to; a diagnostic, so a missed line is fine).
             if (_emulator is { } audioOwner)

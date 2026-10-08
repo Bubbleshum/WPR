@@ -701,8 +701,25 @@ namespace WPR.Wp8Native
             (function.StartsWith("??0", StringComparison.Ordinal) &&
              function.Contains("Exception@Platform@@", StringComparison.Ordinal));
 
+        /// <summary>
+        /// WPR_WP8_CALLSTATS=1: count every import call, and (with <see cref="ArmEmulator.TakeThreadUsage"/>)
+        /// the instructions each guest thread retires; the host logs both per stats window. It is how
+        /// a slow title is told apart from one spinning on a timer or a lock.
+        /// </summary>
+        public static readonly bool CountCalls = Environment.GetEnvironmentVariable("WPR_WP8_CALLSTATS") is not null;
+
+        public static readonly Dictionary<string, long> CallCounts = new();
+
         public void Dispatch(string fullName)
         {
+            if (CountCalls)
+            {
+                lock (CallCounts)
+                {
+                    CallCounts[fullName] = CallCounts.GetValueOrDefault(fullName) + 1;
+                }
+            }
+
             int split = fullName.IndexOf('!');
             string function = split >= 0 ? fullName[(split + 1)..] : fullName;
 
