@@ -108,7 +108,7 @@ namespace WPR.Wp8Native
             _white = new Texture2D(GraphicsDevice, 1, 1, false, SurfaceFormat.Color);
             _white.SetData(new[] { Color.White });
 
-            _audio = new Wp8NativeAudio(_log);
+            _audio = IHostAudio.Create(_log);
             _guest = new Thread(RunGuest, GuestStackBytes)
             {
                 Name = "WP8 guest (dynarmic)",
@@ -122,7 +122,7 @@ namespace WPR.Wp8Native
         // ------------------------------------------------------------------------------
 
         private readonly IXboxLiveHost? _xboxHost;
-        private Wp8NativeAudio? _audio;
+        private IHostAudio? _audio;
 
         private void RunGuest()
         {
@@ -727,6 +727,20 @@ namespace WPR.Wp8Native
         private Dictionary<string, int> _lastCounts = new();
 
         private void Log(string message) => _log?.Invoke("[wpr-wp8] " + message);
+
+        // Android's AudioTrack, unlike FAudio's device, is not paused with the app: without this
+        // the buffered tail plays over the home screen.
+        protected override void OnDeactivated(object sender, EventArgs args)
+        {
+            _audio?.Suspend(true);
+            base.OnDeactivated(sender, args);
+        }
+
+        protected override void OnActivated(object sender, EventArgs args)
+        {
+            _audio?.Suspend(false);
+            base.OnActivated(sender, args);
+        }
 
         protected override void OnExiting(object sender, EventArgs args)
         {

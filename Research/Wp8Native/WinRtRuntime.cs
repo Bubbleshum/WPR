@@ -1125,21 +1125,20 @@ namespace WPR.Wp8Native
                             }
                         }
 
-                        // Every other guest thread gets a turn here, as the XAML frame loop
-                        // gives them: a main loop that never blocks would otherwise starve them,
-                        // and Angry Birds' audio thread sat runnable and silent for ever.
-                        // Then audio - buffers the host finished are reported to the game, which
-                        // is what keeps a stream fed - then input. Each may tail-call into the
-                        // image, so nothing may follow them.
-                        void AudioThenInput()
-                        {
-                            if (!_emulator.XAudio2.Pump(Resume))
-                            {
-                                Resume();
-                            }
-                        }
+                        // Audio first - buffers the host finished are reported to the game, which
+                        // is what keeps a stream fed - then every other guest thread gets a turn,
+                        // as the XAML frame loop gives them (a main loop that never blocks would
+                        // otherwise starve them: Angry Birds' audio thread sat runnable and silent
+                        // for ever), then input. In that order a mixer thread woken by
+                        // OnBufferEnd refills in the same frame; the other way round it waited a
+                        // frame, and a game keeping two 25 ms buffers queued ran dry. Each step
+                        // may tail-call into the image, so nothing may follow them.
+                        void ThreadsThenInput() => _emulator.RunOtherThreads(Resume);
 
-                        _emulator.RunOtherThreads(AudioThenInput);
+                        if (!_emulator.XAudio2.Pump(ThreadsThenInput))
+                        {
+                            ThreadsThenInput();
+                        }
                     }),
                 });
 

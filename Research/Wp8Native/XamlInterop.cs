@@ -590,16 +590,19 @@ namespace WPR.Wp8Native
         private void NextFrame()
         {
             // Background work the game queued runs between frames - the closest a single CPU
-            // gets to the thread pool it was written for - then any input that is due.
-            _emulator.DrainDeferredCalls(() => _emulator.RunOtherThreads(() =>
-            {
-                if (_emulator.XAudio2.Pump(InputThenDraw))
-                {
-                    return;
-                }
+            // gets to the thread pool it was written for - then audio, then the other guest
+            // threads, then any input that is due. Audio comes before the threads so a mixer
+            // thread woken by OnBufferEnd refills in this frame rather than the next: with two
+            // 25 ms buffers queued (Modern Combat 4) a frame's wait ran the stream dry.
+            void ThreadsThenInput() => _emulator.RunOtherThreads(InputThenDraw);
 
-                InputThenDraw();
-            }));
+            _emulator.DrainDeferredCalls(() =>
+            {
+                if (!_emulator.XAudio2.Pump(ThreadsThenInput))
+                {
+                    ThreadsThenInput();
+                }
+            });
         }
 
         private void InputThenDraw()

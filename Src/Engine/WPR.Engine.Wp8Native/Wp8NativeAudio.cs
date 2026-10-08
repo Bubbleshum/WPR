@@ -17,7 +17,7 @@ namespace WPR.Wp8Native
     /// to "next buffer queued": with OnBufferEnd, the game's own mixer and the next pump on top,
     /// a game double-buffering ~40 ms chunks ran dry every cycle - choppy sound in every title.
     /// </remarks>
-    internal sealed class Wp8NativeAudio : IAudioOutput, IDisposable
+    internal sealed class Wp8NativeAudio : IHostAudio
     {
         private readonly ConcurrentQueue<Action> _commands = new();
         private readonly List<Voice> _voices = [];
@@ -86,6 +86,11 @@ namespace WPR.Wp8Native
                     voice.CountUnderrun();
                 }
             }
+        }
+
+        /// <summary>Nothing to do: FAudio's device is paused with the app by SDL.</summary>
+        public void Suspend(bool suspended)
+        {
         }
 
         public void Dispose()
