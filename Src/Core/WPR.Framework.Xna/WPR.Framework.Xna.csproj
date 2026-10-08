@@ -146,6 +146,11 @@
          SyntheticTouchInputBackend writes TouchPanel.SetFinger / INTERNAL_onTouchEvent and the
          reserved-slot bookkeeping; TiltInputXnaComponent reads GameWindow.HostClientBounds. -->
     <InternalsVisibleTo Include="WPR.Engine.Input" />
+    <!-- WP8 native titles' XAudio2 voices drive DynamicSoundEffectInstance from the emulated
+         CPU's thread: they take DynamicSoundEffectInstance.Streams (the lock UpdateAll holds) and
+         call Update() for a live pending count, so a finished buffer is reported without waiting
+         a frame for the XNA thread. Visibility only. -->
+    <InternalsVisibleTo Include="WPR.Engine.Wp8Native" />
   </ItemGroup>
 
 </Project>

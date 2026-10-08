@@ -9,11 +9,13 @@ namespace WPR.Wp8Native
     /// heads).
     /// </summary>
     /// <remarks>
-    /// The runtime calls in on the guest thread; everything that touches an instance is queued and
-    /// run on the XNA thread by <see cref="Pump"/>, which Wp8NativeGame calls every Update. The
-    /// one thing that flows back, how many buffers each voice has finished, is published as a
-    /// plain int the guest reads. A buffer therefore completes up to a frame late, which costs
-    /// nothing while the runtime keeps three queued per voice.
+    /// The runtime calls in on the guest thread, and the instance is driven right there, under
+    /// <see cref="DynamicSoundEffectInstance.Streams"/> - the lock the XNA thread's
+    /// FrameworkDispatcher holds while it updates the same instances. How many buffers a voice
+    /// has finished is read live from FAudio. This used to be queued to the XNA thread and
+    /// published back once a frame, which put two frames into every trip from "buffer finished"
+    /// to "next buffer queued": with OnBufferEnd, the game's own mixer and the next pump on top,
+    /// a game double-buffering ~40 ms chunks ran dry every cycle - choppy sound in every title.
     /// </remarks>
     internal sealed class Wp8NativeAudio : IAudioOutput, IDisposable
     {
@@ -32,11 +34,32 @@ namespace WPR.Wp8Native
         public IAudioVoiceOutput CreateVoice(int sampleRate, int channels)
         {
             Voice voice = new(this, sampleRate, channels);
-            _commands.Enqueue(voice.Create);
+            Execute(voice.Create);
             return voice;
         }
 
-        /// <summary>Runs queued work and publishes completion counts. XNA thread only.</summary>
+        /// <summary>Runs <paramref name="command"/> now, serialised with the XNA thread's audio update.</summary>
+        private void Execute(Action command)
+        {
+            try
+            {
+                lock (DynamicSoundEffectInstance.Streams)
+                {
+                    command();
+                }
+            }
+            catch (Exception ex)
+            {
+                // An audio failure costs the sound, never the game. Said once.
+                if (!_failed)
+                {
+                    _failed = true;
+                    _log?.Invoke($"[wpr-wp8] audio command failed: {ex.GetType().Name}: {ex.Message}");
+                }
+            }
+        }
+
+        /// <summary>Runs anything queued and counts underruns. XNA thread.</summary>
         public void Pump()
         {
             while (_commands.TryDequeue(out Action? command))
@@ -56,21 +79,27 @@ namespace WPR.Wp8Native
                 }
             }
 
-            foreach (Voice voice in _voices)
+            lock (DynamicSoundEffectInstance.Streams)
             {
-                voice.Publish();
+                foreach (Voice voice in _voices)
+                {
+                    voice.CountUnderrun();
+                }
             }
         }
 
         public void Dispose()
         {
             Pump();
-            foreach (Voice voice in _voices)
+            lock (DynamicSoundEffectInstance.Streams)
             {
-                voice.Release();
-            }
+                foreach (Voice voice in _voices)
+                {
+                    voice.Release();
+                }
 
-            _voices.Clear();
+                _voices.Clear();
+            }
         }
 
         private sealed class Voice(Wp8NativeAudio owner, int sampleRate, int channels) : IAudioVoiceOutput
@@ -80,7 +109,23 @@ namespace WPR.Wp8Native
             private int _completed;
             private bool _disposed;
 
-            public int Completed => Volatile.Read(ref _completed);
+            /// <summary>Buffers FAudio has finished playing, read live (guest thread).</summary>
+            public int Completed
+            {
+                get
+                {
+                    lock (DynamicSoundEffectInstance.Streams)
+                    {
+                        if (_instance is { } instance && !_disposed)
+                        {
+                            instance.Update();   // drops finished buffers from PendingBufferCount
+                            _completed = _executed - instance.PendingBufferCount;
+                        }
+
+                        return _completed;
+                    }
+                }
+            }
 
             public void Create()
             {
@@ -94,20 +139,17 @@ namespace WPR.Wp8Native
                 owner.VoicesCreated++;
             }
 
-            public void Publish()
+            /// <summary>Counts a frame on which a playing voice had nothing left queued.</summary>
+            public void CountUnderrun()
             {
-                if (_instance is { } instance)
+                if (_instance is { } instance && !_disposed &&
+                    instance.PendingBufferCount == 0 && _executed > 0 && instance.State == SoundState.Playing)
                 {
-                    int pending = instance.PendingBufferCount;
-                    Volatile.Write(ref _completed, _executed - pending);
-                    if (pending == 0 && _executed > 0 && instance.State == SoundState.Playing)
-                    {
-                        owner.Underruns++;
-                    }
+                    owner.Underruns++;
                 }
             }
 
-            private void Run(Action<DynamicSoundEffectInstance> action) => owner._commands.Enqueue(() =>
+            private void Run(Action<DynamicSoundEffectInstance> action) => owner.Execute(() =>
             {
                 if (_instance is { } instance && !_disposed)
                 {
@@ -142,14 +184,14 @@ namespace WPR.Wp8Native
                     instance.Play();
                 }
 
-                Publish();
+                _completed = _executed - instance.PendingBufferCount;
             });
 
             public void SetVolume(float volume) => Run(instance => instance.Volume = Math.Clamp(volume, 0f, 1f));
 
             public void SetPitch(float octaves) => Run(instance => instance.Pitch = Math.Clamp(octaves, -1f, 1f));
 
-            public void Dispose() => owner._commands.Enqueue(() =>
+            public void Dispose() => owner.Execute(() =>
             {
                 Release();
                 owner._voices.Remove(this);
