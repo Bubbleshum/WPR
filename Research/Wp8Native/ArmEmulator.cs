@@ -80,7 +80,6 @@ namespace WPR.Wp8Native
         public IReadOnlyList<string> StopCallCapture()
             => _captures.Count > 0 ? _captures.Pop() : [];
         private readonly List<string> _vtableCalls = new();
-        private readonly Dictionary<string, int> _callCounts = new(StringComparer.Ordinal);
         private long _trapNext = TrapBase;
 
         /// <summary>Set when the engine cannot hook heap execution and the heap is mapped
@@ -214,7 +213,30 @@ namespace WPR.Wp8Native
         public long CallOrderTotal { get; private set; }
 
         /// <summary>How many times each import was called.</summary>
-        public IReadOnlyDictionary<string, int> CallCounts => _callCounts;
+        /// <summary>Import calls by name, summed from the trap slots (built on demand: it is read by reports, not per call).</summary>
+        public IReadOnlyDictionary<string, int> CallCounts
+        {
+            get
+            {
+                var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+                foreach (TrapSlot slot in _traps.Values.ToArray())
+                {
+                    if (slot.Kind == TrapKind.Import && slot.Calls > 0)
+                    {
+                        counts[slot.Name] = counts.GetValueOrDefault(slot.Name) + (int)slot.Calls;
+                    }
+                }
+
+                return counts;
+            }
+        }
+
+        /// <summary>
+        /// Whether every import call records its call site for the sampler's report. Two
+        /// dictionary updates per call: worth it in the probe, not in a live game, where a
+        /// loading screen makes over a million import calls a second.
+        /// </summary>
+        public bool RecordCallSites { get; set; } = true;
 
         /// <summary>Pages the run touched that were never mapped, and got zero-filled on demand.</summary>
         public int LazyPagesMapped { get; private set; }
@@ -958,7 +980,7 @@ namespace WPR.Wp8Native
             foreach ((string name, long ticks) in _hostTime.OrderByDescending(entry => entry.Value).Take(12))
             {
                 double seconds = ticks / (double)System.Diagnostics.Stopwatch.Frequency;
-                long calls = _callCounts.GetValueOrDefault(name);
+                long calls = CallCounts.GetValueOrDefault(name);
                 yield return
                     $"{seconds,7:F2}s  {calls,10:N0} call(s)  {(calls > 0 ? seconds / calls * 1e6 : 0),8:F2} us each  {name}";
             }
@@ -1253,7 +1275,20 @@ namespace WPR.Wp8Native
             RecycledReturn,
         }
 
-        private sealed record TrapSlot(string Name, TrapKind Kind, Action? Handler);
+        private sealed class TrapSlot(string name, TrapKind kind, Action? handler)
+        {
+            public string Name { get; } = name;
+
+            public TrapKind Kind { get; } = kind;
+
+            /// <summary>What runs. For an import, filled on first call with the handler Dispatch would pick.</summary>
+            public Action? Handler { get; set; } = handler;
+
+            public long Calls;
+
+            /// <summary>Whether a direct handler has been looked for (found or not).</summary>
+            public bool Resolved;
+        }
 
         /// <summary>
         /// Reserves a trap slot and returns its address. Branching to the returned address
@@ -1674,11 +1709,22 @@ namespace WPR.Wp8Native
                         }
                     }
 
-                    _callCounts[slot.Name] = _callCounts.GetValueOrDefault(slot.Name) + 1;
+                    slot.Calls++;
 
                     // lr is the caller, and this is the one moment it is guaranteed to be.
                     // Free attribution: it turns a count of imports into a map of the image.
-                    Samples.RecordCallSite(_cpu.RegRead(Arm.UC_ARM_REG_LR), slot.Name);
+                    if (RecordCallSites)
+                    {
+                        Samples.RecordCallSite(_cpu.RegRead(Arm.UC_ARM_REG_LR), slot.Name);
+                    }
+
+                    // Bind the import straight to its handler on first use: Dispatch parses the
+                    // name and looks it up on every call, and a loading screen makes millions.
+                    if (!slot.Resolved && !HostStubs.CountCalls)
+                    {
+                        slot.Resolved = true;
+                        slot.Handler ??= _stubs.ResolveDirect(slot.Name);
+                    }
 
                     if (PcSampler.ArgumentSite != 0 &&
                         (_cpu.RegRead(Arm.UC_ARM_REG_LR) & ~1L) == PcSampler.ArgumentSite)

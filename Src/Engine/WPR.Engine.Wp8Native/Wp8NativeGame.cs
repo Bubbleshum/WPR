@@ -130,6 +130,7 @@ namespace WPR.Wp8Native
                 Log($"loading {_executable}");
                 PeImage image = PeImage.Load(_executable);
                 _emulator = new ArmEmulator(image, Path.GetDirectoryName(_executable)!, collectBlockStats: false);
+                _emulator.RecordCallSites = false;   // the sampler's report is the probe's, not ours
                 _emulator.Direct3D.FrameBuilt += OnFrameBuilt;
                 if (UseGpu)
                 {

@@ -710,6 +710,18 @@ namespace WPR.Wp8Native
 
         public static readonly Dictionary<string, long> CallCounts = new();
 
+        /// <summary>
+        /// The handler <see cref="Dispatch"/> would run for <paramref name="fullName"/> when that is
+        /// a plain table entry, so the trap can call it directly; null for anything Dispatch decides
+        /// per call (ordinals, constructors, defaults).
+        /// </summary>
+        public Action? ResolveDirect(string fullName)
+        {
+            int split = fullName.IndexOf('!');
+            string function = split >= 0 ? fullName[(split + 1)..] : fullName;
+            return !function.StartsWith('#') && _handlers.TryGetValue(function, out Action? handler) ? handler : null;
+        }
+
         public void Dispatch(string fullName)
         {
             if (CountCalls)
