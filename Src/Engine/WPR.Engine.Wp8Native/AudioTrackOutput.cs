@@ -47,7 +47,7 @@ namespace WPR.Wp8Native
                 }
             }
 
-            _log?.Invoke($"[wpr-wp8] audio: AudioTrack voice {sampleRate} Hz {channels}ch, buffer {voice.BufferFrames} frames");
+            _log?.Invoke($"[wpr-wp8] audio: AudioTrack voice {sampleRate} Hz {channels}ch, played at {voice.OutputRate} Hz, buffer {voice.BufferFrames} frames");
             return voice;
         }
 
@@ -115,6 +115,10 @@ namespace WPR.Wp8Native
             private readonly int _frameBytes;
             private readonly AudioTrack? _track;
             private readonly int _sampleRate;
+            private readonly SincResampler? _resampler;
+
+            /// <summary>The rate the track plays at: the device's native one.</summary>
+            public int OutputRate { get; }
 
             /// <summary>Guards the track, <see cref="_ends"/> and the counters below.</summary>
             private readonly object _gate = new();
@@ -135,11 +139,29 @@ namespace WPR.Wp8Native
             {
                 _owner = owner;
                 _sampleRate = sampleRate;
+
+                // The device's native rate, so the track gets the fast path and our resampler
+                // rather than AudioFlinger's (see SincResampler).
+                int native = 0;
+                try
+                {
+                    native = AudioTrack.GetNativeOutputSampleRate(Android.Media.Stream.Music);
+                }
+                catch (Exception)
+                {
+                }
+
+                OutputRate = native > 0 ? native : 48000;
+                if (OutputRate != sampleRate)
+                {
+                    _resampler = new SincResampler(sampleRate, OutputRate, channels);
+                }
+
                 _frameBytes = 2 * channels;
                 try
                 {
                     ChannelOut mask = channels == 1 ? ChannelOut.Mono : ChannelOut.Stereo;
-                    int minimum = AudioTrack.GetMinBufferSize(sampleRate, mask, Encoding.Pcm16bit);
+                    int minimum = AudioTrack.GetMinBufferSize(OutputRate, mask, Encoding.Pcm16bit);
                     var builder = new AudioTrack.Builder()
                         .SetAudioAttributes(new AudioAttributes.Builder()
                             .SetUsage(AudioUsageKind.Game)!
@@ -147,7 +169,7 @@ namespace WPR.Wp8Native
                             .Build()!)
                         .SetAudioFormat(new AudioFormat.Builder()
                             .SetEncoding(Encoding.Pcm16bit)!
-                            .SetSampleRate(sampleRate)!
+                            .SetSampleRate(OutputRate)!
                             .SetChannelMask(mask)!
                             .Build()!)
                         .SetTransferMode(AudioTrackMode.Stream)
@@ -168,7 +190,7 @@ namespace WPR.Wp8Native
                     // silence instead (again after every flush, which empties it).
                     if (OperatingSystem.IsAndroidVersionAtLeast(31))
                     {
-                        _track.SetStartThresholdInFrames(Math.Clamp(sampleRate / 100, 1, BufferFrames));
+                        _track.SetStartThresholdInFrames(Math.Clamp(OutputRate / 100, 1, BufferFrames));
                     }
                     else
                     {
@@ -243,6 +265,11 @@ namespace WPR.Wp8Native
                 int generation;
                 lock (_gate)
                 {
+                    if (_resampler is not null)
+                    {
+                        pcm = _resampler.Process(pcm);
+                    }
+
                     _submittedFrames += pcm.Length / _frameBytes;
                     _ends.Enqueue(_submittedFrames);
                     generation = _generation;
@@ -317,6 +344,7 @@ namespace WPR.Wp8Native
                 _completed += _ends.Count;
                 _ends.Clear();
                 _submittedFrames = 0;
+                _resampler?.Reset();
                 PrimeWithSilence();
                 if (_wantPlaying && !_suspended)
                 {
@@ -327,7 +355,17 @@ namespace WPR.Wp8Native
             public void SetVolume(float volume) => Locked(track => track.SetVolume(Math.Clamp(volume, 0f, 1f)));
 
             public void SetPitch(float octaves) => Locked(track =>
-                track.SetPlaybackRate((int)Math.Round(_sampleRate * Math.Pow(2, Math.Clamp(octaves, -1f, 1f)))));
+            {
+                double factor = Math.Pow(2, Math.Clamp(octaves, -1f, 1f));
+                if (_resampler is not null)
+                {
+                    _resampler.SetPitch(factor);
+                }
+                else
+                {
+                    track.SetPlaybackRate((int)Math.Round(_sampleRate * factor));
+                }
+            });
 
             public void Suspend(bool suspended) => Locked(track =>
             {
