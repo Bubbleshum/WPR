@@ -459,7 +459,6 @@ namespace WPR.Wp8Native
                     case TouchLocationState.Pressed:
                     case TouchLocationState.Moved when !down:
                         _fingers[touch.Id] = (x, y);
-                        Log($"pointer {id} pressed at ({x:0},{y:0}) [{_fingers.Count} down]");
                         emulator.WinRt.InjectPointer(WinRtRuntime.PointerKind.Pressed, x, y, id);
                         break;
                     case TouchLocationState.Moved when x != last.X || y != last.Y:
@@ -468,7 +467,6 @@ namespace WPR.Wp8Native
                         break;
                     case TouchLocationState.Released when down:
                         _fingers.Remove(touch.Id);
-                        Log($"pointer {id} released at ({x:0},{y:0})");
                         emulator.WinRt.InjectPointer(WinRtRuntime.PointerKind.Released, x, y, id);
                         break;
                 }

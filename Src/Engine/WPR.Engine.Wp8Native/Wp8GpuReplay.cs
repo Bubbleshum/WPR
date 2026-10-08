@@ -124,7 +124,11 @@ namespace WPR.Wp8Native
                     switch (command)
                     {
                         case GpuClearColour clear:
-                            Trace($"clear  {Describe(clear.Target)} ({string.Join(",", clear.Colour.Select(c => c.ToString("0.00")))})");
+                            if (trace)
+                            {
+                                Trace($"clear  {Describe(clear.Target)} ({string.Join(",", clear.Colour.Select(c => c.ToString("0.00")))})");
+                            }
+
                             current = Bind(clear.Target, current);
                             backBuffer = clear.Target.IsBackBuffer ? current : backBuffer;
                             _device.Clear(ClearOptions.Target, new Vector4(clear.Colour[0], clear.Colour[1], clear.Colour[2], clear.Colour[3]), 1f, 0);
@@ -135,7 +139,11 @@ namespace WPR.Wp8Native
                             // that uses this depth view, and clears that draw's target's depth. Bound
                             // as a colour target and cleared there, the back buffer's real depth
                             // was never cleared, and Modern Combat 4's whole world failed the test.
-                            Trace($"cleard {Describe(clear.Target)} flags {clear.Flags} depth {clear.Depth}");
+                            if (trace)
+                            {
+                                Trace($"cleard {Describe(clear.Target)} flags {clear.Flags} depth {clear.Depth}");
+                            }
+
                             int flags = clear.Flags | (_pendingDepthClears.TryGetValue(clear.Target.Key, out var earlier) ? earlier.Flags : 0);
                             _pendingDepthClears[clear.Target.Key] = (flags, clear.Depth, clear.Stencil);
                             break;
@@ -172,20 +180,6 @@ namespace WPR.Wp8Native
                                       $"vp6={(draw.Viewport is { } vq ? string.Join(",", vq) : "none")} depthdesc={(draw.DepthStencil is null ? "default" : System.Convert.ToHexString(draw.DepthStencil, 0, 12))} " +
                                       $"raster={(draw.Rasterizer is null ? "default" : System.Convert.ToHexString(draw.Rasterizer, 0, 12))} " +
                                       $"{(drawn ? "ok" : "SKIP " + _skip)}");
-                                if (draw.Geometry.Indices.Length > 1000 && _shaders.GetValueOrDefault(draw.Vertex.Key) is { } vsh)
-                                {
-                                    Trace($"   vs maps {string.Join(" ", vsh.ConstantMaps.Select(m => $"cb{m.Buffer}[{m.Start}+{m.Count}]->c{m.Target}"))} inputs {string.Join(" ", vsh.InputRegisters.Select(kv => $"{kv.Key.Semantic}{kv.Key.Index}=v{kv.Value}"))}");
-                                    foreach (var (slot, data) in draw.VertexConstants)
-                                    {
-                                        Trace($"   vs cb{slot} ({data.Length}b): " + string.Join(" ", Enumerable.Range(0, Math.Min(32, data.Length / 4)).Select(f => BitConverter.ToSingle(data, f * 4).ToString("0.###"))));
-                                    }
-
-                                    var st0 = draw.Geometry.Streams[0];
-                                    if (st0.Data is { } pos)
-                                    {
-                                        Trace($"   pos[0..2]: " + string.Join(" ", Enumerable.Range(0, 9).Select(f => BitConverter.ToSingle(pos, f * 4).ToString("0.###"))));
-                                    }
-                                }
                             }
 
                             break;
