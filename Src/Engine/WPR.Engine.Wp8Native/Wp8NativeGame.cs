@@ -316,8 +316,27 @@ namespace WPR.Wp8Native
             }
         }
 
-        /// <summary>WPR_WP8_GPU=1: replay frames on the GPU with the game's shaders instead of the 2D draw list.</summary>
-        private static readonly bool UseGpu = Environment.GetEnvironmentVariable("WPR_WP8_GPU") == "1";
+        /// <summary>
+        /// Titles whose 3D scenes the 2D draw list cannot show, so they replay on the GPU with
+        /// their own shaders by default. A list of names on purpose: the GPU path has only been
+        /// verified title by title, and the titles that already work in 2D stay there.
+        /// </summary>
+        private static readonly HashSet<string> GpuTitles = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "0cb4e588-5759-4150-bef0-6866345fa26b",   // Modern Combat 4: Zero Hour
+        };
+
+        /// <summary>
+        /// Replay frames on the GPU with the game's shaders instead of the 2D draw list: on for
+        /// <see cref="GpuTitles"/>, and WPR_WP8_GPU=1 / =0 forces it either way.
+        /// </summary>
+        /// <remarks>Decided per launch, when the game is constructed: one desktop process runs many games.</remarks>
+        private readonly bool UseGpu = Environment.GetEnvironmentVariable("WPR_WP8_GPU") switch
+        {
+            "1" => true,
+            "0" => false,
+            _ => WPR.Common.WprHostEnvironment.CurrentProductId is { } id && GpuTitles.Contains(id.Trim('{', '}')),
+        };
 
         private GpuFrame? _latestGpu;
         private Wp8GpuReplay? _replay;
