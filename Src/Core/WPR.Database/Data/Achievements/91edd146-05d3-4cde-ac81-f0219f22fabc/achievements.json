@@ -1,20 +1,20 @@
 {
   "Name": "The Great Wobo Escape",
   "Description": "A stealth puzzle-platformer about a robot escaping captivity, one hand-built level at a time.",
-  "KeySource": "xlast",
+  "KeySource": "xbox-id",
   "Achievements": [
-    { "Key": "Obeyed Orders",       "Name": "Obeyed Orders",       "GamerScore": 15, "Icon": "obeyedorders.png", "Description": "Complete the level \"Obeyed Orders\"" },
-    { "Key": "Small Savior",        "Name": "Small Savior",        "GamerScore": 15, "Icon": "smallsavior.png", "Description": "Complete the level \"Small Savior\"" },
-    { "Key": "Dangerous Drillings", "Name": "Dangerous Drillings", "GamerScore": 15, "Icon": "dangerousdrillings.png", "Description": "Complete the level \"Dangerous Drillings\"" },
-    { "Key": "Parted Pathways",     "Name": "Parted Pathways",     "GamerScore": 15, "Icon": "partedpathways.png", "Description": "Complete the level \"Parted Pathways\"" },
-    { "Key": "Abhorrent Abyss",     "Name": "Abhorrent Abyss",     "GamerScore": 15, "Icon": "abhorrentabyss.png", "Description": "Complete the level \"Abhorrent Abyss\"" },
-    { "Key": "Tesla Trouble",       "Name": "Tesla Trouble",       "GamerScore": 15, "Icon": "teslatrouble.png", "Description": "Complete the level \"Tesla Trouble\"" },
-    { "Key": "Tricky Tunnels",      "Name": "Tricky Tunnels",      "GamerScore": 15, "Icon": "trickytunnels.png", "Description": "Complete the level \"Tricky Tunnels\"" },
-    { "Key": "Cruel Confrontation", "Name": "Cruel Confrontation", "GamerScore": 15, "Icon": "cruelconfrontation.png", "Description": "Complete the level \"Cruel Confrontation\"" },
-    { "Key": "A Friend in Need",    "Name": "A Friend in Need",    "GamerScore": 10, "Icon": "afriendinneed.png", "Description": "Save one Wobling" },
-    { "Key": "The Great Escape",    "Name": "The Great Escape",    "GamerScore": 30, "Icon": "thegreatescape.png", "Description": "Save all Woblings" },
-    { "Key": "Birdie",              "Name": "Birdie",              "GamerScore": 10, "Icon": "birdie.png", "Description": "Finish one level under par time" },
-    { "Key": "Condor",              "Name": "Condor",              "GamerScore": 30, "Icon": "condor.png", "Description": "Finish all levels under par time" }
+    { "Key": "1",       "Name": "Obeyed Orders",       "GamerScore": 15, "Icon": "obeyedorders.png", "Description": "Complete the level \"Obeyed Orders\"" },
+    { "Key": "2",        "Name": "Small Savior",        "GamerScore": 15, "Icon": "smallsavior.png", "Description": "Complete the level \"Small Savior\"" },
+    { "Key": "3", "Name": "Dangerous Drillings", "GamerScore": 15, "Icon": "dangerousdrillings.png", "Description": "Complete the level \"Dangerous Drillings\"" },
+    { "Key": "4",     "Name": "Parted Pathways",     "GamerScore": 15, "Icon": "partedpathways.png", "Description": "Complete the level \"Parted Pathways\"" },
+    { "Key": "5",     "Name": "Abhorrent Abyss",     "GamerScore": 15, "Icon": "abhorrentabyss.png", "Description": "Complete the level \"Abhorrent Abyss\"" },
+    { "Key": "6",       "Name": "Tesla Trouble",       "GamerScore": 15, "Icon": "teslatrouble.png", "Description": "Complete the level \"Tesla Trouble\"" },
+    { "Key": "7",      "Name": "Tricky Tunnels",      "GamerScore": 15, "Icon": "trickytunnels.png", "Description": "Complete the level \"Tricky Tunnels\"" },
+    { "Key": "8", "Name": "Cruel Confrontation", "GamerScore": 15, "Icon": "cruelconfrontation.png", "Description": "Complete the level \"Cruel Confrontation\"" },
+    { "Key": "9",    "Name": "A Friend in Need",    "GamerScore": 10, "Icon": "afriendinneed.png", "Description": "Save one Wobling" },
+    { "Key": "10",    "Name": "The Great Escape",    "GamerScore": 30, "Icon": "thegreatescape.png", "Description": "Save all Woblings" },
+    { "Key": "11",              "Name": "Birdie",              "GamerScore": 10, "Icon": "birdie.png", "Description": "Finish one level under par time" },
+    { "Key": "12",              "Name": "Condor",              "GamerScore": 30, "Icon": "condor.png", "Description": "Finish all levels under par time" }
   ]
 }
 

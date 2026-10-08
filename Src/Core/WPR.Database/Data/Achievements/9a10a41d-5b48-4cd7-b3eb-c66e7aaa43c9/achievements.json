@@ -1,5 +1,26 @@
 {
   "Name": "Bubble Guriko",
   "Description": "A bubble shooter: fire matching bubbles into the cluster above and bring down whatever they cut loose.",
-  "Achievements": []
+  "KeySource": "xbox-id",
+  "Achievements": [
+    {"Key": "1", "Name": "Welcome to the game!", "GamerScore": 5, "Description": "Download Bubble Guriko and play one match", "Icon": "welcometothegame.png"},
+    {"Key": "2", "Name": "Give us 5 stars", "GamerScore": 5, "Description": "Rate the game with 5 stars", "Icon": "giveus5stars.png"},
+    {"Key": "4", "Name": "Connnect to Facebook", "GamerScore": 5, "Description": "Login to Facebook and save your progress", "Icon": "connnecttofacebook.png"},
+    {"Key": "5", "Name": "Share your score!", "GamerScore": 5, "Description": "Share your score in some of your social networks", "Icon": "shareyourscore.png"},
+    {"Key": "6", "Name": "Unlock the boosters!", "GamerScore": 15, "Description": "Get all the free boosters in the game", "Icon": "unlocktheboosters.png"},
+    {"Key": "7", "Name": "Pass to level 1", "GamerScore": 5, "Description": "Get all the XP to pass the level", "Icon": "passtolevel1.png"},
+    {"Key": "8", "Name": "Pass to level 2", "GamerScore": 5, "Description": "Get all the XP to pass the level", "Icon": "passtolevel2.png"},
+    {"Key": "9", "Name": "Pass to level 3", "GamerScore": 10, "Description": "Get all the XP to pass the level", "Icon": "passtolevel3.png"},
+    {"Key": "10", "Name": "Pass to level 4", "GamerScore": 10, "Description": "Get all the XP to pass the level", "Icon": "passtolevel4.png"},
+    {"Key": "11", "Name": "Pass to level 5", "GamerScore": 10, "Description": "Get all the XP to pass the level", "Icon": "passtolevel5.png"},
+    {"Key": "12", "Name": "Pass to level 6", "GamerScore": 10, "Description": "Get all the XP to pass the level", "Icon": "passtolevel6.png"},
+    {"Key": "13", "Name": "Pass to level 7", "GamerScore": 10, "Description": "Get all the XP to pass the level", "Icon": "passtolevel7.png"},
+    {"Key": "14", "Name": "Pass to level 8", "GamerScore": 10, "Description": "Get all the XP to pass the level", "Icon": "passtolevel8.png"},
+    {"Key": "15", "Name": "Pass to level 9", "GamerScore": 10, "Description": "Get all the XP to pass the level", "Icon": "passtolevel9.png"},
+    {"Key": "16", "Name": "Pass to level 10", "GamerScore": 10, "Description": "Get all the XP to pass the level", "Icon": "passtolevel10.png"},
+    {"Key": "17", "Name": "Without boosters!", "GamerScore": 15, "Description": "Pass 30 levels without using any boosters!", "Icon": "withoutboosters.png"},
+    {"Key": "18", "Name": "With boosters!", "GamerScore": 15, "Description": "Pass at least 5 levels from 90th to 100th using all the boosters!", "Icon": "withboosters.png"},
+    {"Key": "19", "Name": "Six days in a row", "GamerScore": 20, "Description": "Play Bubble Guriko during 6 days in a row", "Icon": "sixdaysinarow.png"},
+    {"Key": "20", "Name": "Reach the level 100", "GamerScore": 25, "Description": "Pass the level 100 succesfully", "Icon": "reachthelevel100.png"}
+  ]
 }

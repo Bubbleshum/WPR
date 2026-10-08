@@ -1,5 +1,27 @@
 {
   "Name": "MONOPOLY Millionaire",
   "Description": "A faster Monopoly, played to a million rather than to bankruptcy.",
-  "Achievements": []
+  "KeySource": "xbox-id",
+  "Achievements": [
+    {"Key": "1", "Name": "Everybody Starts Somewhere", "GamerScore": 5, "Description": "Bought your first property.", "Icon": "everybodystartssomewhere.png"},
+    {"Key": "2", "Name": "Now You're On Your Way", "GamerScore": 5, "Description": "Owned your first monopoly.", "Icon": "nowyoureonyourway.png"},
+    {"Key": "3", "Name": "Climbing Your Way Up The Ladder", "GamerScore": 5, "Description": "Built your first set of houses.", "Icon": "climbingyourwayuptheladder.png"},
+    {"Key": "4", "Name": "The View From The Top", "GamerScore": 10, "Description": "Built your first set of hotels.", "Icon": "theviewfromthetop.png"},
+    {"Key": "5", "Name": "High Roller", "GamerScore": 10, "Description": "Rolled a double six twice in a row.", "Icon": "highroller.png"},
+    {"Key": "6", "Name": "Rolled To Jail", "GamerScore": 20, "Description": "Rolled three doubles in a row and got jailed.", "Icon": "rolledtojail.png"},
+    {"Key": "7", "Name": "Rolled To Freedom", "GamerScore": 10, "Description": "Rolled a double and got out of jail.", "Icon": "rolledtofreedom.png"},
+    {"Key": "8", "Name": "Globe Trotter", "GamerScore": 20, "Description": "Landed on every property on the board in the same game.", "Icon": "globetrotter.png"},
+    {"Key": "9", "Name": "Millionaire!", "GamerScore": 5, "Description": "Got 1 million.", "Icon": "millionaire.png"},
+    {"Key": "10", "Name": "Double Up!", "GamerScore": 5, "Description": "Got 2 million.", "Icon": "doubleup.png"},
+    {"Key": "11", "Name": "Property Thief", "GamerScore": 10, "Description": "Used a Sly Deal and a Forced Deal in the same game.", "Icon": "propertythief.png"},
+    {"Key": "12", "Name": "Deal Breaker", "GamerScore": 15, "Description": "Used a Just Say No card to block the opponent from getting a monopoly off of you.", "Icon": "dealbreaker.png"},
+    {"Key": "13", "Name": "No Mercy", "GamerScore": 10, "Description": "Responsible for the bankruptcy of another player.", "Icon": "nomercy.png"},
+    {"Key": "14", "Name": "Went For Broke", "GamerScore": 5, "Description": "Bankrupted yourself out of the game for the first time.", "Icon": "wentforbroke.png"},
+    {"Key": "15", "Name": "Upgraded Lifestyle!", "GamerScore": 5, "Description": "Upgraded your mover to the maximum.", "Icon": "upgradedlifestyle.png"},
+    {"Key": "16", "Name": "Greedy!", "GamerScore": 10, "Description": "Got a property for less than the price on the board in Auction.", "Icon": "greedy.png"},
+    {"Key": "17", "Name": "Multi-Millionaires!", "GamerScore": 5, "Description": "Played a multiplayer game in Pass 'n Play.", "Icon": "multimillionaires.png"},
+    {"Key": "18", "Name": "Time To Collect", "GamerScore": 5, "Description": "Collected your first rent payment from any other player.", "Icon": "timetocollect.png"},
+    {"Key": "19", "Name": "Dashed Hopes", "GamerScore": 20, "Description": "Broke another player's Monopoly.", "Icon": "dashedhopes.png"},
+    {"Key": "20", "Name": "No Monopoly", "GamerScore": 20, "Description": "Won a game without holding any monopoly.", "Icon": "nomonopoly.png"}
+  ]
 }

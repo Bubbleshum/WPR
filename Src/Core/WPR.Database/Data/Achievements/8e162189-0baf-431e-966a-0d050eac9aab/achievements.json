@@ -1,5 +1,32 @@
 {
   "Name": "Halo - Spartan Assault",
   "Description": "A top-down shooter set between Halo 3 and Halo 4, following Sarah Palmer and Edward Davis through the Spartan Ops era.",
-  "Achievements": []
+  "KeySource": "xbox-id",
+  "Achievements": [
+    {"Key": "1", "Name": "Overrun", "GamerScore": 10, "Description": "Complete Operation A", "Icon": "overrun.png"},
+    {"Key": "2", "Name": "Switched On", "GamerScore": 10, "Description": "Complete Operation B", "Icon": "switchedon.png"},
+    {"Key": "3", "Name": "Switched Off", "GamerScore": 10, "Description": "Complete Operation C", "Icon": "switchedoff.png"},
+    {"Key": "4", "Name": "Evacuated", "GamerScore": 10, "Description": "Complete Operation D", "Icon": "evacuated.png"},
+    {"Key": "5", "Name": "Terminated", "GamerScore": 10, "Description": "Complete Operation E", "Icon": "terminated.png"},
+    {"Key": "6", "Name": "Escort Service", "GamerScore": 5, "Description": "Keep all Wolverines intact in Operation A, Mission 3", "Icon": "escortservice.png"},
+    {"Key": "7", "Name": "Nowhere to Hide", "GamerScore": 10, "Description": "Prevent all Jackals from regenerating their shields in Operation B, Mission 3", "Icon": "nowheretohide.png"},
+    {"Key": "8", "Name": "Never Knew What Hit Them", "GamerScore": 10, "Description": "Kill a convoy target with every stationary gun in Operation C, Mission 3", "Icon": "neverknewwhathitthem.png"},
+    {"Key": "9", "Name": "Brute Force", "GamerScore": 10, "Description": "Finish the objectives using only the Brute Shot, melee and grenades in Operation D, Mission 1", "Icon": "bruteforce.png"},
+    {"Key": "10", "Name": "Foot Soldier", "GamerScore": 10, "Description": "Finish the objective without using any vehicles/turrets in Operation E, Mission 4", "Icon": "footsoldier.png"},
+    {"Key": "11", "Name": "Recruit", "GamerScore": 5, "Description": "Earn a star of any type", "Icon": "recruit.png"},
+    {"Key": "12", "Name": "Prodigy", "GamerScore": 5, "Description": "Earn your first Gold star", "Icon": "prodigy.png"},
+    {"Key": "13", "Name": "117", "GamerScore": 20, "Description": "Earn all Gold stars", "Icon": "a117.png"},
+    {"Key": "14", "Name": "Pension Plan", "GamerScore": 10, "Description": "Earn 25000 XP throughout your career", "Icon": "pensionplan.png"},
+    {"Key": "15", "Name": "Distinguished Service", "GamerScore": 15, "Description": "Earn all medals in the game at least once", "Icon": "distinguishedservice.png"},
+    {"Key": "16", "Name": "Weapon of Choice", "GamerScore": 5, "Description": "Score a kill with every handheld weapon (excluding Rocket Launcher and Spartan Laser)", "Icon": "weaponofchoice.png"},
+    {"Key": "17", "Name": "Powered by MJOLNIR", "GamerScore": 10, "Description": "Use every armor ability at least once (excluding Overshield and Seeker Drone)", "Icon": "poweredbymjolnir.png"},
+    {"Key": "18", "Name": "Skull Combo", "GamerScore": 10, "Description": "Complete any mission with the maximum number of Skulls active", "Icon": "skullcombo.png"},
+    {"Key": "19", "Name": "Vidmaster Challenge", "GamerScore": 15, "Description": "Complete Operation E, Mission 1 with the Hollow and Black Eye Skulls active", "Icon": "vidmasterchallenge.png"},
+    {"Key": "20", "Name": "Extra Credit", "GamerScore": 10, "Description": "Complete 75 mission specific challenges", "Icon": "extracredit.png"},
+    {"Key": "28", "Name": "Complete Operation F", "GamerScore": 10, "Description": "Complete Operation F", "Icon": "completeoperationf.png"},
+    {"Key": "29", "Name": "Silvertip", "GamerScore": 10, "Description": "Destroy all Mega Turrets with the Grizzly tank in Operation F, Mission 2", "Icon": "silvertip.png"},
+    {"Key": "30", "Name": "Tour of Duty", "GamerScore": 10, "Description": "Earn all Gold stars in Operation F", "Icon": "tourofduty.png"},
+    {"Key": "31", "Name": "Vidmaster Challenge 2.0", "GamerScore": 15, "Description": "Complete Operation F, Mission 4 with the Blind and Thunderstorm Skulls active", "Icon": "vidmasterchallenge20.png"},
+    {"Key": "32", "Name": "A for Effort", "GamerScore": 5, "Description": "Complete all Operation F mission challenges", "Icon": "aforeffort.png"}
+  ]
 }

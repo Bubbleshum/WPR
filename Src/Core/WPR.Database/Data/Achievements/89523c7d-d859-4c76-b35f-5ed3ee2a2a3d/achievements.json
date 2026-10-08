@@ -1,5 +1,27 @@
 {
   "Name": "Briquid Mini",
   "Description": "A puzzle game about steering liquid: place and remove blocks until the water finds its way to where it has to go.",
-  "Achievements": []
+  "KeySource": "xbox-id",
+  "Achievements": [
+    {"Key": "1", "Name": "Break Stuff", "GamerScore": 5, "Description": "Break a brick you just built.", "Icon": "breakstuff.png"},
+    {"Key": "2", "Name": "A Good Start", "GamerScore": 10, "Description": "Reach a score of 100% in the first twenty levels.", "Icon": "agoodstart.png"},
+    {"Key": "3", "Name": "Halfway", "GamerScore": 10, "Description": "Reach a score of 100% in fifty levels.", "Icon": "halfway.png"},
+    {"Key": "4", "Name": "Almost Almost There", "GamerScore": 10, "Description": "Reach a score of 100% in eighty levels.", "Icon": "almostalmostthere.png"},
+    {"Key": "5", "Name": "Almost There", "GamerScore": 10, "Description": "Reach a score of 100% in ninety levels.", "Icon": "almostthere.png"},
+    {"Key": "6", "Name": "Briquid Boss", "GamerScore": 20, "Description": "Reach a score of 100% in all hundred levels.", "Icon": "briquidboss.png"},
+    {"Key": "7", "Name": "Briquid Expert", "GamerScore": 20, "Description": "Reach the Expert Score.", "Icon": "briquidexpert.png"},
+    {"Key": "8", "Name": "Extreme Pro Briquid Boss", "GamerScore": 20, "Description": "Reach the Gamious score.", "Icon": "extremeprobriquidboss.png"},
+    {"Key": "9", "Name": "Briquid Pro", "GamerScore": 10, "Description": "Improve one of the level scores of the Gamious team.", "Icon": "briquidpro.png"},
+    {"Key": "10", "Name": "Rob the Builder", "GamerScore": 15, "Description": "Build 10,000 bricks.", "Icon": "robthebuilder.png"},
+    {"Key": "11", "Name": "Destruction Derby", "GamerScore": 15, "Description": "Destroy 10,000 bricks.", "Icon": "destructionderby.png"},
+    {"Key": "12", "Name": "Ocean mover", "GamerScore": 15, "Description": "Move 100,000 cells of water.", "Icon": "oceanmover.png"},
+    {"Key": "13", "Name": "Deliberate failure", "GamerScore": 5, "Description": "Save 99% water in a level without solving it.", "Icon": "deliberatefailure.png"},
+    {"Key": "14", "Name": "Sea Legs", "GamerScore": 5, "Description": "Solve level 10.", "Icon": "sealegs.png"},
+    {"Key": "15", "Name": "Bridge Builder", "GamerScore": 5, "Description": "Solve level 37.", "Icon": "bridgebuilder.png"},
+    {"Key": "16", "Name": "Magician", "GamerScore": 5, "Description": "Solve level 40.", "Icon": "magician.png"},
+    {"Key": "17", "Name": "Luxembourgian", "GamerScore": 5, "Description": "Solve level 54.", "Icon": "luxembourgian.png"},
+    {"Key": "18", "Name": "Crowd controller", "GamerScore": 5, "Description": "Solve level 69.", "Icon": "crowdcontroller.png"},
+    {"Key": "19", "Name": "Gam3r", "GamerScore": 5, "Description": "Solve level 96.", "Icon": "gam3r.png"},
+    {"Key": "20", "Name": "Water rat", "GamerScore": 5, "Description": "Solve level 98.", "Icon": "waterrat.png"}
+  ]
 }

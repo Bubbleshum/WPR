@@ -1,5 +1,27 @@
 {
   "Name": "Lines The Game",
   "Description": "A puzzle of drawing lines to connect matching points without letting the paths cross.",
-  "Achievements": []
+  "KeySource": "xbox-id",
+  "Achievements": [
+    {"Key": "1", "Name": "Novice", "GamerScore": 5, "Description": "Win 10 levels.", "Icon": "novice.png"},
+    {"Key": "2", "Name": "Beginner", "GamerScore": 10, "Description": "Win 50 levels.", "Icon": "beginner.png"},
+    {"Key": "3", "Name": "Advanced", "GamerScore": 10, "Description": "Win 100 levels.", "Icon": "advanced.png"},
+    {"Key": "4", "Name": "Mission Accomplished", "GamerScore": 20, "Description": "Win all 250 levels.", "Icon": "missionaccomplished.png"},
+    {"Key": "5", "Name": "Daytripper", "GamerScore": 5, "Description": "Win 5 daily challenges.", "Icon": "daytripper.png"},
+    {"Key": "6", "Name": "Frequent Flyer", "GamerScore": 10, "Description": "Win 25 daily challenges.", "Icon": "frequentflyer.png"},
+    {"Key": "7", "Name": "Bronze Age", "GamerScore": 5, "Description": "Get a bronze trophy.", "Icon": "bronzeage.png"},
+    {"Key": "8", "Name": "Silver Lining", "GamerScore": 10, "Description": "Get a silver trophy.", "Icon": "silverlining.png"},
+    {"Key": "9", "Name": "24 Carat", "GamerScore": 20, "Description": "Get a gold trophy.", "Icon": "a24carat.png"},
+    {"Key": "10", "Name": "Clean it up", "GamerScore": 10, "Description": "Unlock Eraser mode.", "Icon": "cleanitup.png"},
+    {"Key": "11", "Name": "Tie it up", "GamerScore": 10, "Description": "Unlock Rope mode.", "Icon": "tieitup.png"},
+    {"Key": "12", "Name": "Cut it up", "GamerScore": 10, "Description": "Unlock Knife mode.", "Icon": "cutitup.png"},
+    {"Key": "13", "Name": "Mix it up", "GamerScore": 10, "Description": "Unlock Mix mode.", "Icon": "mixitup.png"},
+    {"Key": "14", "Name": "Painter", "GamerScore": 10, "Description": "Place 250 points.", "Icon": "painter.png"},
+    {"Key": "15", "Name": "Cleaner", "GamerScore": 10, "Description": "Erase 250 enemies.", "Icon": "cleaner.png"},
+    {"Key": "16", "Name": "Roper", "GamerScore": 10, "Description": "Tie 250 ropes.", "Icon": "roper.png"},
+    {"Key": "17", "Name": "Cutter", "GamerScore": 10, "Description": "Cut 250 lines.", "Icon": "cutter.png"},
+    {"Key": "18", "Name": "Epic Fail", "GamerScore": 10, "Description": "Lose a level after a win streak of 9.", "Icon": "epicfail.png"},
+    {"Key": "19", "Name": "Nightcrawler", "GamerScore": 5, "Description": "Win a level in night mode.", "Icon": "nightcrawler.png"},
+    {"Key": "20", "Name": "Marathon", "GamerScore": 10, "Description": "Cover a distance of 10000 meters.", "Icon": "marathon.png"}
+  ]
 }
