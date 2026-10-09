@@ -105,6 +105,7 @@ namespace WPR.Wp8Native
             RegisterHostInformation();
             RegisterAppModelObjects();
             RegisterCameras();
+            RegisterSensors();
         }
 
         /// <summary>
@@ -624,6 +625,18 @@ namespace WPR.Wp8Native
             // A Back press goes ahead of any pointer input; it is rare, and answering it late
             // would let a tap that followed it act on the screen it was meant to leave.
             if (DeliverBack(continueWith))
+            {
+                return true;
+            }
+
+            // Sensor readings next, once a frame; pointer input follows on the same turn.
+            if (DeliverSensors(() =>
+                {
+                    if (!DeliverInput(continueWith, sender))
+                    {
+                        continueWith();
+                    }
+                }))
             {
                 return true;
             }

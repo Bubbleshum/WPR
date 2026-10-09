@@ -59,6 +59,7 @@ namespace WPR.Wp8Native
         private long _drawn;
         private DateTime _statsAt;
         private long _statsPresented;
+        private int _sensorLogged;
 
         /// <param name="executable">The title's executable inside its install folder.</param>
         /// <param name="sandboxRoot">Where the title's local folder lives on the host.</param>
@@ -140,6 +141,7 @@ namespace WPR.Wp8Native
                     Log("rendering with the game's shaders on the GPU");
                 }
                 _emulator.WinRt.XboxHost = _xboxHost;
+                _emulator.WinRt.Sensors = new Wp8NativeSensorHost();
                 _emulator.XAudio2.Output = _audio;
                 _emulator.WinRt.BackPressDelivered += handled =>
                 {
@@ -630,6 +632,21 @@ namespace WPR.Wp8Native
                 $"drawlist-build total={build * 1000 / System.Diagnostics.Stopwatch.Frequency}ms textures={_textures.Count} " +
                 $"gpu: replayed={_replay?.DrawsReplayed} skipped={_replay?.DrawsSkipped} {_replay?.Statistics()} unrecorded={string.Join(",", _emulator?.Direct3D.GpuSkipped.Select(p => $"{p.Key}:{p.Value}") ?? [])} " +
                 $"audio: {_emulator?.XAudio2.Summary()} voices={_audio?.VoicesCreated} underruns={_audio?.Underruns} callbacks={_emulator?.XAudio2.CallbacksMade}");
+            // What the game did with its sensors (a handful of lines per run; same racy read as below).
+            if (_emulator?.WinRt.SensorLog is { } sensorLog)
+            {
+                try
+                {
+                    for (; _sensorLogged < sensorLog.Count; _sensorLogged++)
+                    {
+                        Log("sensors: " + sensorLog[_sensorLogged]);
+                    }
+                }
+                catch (Exception)
+                {
+                }
+            }
+
             if (HostStubs.CountCalls)
             {
                 KeyValuePair<string, long>[] counts;
@@ -753,6 +770,21 @@ namespace WPR.Wp8Native
                 // process, and each guest holds a gigabyte reservation plus the JIT's code cache.
                 if (_guest is null || _guest.Join(TimeSpan.FromSeconds(2)))
                 {
+                    try
+                    {
+                        if (_emulator is { } stopping)
+                        {
+                            stopping.WinRt.StopSensors();
+                            foreach (string line in stopping.WinRt.SensorLog.Skip(_sensorLogged))
+                            {
+                                Log("sensors: " + line);
+                            }
+                        }
+                    }
+                    catch
+                    {
+                    }
+
                     _emulator?.Dispose();
                 }
 

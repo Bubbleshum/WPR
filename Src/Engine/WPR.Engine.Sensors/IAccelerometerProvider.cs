@@ -24,8 +24,8 @@ namespace WPR.Engine.Sensors;
 /// rather than for sensors in general because every member here is an accelerometer member —
 /// and because the previous name invited the opposite. A compass, gyroscope or motion source
 /// gets its own interface beside this one and its own slot on <c>SensorBackend</c>, at the
-/// point its WP7 shim is actually written; <c>WPR.Framework.Devices.Sensors</c> ships only
-/// <c>Accelerometer</c> today, so there is nothing to model yet. Widening this instead would
+/// point something actually consumes it - as <see cref="IGyroscopeProvider"/> did, for WP8
+/// native titles' WinRT <c>Gyrometer</c>. Widening this instead would
 /// give every implementation members it must stub, which is how a seam turns into a bucket.</para>
 /// </summary>
 public interface IAccelerometerProvider

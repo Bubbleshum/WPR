@@ -49,6 +49,10 @@ namespace WPR.Platform.Android
             // one, and the game host therefore attaches no tilt components here.
             caps.Accelerometer(new WPR.Input.AndroidSensor.AndroidAccelerometerProvider());
 
+            // And its gyroscope, from the same module. Not every phone has one; the provider
+            // answers IsSupported from the device, and a WP8 game asking finds none.
+            caps.Gyroscope(new WPR.Input.AndroidSensor.AndroidGyroscopeProvider());
+
             // THE graphics decision, declared as an answer rather than a policy — and since
             // 2026-09-07 it is the SAME answer on the emulator and on hardware, which is the
             // point of it. Emulator results are only worth anything if both run one driver.

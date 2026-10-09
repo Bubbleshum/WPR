@@ -188,10 +188,22 @@ Motion input follows the same three-part shape as achievements (2026-08-30):
 accelerometer member, so only the name claimed otherwise). This is the
 `AudioBackendRegistry.Sound/.Xact/.Media` shape: **one registry per subsystem, one narrowly
 named slot per device.** A compass, gyroscope or motion source gets its own interface beside
-`IAccelerometerProvider` and its own slot on `SensorBackend`, when its WP7 shim is actually
-written — never more members on this one, and never a new project.
-`WPR.Framework.Devices.Sensors` ships only `Accelerometer` today, so there is nothing else to
-model yet.
+`IAccelerometerProvider` and its own slot on `SensorBackend`, when something actually consumes
+it — never more members on this one, and never a new project.
+
+**The gyroscope is the second device (2026-10-09)**: `IGyroscopeProvider` (rad/s, WP7 device
+frame, which is also Android's, so samples pass through unconverted), `SensorBackend.Gyroscope`,
+`caps.Gyroscope(...)`, filled on Android by `WPR.Input.AndroidSensor.AndroidGyroscopeProvider`
+(`[wpr-gyro]` in logcat). **Windows declares none**: a PC has no gyroscope. Its consumer is the WP8
+native runtime, not a WP7 shim. `Research/Wp8Native/Sensors.cs` implements WinRT's
+`Windows.Devices.Sensors.Gyrometer` and `Accelerometer` (both were improvised stand-ins that
+answered a placeholder object, so a game thought it had the sensor and read junk), backed by
+`Wp8NativeSensorHost`. `GetDefault` answers nullptr when the platform has none, which WP8 games
+were written to handle. Gyrometer speaks degrees per second, converted at that boundary.
+`ReadingChanged` is raised from the frame loop, at most once a frame, with `recycle: true` on the
+return trap. Modern Combat 4 does not subscribe: it polls `GetCurrentReading` about 3 times a
+frame. Read `[wpr-wp8] sensors:` in the session log. No installed WP7 title uses
+`Microsoft.Devices.Sensors.Gyroscope`, so that shim is still unwritten.
 
 ### Input implementations are modules (2026-09-02)
 

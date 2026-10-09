@@ -39,6 +39,12 @@ namespace WPR.Engine
         IPlatformCapabilities Accelerometer(IAccelerometerProvider provider);
 
         /// <summary>
+        /// This platform can report how fast the device is turning. Android passes its hardware
+        /// gyroscope; Windows declares none, since a PC has no gyroscope to read.
+        /// </summary>
+        IPlatformCapabilities Gyroscope(IGyroscopeProvider provider);
+
+        /// <summary>
         /// This platform can buzz. Android passes the handset's vibration motor; Windows declares
         /// none, because a desktop PC has no motor - so <c>Microsoft.Devices.VibrateController</c>
         /// stays the no-op it has always been there.

@@ -617,6 +617,7 @@ namespace WPR.Wp8Native
             }
 
             if (DeliverBack(PrepareAndDraw) ||
+                DeliverSensors(InputThenDraw) ||
                 (_manipulationHost != 0 && DeliverInput(PrepareAndDraw, _manipulationHost)))
             {
                 return;

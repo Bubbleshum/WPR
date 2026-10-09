@@ -1533,6 +1533,8 @@ namespace WPR
             // Android), and this backend runs under both. Null when no head registered one.
             try { WPR.Engine.Sensors.SensorBackend.Accelerometer?.ResetForNewLaunch(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"Sensor provider reset threw: {ex.Message}"); }
+            try { WPR.Engine.Sensors.SensorBackend.Gyroscope?.ResetForNewLaunch(); }
+            catch (Exception ex) { Log.Warn(LogCategory.AppList, $"Gyroscope provider reset threw: {ex.Message}"); }
 
             // Silence the motor. A WP7 title that exits mid-buzz never gets to call
             // VibrateController.Stop() itself, and the provider is launcher-lifetime — so without
