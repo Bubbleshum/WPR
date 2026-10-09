@@ -575,9 +575,45 @@ namespace WPR.Backend.FNA
 			deviceWindowHandle = p.deviceWindowHandle,
 			isFullScreen = p.isFullScreen,
 			depthStencilFormat = p.depthStencilFormat,
-			presentationInterval = p.presentationInterval,
+			presentationInterval = SupportedPresentInterval(p.presentationInterval, p.deviceWindowHandle),
 			displayOrientation = p.displayOrientation,
 			renderTargetUsage = p.renderTargetUsage,
 		};
+
+		private static bool _presentIntervalTwoLogged;
+
+		/// <summary>
+		/// FNA3D's Vulkan driver refuses <see cref="PresentInterval.Two"/> outright
+		/// (<c>VULKAN_INTERNAL_ChooseSwapPresentMode</c> logs an error, which FNA turns into an
+		/// <see cref="InvalidOperationException"/>), so a WP7 title that asks to present every
+		/// second vblank — a 30 fps cap — cannot create its device at all. Vulkan has no
+		/// "every N vblanks" present mode, so it gets <see cref="PresentInterval.One"/>; the
+		/// game's fixed timestep (WP7 titles target 33 ms) still paces updates and draws at
+		/// 30 a second. D3D11 and OpenGL implement Two and are left alone.
+		/// <para>
+		/// The driver is read off the window, not <c>SDL2_FNAPlatform.SelectedDriverName</c>:
+		/// that is null whenever the ladder settles on automatic selection, and on Android
+		/// automatic still means Vulkan because <c>fna3d.env</c> forces it process-wide — which
+		/// is exactly how a check on the name missed the crash on the emulator. FNA3D's Vulkan
+		/// driver always creates its window with <c>SDL_WINDOW_VULKAN</c>, and no other does.
+		/// </para>
+		/// </summary>
+		private static PresentInterval SupportedPresentInterval(PresentInterval requested, IntPtr window)
+		{
+			if (requested != PresentInterval.Two
+				|| window == IntPtr.Zero
+				|| (SDL2.SDL.SDL_GetWindowFlags(window) & (uint) SDL2.SDL.SDL_WindowFlags.SDL_WINDOW_VULKAN) == 0)
+			{
+				return requested;
+			}
+
+			if (!_presentIntervalTwoLogged)
+			{
+				_presentIntervalTwoLogged = true;
+				Microsoft.Xna.Framework.FNALoggerEXT.LogInfo?.Invoke(
+					"[wpr-gfx] PresentInterval.Two is not supported on Vulkan; presenting with One");
+			}
+			return PresentInterval.One;
+		}
 	}
 }
