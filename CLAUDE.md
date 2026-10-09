@@ -1801,9 +1801,9 @@ Things worth knowing:
   call), and all three still pass `scratchpad/patch-swizzle.ps1 -WhatIfOnly`. **The Windows
   `FNA3D.dll` was NOT rebuilt** (no MSVC build here), so forced Vulkan on the desktop still has the
   upstream behaviour. The desktop default is D3D11, where none of this applies.
-- **The OpenGL driver hangs this game even earlier**, on frame 2 — the `ForceToMainThread` queue from
-  the graphics section above. So the Settings picker is no escape hatch for PvZ, and the probe
-  cannot help either: the game presents plenty of frames before it stops.
+- **The OpenGL driver hung this game even earlier**, on frame 2 — the `ForceToMainThread` queue from
+  the graphics section above. **Superseded 2026-10-09**: with the GL worker contexts it crashed instead,
+  and it now plays on OpenGL — see the next section.
 - **Deferring WPR's post-Present `DiscardBackbufferContents` clear was tried and does not fix it.** It
   looked like the culprit (it opens a pass right after the swap), but the loader's own render-target
   `Clear` opens one just as well. Reverted.
@@ -1819,6 +1819,60 @@ progress saved. Chickens Can't Fly and Cut the Rope still run on the new binary.
 
 No `ApplicationPatcher.Version` bump and no reinstall. **A native binary changed**, so Android needs
 the APK repackaged.
+
+### On OpenGL a worker thread's DRAW calls run on the device thread (patcher v40, 2026-10-09)
+
+Plants vs. Zombies crashed on a realme RMX3938 (Mali-G57) running OpenGL: `libEGL: call to OpenGL ES
+API with no current context`, then SIGSEGV at `0x18` in `MOJOSHADER_effectCommitChanges` → `memcpy`.
+FNA3D's GL driver defers the *resource* calls of a non-device thread (`ForceToMainThread`, or the
+worker contexts) but runs the *drawing* ones (`SetRenderTargets`, `Clear`, `ApplyEffect`, the draws,
+the state setters) on whatever thread calls them. On a worker there is no context, and MojoShader's
+GL context pointer is **thread-local**, so the uniform-register map of a NULL context is written to.
+PvZ's loader premultiplies every image by drawing it into a `RenderTarget2D` under
+`ResourceManager.DrawLocker`; that is the whole reason it only ever worked on D3D11 and Vulkan.
+
+**`WPR.Xna.Rhi.DeviceThreadDispatch`** (`WPR.Framework.Xna/Backend/`) runs such a call on the device
+thread, synchronously, so it executes in issue order with the state the worker set. `FnaGraphicsBackend`
+turns it on in `CreateDevice` only when the device is OpenGL (sysrenderer query), and every draw-family
+member checks `DeviceThreadDispatch.MustMarshal` (OpenGL and off the device thread). It is drained at the
+top of `Game.Tick` and before every `SwapBuffers`. Log: `[wpr-gputhread]`.
+
+**The deadlock it would otherwise cause is solved in the patcher.** The worker holds `DrawLocker` while it
+waits; `Main.Draw` blocks on `DrawLocker`; nobody drains. So v40 redirects `Monitor.Enter` (every C#
+`lock` in game IL, both overloads) to `WPR.Xna.Compat.Monitor`, which on the device thread with dispatch
+on spins `TryEnter(1 ms)` and drains between attempts. Everywhere else it is a plain `Monitor.Enter`.
+This also covers the "game thread blocks on the worker" shape (Bejeweled) without relying on the native
+worker contexts.
+
+What goes where, and the one non-obvious rule:
+
+| call | off the device thread, on OpenGL |
+| --- | --- |
+| draws, state, render targets, effects, queries, readbacks, renderbuffers | always handed to the device thread |
+| **vertex/index buffer uploads** | **always handed over, Android included** |
+| texture create/upload, buffer create | Android: stays on FNA3D's worker context (concurrent). Elsewhere: handed over, since `ForceToMainThread` would wait for a swap a lock-spinning device thread never does |
+
+**Buffer uploads must follow the draws.** The worker's draws now run on the device context, which
+already has SpriteBatch's shared vertex buffer bound, and GL only promises another context's writes are
+seen after a re-bind. Left on the worker context, the draw used the previous sprite's vertices: PvZ's
+title background came out shrunk into the top-left corner on the emulator's GLES. A new texture cannot
+already be bound, which is why creation stays on the worker context.
+
+GPU matrix, 2026-10-09:
+
+| cell | result |
+| --- | --- |
+| D1 D3D11 | ✅ title → menu (reference) |
+| D2 desktop Vulkan | ❌ pre-existing: the Windows `FNA3D.dll` lacks the passLock fix above |
+| D3 desktop OpenGL | ✅ title → menu → level 1-1 (was a frame-2 hang) |
+| D4 GLES 3.0 + no DXT | ✅ title → menu → level 1-1 |
+| A1 emulator GLES 3.1 | ✅ title → menu → level 1-1, peashooter planted, sun 150 → 50 |
+| A2 emulator Vulkan | ✅ level 1-1, seed packet picked up |
+| P1/P2 S24 | not run — phone not connected |
+| P3 Mali (the reporting device) | unverified — no device |
+
+Montezuma (A1, GL) still reaches a live board. **Patcher table change (v40)**: `--repatch-installed` on
+the desktop; Android repatches on next launch. Not identity-binding.
 
 ### State objects were never bound to the device, so games mutated the shared statics (2026-09-18)
 
@@ -2304,7 +2358,7 @@ log — grep `error reflecting type` there before concluding a stuck game is a t
 
 **This was a patcher table change (v22), and affected games must be repatched.** Unlike v21 it is
 not identity-binding — a v21 install still launches, it just keeps failing to build the affected
-serializer — so `--repatch-installed` is enough. **The current version is 39**; see the next
+serializer — so `--repatch-installed` is enough. **The current version is 40**; see the next
 section.
 
 ### Windows path separators in game file I/O (patcher v23), a patch that silently skipped (v24), and a game-specific IL guard (v25)
@@ -3426,7 +3480,7 @@ Four things that will bite if you touch this:
 `GraphicsDeviceInformation` and `PreparingDeviceSettingsEventArgs` now live in
 `WPR.Framework.Xna` and are rescoped there by `ApplicationPatcher.WprFrameworkXnaTypes`.
 **This bumped `ApplicationPatcher.Version` to 21, and every game installed before it must be
-repatched or reinstalled** (the current version is 39) —
+repatched or reinstalled** (the current version is 40) —
 a v20 install carries IL naming `[FNA]Microsoft.Xna.Framework.Game`, FNA no longer defines it, and
 the game will TypeLoadException at launch. `--repatch-installed` is enough.
 
@@ -3640,7 +3694,7 @@ progress".
 `[iso-fixup] redirected N … call(s)` is written to the install log per assembly, so the count says
 whether a given game used this path at all.
 
-**This was a patcher table change (v20).** The current version is **39** — see "Windows path
+**This was a patcher table change (v20).** The current version is **40** — see "Windows path
 separators in game file I/O" above for the most recent bumps; this paragraph describes what v20
 itself changed. Unlike v19 it is not identity-binding — a v19 install still launches, it
 just keeps the exclusive share and keeps failing to save. `--repatch-installed` is enough (it
