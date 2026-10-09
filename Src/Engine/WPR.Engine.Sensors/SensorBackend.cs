@@ -69,5 +69,28 @@ namespace WPR.Engine.Sensors
                 }
             }
         }
+
+        /// <summary>
+        /// The registered gyroscope, or null when the platform has none (the desktop). Same
+        /// lifetime and the same replace-then-reset rule as <see cref="Accelerometer"/>.
+        /// </summary>
+        public static IGyroscopeProvider? Gyroscope { get; private set; }
+
+        public static void SetGyroscope(IGyroscopeProvider? provider)
+        {
+            IGyroscopeProvider? previous = Gyroscope;
+            Gyroscope = provider;
+
+            if (previous != null && !ReferenceEquals(previous, provider))
+            {
+                try
+                {
+                    previous.ResetForNewLaunch();
+                }
+                catch
+                {
+                }
+            }
+        }
     }
 }

@@ -1,5 +1,27 @@
 {
   "Name": "Halo - Spartan Strike",
   "Description": "A top-down shooter in the Halo universe, following a Spartan through the Covenant war and after it.",
-  "Achievements": []
+  "KeySource": "xbox-id",
+  "Achievements": [
+    {"Key": "1", "Name": "Welcome to New Mombasa", "GamerScore": 10, "Description": "Complete Operation A", "Icon": "welcometonewmombasa.png"},
+    {"Key": "2", "Name": "Homing in", "GamerScore": 10, "Description": "Complete Operation B", "Icon": "homingin.png"},
+    {"Key": "3", "Name": "Ready for Departure", "GamerScore": 10, "Description": "Complete Operation C", "Icon": "readyfordeparture.png"},
+    {"Key": "4", "Name": "Home Sweet Home", "GamerScore": 10, "Description": "Complete Operation D", "Icon": "homesweethome.png"},
+    {"Key": "5", "Name": "No Loose Ends", "GamerScore": 10, "Description": "Complete Operation E", "Icon": "nolooseends.png"},
+    {"Key": "6", "Name": "I Am Your Shield", "GamerScore": 5, "Description": "Keep the Elephant 100% intact in Operation A, Mission 3", "Icon": "iamyourshield.png"},
+    {"Key": "7", "Name": "Not a Scratch", "GamerScore": 5, "Description": "Keep the Wraith 100% intact in Operation B, Mission 4", "Icon": "notascratch.png"},
+    {"Key": "8", "Name": "Night Knight", "GamerScore": 5, "Description": "Do not allow the Watchers to resurrect any Knights in Operation C, Mission 4", "Icon": "nightknight.png"},
+    {"Key": "9", "Name": "Beam Dance", "GamerScore": 5, "Description": "Complete Operation D, Mission 5 without getting hit by a Focus Turret", "Icon": "beamdance.png"},
+    {"Key": "10", "Name": "Mine Sweeper", "GamerScore": 5, "Description": "Do not get hit by any Proximity Mines in Operation E, Mission 2", "Icon": "minesweeper.png"},
+    {"Key": "11", "Name": "Experienced", "GamerScore": 5, "Description": "Earn your first Gold star", "Icon": "experienced.png"},
+    {"Key": "12", "Name": "Battle Hardened", "GamerScore": 20, "Description": "Earn all Gold stars in Operations A through E", "Icon": "battlehardened.png"},
+    {"Key": "13", "Name": "Big Spender", "GamerScore": 20, "Description": "Spend 10,000 credits on loadout upgrades", "Icon": "bigspender.png"},
+    {"Key": "14", "Name": "GEN2", "GamerScore": 10, "Description": "Use every Armor Ability at least once", "Icon": "gen2.png"},
+    {"Key": "15", "Name": "Vidmaster Challenge A", "GamerScore": 10, "Description": "Complete Operation A, Mission 6 with the Blind and Thunderstorm Skulls active", "Icon": "vidmasterchallengea.png"},
+    {"Key": "16", "Name": "Vidmaster Challenge B", "GamerScore": 10, "Description": "Complete Operation B, Mission 6 with the Hollow and Pacifist Skulls active", "Icon": "vidmasterchallengeb.png"},
+    {"Key": "17", "Name": "Vidmaster Challenge C", "GamerScore": 10, "Description": "Complete Operation C, Mission 6 with the Black Eye and Pacifist Skulls active", "Icon": "vidmasterchallengec.png"},
+    {"Key": "18", "Name": "Vidmaster Challenge D", "GamerScore": 10, "Description": "Complete Operation D, Mission 6 with the Famine and Thunderstorm Skulls active", "Icon": "vidmasterchallenged.png"},
+    {"Key": "19", "Name": "Vidmaster Challenge E", "GamerScore": 10, "Description": "Complete Operation E, Mission 6 with the Hollow and Black Eye Skulls active", "Icon": "vidmasterchallengee.png"},
+    {"Key": "20", "Name": "Thorough", "GamerScore": 20, "Description": "Complete all Assault Ops for Operations A through E", "Icon": "thorough.png"}
+  ]
 }

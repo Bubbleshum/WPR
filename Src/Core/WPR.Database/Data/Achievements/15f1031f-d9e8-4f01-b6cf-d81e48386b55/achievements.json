@@ -1,5 +1,27 @@
 {
   "Name": "Mass Effect Infiltrator",
   "Description": "A third-person shooter set in the Mass Effect universe, following a Cerberus operative who turns on his employers.",
-  "Achievements": []
+  "KeySource": "xbox-id",
+  "Achievements": [
+    {"Key": "1", "Name": "Fashion Sense", "GamerScore": 5, "Description": "You alternated Body Armor and / or Helmet in any level at each Checkpoint", "Icon": "fashionsense.png"},
+    {"Key": "2", "Name": "Decked Out", "GamerScore": 10, "Description": "You unlocked all equipment", "Icon": "deckedout.png"},
+    {"Key": "3", "Name": "Diversify to survive", "GamerScore": 10, "Description": "Unlock all skills", "Icon": "diversifytosurvive.png"},
+    {"Key": "4", "Name": "Weapon Specialist", "GamerScore": 10, "Description": "You fully upgraded a weapon", "Icon": "weaponspecialist.png"},
+    {"Key": "5", "Name": "I've got the Power", "GamerScore": 10, "Description": "You fully upgraded a skill", "Icon": "ivegotthepower.png"},
+    {"Key": "6", "Name": "Welcome to the Future", "GamerScore": 15, "Description": "You upgraded all Abilities, Biotics and Melee skills", "Icon": "welcometothefuture.png"},
+    {"Key": "7", "Name": "Incarceration", "GamerScore": 10, "Description": "You finished the Bonus missions", "Icon": "incarceration.png"},
+    {"Key": "8", "Name": "Master Spy", "GamerScore": 5, "Description": "You obtained 30 pieces of Intel", "Icon": "masterspy.png"},
+    {"Key": "9", "Name": "Greed", "GamerScore": 5, "Description": "You collected 1000 credits from terminals/vaults", "Icon": "greed.png"},
+    {"Key": "10", "Name": "Time is Money", "GamerScore": 10, "Description": "You obtained 3 star rating for Time on 15 separate occasions", "Icon": "timeismoney.png"},
+    {"Key": "11", "Name": "Killer moves", "GamerScore": 10, "Description": "You obtained 3 star rating for Style 15 times", "Icon": "killermoves.png"},
+    {"Key": "12", "Name": "Can't Touch This", "GamerScore": 10, "Description": "You obtained 3 star rating for Health 15 times", "Icon": "canttouchthis.png"},
+    {"Key": "13", "Name": "Savior", "GamerScore": 10, "Description": "You completed the Paragon ending", "Icon": "savior.png"},
+    {"Key": "14", "Name": "Everyone dies", "GamerScore": 10, "Description": "You completed the Renegade ending", "Icon": "everyonedies.png"},
+    {"Key": "15", "Name": "Tame the Beast", "GamerScore": 5, "Description": "You defeated X1", "Icon": "tamethebeast.png"},
+    {"Key": "16", "Name": "Expert Marksman", "GamerScore": 5, "Description": "You executed a chain kill of 5 or more enemies", "Icon": "expertmarksman.png"},
+    {"Key": "17", "Name": "Field Veteran", "GamerScore": 15, "Description": "You obtained 15 Veteran statuses after a checkpoint", "Icon": "fieldveteran.png"},
+    {"Key": "18", "Name": "3 words Fa-Bu-Lous!", "GamerScore": 15, "Description": "You achieved a style rating of 30 or more in a single battle/checkpoint", "Icon": "a3wordsfabulous.png"},
+    {"Key": "19", "Name": "Exterminator", "GamerScore": 10, "Description": "You performed 25 headshots with the Sniper Rifle", "Icon": "exterminator.png"},
+    {"Key": "20", "Name": "End Game", "GamerScore": 20, "Description": "You completed the game", "Icon": "endgame.png"}
+  ]
 }

@@ -126,6 +126,16 @@ namespace WPR.Wp8Native
         /// <summary>Ticks per second reported to the image: one microsecond of resolution.</summary>
         private const long PerformanceFrequency = 1_000_000;
 
+        /// <summary>
+        /// Where the image's local folder lives on the host. A temp folder by default, which is
+        /// right for the probe; an Android host points it at the app's own storage, because the
+        /// cache directory can be cleared under a running game.
+        /// </summary>
+        public static string SandboxRoot { get; set; } =
+            Environment.GetEnvironmentVariable("WPR_SANDBOX") is { Length: > 0 } configured
+                ? configured
+                : Path.Combine(Path.GetTempPath(), "wpr-wp8-sandbox");
+
         public HostStubs(ArmEmulator emulator, WinRtRuntime winRt, HStringHeap strings, string imageDirectory)
         {
             _emulator = emulator;
@@ -141,7 +151,7 @@ namespace WPR.Wp8Native
                 emulator,
                 _frame,
                 readRoot: imageDirectory,
-                writeRoot: Path.Combine(Path.GetTempPath(), "wpr-wp8-sandbox"));
+                writeRoot: SandboxRoot);
 
             _handlers = new Dictionary<string, Action>(StringComparer.Ordinal)
             {
@@ -260,6 +270,11 @@ namespace WPR.Wp8Native
                 // HRESULT GetActivationFactoryByPCWSTR(void* className, Guid& iid, void** factory)
                 ["?GetActivationFactoryByPCWSTR@@YAJPAXAAVGuid@Platform@@PAPAX@Z"] = ActivateFactory,
 
+                // HRESULT Platform::Details::GetActivationFactory(ModuleBase*, HSTRING, IActivationFactory**):
+                // a C++/CX component DLL's DllGetActivationFactory, answered from its own creator map.
+                ["?GetActivationFactory@Details@Platform@@YAJPAVModuleBase@1WRL@Microsoft@@PAUHSTRING__@@PAPAUIActivationFactory@@@Z"]
+                    = () => _winRt.ModuleGetActivationFactory(),
+
                 // --- memory and string ---
                 // These have to be real. Returning 0 from memcpy or strlen does not fail
                 // loudly, it quietly corrupts whatever the image was building, and the
@@ -290,6 +305,8 @@ namespace WPR.Wp8Native
 
                 // Sharing the original is safe for the same reason.
                 ["WindowsDuplicateString"] = () => WriteOutPointer(Arg(1), Arg(0)),
+
+                ["WindowsGetStringLen"] = () => Return(_strings.LengthOf(Arg(0))),
 
                 ["WindowsGetStringRawBuffer"] = () =>
                 {
@@ -325,9 +342,165 @@ namespace WPR.Wp8Native
             // them and none of them are specific to this image.
             _crt = new CrtLibrary(emulator, _frame);
             _crt.RegisterInto(_handlers);
+            Maths = new MathLibrary(emulator, _frame);
+            Maths.RegisterInto(_handlers);
+            Streams = new StreamLibrary(emulator, _frame);
+            Streams.RegisterInto(_handlers);
+            Rtti = new RttiLibrary(emulator, _frame);
+            Rtti.RegisterInto(_handlers);
+            Extras = new CrtExtras(emulator, _frame);
+            Extras.RegisterInto(_handlers);
+            Concurrency = new ConcurrencyLibrary(emulator, _frame);
+            Concurrency.RegisterInto(_handlers);
+            _winRt.RegisterEventSources(_handlers);
+            // After the others: it replaces their single-threaded sleep and thread-id answers.
+            Threads = new ThreadLibrary(emulator, _frame);
+            if (Environment.GetEnvironmentVariable("WPR_NOTHREADS") is null)
+            {
+                Threads.RegisterInto(_handlers);
+            }
+
+            // FILE* __iob_func(void): the CRT's stdin/stdout/stderr array. Three zeroed FILEs
+            // that the file library does not know, so fprintf(stderr, ...) writes nowhere -
+            // where answering 0 made it write through a null FILE.
+            _handlers["__iob_func"] = () =>
+            {
+                if (_iob == 0)
+                {
+                    _iob = emulator.AllocateHeap(3 * 0x20);
+                    emulator.WriteMemory(_iob, new byte[3 * 0x20]);
+                }
+
+                Return(_iob);
+            };
             Files.RegisterInto(_handlers);
             _sync = new SyncLibrary(emulator, _frame);
             _sync.RegisterInto(_handlers);
+            RegisterPushNotifications();
+            RegisterAlignedAllocation();
+        }
+
+        /// <summary>Aligned block -> (block actually allocated, size asked for).</summary>
+        private readonly Dictionary<long, (long Block, long Size)> _aligned = new();
+
+        /// <summary>
+        /// _aligned_malloc and friends. Unimplemented they answered NULL, and Modern Combat 4 built
+        /// 83 objects at address 0 - the next virtual call read a "vtable" from there and jumped
+        /// into the DLL's data. The heap's blocks are 16-byte aligned, so alignments up to 16 are
+        /// plain allocations; larger ones over-allocate and remember the block for _aligned_free.
+        /// </summary>
+        private void RegisterAlignedAllocation()
+        {
+            long AllocateAligned(long size, long alignment)
+            {
+                alignment = alignment <= 16 ? 16 : alignment;
+                if (alignment == 16)
+                {
+                    long block = _emulator.AllocateHeap(Math.Max(size, 1));
+                    if (block != 0)
+                    {
+                        _aligned[block] = (block, size);
+                    }
+
+                    return block;
+                }
+
+                long raw = _emulator.AllocateHeap(size + alignment);
+                if (raw == 0)
+                {
+                    return 0;
+                }
+
+                long aligned = (raw + alignment - 1) & ~(alignment - 1);
+                _aligned[aligned] = (raw, size);
+                return aligned;
+            }
+
+            void FreeAligned(long pointer)
+            {
+                if (pointer == 0)
+                {
+                    return;
+                }
+
+                if (_aligned.Remove(pointer, out var entry))
+                {
+                    _emulator.FreeHeap(entry.Block);
+                    return;
+                }
+
+                _emulator.FreeHeap(pointer);
+            }
+
+            // void* _aligned_malloc(size_t size, size_t alignment)
+            _handlers["_aligned_malloc"] = () => Return(AllocateAligned(Arg(0), Arg(1)));
+
+            // void* _aligned_offset_malloc(size_t size, size_t alignment, size_t offset): the
+            // offset is rare enough that aligning the start is the honest approximation.
+            _handlers["_aligned_offset_malloc"] = () => Return(AllocateAligned(Arg(0), Arg(1)));
+
+            _handlers["_aligned_free"] = () =>
+            {
+                FreeAligned(Arg(0));
+                Return(0);
+            };
+
+            // void* _aligned_realloc(void* memblock, size_t size, size_t alignment)
+            _handlers["_aligned_realloc"] = () =>
+            {
+                long old = Arg(0), size = Arg(1), alignment = Arg(2);
+                if (size == 0)
+                {
+                    FreeAligned(old);
+                    Return(0);
+                    return;
+                }
+
+                long fresh = AllocateAligned(size, alignment);
+                if (old != 0 && fresh != 0)
+                {
+                    long keep = _aligned.TryGetValue(old, out var entry) ? Math.Min(entry.Size, size) : 0;
+                    if (keep > 0)
+                    {
+                        _emulator.WriteMemory(fresh, _emulator.ReadMemory(old, (int)keep));
+                    }
+
+                    FreeAligned(old);
+                }
+
+                Return(fresh);
+            };
+
+            // size_t _aligned_msize(void* memblock, size_t alignment, size_t offset)
+            _handlers["_aligned_msize"] = () => Return(_aligned.TryGetValue(Arg(0), out var entry) ? entry.Size : 0);
+        }
+
+        /// <summary>
+        /// Gameloft's PushNotificationWP8.dll, a native library Modern Combat 4 links against: init,
+        /// the channel URI, clean-up. There is no push service, so it reports a channel that never
+        /// opened.
+        /// </summary>
+        private void RegisterPushNotifications()
+        {
+            const string Ns = "@PushNotification@Push@@";
+            _handlers[$"?Init{Ns}SAHXZ"] = () => Return(0);
+            _handlers[$"?CleanUp{Ns}SAXXZ"] = () => Return(0);
+
+            // static std::string GetURI(): returned through a hidden pointer in r0. MSVC 2012's
+            // std::string is a 16-byte small buffer, then size and capacity; empty is size 0,
+            // capacity 15, a NUL in the buffer. Left unwritten, the caller destroys garbage.
+            _handlers[$"?GetURI{Ns}SA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@XZ"] = () =>
+            {
+                long result = Arg(0);
+                if (result != 0)
+                {
+                    _emulator.WriteMemory(result, new byte[16]);
+                    _emulator.WriteUInt32(result + 16, 0);
+                    _emulator.WriteUInt32(result + 20, 15);
+                }
+
+                Return(result);
+            };
         }
 
         /// <summary>
@@ -342,6 +515,26 @@ namespace WPR.Wp8Native
         /// </summary>
         public IReadOnlyList<string> UndeliveredThrows => _undeliveredThrows;
 
+        /// <summary>
+        /// Imports that reached no handler and were answered with zero, with call counts. The
+        /// list of places where the image was told something nobody decided to tell it.
+        /// </summary>
+        public MathLibrary Maths { get; private set; } = null!;
+
+        public StreamLibrary Streams { get; private set; } = null!;
+
+        public RttiLibrary Rtti { get; private set; } = null!;
+
+        public ConcurrencyLibrary Concurrency { get; private set; } = null!;
+
+        public ThreadLibrary Threads { get; private set; } = null!;
+
+        public CrtExtras Extras { get; private set; } = null!;
+
+        private long _iob;
+
+        public Dictionary<string, int> DefaultedCalls { get; } = new(StringComparer.Ordinal);
+
         private readonly List<string> _constructedExceptions = new();
 
         /// <summary>
@@ -354,6 +547,11 @@ namespace WPR.Wp8Native
         public Direct3DRuntime Direct3D { get; }
 
         public XAudio2Runtime XAudio2 { get; }
+
+        /// <summary>HTTP requests, which all fail as they would on a phone with no signal.</summary>
+        public OfflineXmlHttpRequest Http => _http ??= new OfflineXmlHttpRequest(_emulator, _frame);
+
+        private OfflineXmlHttpRequest? _http;
 
         private const long CoNotInitialized = unchecked((int)0x800401F0);
         private const long ClassNotRegistered = unchecked((int)0x80040154);
@@ -434,8 +632,9 @@ namespace WPR.Wp8Native
             ["CoGetInterfaceAndReleaseStream"] = () => FailWithNull(Arg(2), NoInterface),
 
             // HRESULT CoCreateInstanceFromApp(rclsid, punkOuter, dwClsCtx, reserved, count,
-            // MULTI_QI*) - six arguments, and nothing here registers a CLSID.
-            ["CoCreateInstanceFromApp"] = () => Return(ClassNotRegistered),
+            // MULTI_QI*) - six arguments. msxml6's HTTP request is the one class answered: a
+            // phone always has it, and being offline is reported later, per request.
+            ["CoCreateInstanceFromApp"] = () => Http.CoCreateInstanceFromApp(otherwise: ClassNotRegistered),
 
             // HRESULT CoGetApartmentType(APTTYPE *pAptType, APTTYPEQUALIFIER *pAptQualifier).
             // One thread, and it behaves like the multithreaded apartment.
@@ -490,10 +689,57 @@ namespace WPR.Wp8Native
             }
         }
 
-        public void Dispatch(string fullName)
+        /// <summary>
+        /// Whether an import has a real implementation, as opposed to reaching the shaped
+        /// constructor stand-in or the default "return 0". Static: it answers for imports the
+        /// run never reached, which is the point - a gap found before it is executed.
+        /// </summary>
+        public bool IsImplemented(string function) =>
+            _handlers.ContainsKey(function) ||
+            ComStubs.ContainsKey(function) ||
+            function is "D3D11CreateDevice" or "XAudio2Create" or "#1" ||
+            (function.StartsWith("??0", StringComparison.Ordinal) &&
+             function.Contains("Exception@Platform@@", StringComparison.Ordinal));
+
+        /// <summary>
+        /// WPR_WP8_CALLSTATS=1: count every import call, and (with <see cref="ArmEmulator.TakeThreadUsage"/>)
+        /// the instructions each guest thread retires; the host logs both per stats window. It is how
+        /// a slow title is told apart from one spinning on a timer or a lock.
+        /// </summary>
+        public static readonly bool CountCalls = Environment.GetEnvironmentVariable("WPR_WP8_CALLSTATS") is not null;
+
+        public static readonly Dictionary<string, long> CallCounts = new();
+
+        /// <summary>
+        /// The handler <see cref="Dispatch"/> would run for <paramref name="fullName"/> when that is
+        /// a plain table entry, so the trap can call it directly; null for anything Dispatch decides
+        /// per call (ordinals, constructors, defaults).
+        /// </summary>
+        public Action? ResolveDirect(string fullName)
         {
             int split = fullName.IndexOf('!');
             string function = split >= 0 ? fullName[(split + 1)..] : fullName;
+            return !function.StartsWith('#') && _handlers.TryGetValue(function, out Action? handler) ? handler : null;
+        }
+
+        public void Dispatch(string fullName)
+        {
+            if (CountCalls)
+            {
+                lock (CallCounts)
+                {
+                    CallCounts[fullName] = CallCounts.GetValueOrDefault(fullName) + 1;
+                }
+            }
+
+            int split = fullName.IndexOf('!');
+            string function = split >= 0 ? fullName[(split + 1)..] : fullName;
+
+            // Imports by ordinal are only unique per DLL.
+            if (function.StartsWith('#') && Extras.TryWinsock(fullName))
+            {
+                return;
+            }
 
             if (_handlers.TryGetValue(function, out Action? handler))
             {
@@ -570,6 +816,7 @@ namespace WPR.Wp8Native
             // Everything else returns zero. For a function returning void or a handle
             // nobody checks that is harmless; for anything else it is a lie the caller
             // will eventually notice, which is exactly what this probe measures.
+            DefaultedCalls[function] = DefaultedCalls.TryGetValue(function, out int calls) ? calls + 1 : 1;
             Return(0);
         }
 
@@ -704,19 +951,42 @@ namespace WPR.Wp8Native
             // this, never on the frame they are unwinding to.
             _funcletStack = _emulator.ReadRegister(Arm.UC_ARM_REG_SP) - FuncletStackMargin;
 
+            // `throw;` is _CxxThrowException(NULL, NULL): rethrow the exception the innermost
+            // catch is handling. Read it before the walk, which trims the active catches. Read
+            // as a throw of nothing it had no type, so only catch(...) could match: Angry Birds
+            // Stella rethrows rcs::CloudServiceException that way, and it skipped the typed catch
+            // that handles it, reached its thread wrapper's catch(...) and called std::terminate.
+            ThrownException? rethrown = Arg(0) == 0 && Arg(1) == 0 ? CurrentlyHandled() : null;
+
             ThrowStack = _emulator.Unwinder.Walk(
                 pc: _emulator.ReturnAddress & ~1L,
                 liveRegisters: coreRegisters.Select(_emulator.ReadRegister).ToArray());
+            ThrowStack = ContinueThroughCatchFunclet(ThrowStack);
 
-            ThrownText = ReadableStringsIn(Arg(0), 0x100);
+            ThrownText = ReadableStringsIn(rethrown?.Object ?? Arg(0), 0x100);
 
             // r0 is the exception object, r1 its ThrowInfo.
             CxxExceptionModel model = _emulator.ExceptionModel;
-            Thrown = model.ReadThrow(Arg(0), Arg(1));
+            Thrown = rethrown ?? model.ReadThrow(Arg(0), Arg(1));
+            if (rethrown is not null)
+            {
+                TransferLog.Add($"rethrow of the {rethrown.TypeName} being handled");
+            }
             CatchCandidates = model.FindHandlers(ThrowStack, Thrown);
+
+            RecordThrow();
 
             if (CatchCandidates.Count == 0)
             {
+                // Escaping a background thread ends that thread, as an unhandled exception in a
+                // worker would on a device that kept the app alive - not the whole run. Angry
+                // Birds' network thread throws HttpRequestException with no catch of its own once
+                // threads really run; before they did, it simply never started.
+                if (_emulator.EndCurrentGuestThread($"uncaught {Thrown.TypeName}"))
+                {
+                    return;
+                }
+
                 _emulator.Stop(
                     $"the image threw {Thrown.TypeName}; unwound {ThrowStack.Count} frames, " +
                     "no matching catch found");
@@ -724,6 +994,37 @@ namespace WPR.Wp8Native
             }
 
             TransferToHandler(CatchCandidates[0], Thrown);
+        }
+
+        /// <summary>
+        /// Every C++ throw the image made, with what it carried and whether anything caught
+        /// it.
+        /// </summary>
+        /// <remarks>
+        /// The fatal throw is rarely the first thing that went wrong. A caught one leaves no
+        /// trace at all - control transfers into the funclet and the run carries on - so a
+        /// game that swallows an error during setup and fails much later looks, from the
+        /// report, like it failed for no reason. This is the history that connects them.
+        /// </remarks>
+        public List<string> ThrowHistory { get; } = new();
+
+        private void RecordThrow()
+        {
+            if (ThrowHistory.Count >= 200)
+            {
+                return;
+            }
+
+            string caught = CatchCandidates.Count == 0
+                ? "UNCAUGHT"
+                : $"caught in 0x{CatchCandidates[0].Frame.FunctionRva:X8}";
+
+            string carried = ThrownText.Count == 0
+                ? string.Empty
+                : " " + string.Join(" | ", ThrownText.Take(3));
+
+            ThrowHistory.Add(
+                $"frame {_winRt.ProcessEventsCalls,5}  {Thrown.TypeName}  {caught}{carried}");
         }
 
         /// <summary>
@@ -752,10 +1053,18 @@ namespace WPR.Wp8Native
                 return;
             }
 
-            // The funclet reads the caught object out of its own frame, not a register.
+            // The funclet reads the caught object out of its own frame, not a register - and
+            // on ARM the catch-object offset (always negative) is relative to the stack pointer
+            // at the function's ENTRY, i.e. above its whole frame, not to the post-prologue sp
+            // the continuation resumes on. Measured on Angry Birds Classic: frame 0xD0 bytes,
+            // offset -0x84, and the funclet reads the reference at r7+0x4C = sp+0xD0-0x84.
+            // Writing it relative to the inner sp put it below the stack, and the handler's
+            // e.what() called through whatever stale word sat at r7+0x4C. Earlier titles only
+            // got away with it because their handlers never read the object.
             if (candidate.CatchObjectOffset != 0)
             {
-                _emulator.WriteUInt32(frame + candidate.CatchObjectOffset, (uint)thrown.Object);
+                long entrySp = candidate.Frame.FramePointer + candidate.Frame.FrameBytes;
+                _emulator.WriteUInt32(entrySp + candidate.CatchObjectOffset, (uint)thrown.Object);
             }
 
             // Destructors first, innermost outwards, then the catch itself.
@@ -766,7 +1075,7 @@ namespace WPR.Wp8Native
                 $"entering catch({candidate.CaughtType}) funclet 0x{candidate.FuncletRva:X8} " +
                 $"with frame 0x{frame:X8}, after {cleanups.Count} cleanup funclet(s)");
 
-            RunCleanups(cleanups, 0, () => EnterCatchFunclet(candidate, frame, funclet));
+            RunCleanups(cleanups, 0, () => EnterCatchFunclet(candidate, frame, funclet, thrown));
         }
 
         /// <summary>
@@ -821,11 +1130,62 @@ namespace WPR.Wp8Native
         /// Here that was a std::vector destructor walking a std::string, in a loop that
         /// destroyed twelve megabytes of heap before the runaway detector caught it.
         /// </remarks>
-        private void EnterFunclet(long funclet, UnwoundFrame frame, string name, Action onReturn)
+        private long EnterFunclet(long funclet, UnwoundFrame frame, string name, Action onReturn)
         {
             RestoreCalleeSaved(frame);
             _emulator.WriteRegister(Arm.UC_ARM_REG_SP, _funcletStack);
-            _emulator.CallEmulated(name, funclet, [0, frame.FramePointer], onReturn);
+            return _emulator.CallEmulated(name, funclet, [0, frame.FramePointer], onReturn, recycle: true);
+        }
+
+        /// <summary>
+        /// Catch funclets currently running, innermost last: the trap each will return to, and
+        /// the frames of the throw that entered it which lie above its establisher.
+        /// </summary>
+        private readonly List<(long ReturnTrap, IReadOnlyList<UnwoundFrame> Outer)> _activeCatches = new();
+
+        /// <summary>The exception each running catch funclet is handling, by its return trap.</summary>
+        private readonly Dictionary<long, ThrownException> _handledBy = new();
+
+        /// <summary>The exception the innermost running catch is handling - what `throw;` rethrows.</summary>
+        private ThrownException? CurrentlyHandled() =>
+            _activeCatches.Count > 0 && _handledBy.TryGetValue(_activeCatches[^1].ReturnTrap, out ThrownException? handled)
+                ? handled
+                : null;
+
+        /// <summary>
+        /// A throw from inside a catch block.
+        /// </summary>
+        /// <remarks>
+        /// The host calls a catch funclet with lr at a return trap, so a walk from a throw inside
+        /// one goes a frame or two and stops at that trap - "return address is not in executable
+        /// code" - and the search used to give up there with "no matching catch". On a device the
+        /// search would carry on into the establisher's callers. Those are exactly the frames of
+        /// the original throw above the establisher, which were recorded when the catch was
+        /// entered, so they are spliced on here. The establisher itself is skipped: its
+        /// try/catch is the one being executed, and offering it again loops. The abandoned
+        /// funclet never returns, so its context is dropped along with any inside it.
+        /// Angry Birds Space hits this on its first episode screen: a Lua error caught and
+        /// rethrown as a scene error.
+        /// </remarks>
+        private IReadOnlyList<UnwoundFrame> ContinueThroughCatchFunclet(IReadOnlyList<UnwoundFrame> walked)
+        {
+            if (walked.Count == 0 || _activeCatches.Count == 0)
+            {
+                return walked;
+            }
+
+            UnwoundFrame last = walked[^1];
+            long stoppedAt = last.Address & ~1L;
+            int index = _activeCatches.FindLastIndex(c => (c.ReturnTrap & ~1L) == stoppedAt);
+            if (index < 0)
+            {
+                return walked;
+            }
+
+            IReadOnlyList<UnwoundFrame> outer = _activeCatches[index].Outer;
+            _activeCatches.RemoveRange(index, _activeCatches.Count - index);
+            TransferLog.Add($"   throw from inside a catch funclet: continuing the search in {outer.Count} outer frame(s)");
+            return [.. walked.Take(walked.Count - 1), .. outer];
         }
 
         /// <summary>
@@ -866,13 +1226,33 @@ namespace WPR.Wp8Native
             }
         }
 
-        private void EnterCatchFunclet(CatchCandidate candidate, long frame, long funclet)
+        private void EnterCatchFunclet(CatchCandidate candidate, long frame, long funclet, ThrownException thrown)
         {
             // The code after the catch belongs to the establisher frame and expects its own
             // r4-r11, not whatever the last cleanup funclet left in them.
-            EnterFunclet(funclet | 1, candidate.Frame, "catch funclet",
+            IReadOnlyList<UnwoundFrame> stack = ThrowStack;
+            int establisher = -1;
+            for (int i = 0; i < stack.Count; i++)
+            {
+                if (ReferenceEquals(stack[i], candidate.Frame))
+                {
+                    establisher = i;
+                    break;
+                }
+            }
+
+            IReadOnlyList<UnwoundFrame> outer = establisher < 0 ? [] : stack.Skip(establisher + 1).ToList();
+            long returnTrap = 0;
+
+            returnTrap = EnterFunclet(funclet | 1, candidate.Frame, "catch funclet",
                 onReturn: () =>
                 {
+                    int done = _activeCatches.FindLastIndex(c => c.ReturnTrap == returnTrap);
+                    if (done >= 0)
+                    {
+                        _activeCatches.RemoveRange(done, _activeCatches.Count - done);
+                    }
+
                     long continuation = Arg(0);
                     long stack = _emulator.ReadRegister(Arm.UC_ARM_REG_SP);
 
@@ -896,6 +1276,9 @@ namespace WPR.Wp8Native
                     _emulator.WriteRegister(Arm.UC_ARM_REG_SP, frame);
                     _emulator.ContinueAt(continuation);
                 });
+
+            _activeCatches.Add((returnTrap, outer));
+            _handledBy[returnTrap] = thrown;
         }
 
         /// <summary>What the image threw, once it has thrown.</summary>

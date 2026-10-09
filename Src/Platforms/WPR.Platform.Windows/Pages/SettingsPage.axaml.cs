@@ -22,6 +22,7 @@ namespace WPR.Platform.Windows.Pages
             InitializeComponent();
 
             WireHighlightColorPicker();
+            WireDisplaySettings();
             WireOnlineSettings();
 
             TextBox pathTextBox = this.Get<TextBox>("dataStoragePathText");
@@ -90,6 +91,23 @@ namespace WPR.Platform.Windows.Pages
             {
                 libraryPathTextBox.Text = "";
                 Configuration.Current.GameLibraryPath = null;
+                Configuration.Current.Save();
+            };
+        }
+
+        /// <summary>
+        /// Fullscreen games. Read when a game's window is created, so it applies from the next
+        /// launch; F11 / Alt+Enter in a game switches the running one and saves the same setting.
+        /// </summary>
+        private void WireDisplaySettings()
+        {
+            CheckBox fullscreen = this.Get<CheckBox>("gameFullscreenCheckBox");
+            fullscreen.IsChecked = Configuration.Current.GameFullscreen;
+            fullscreen.IsCheckedChanged += (_, _) =>
+            {
+                bool on = fullscreen.IsChecked == true;
+                if (on == Configuration.Current.GameFullscreen) return;
+                Configuration.Current.GameFullscreen = on;
                 Configuration.Current.Save();
             };
         }

@@ -654,6 +654,13 @@ namespace Microsoft.Xna.Framework
 
 			INTERNAL_SetIcon(window, title);
 
+			// WPR: a desktop game opens the way the player last left one (F11 / Alt+Enter).
+			// Phones are always fullscreen through IsMobilePlatform() and never letterboxed.
+			_wprDesktopFullscreen = !IsMobilePlatform() &&
+				WPR.Xna.Rhi.PresentationLetterbox.FullscreenPreferred;
+			_wprBackbufferRefreshPending = false;
+			WPR.Xna.Rhi.PresentationLetterbox.Destination = null;
+
 			// Disable the screensaver.
 			SDL.SDL_DisableScreenSaver();
 
@@ -734,7 +741,12 @@ namespace Microsoft.Xna.Framework
 			 * runs during Game.Initialize, AFTER the device exists — and never calls ApplyChanges,
 			 * so the value never reached a window. Measured on a 2400x1080 device: black bars on
 			 * all four sides plus both system bars, against Mirror's Edge filling the screen. */
-			wantsFullscreen = IsMobilePlatform();
+			wantsFullscreen = IsMobilePlatform() || _wprDesktopFullscreen;
+
+			// The game's backbuffer size, before ScaleForWindow turns it into window units: the
+			// letterbox is fitted to this.
+			int backBufferWidth = clientWidth;
+			int backBufferHeight = clientHeight;
 
 			bool center = false;
 
@@ -827,14 +839,188 @@ namespace Microsoft.Xna.Framework
 				);
 			}
 
-			// Update the mouse window bounds
-			if (Mouse.WindowHandle == window)
+			// Update the mouse window bounds, and the letterbox when fullscreen on desktop
+			WprUpdatePresentationArea(window, backBufferWidth, backBufferHeight);
+		}
+
+		#region WPR desktop fullscreen
+
+		/* WPR: desktop games can run fullscreen. The window goes FULLSCREEN_DESKTOP (no mode
+		 * change, so alt-tab is instant) and the game's backbuffer, which keeps the size the game
+		 * asked for, is fitted to the largest rectangle of its own aspect ratio and centred. A
+		 * portrait game gets bars at the sides. See WPR.Xna.Rhi.PresentationLetterbox.
+		 *
+		 * F11 or Alt+Enter toggles it, and the choice is saved so the next game opens the same
+		 * way. The game is never told: its backbuffer, viewport and Window.ClientBounds do not
+		 * change, only where the frame lands on the screen. That is also why this does not go
+		 * through GraphicsDeviceManager.IsFullScreen, which the WP7 compat manager pins to false
+		 * on desktop and which would raise DeviceReset in the game.
+		 *
+		 * Three things have to move together, and missing any one of them is a visible bug:
+		 *  - the swapchain must be rebuilt at the new window size (WprRefreshBackbuffer), or DXGI
+		 *    stretches the old one across the screen and the aspect ratio is lost;
+		 *  - Present must be given the letterbox as its destination rectangle;
+		 *  - every window-to-game input conversion must subtract the bar
+		 *    (Mouse.INTERNAL_WindowOffsetX/Y), or every click lands beside where the player aimed.
+		 */
+		private static bool _wprDesktopFullscreen;
+		private static bool _wprBackbufferRefreshPending;
+		private static int _wprPresentBackBufferWidth;
+		private static int _wprPresentBackBufferHeight;
+		private static int _wprWindowWidth;
+		private static int _wprWindowHeight;
+		private static bool _wprLetterboxed;
+
+		private static void WprUpdatePresentationArea(IntPtr window, int backBufferWidth, int backBufferHeight)
+		{
+			if (backBufferWidth > 0 && backBufferHeight > 0)
 			{
-				Rectangle b = GetWindowBounds(window);
-				Mouse.INTERNAL_WindowWidth = b.Width;
-				Mouse.INTERNAL_WindowHeight = b.Height;
+				_wprPresentBackBufferWidth = backBufferWidth;
+				_wprPresentBackBufferHeight = backBufferHeight;
+			}
+			WprUpdatePresentationArea(window);
+		}
+
+		private static void WprUpdatePresentationArea(IntPtr window)
+		{
+			if (window == IntPtr.Zero)
+			{
+				return;
+			}
+
+			Rectangle b = GetWindowBounds(window);
+			_wprWindowWidth = b.Width;
+			_wprWindowHeight = b.Height;
+
+			_wprLetterboxed = _wprDesktopFullscreen &&
+				!IsMobilePlatform() &&
+				_wprPresentBackBufferWidth > 0 &&
+				_wprPresentBackBufferHeight > 0 &&
+				b.Width > 0 &&
+				b.Height > 0;
+
+			Rectangle area = _wprLetterboxed
+				? WPR.Xna.Rhi.PresentationLetterbox.Fit(
+					b.Width, b.Height,
+					_wprPresentBackBufferWidth, _wprPresentBackBufferHeight)
+				: new Rectangle(0, 0, b.Width, b.Height);
+
+			if (_wprLetterboxed)
+			{
+				// Present works in drawable pixels, which differ from window units under high DPI.
+				FNA3D.FNA3D_GetDrawableSize(window, out int dw, out int dh);
+				if (dw <= 0 || dh <= 0)
+				{
+					dw = b.Width;
+					dh = b.Height;
+				}
+				WPR.Xna.Rhi.PresentationLetterbox.Destination = WPR.Xna.Rhi.PresentationLetterbox.Fit(
+					dw, dh,
+					_wprPresentBackBufferWidth, _wprPresentBackBufferHeight);
+			}
+			else
+			{
+				WPR.Xna.Rhi.PresentationLetterbox.Destination = null;
+			}
+
+			if (Mouse.WindowHandle == window || Mouse.WindowHandle == IntPtr.Zero)
+			{
+				Mouse.INTERNAL_WindowOffsetX = area.X;
+				Mouse.INTERNAL_WindowOffsetY = area.Y;
+				Mouse.INTERNAL_WindowWidth = Math.Max(area.Width, 1);
+				Mouse.INTERNAL_WindowHeight = Math.Max(area.Height, 1);
 			}
 		}
+
+		/* SDL finger coordinates are normalised to the whole window; the game wants them
+		 * normalised to its own surface. Identity unless letterboxed. */
+		private static float WprFingerX(float x) => _wprLetterboxed
+			? (x * _wprWindowWidth - Mouse.INTERNAL_WindowOffsetX) / Mouse.INTERNAL_WindowWidth
+			: x;
+
+		private static float WprFingerY(float y) => _wprLetterboxed
+			? (y * _wprWindowHeight - Mouse.INTERNAL_WindowOffsetY) / Mouse.INTERNAL_WindowHeight
+			: y;
+
+		private static float WprFingerDX(float dx) => _wprLetterboxed
+			? dx * _wprWindowWidth / Mouse.INTERNAL_WindowWidth
+			: dx;
+
+		private static float WprFingerDY(float dy) => _wprLetterboxed
+			? dy * _wprWindowHeight / Mouse.INTERNAL_WindowHeight
+			: dy;
+
+		private static void WprToggleDesktopFullscreen(Game game)
+		{
+			IntPtr window = game.Window.Handle;
+			_wprDesktopFullscreen = !_wprDesktopFullscreen;
+
+			GraphicsDevice device = game.GraphicsDevice;
+			if (device != null)
+			{
+				_wprPresentBackBufferWidth = device.PresentationParameters.BackBufferWidth;
+				_wprPresentBackBufferHeight = device.PresentationParameters.BackBufferHeight;
+			}
+
+			if (_wprDesktopFullscreen)
+			{
+				SDL.SDL_SetWindowFullscreen(
+					window,
+					(uint) SDL.SDL_WindowFlags.SDL_WINDOW_FULLSCREEN_DESKTOP
+				);
+			}
+			else
+			{
+				SDL.SDL_SetWindowFullscreen(window, 0);
+				int w = _wprPresentBackBufferWidth;
+				int h = _wprPresentBackBufferHeight;
+				if (w > 0 && h > 0)
+				{
+					SDL.SDL_RestoreWindow(window);
+					ScaleForWindow(window, false, ref w, ref h);
+					SDL.SDL_SetWindowSize(window, w, h);
+					int pos = SDL.SDL_WINDOWPOS_CENTERED_DISPLAY(
+						SDL.SDL_GetWindowDisplayIndex(window)
+					);
+					SDL.SDL_SetWindowPosition(window, pos, pos);
+				}
+			}
+
+			WprUpdatePresentationArea(window);
+			_wprBackbufferRefreshPending = true;
+			WPR.Xna.Rhi.PresentationLetterbox.SavePreference(_wprDesktopFullscreen);
+
+			Rectangle? d = WPR.Xna.Rhi.PresentationLetterbox.Destination;
+			System.Diagnostics.Trace.WriteLine(
+				"[wpr-fullscreen] " + (_wprDesktopFullscreen ? "on" : "off") +
+				" window=" + _wprWindowWidth + "x" + _wprWindowHeight +
+				" backbuffer=" + _wprPresentBackBufferWidth + "x" + _wprPresentBackBufferHeight +
+				(d.HasValue ? " presented at " + d.Value.X + "," + d.Value.Y + " " + d.Value.Width + "x" + d.Value.Height : "")
+			);
+		}
+
+		/* Rebuilds the swapchain at the window's new size. Runs from PollEvents, i.e. between
+		 * frames, and retries on the next tick if the game has a render target bound. */
+		private static void WprRefreshBackbufferIfPending(Game game)
+		{
+			if (!_wprBackbufferRefreshPending)
+			{
+				return;
+			}
+			GraphicsDevice device = game.GraphicsDevice;
+			if (device == null)
+			{
+				_wprBackbufferRefreshPending = false;
+				return;
+			}
+			if (device.WprRefreshBackbuffer())
+			{
+				_wprBackbufferRefreshPending = false;
+				WprUpdatePresentationArea(game.Window.Handle);
+			}
+		}
+
+		#endregion
 
 		public static void ScaleForWindow(IntPtr window, bool invert, ref int w, ref int h)
 		{
@@ -1190,6 +1376,17 @@ namespace Microsoft.Xna.Framework
 					// fast real ones. See the remarks on IKeyboardEmulationHost.IsBackKey.
 					Keys key = ToXNAKey(ref evt.key.keysym);
 
+					// WPR: F11 or Alt+Enter toggles fullscreen on desktop.
+					if (evt.key.repeat == 0 &&
+						!IsMobilePlatform() &&
+						(evt.key.keysym.sym == SDL.SDL_Keycode.SDLK_F11 ||
+						 ((evt.key.keysym.sym == SDL.SDL_Keycode.SDLK_RETURN ||
+						   evt.key.keysym.sym == SDL.SDL_Keycode.SDLK_KP_ENTER) &&
+						  (evt.key.keysym.mod & SDL.SDL_Keymod.KMOD_ALT) != 0)))
+					{
+						WprToggleDesktopFullscreen(game);
+					}
+
 					if (evt.key.repeat == 0 &&
 						(evt.key.keysym.sym == SDL.SDL_Keycode.SDLK_AC_BACK ||
 						 WPR.Xna.Rhi.XnaBackend.KeyboardEmulation?.IsBackKey(key) == true))
@@ -1295,8 +1492,8 @@ namespace Microsoft.Xna.Framework
 						TouchPanel.TouchDeviceExists = true;
 
 						TouchPanel.INTERNAL_onTouchEvent(1, TouchLocationState.Pressed,
-							(float)evt.button.x / Mouse.INTERNAL_WindowWidth,
-							(float)evt.button.y / Mouse.INTERNAL_WindowHeight,
+							(float)(evt.button.x - Mouse.INTERNAL_WindowOffsetX) / Mouse.INTERNAL_WindowWidth,
+							(float)(evt.button.y - Mouse.INTERNAL_WindowOffsetY) / Mouse.INTERNAL_WindowHeight,
 							0.0f,
 							0.0f);
 					}
@@ -1340,8 +1537,8 @@ namespace Microsoft.Xna.Framework
 						// dominated based on whichever axis the cursor's absolute
 						// coordinate was larger on, breaking swipe-direction detection.
 						TouchPanel.INTERNAL_onTouchEvent(1, TouchLocationState.Moved,
-							(float)evt.motion.x / Mouse.INTERNAL_WindowWidth,
-							(float)evt.motion.y / Mouse.INTERNAL_WindowHeight,
+							(float)(evt.motion.x - Mouse.INTERNAL_WindowOffsetX) / Mouse.INTERNAL_WindowWidth,
+							(float)(evt.motion.y - Mouse.INTERNAL_WindowOffsetY) / Mouse.INTERNAL_WindowHeight,
 							(float)evt.motion.xrel / Mouse.INTERNAL_WindowWidth,
 							(float)evt.motion.yrel / Mouse.INTERNAL_WindowHeight);
 					}
@@ -1357,8 +1554,8 @@ namespace Microsoft.Xna.Framework
 					if (TouchPanel.MouseAsTouch)
 					{
 						TouchPanel.INTERNAL_onTouchEvent(1, TouchLocationState.Released,
-							(float)evt.button.x / Mouse.INTERNAL_WindowWidth,
-							(float)evt.button.y / Mouse.INTERNAL_WindowHeight,
+							(float)(evt.button.x - Mouse.INTERNAL_WindowOffsetX) / Mouse.INTERNAL_WindowWidth,
+							(float)(evt.button.y - Mouse.INTERNAL_WindowOffsetY) / Mouse.INTERNAL_WindowHeight,
 							0.0f,
 							0.0f);
 					}
@@ -1384,6 +1581,8 @@ namespace Microsoft.Xna.Framework
 						evt.wheel.y != 0)
 					{
 						SDL.SDL_GetMouseState(out int wsx, out int wsy);
+						wsx -= Mouse.INTERNAL_WindowOffsetX;
+						wsy -= Mouse.INTERNAL_WindowOffsetY;
 						int wsWidth = Mouse.INTERNAL_WindowWidth;
 						int wsHeight = Mouse.INTERNAL_WindowHeight;
 						WPR.Xna.Rhi.WheelTouchScroll.Notify(
@@ -1415,6 +1614,8 @@ namespace Microsoft.Xna.Framework
 						evt.wheel.y != 0)
 					{
 						SDL.SDL_GetMouseState(out int cx, out int cy);
+						cx -= Mouse.INTERNAL_WindowOffsetX;
+						cy -= Mouse.INTERNAL_WindowOffsetY;
 						int ww = Mouse.INTERNAL_WindowWidth;
 						int wh = Mouse.INTERNAL_WindowHeight;
 						float dispScaleX = (ww > 0) ? (float)TouchPanel.DisplayWidth / ww : 1f;
@@ -1463,8 +1664,8 @@ namespace Microsoft.Xna.Framework
 					TouchPanel.INTERNAL_onTouchEvent(
 						(int) evt.tfinger.fingerId,
 						TouchLocationState.Pressed,
-						evt.tfinger.x,
-						evt.tfinger.y,
+						WprFingerX(evt.tfinger.x),
+						WprFingerY(evt.tfinger.y),
 						0,
 						0
 					);
@@ -1474,10 +1675,10 @@ namespace Microsoft.Xna.Framework
 					TouchPanel.INTERNAL_onTouchEvent(
 						(int) evt.tfinger.fingerId,
 						TouchLocationState.Moved,
-						evt.tfinger.x,
-						evt.tfinger.y,
-						evt.tfinger.dx,
-						evt.tfinger.dy
+						WprFingerX(evt.tfinger.x),
+						WprFingerY(evt.tfinger.y),
+						WprFingerDX(evt.tfinger.dx),
+						WprFingerDY(evt.tfinger.dy)
 					);
 				}
 				else if (evt.type == SDL.SDL_EventType.SDL_FINGERUP)
@@ -1485,8 +1686,8 @@ namespace Microsoft.Xna.Framework
 					TouchPanel.INTERNAL_onTouchEvent(
 						(int) evt.tfinger.fingerId,
 						TouchLocationState.Released,
-						evt.tfinger.x,
-						evt.tfinger.y,
+						WprFingerX(evt.tfinger.x),
+						WprFingerY(evt.tfinger.y),
 						0,
 						0
 					);
@@ -1566,6 +1767,18 @@ namespace Microsoft.Xna.Framework
 						// This is called on both API and WM resizes
 						Mouse.INTERNAL_WindowWidth = evt.window.data1;
 						Mouse.INTERNAL_WindowHeight = evt.window.data2;
+
+						// WPR: recompute the letterbox (and the mouse area, which it narrows when
+						// fullscreen). A fullscreen window still changes size when the display
+						// resolution does, and the swapchain has to follow it.
+						if (!IsMobilePlatform())
+						{
+							WprUpdatePresentationArea(game.Window.Handle);
+							if (_wprDesktopFullscreen)
+							{
+								_wprBackbufferRefreshPending = true;
+							}
+						}
 					}
 					else if (evt.window.windowEvent == SDL.SDL_WindowEventID.SDL_WINDOWEVENT_RESIZED)
 					{
@@ -1715,6 +1928,9 @@ namespace Microsoft.Xna.Framework
 					break;
 				}
 			}
+
+			// WPR: after a fullscreen toggle, rebuild the swapchain between frames.
+			WprRefreshBackbufferIfPending(game);
 		}
 
 		private unsafe static int MeasureStringLength(byte* ptr)
@@ -2912,8 +3128,8 @@ namespace Microsoft.Xna.Framework
 						fingersWritten,
 						Math.Abs((int)finger->id) + 1,
 						new Vector2(
-							(float)Math.Round(finger->x * TouchPanel.DisplayWidth),
-							(float)Math.Round(finger->y * TouchPanel.DisplayHeight)
+							(float)Math.Round(WprFingerX(finger->x) * TouchPanel.DisplayWidth),
+							(float)Math.Round(WprFingerY(finger->y) * TouchPanel.DisplayHeight)
 						)
 					);
 					fingersWritten += 1;
@@ -2930,6 +3146,8 @@ namespace Microsoft.Xna.Framework
 			if (mouseAsTouch)
 			{
 				uint flags = SDL.SDL_GetMouseState(out int x, out int y);
+				x -= Mouse.INTERNAL_WindowOffsetX;
+				y -= Mouse.INTERNAL_WindowOffsetY;
 				bool nowPressed = ((ButtonState)(flags & SDL.SDL_BUTTON_LMASK) == ButtonState.Pressed);
 
 				// Edge-triggered trace so we see exactly when the mouse-as-touch poll

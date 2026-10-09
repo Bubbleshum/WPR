@@ -64,7 +64,9 @@ namespace WPR.Platform.Android.Native
             {
                 try
                 {
-                    if (app.PatchedVersion < ApplicationPatcher.Version)
+                    // A WP8 native title is ARM code: the IL patcher has nothing to do there.
+                    if (app.PatchedVersion < ApplicationPatcher.Version &&
+                        app.ApplicationType != WPR.Models.ApplicationType.ModernNative)
                     {
                         progress.SetStage("updating patched assemblies…");
                         WprStartup.SetupDllPatchForCecil(host);

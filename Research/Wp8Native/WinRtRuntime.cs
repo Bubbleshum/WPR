@@ -80,7 +80,7 @@ namespace WPR.Wp8Native
                         // ResolutionScale.Scale100Percent. WVGA is unscaled.
                         if (ArmEmulator.IsStackAddress(Arg(1)))
                         {
-                            _emulator.WriteUInt32(Arg(1), 100);
+                            _emulator.WriteUInt32(Arg(1), (uint)ResolutionScale);
                         }
 
                         Return(HResultOk);
@@ -89,7 +89,7 @@ namespace WPR.Wp8Native
                     {
                         if (ArmEmulator.IsStackAddress(Arg(1)))
                         {
-                            _emulator.WriteSingle(Arg(1), 96f);
+                            _emulator.WriteSingle(Arg(1), 96f * ResolutionScale / 100f);
                         }
 
                         Return(HResultOk);
@@ -97,14 +97,15 @@ namespace WPR.Wp8Native
                 });
             // The WP7/WP8 bezel Back button. Asked for from inside IFrameworkView::Initialize,
             // where the image subscribes to BackPressed along with its other lifecycle events.
-            RegisterDiscoveryClass(
-                "Windows.Phone.UI.Input.HardwareButtons", "IHardwareButtonsStatics", slotCount: 8);
+            _factories["Windows.Phone.UI.Input.HardwareButtons"] = CreateHardwareButtons();
 
             RegisterApplicationData();
             RegisterThreadPool();
             RegisterStore();
             RegisterHostInformation();
             RegisterAppModelObjects();
+            RegisterCameras();
+            RegisterSensors();
         }
 
         /// <summary>
@@ -416,8 +417,12 @@ namespace WPR.Wp8Native
 
         private long _pointerArgs;
 
-        /// <summary>One pointer event: which CoreWindow event, and where.</summary>
-        private readonly record struct PointerStep(int Slot, float X, float Y);
+        /// <summary>
+        /// One pointer event: which CoreWindow event, where, which finger, and whether a live host
+        /// injected it (live events are all delivered in the frame they arrive; a script's are
+        /// paced one a frame).
+        /// </summary>
+        private readonly record struct PointerStep(int Slot, float X, float Y, uint Id = 1, bool Live = false);
 
         /// <summary>
         /// Pointer events still to be delivered, at most one per turn round the main loop.
@@ -451,7 +456,11 @@ namespace WPR.Wp8Native
         /// <see cref="FrameCapture.Height"/> - which is what the image composes in, not the
         /// portrait bounds the device reports.
         /// </remarks>
-        public void InjectPointer(PointerKind kind, float x, float y)
+        /// <param name="id">
+        /// Which finger: every finger down at once needs its own, because a game tells them apart
+        /// by <c>PointerId</c> (Modern Combat 4 moves with one thumb and aims with the other).
+        /// </param>
+        public void InjectPointer(PointerKind kind, float x, float y, uint id = 1)
         {
             int slot = kind switch
             {
@@ -460,7 +469,7 @@ namespace WPR.Wp8Native
                 _ => SlotAddPointerMoved,
             };
 
-            _external.Enqueue(new PointerStep(slot, x, y));
+            _external.Enqueue(new PointerStep(slot, x, y, id, Live: true));
         }
 
         /// <summary>Which scripted gesture runs next, cycling.</summary>
@@ -473,6 +482,9 @@ namespace WPR.Wp8Native
 
         /// <summary>Whether the pointer is down, which is what get_IsInContact answers.</summary>
         private bool _pointerInContact;
+
+        /// <summary>The finger the event being delivered belongs to: get_PointerId.</summary>
+        private uint _pointerId = 1;
 
         /// <summary>
         /// The gesture script, from <c>WPR_INPUT</c>, as a list of already-expanded steps.
@@ -604,8 +616,31 @@ namespace WPR.Wp8Native
         /// return, because a delegate invocation is a tail call into emulated code and only
         /// completes as an event.
         /// </remarks>
-        private bool DeliverInput(long resumeAt)
+        private bool DeliverInput(long resumeAt) => DeliverInput(() => _emulator.ContinueAt(resumeAt), _coreWindow);
+
+        /// <param name="continueWith">Run once the handler has returned, in place of resuming a caller.</param>
+        /// <param name="sender">The event's sender: the CoreWindow, or a XAML manipulation host.</param>
+        private bool DeliverInput(Action continueWith, long sender)
         {
+            // A Back press goes ahead of any pointer input; it is rare, and answering it late
+            // would let a tap that followed it act on the screen it was meant to leave.
+            if (DeliverBack(continueWith))
+            {
+                return true;
+            }
+
+            // Sensor readings next, once a frame; pointer input follows on the same turn.
+            if (DeliverSensors(() =>
+                {
+                    if (!DeliverInput(continueWith, sender))
+                    {
+                        continueWith();
+                    }
+                }))
+            {
+                return true;
+            }
+
             // Anything a live host has injected goes first, and does not depend on the
             // scripted taps being enabled at all - a window with a mouse replaces the script.
             while (_external.TryDequeue(out PointerStep injected))
@@ -653,6 +688,7 @@ namespace WPR.Wp8Native
             _pointerX = next.X;
             _pointerY = next.Y;
             _pointerInContact = next.Slot != SlotAddPointerReleased;
+            _pointerId = next.Id;
 
             int slot = next.Slot;
             if (!_windowHandlers.TryGetValue(slot, out long handler) || handler == 0)
@@ -714,7 +750,7 @@ namespace WPR.Wp8Native
             _emulator.CallEmulated(
                 $"CoreWindow::{name}",
                 invoke,
-                [handler, _coreWindow, PointerArgs()],
+                [handler, sender, PointerArgs()],
                 onReturn: () =>
                 {
                     if (capture)
@@ -724,7 +760,18 @@ namespace WPR.Wp8Native
                             $"   {name} returned 0x{Arg(0):X8} after {made.Count} call(s): {Condense(made)}");
                     }
 
-                    _emulator.ContinueAt(resumeAt);
+                    // Every live event queued this frame goes out this frame. One a frame was
+                    // enough for one finger; with two moving, events arrived twice as fast as
+                    // they left and the controls fell further behind every frame.
+                    while (_pending.Count > 0 && _pending.Peek().Live)
+                    {
+                        if (DeliverInput(continueWith, sender))
+                        {
+                            return;
+                        }
+                    }
+
+                    continueWith();
                 });
 
             return true;
@@ -877,6 +924,19 @@ namespace WPR.Wp8Native
         /// <c>ccw</c> (default - the device turned so its buttons are on the right, WP8's
         /// "Landscape"), <c>cw</c> ("LandscapeFlipped"), or <c>none</c>.
         /// </summary>
+        /// <summary>
+        /// DisplayProperties.ResolutionScale: 100 is WVGA (480x800), 150 is 720p, 160 is WXGA.
+        /// WPR_RESSCALE overrides it.
+        /// </summary>
+        private static readonly int ResolutionScale =
+            int.TryParse(Environment.GetEnvironmentVariable("WPR_RESSCALE"), out int scale) && scale > 0 ? scale : 100;
+
+        /// <summary>
+        /// Overrides <c>WPR_ROTATE</c> for this run. A Direct3D/XAML title's page is landscape,
+        /// so its pointer positions are already in the landscape space and want <c>none</c>.
+        /// </summary>
+        public string? PointerRotation { get; set; }
+
         private static readonly string Rotation =
             (Environment.GetEnvironmentVariable("WPR_ROTATE") ?? "ccw").Trim().ToLowerInvariant();
 
@@ -893,12 +953,12 @@ namespace WPR.Wp8Native
         /// window is <see cref="Direct3DRuntime.BackBufferWidth"/> by
         /// <see cref="Direct3DRuntime.BackBufferHeight"/>; they are transposes of each other.
         /// </remarks>
-        private static (float X, float Y) ToWindow(float landscapeX, float landscapeY)
+        private (float X, float Y) ToWindow(float landscapeX, float landscapeY)
         {
             float windowWidth = Direct3DRuntime.BackBufferWidth;
             float windowHeight = Direct3DRuntime.BackBufferHeight;
 
-            return Rotation switch
+            return (PointerRotation ?? Rotation) switch
             {
                 "none" => (landscapeX, landscapeY),
                 "cw" => (landscapeY, windowHeight - landscapeX),
@@ -983,7 +1043,7 @@ namespace WPR.Wp8Native
                     // window; there is none here, so it is the same point. This is the one this
                     // game reads.
                     [InspectableSlots + 2] = ("get_RawPosition", position),
-                    [InspectableSlots + 3] = ("get_PointerId", () => ReturnUInt32(1)),
+                    [InspectableSlots + 3] = ("get_PointerId", () => ReturnUInt32(_pointerId)),
                     [InspectableSlots + 4] = ("get_FrameId", () => ReturnUInt32((uint)ProcessEventsCalls)),
                     [InspectableSlots + 5] = ("get_Timestamp", () =>
                     {
@@ -1070,6 +1130,8 @@ namespace WPR.Wp8Native
                         //
                         // Only when something is queued, so that DrainDeferredCalls' continuation
                         // always runs from a return trap rather than inline in this stub.
+                        // HTTP failures join the queue here, once they are due.
+                        _emulator.Stubs.Http.QueueDue();
                         if (_emulator.PendingDeferredCalls > 0)
                         {
                             long resumeAfterDrain = _emulator.ReturnAddress;
@@ -1090,9 +1152,29 @@ namespace WPR.Wp8Native
                         long resumeAt = _emulator.ReturnAddress;
                         Return(HResultOk);
 
-                        // DeliverInput tail-calls into the image when it has something to
-                        // deliver, and then returns here itself - so nothing may follow it.
-                        DeliverInput(resumeAt);
+                        void Resume()
+                        {
+                            Return(HResultOk);
+                            if (!DeliverInput(resumeAt))
+                            {
+                                _emulator.ContinueAt(resumeAt);
+                            }
+                        }
+
+                        // Audio first - buffers the host finished are reported to the game, which
+                        // is what keeps a stream fed - then every other guest thread gets a turn,
+                        // as the XAML frame loop gives them (a main loop that never blocks would
+                        // otherwise starve them: Angry Birds' audio thread sat runnable and silent
+                        // for ever), then input. In that order a mixer thread woken by
+                        // OnBufferEnd refills in the same frame; the other way round it waited a
+                        // frame, and a game keeping two 25 ms buffers queued ran dry. Each step
+                        // may tail-call into the image, so nothing may follow them.
+                        void ThreadsThenInput() => _emulator.RunOtherThreads(Resume);
+
+                        if (!_emulator.XAudio2.Pump(ThreadsThenInput))
+                        {
+                            ThreadsThenInput();
+                        }
                     }),
                 });
 
@@ -1495,6 +1577,49 @@ namespace WPR.Wp8Native
         /// across runs, because a game that sees a different device on every launch will
         /// treat its own saved state as someone else's.
         /// </remarks>
+        /// <summary>
+        /// The WP8 camera statics, answering as a device with no cameras: every list - capture
+        /// resolutions, preview resolutions, sensor locations - is empty.
+        /// </summary>
+        /// <remarks>
+        /// Angry Birds Stella asks <c>AudioVideoCaptureDevice.GetAvailableCaptureResolutions</c>
+        /// during start-up (statics slot 11) and calls get_Size on the answer. The generic
+        /// stand-in left the out-parameter null, and the game called through it before its first
+        /// frame. An empty list is the truthful answer for a PC, and the game is written for it:
+        /// phones without a front camera existed.
+        /// </remarks>
+        private void RegisterCameras()
+        {
+            foreach (string className in new[]
+            {
+                "Windows.Phone.Media.Capture.AudioVideoCaptureDevice",
+                "Windows.Phone.Media.Capture.PhotoCaptureDevice",
+            })
+            {
+                var slots = new Dictionary<int, (string, Action)>();
+                for (int slot = InspectableSlots; slot < InspectableSlots + 16; slot++)
+                {
+                    int captured = slot;
+                    slots[slot] = ($"slot{captured} (empty list)", () =>
+                    {
+                        // (arg, T** out) or (T** out): fill whichever is the stack out-parameter.
+                        if (ArmEmulator.IsStackAddress(Arg(2)))
+                        {
+                            WriteOut(2, EmptyVectorView());
+                        }
+                        else if (ArmEmulator.IsStackAddress(Arg(1)))
+                        {
+                            WriteOut(1, EmptyVectorView());
+                        }
+
+                        Return(HResultOk);
+                    });
+                }
+
+                _factories[className] = CreateDiscoveryObject(className + "Statics", slotCount: InspectableSlots + 16, known: slots);
+            }
+        }
+
         private void RegisterHostInformation()
         {
             _factories["Windows.Phone.System.Analytics.HostInformation"] = CreateDiscoveryObject(
@@ -1530,8 +1655,38 @@ namespace WPR.Wp8Native
                 slotCount: 12,
                 known: new Dictionary<int, (string, Action)>
                 {
+                    // An empty map: iterating it ends at once (see the listing below).
+                    [InspectableSlots + 0] = ("get_ProductLicenses", () =>
+                    {
+                        WriteOut(1, EmptyVectorView());
+                        Return(HResultOk);
+                    }),
                     [InspectableSlots + 1] = ("get_IsActive", Boolean(true)),
                     [InspectableSlots + 2] = ("get_IsTrial", Boolean(false)),
+                });
+
+            // IListingInformation: get_CurrentMarket 6, get_Description 7, get_ProductListings 8,
+            // get_FormattedPrice 9, get_Name 10, get_AgeRating 11. A listing with no products and
+            // empty strings - a store that answered, with nothing for sale.
+            //
+            // Angry Birds Star Wars loads this at start-up and iterates ProductListings. Answered
+            // by the generic stand-in, the iterator's HasCurrent came back true for ever and the
+            // game spun on it - 400 MB of logged placeholder calls and no first frame.
+            long listing = CreateDiscoveryObject(
+                "IListingInformation",
+                slotCount: 12,
+                known: new Dictionary<int, (string, Action)>
+                {
+                    [InspectableSlots + 0] = ("get_CurrentMarket", () => { WriteOut(1, 0); Return(HResultOk); }),
+                    [InspectableSlots + 1] = ("get_Description", () => { WriteOut(1, 0); Return(HResultOk); }),
+                    [InspectableSlots + 2] = ("get_ProductListings", () =>
+                    {
+                        WriteOut(1, EmptyVectorView());
+                        Return(HResultOk);
+                    }),
+                    [InspectableSlots + 3] = ("get_FormattedPrice", () => { WriteOut(1, 0); Return(HResultOk); }),
+                    [InspectableSlots + 4] = ("get_Name", () => { WriteOut(1, 0); Return(HResultOk); }),
+                    [InspectableSlots + 5] = ("get_AgeRating", () => { WriteOut(1, 0); Return(HResultOk); }),
                 });
 
             // ICurrentAppStatics: get_LicenseInformation 6, get_LinkUri 7, get_AppId 8, then
@@ -1548,6 +1703,13 @@ namespace WPR.Wp8Native
                             _emulator.WriteUInt32(Arg(1), (uint)license);
                         }
 
+                        Return(HResultOk);
+                    }),
+
+                    // LoadListingInformationAsync(IAsyncOperation<ListingInformation>** out)
+                    [InspectableSlots + 5] = ("LoadListingInformationAsync", () =>
+                    {
+                        WriteOut(1, AsyncOperation("LoadListingInformationAsync", listing));
                         Return(HResultOk);
                     }),
                 });
@@ -1788,6 +1950,15 @@ namespace WPR.Wp8Native
                     if (ArmEmulator.IsStackAddress(Arg(1)))
                     {
                         _emulator.WriteUInt32(Arg(1), (uint)GetPlaceholder($"{interfaceName}::slot{slot}"));
+                    }
+                    else if (ArmEmulator.IsStackAddress(Arg(2)) && !LooksLikeDelegate(Arg(1)))
+                    {
+                        // Shaped like Method(scalar, T** out) - Modern Combat 4's
+                        // IGPControl.CreateIGP(int type, IGPControl** result). Treating it as an
+                        // event registration wrote an 8-byte token into a 4-byte out slot, over
+                        // the caller's stack cookie, and the image __fastfail'd. One word, a
+                        // placeholder object, as for an out-pointer in r1.
+                        _emulator.WriteUInt32(Arg(2), (uint)GetPlaceholder($"{interfaceName}::slot{slot}"));
                     }
                     else if (ArmEmulator.IsStackAddress(Arg(2)))
                     {

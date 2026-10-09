@@ -329,15 +329,12 @@ namespace WPR
                 }
             }
 
-            if (app.ApplicationType == ApplicationType.ModernNative)
-            {
-                throw new NotSupportedException(
-                    "Modern Native (C++/CX, WinRT) apps are not supported. " +
-                    "These ship as native ARM/x86 PE binaries against WinRT — they cannot run on " +
-                    "this CLR-based runner without a native loader and a WinRT reimplementation.");
-            }
+            // WP8 "Modern Native": an ARMv7 PE against WinRT. It runs on the dynarmic JIT inside
+            // Wp8NativeGame, which is an ordinary XNA Game - same window, graphics and input as
+            // every XNA title - so it takes the XNA path below with no managed assembly to load.
+            bool isNative = app.ApplicationType == ApplicationType.ModernNative;
 
-            if (app.ApplicationType != ApplicationType.XNA && !isMixedMode)
+            if (app.ApplicationType != ApplicationType.XNA && !isMixedMode && !isNative)
             {
                 throw new NotSupportedException(
                     $"Application runtime type '{app.ApplicationType}' is not supported.");
@@ -355,7 +352,7 @@ namespace WPR
             PlaytimeTracker.Begin(app.ProductId, app.Name);
             try
             {
-                await StartCore(app, hooks, isMixedMode);
+                await StartCore(app, hooks, isMixedMode, isNative);
             }
             catch (Exception ex) when (ReportCrash(app, ex, CrashReport.Sources.GameRun))
             {
@@ -432,7 +429,7 @@ namespace WPR
             };
         }
 
-        private static async Task StartCore(Application app, IGameLaunchHooks hooks, bool isMixedMode)
+        private static async Task StartCore(Application app, IGameLaunchHooks hooks, bool isMixedMode, bool isNative = false)
         {
             // Framework-side per-launch hooks. The FNA host used to register these before calling
             // in here, but every one of them names only WPR.Framework.Xna types, so they are launch
@@ -663,12 +660,13 @@ namespace WPR
             // Stream load (no file lock) — matches the policy used by both Resolving
             // handlers above. Required so the Repatch button can rewrite the main
             // DLL on disk after a launch even if the user ALC hasn't fully unloaded.
-            Assembly assem = LoadAssemblyWithoutFileLock(alc, asmPath);
+            // A native title has no managed assembly: app.Assembly names its ARM executable.
+            Assembly assem = isNative ? null! : LoadAssemblyWithoutFileLock(alc, asmPath);
 
             Directory.SetCurrentDirectory(folderPath);
 
             // Instatiate
-            Type? mainType = assem.GetType(app.EntryPoint);
+            Type? mainType = isNative ? null : assem.GetType(app.EntryPoint);
 
             // Run on separate thread to not affect the UI
             await Task.Run(() =>
@@ -753,6 +751,16 @@ namespace WPR
                             },
                             // See the IsMixedMode call above: WprTrace is [Conditional("DEBUG")].
                             msg => WprTrace(msg));
+                    }
+                    else if (isNative)
+                    {
+                        // The guest's local folder sits where PerGameIsolatedStorage puts every
+                        // title's store, so "clear data" and uninstall-with-saves cover it too.
+                        string sandbox = Path.Combine(
+                            Configuration.Current!.DataPath("IsolatedStore"), app.ProductId!, "AppFiles");
+                        obj = new WPR.Wp8Native.Wp8NativeGame(
+                            asmPath, sandbox, msg => Trace.WriteLine(msg),
+                            new WPR.Wp8Native.Wp8NativeXboxHost(app.ProductId!, app.Name));
                     }
                     else
                     {
@@ -1525,6 +1533,8 @@ namespace WPR
             // Android), and this backend runs under both. Null when no head registered one.
             try { WPR.Engine.Sensors.SensorBackend.Accelerometer?.ResetForNewLaunch(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"Sensor provider reset threw: {ex.Message}"); }
+            try { WPR.Engine.Sensors.SensorBackend.Gyroscope?.ResetForNewLaunch(); }
+            catch (Exception ex) { Log.Warn(LogCategory.AppList, $"Gyroscope provider reset threw: {ex.Message}"); }
 
             // Silence the motor. A WP7 title that exits mid-buzz never gets to call
             // VibrateController.Stop() itself, and the provider is launcher-lifetime — so without

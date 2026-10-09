@@ -25,7 +25,15 @@ namespace WPR.Wp8Native
     public sealed partial class WinRtRuntime
     {
         /// <summary>The synthetic player. A gamertag is 15 characters at most on Xbox.</summary>
-        private const string PlayerGamertag = "WPRPlayer";
+        private const string DefaultGamertag = "WPRPlayer";
+
+        /// <summary>
+        /// What stands behind Xbox Live, when the host has something: WPR's achievement store and
+        /// WPR Hub. Null in the probe, which then reports a player with nothing.
+        /// </summary>
+        public IXboxLiveHost? XboxHost { get; set; }
+
+        private string PlayerGamertag => XboxHost?.Gamertag is { Length: > 0 } tag ? tag : DefaultGamertag;
 
         /// <summary>
         /// A plausible XUID. Real ones are 2533274790395904 upwards - the top bits are a
@@ -70,8 +78,60 @@ namespace WPR.Wp8Native
             "Microsoft.Xbox.Foundation.UserIdentity" => UserIdentityFactory(),
             "Microsoft.Xbox.User" => XboxUserFactory(),
             "Microsoft.Xbox.Leaderboards.LeaderboardService" => LeaderboardServiceFactory(),
+            "Microsoft.Xbox.Marketplace.MarketplaceService" => MarketplaceService(),
             _ => null,
         };
+
+        /// <summary>
+        /// <c>Microsoft.Xbox.Marketplace.MarketplaceService</c>, a static class: the factory is the
+        /// statics interface. The store is closed, so every query completes with an empty
+        /// collection and a purchase completes having bought nothing. Modern Combat 4 enumerates
+        /// offers at start-up and dereferenced the operation the stand-in never wrote.
+        /// </summary>
+        /// <remarks>
+        /// Each out-parameter sits after the method's own arguments: a Guid by value takes four
+        /// words and an Int64 or DateTimeOffset starts on an even register or stack word.
+        /// </remarks>
+        private long MarketplaceService() => _marketplace != 0 ? _marketplace : _marketplace = CreateDiscoveryObject(
+            "IMarketplaceServiceStatics",
+            slotCount: 16,
+            known: new Dictionary<int, (string, Action)>
+            {
+                // EnumerateOffersByOfferIdsAsync(IReadOnlyList<String>)
+                [InspectableSlots + 0] = ("EnumerateOffersByOfferIdsAsync", () => Market(2, "EnumerateOffersByOfferIdsAsync", "OfferCollection")),
+
+                // EnumerateOffersAsync(titleId, skip, max, itemTypes, categoryMask, order, ascending)
+                [InspectableSlots + 1] = ("EnumerateOffersAsync", () => Market(8, "EnumerateOffersAsync", "OfferCollection")),
+
+                // ShowPurchaseAsync(Guid): the Guid fills r1-r3 and one stack word.
+                [InspectableSlots + 2] = ("ShowPurchaseAsync", () => Market(5, "ShowPurchaseAsync", null)),
+
+                // GetReceiptsAsync(titleId, skip, max, previousPage)
+                [InspectableSlots + 3] = ("GetReceiptsAsync", () => Market(5, "GetReceiptsAsync", "ReceiptCollection")),
+
+                // GetReceiptsWithDateFilterAsync(titleId, skip, max, DateTimeOffset, previousPage):
+                // r1-r3, then the 16-byte DateTimeOffset at [sp] (8-aligned), previousPage, out.
+                [InspectableSlots + 4] = ("GetReceiptsWithDateFilterAsync", () => Market(9, "GetReceiptsWithDateFilterAsync", "ReceiptCollection")),
+
+                // GetReceiptAsync(titleId, Guid): the Guid takes r2, r3 and two stack words.
+                [InspectableSlots + 5] = ("GetReceiptAsync", () => Market(6, "GetReceiptAsync", null)),
+
+                // GetAssetsAsync(titleId, skip, max, previousPage)
+                [InspectableSlots + 6] = ("GetAssetsAsync", () => Market(5, "GetAssetsAsync", "AssetBalanceCollection")),
+
+                // ConsumeAssetsAsync(titleId, IReadOnlyList<AssetBalance>)
+                [InspectableSlots + 7] = ("ConsumeAssetsAsync", () => Market(3, "ConsumeAssetsAsync", null)),
+            });
+
+        private long _marketplace;
+
+        /// <summary>Completes a Marketplace call: an empty <paramref name="collection"/>, or nothing.</summary>
+        private void Market(int outArgument, string name, string? collection)
+        {
+            XboxCalls.Add($"Marketplace.{name} -> {(collection is null ? "nothing" : "empty " + collection)}");
+            WriteOut(outArgument, AsyncOperation(name, collection is null ? 0 : Collection(collection)));
+            Return(HResultOk);
+        }
 
         /// <summary>
         /// <c>IUserFactory::CreateUser(UInt64 xuid, String gamertag)</c>, or
@@ -247,19 +307,36 @@ namespace WPR.Wp8Native
                 // arguments, so the out-parameter is the fifth and lands on the stack.
                 [InspectableSlots + 5] = ("GetAchievementsAsync", () =>
                 {
-                    WriteOut(5, AsyncOperation("GetAchievementsAsync", Collection("AchievementCollection")));
+                    uint skip = (uint)Arg(1), max = (uint)Arg(2);
+                    bool unlockedOnly = (Arg(3) & 0xFF) != 0;
+                    WriteOut(5, AsyncOperation("GetAchievementsAsync", AchievementCollection(skip, max, unlockedOnly)));
                     Return(HResultOk);
                 }),
 
                 // UnlockAchievementAsync(UInt32)
                 [InspectableSlots + 6] = ("UnlockAchievementAsync", () =>
                 {
+                    uint id = (uint)Arg(1);
+                    XboxCalls.Add($"UnlockAchievementAsync({id})");
+                    try { XboxHost?.UnlockAchievement(id); }
+                    catch (Exception ex) { XboxCalls.Add($"  host threw {ex.GetType().Name}: {ex.Message}"); }
+
                     WriteOut(2, AsyncOperation("UnlockAchievementAsync", 0));
                     Return(HResultOk);
                 }),
 
                 [InspectableSlots + 7] = ("GetAvatarManifestAsync", () =>
                     ReturnObject(AsyncOperation("GetAvatarManifestAsync", 0))),
+
+                // IAsyncOperation<Boolean> CanPerformActionAsync(String action, UInt64 targetXuid).
+                // The UInt64 takes the even pair r2:r3, so the out-parameter is the first stack word.
+                // Yes: a privilege check that comes back "no" makes the game offer to explain why.
+                [InspectableSlots + 15] = ("CanPerformActionAsync", () =>
+                {
+                    XboxCalls.Add($"CanPerformActionAsync({(Arg(1) == 0 ? "" : _strings.ReadText(Arg(1)))}) -> true");
+                    WriteOut(4, AsyncOperation("CanPerformActionAsync", 0, getResults: () => ReturnBoolean(true)));
+                    Return(HResultOk);
+                }),
             });
 
         /// <summary><c>Microsoft.Xbox.IUserStatus</c> - presence, not sign-in state.</summary>
@@ -309,14 +386,21 @@ namespace WPR.Wp8Native
                 // Leaderboard) - six arguments, out-parameter seventh.
                 [InspectableSlots + 1] = ("GetLeaderboardAsync", () =>
                 {
-                    WriteOut(7, AsyncOperation("GetLeaderboardAsync", Collection("Leaderboard")));
+                    uint skip = (uint)Arg(1), max = (uint)Arg(2), id = (uint)Arg(3);
+                    bool titleView = (Arg(4) & 0xFF) != 0;
+                    XboxLeaderboardPage? page = null;
+                    try { page = XboxHost?.ReadLeaderboard(id, skip, max, titleView); }
+                    catch (Exception ex) { XboxCalls.Add($"  host threw {ex.GetType().Name}: {ex.Message}"); }
+
+                    XboxCalls.Add($"GetLeaderboardAsync(id={id}, skip={skip}, max={max}, titleView={titleView}) -> {page?.Rows.Count ?? 0} row(s)");
+                    WriteOut(7, AsyncOperation("GetLeaderboardAsync", Leaderboard(id, page)));
                     Return(HResultOk);
                 }),
 
                 // GetSystemLeaderboardAsync(UInt32, UInt32, String, Leaderboard) - four in.
                 [InspectableSlots + 2] = ("GetSystemLeaderboardAsync", () =>
                 {
-                    WriteOut(5, AsyncOperation("GetSystemLeaderboardAsync", Collection("Leaderboard")));
+                    WriteOut(5, AsyncOperation("GetSystemLeaderboardAsync", Leaderboard(0, null)));
                     Return(HResultOk);
                 }),
 
@@ -327,6 +411,13 @@ namespace WPR.Wp8Native
                 // stack). The out-parameter follows it there.
                 [InspectableSlots + 3] = ("PostResultAsync", () =>
                 {
+                    uint id = (uint)Arg(1);
+                    int aggregation = (int)Arg(2);
+                    long value = (long)(((ulong)(uint)Arg(5) << 32) | (uint)Arg(4));
+                    XboxCalls.Add($"PostResultAsync(id={id}, verb={aggregation}, value={value})");
+                    try { XboxHost?.PostResult(id, aggregation, value); }
+                    catch (Exception ex) { XboxCalls.Add($"  host threw {ex.GetType().Name}: {ex.Message}"); }
+
                     WriteOut(6, AsyncOperation("PostResultAsync", 0));
                     Return(HResultOk);
                 }),
@@ -352,7 +443,7 @@ namespace WPR.Wp8Native
         /// nothing, so a zero result covers both.
         /// </para>
         /// </remarks>
-        private long AsyncOperation(string name, long result)
+        private long AsyncOperation(string name, long result, Action? getResults = null)
         {
             long[] self = new long[1];
             long[] asyncInfo = [AsyncInfo(name)];
@@ -383,6 +474,13 @@ namespace WPR.Wp8Native
                     [InspectableSlots + 1] = ("get_Completed", () => ReturnObject(0)),
                     [InspectableSlots + 2] = ("GetResults", () =>
                     {
+                        if (getResults is not null)
+                        {
+                            // A value result (Boolean, UInt32...) written by the caller's own rules.
+                            getResults();
+                            return;
+                        }
+
                         if (result != 0)
                         {
                             ReturnObject(result);

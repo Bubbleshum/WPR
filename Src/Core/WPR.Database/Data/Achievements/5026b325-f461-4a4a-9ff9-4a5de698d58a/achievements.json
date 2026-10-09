@@ -1,5 +1,27 @@
 {
   "Name": "Angry Birds Star Wars II",
   "Description": "Angry Birds cast as the Star Wars prequels, with the Pork Side playable for the first time.",
-  "Achievements": []
+  "KeySource": "xbox-id",
+  "Achievements": [
+    {"Key": "1", "Name": "Use The Force", "GamerScore": 5, "Description": "Earn 50000 points on Naboo Bird Side", "Icon": "use_the_force.png"},
+    {"Key": "2", "Name": "Pork Side Opened", "GamerScore": 5, "Description": "Open Pork Side", "Icon": "pork_side_opened.png"},
+    {"Key": "3", "Name": "Hero of Naboo", "GamerScore": 10, "Description": "Three Stars in All Bird Naboo Levels", "Icon": "hero_of_naboo.png"},
+    {"Key": "4", "Name": "Villain of Naboo", "GamerScore": 10, "Description": "Three Stars in All Pork Naboo Levels", "Icon": "villain_of_naboo.png"},
+    {"Key": "5", "Name": "Hero of Tatooine", "GamerScore": 10, "Description": "Three Stars in All Bird Tatooine Levels", "Icon": "hero_of_tatooine.png"},
+    {"Key": "6", "Name": "Villain of Tatooine", "GamerScore": 10, "Description": "Three Stars in All Pork Tatooine Levels", "Icon": "villain_of_tatooine.png"},
+    {"Key": "7", "Name": "A Long Time Ago...", "GamerScore": 5, "Description": "Play game for 24h", "Icon": "a_long_time_ago.png"},
+    {"Key": "8", "Name": "The Force Is Strong I", "GamerScore": 5, "Description": "Collect total of 600000 points overall", "Icon": "the_force_is_strong_i.png"},
+    {"Key": "9", "Name": "The Force Is Strong II", "GamerScore": 10, "Description": "Collect total of 1500000 points overall", "Icon": "the_force_is_strong_ii.png"},
+    {"Key": "10", "Name": "The Force Is Strong III", "GamerScore": 15, "Description": "Collect total of 3000000 points overall", "Icon": "the_force_is_strong_iii.png"},
+    {"Key": "11", "Name": "Level Padawan", "GamerScore": 5, "Description": "Clear 5 levels", "Icon": "level_padawan.png"},
+    {"Key": "12", "Name": "Level Jedi", "GamerScore": 10, "Description": "Clear 25 levels", "Icon": "level_jedi.png"},
+    {"Key": "13", "Name": "Level Master", "GamerScore": 15, "Description": "Clear 50 levels", "Icon": "level_master.png"},
+    {"Key": "14", "Name": "Level Emperor", "GamerScore": 25, "Description": "Clear 85 levels", "Icon": "level_emperor.png"},
+    {"Key": "15", "Name": "Galactic Squad", "GamerScore": 5, "Description": "Launch 50 attacks", "Icon": "galactic_squad.png"},
+    {"Key": "16", "Name": "Galactic Militia", "GamerScore": 10, "Description": "Launch 400 attacks", "Icon": "galactic_militia.png"},
+    {"Key": "17", "Name": "Galactic Army", "GamerScore": 15, "Description": "Launch 1000 attacks", "Icon": "galactic_army.png"},
+    {"Key": "18", "Name": "Star Buster", "GamerScore": 5, "Description": "Do 50000 points of damage", "Icon": "star_buster.png"},
+    {"Key": "19", "Name": "Star Smasher", "GamerScore": 10, "Description": "Do 500000 points of damage", "Icon": "star_smasher.png"},
+    {"Key": "20", "Name": "Star Crusher", "GamerScore": 15, "Description": "Do 5000000 points of damage", "Icon": "star_crusher.png"}
+  ]
 }

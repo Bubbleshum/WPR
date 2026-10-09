@@ -662,13 +662,46 @@ namespace Microsoft.Xna.Framework.Graphics
 			{
 				_wprDrawCallsThisFrame = 0;
 			}
+			FrameCapture.Raise(this);
+			// WPR: a desktop game running fullscreen is letterboxed to its own aspect ratio; null
+			// (windowed, and every phone) fills the drawable exactly as before.
 			XnaBackend.Graphics.SwapBuffers(
 				GLDevice,
 				null,
-				null,
+				WPR.Xna.Rhi.PresentationLetterbox.Destination,
 				PresentationParameters.DeviceWindowHandle
 			);
 			DiscardBackbufferContents();
+		}
+
+		/// <summary>
+		/// Rebuilds the swapchain and backbuffer at the window's current size, keeping every
+		/// presentation parameter the game chose. Called by the platform after the host window
+		/// goes fullscreen or comes back, so FNA3D picks up the new drawable size.
+		/// </summary>
+		/// <remarks>
+		/// Deliberately not <see cref="Reset()"/>: that raises <see cref="DeviceResetting"/> and
+		/// <see cref="DeviceReset"/> to the game and replaces its viewport, and none of that is
+		/// true from the game's point of view. Its backbuffer has not changed size; only where it
+		/// lands on the screen has. FNA3D binds the backbuffer again while doing this, so the
+		/// caller must only call it with no render target bound, and the viewport and scissor
+		/// rectangle are pushed back to the driver afterwards.
+		/// </remarks>
+		/// <returns>false (and nothing done) while a render target is bound.</returns>
+		internal bool WprRefreshBackbuffer()
+		{
+			if (renderTargetCount != 0 || IsDisposed)
+			{
+				return false;
+			}
+
+			XnaBackend.Graphics.ResetBackbuffer(
+				GLDevice,
+				ref PresentationParameters.parameters
+			);
+			Viewport = INTERNAL_viewport;
+			ScissorRectangle = ScissorRectangle;
+			return true;
 		}
 
 		public void Present(
@@ -680,6 +713,7 @@ namespace Microsoft.Xna.Framework.Graphics
 			{
 				overrideWindowHandle = PresentationParameters.DeviceWindowHandle;
 			}
+			FrameCapture.Raise(this);
 			XnaBackend.Graphics.SwapBuffers(
 				GLDevice,
 				sourceRectangle,

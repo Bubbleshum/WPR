@@ -307,7 +307,11 @@ namespace Microsoft.Xna.Framework.GamerServices
                             {
                                 Title = Properties.Resources.AchievementUnlocked,
                                 Body = $"{newlyEarned.GamerScore}G - {newlyEarned.Name}",
-                                ImagePath = Configuration.Current!.DataPath(newlyEarned._IconPath),
+                                // A row with no icon (WP8 native catalogues ship none) still gets
+                                // its toast: Path.Combine(null) would throw and lose it.
+                                ImagePath = string.IsNullOrEmpty(newlyEarned._IconPath)
+                                    ? null
+                                    : Configuration.Current!.DataPath(newlyEarned._IconPath),
                                 SoundUri = "AchievementUnlocked"
                             }, DateTime.Now + TimeSpan.FromDays(1));
                         } catch (Exception ex)

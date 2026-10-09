@@ -47,3 +47,7 @@ Research/Wp8Native/unicorn.dll
 *.jks
 *.p12
 /scratchpad/
+
+# Research/Wp8Native/wprcpu.dll (the win-x64 dynarmic shim) is committed, like the other prebuilt
+# native libraries, so the desktop head runs WP8 native titles from a plain build. Rebuild it from
+# WSL - see Plans/WP8-NATIVE-PROBE.md.

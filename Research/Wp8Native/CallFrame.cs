@@ -64,8 +64,35 @@ namespace WPR.Wp8Native
             _emulator.WriteRegister(Arm.UC_ARM_REG_R1, (value >> 32) & 0xFFFFFFFFL);
         }
 
-        /// <summary>Returns a double in the r0:r1 pair, as the soft-float ABI expects.</summary>
-        public void ReturnDouble(double value) => Return64(BitConverter.DoubleToInt64Bits(value));
+        /// <summary>
+        /// Returns a double. Windows on ARM is hard-float (AAPCS-VFP): the result belongs in d0.
+        /// It is written to r0:r1 as well, which costs nothing and keeps any soft-float caller
+        /// (there should be none) from reading garbage.
+        /// </summary>
+        public void ReturnDouble(double value)
+        {
+            long bits = BitConverter.DoubleToInt64Bits(value);
+            Return64(bits);
+            _emulator.Cpu.VfpWrite(0, (uint)bits);
+            _emulator.Cpu.VfpWrite(1, (uint)(bits >> 32));
+        }
+
+        /// <summary>Returns a float in s0, the hard-float convention.</summary>
+        public void ReturnFloat(float value) => _emulator.Cpu.VfpWrite(0, BitConverter.SingleToUInt32Bits(value));
+
+        /// <summary>
+        /// The n-th float argument. Under AAPCS-VFP floats are allocated to s0, s1, ... in
+        /// order, independently of the integer arguments in r0-r3. Only correct for signatures
+        /// whose float arguments are all floats (no doubles to back-fill around).
+        /// </summary>
+        public float FloatArg(int index) => BitConverter.UInt32BitsToSingle(_emulator.Cpu.VfpRead(index));
+
+        /// <summary>The n-th double argument: d0, d1, ... Only for all-double signatures.</summary>
+        public double DoubleArg(int index)
+        {
+            ulong bits = _emulator.Cpu.VfpRead(index * 2) | ((ulong)_emulator.Cpu.VfpRead((index * 2) + 1) << 32);
+            return BitConverter.UInt64BitsToDouble(bits);
+        }
 
         public void WriteInt64(long address, long value)
         {

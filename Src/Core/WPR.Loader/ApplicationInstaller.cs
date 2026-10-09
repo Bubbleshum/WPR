@@ -88,7 +88,10 @@ namespace WPR
                     string normalized = runtimeRaw.Replace(" ", "");
                     if (Enum.TryParse(normalized, ignoreCase: true, out Models.ApplicationType parsed))
                     {
-                        preview.ApplicationType = parsed;
+                        preview.ApplicationType = parsed == Models.ApplicationType.Silverlight &&
+                                                  NativeXamlComponent.Find(archive, appNode) != null
+                            ? Models.ApplicationType.ModernNative
+                            : parsed;
                     }
                 }
 
@@ -207,9 +210,29 @@ namespace WPR
                 // entry assembly to host and ship without the Silverlight AppManifest.xaml.
                 // Reject with an honest reason HERE — otherwise the AppManifest.xaml check below
                 // fires and misreports it as MissingManifestFiles ("missing manifest files!").
-                if (runtimeTypeParsed == ApplicationType.ModernNative)
+                // They also have no managed entry point: what runs is the ARM executable named by
+                // the default task, hosted by WPR.Engine.Wp8Native on the dynarmic JIT.
+                // A Direct3D/XAML title: "Silverlight" in the manifest, a native ARM component in
+                // fact. It installs and runs as a native title, with the component as its image.
+                string? xamlComponent = runtimeTypeParsed == ApplicationType.Silverlight
+                    ? NativeXamlComponent.Find(archive, appNode!)
+                    : null;
+                if (xamlComponent != null)
                 {
-                    return ( ApplicationInstallError.ModernNativeUnsupported, app, dataFolderProduct );
+                    runtimeTypeParsed = ApplicationType.ModernNative;
+                }
+
+                bool isNative = runtimeTypeParsed == ApplicationType.ModernNative;
+                string? nativeImage = xamlComponent;
+                if (isNative && nativeImage == null)
+                {
+                    nativeImage = (appNode!.SelectSingleNode("//DefaultTask") as XmlElement)?.GetAttribute("ImagePath");
+                    if (string.IsNullOrWhiteSpace(nativeImage) ||
+                        !nativeImage.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ||
+                        archive.GetEntry(nativeImage) == null)
+                    {
+                        return ( ApplicationInstallError.ModernNativeUnsupported, app, dataFolderProduct );
+                    }
                 }
 
                 XmlAttribute? authorAttrib = appNode!.Attributes!["Author"];
@@ -224,56 +247,69 @@ namespace WPR
                     iconPath = iconPathNodes[0]!.InnerText;
                 }
 
-                entry = archive.GetEntry("AppManifest.xaml");
-                if (entry == null)
+                string entryAssembly;
+                string entryType;
+                if (isNative)
                 {
-                    return ( ApplicationInstallError.MissingManifestFiles, app, dataFolderProduct) ;
+                    entryAssembly = nativeImage!;
+                    entryType = string.Empty;
                 }
-
-                if (canceled.IsCancellationRequested)
+                else
                 {
-                    return (ApplicationInstallError.Canceled, app, dataFolderProduct);
-                }
-
-                entry.ExtractToFile(TempXmlFileFullPath, true);
-
-                wmManifestDoc = new XmlDocument();
-                wmManifestDoc.Load(TempXmlFileFullPath);
-
-                XmlNode? deploymentNode = wmManifestDoc.DocumentElement;
-
-                XmlAttribute? entryPointAsmAttrib = deploymentNode!.Attributes!["EntryPointAssembly"];
-                XmlAttribute? entryPointTypeAttrib = deploymentNode!.Attributes!["EntryPointType"];
-                
-                if ((entryPointAsmAttrib == null) || (entryPointTypeAttrib == null))
-                {
-                    return (ApplicationInstallError.InvalidManifestFiles, app, dataFolderProduct);
-                }
-
-                var nsmgr = new XmlNamespaceManager(wmManifestDoc.NameTable);
-                nsmgr.AddNamespace("a", "http://schemas.microsoft.com/client/2007/deployment");
-
-                XmlNodeList? assemblies = deploymentNode!.SelectNodes("//a:Deployment.Parts//a:AssemblyPart", nsmgr);
-                if (assemblies == null)
-                {
-                    return (ApplicationInstallError.InvalidManifestFiles, app, dataFolderProduct);
-                }
-
-                XmlAttribute? entryPointAsmFileNameAttrib = null;
-
-                foreach (XmlNode? assembly in assemblies)
-                {
-                    XmlAttribute? attrib = assembly!.Attributes!["x:Name"] ?? assembly!.Attributes!["Name"];
-                    if ((attrib == null) || (attrib.Value != entryPointAsmAttrib.Value))
+                    entry = archive.GetEntry("AppManifest.xaml");
+                    if (entry == null)
                     {
-                        continue;
+                        return ( ApplicationInstallError.MissingManifestFiles, app, dataFolderProduct) ;
                     }
-                    entryPointAsmFileNameAttrib = assembly!.Attributes!["Source"];
-                }
 
-                if (entryPointAsmFileNameAttrib == null)
-                {
-                    return (ApplicationInstallError.InvalidManifestFiles, app, dataFolderProduct);
+                    if (canceled.IsCancellationRequested)
+                    {
+                        return (ApplicationInstallError.Canceled, app, dataFolderProduct);
+                    }
+
+                    entry.ExtractToFile(TempXmlFileFullPath, true);
+
+                    wmManifestDoc = new XmlDocument();
+                    wmManifestDoc.Load(TempXmlFileFullPath);
+
+                    XmlNode? deploymentNode = wmManifestDoc.DocumentElement;
+
+                    XmlAttribute? entryPointAsmAttrib = deploymentNode!.Attributes!["EntryPointAssembly"];
+                    XmlAttribute? entryPointTypeAttrib = deploymentNode!.Attributes!["EntryPointType"];
+                
+                    if ((entryPointAsmAttrib == null) || (entryPointTypeAttrib == null))
+                    {
+                        return (ApplicationInstallError.InvalidManifestFiles, app, dataFolderProduct);
+                    }
+
+                    var nsmgr = new XmlNamespaceManager(wmManifestDoc.NameTable);
+                    nsmgr.AddNamespace("a", "http://schemas.microsoft.com/client/2007/deployment");
+
+                    XmlNodeList? assemblies = deploymentNode!.SelectNodes("//a:Deployment.Parts//a:AssemblyPart", nsmgr);
+                    if (assemblies == null)
+                    {
+                        return (ApplicationInstallError.InvalidManifestFiles, app, dataFolderProduct);
+                    }
+
+                    XmlAttribute? entryPointAsmFileNameAttrib = null;
+
+                    foreach (XmlNode? assembly in assemblies)
+                    {
+                        XmlAttribute? attrib = assembly!.Attributes!["x:Name"] ?? assembly!.Attributes!["Name"];
+                        if ((attrib == null) || (attrib.Value != entryPointAsmAttrib.Value))
+                        {
+                            continue;
+                        }
+                        entryPointAsmFileNameAttrib = assembly!.Attributes!["Source"];
+                    }
+
+                    if (entryPointAsmFileNameAttrib == null)
+                    {
+                        return (ApplicationInstallError.InvalidManifestFiles, app, dataFolderProduct);
+                    }
+
+                    entryAssembly = entryPointAsmFileNameAttrib.Value;
+                    entryType = entryPointTypeAttrib.Value;
                 }
 
                 progressSet(5);
@@ -318,8 +354,8 @@ namespace WPR
                     Author = (authorAttrib == null) ? "Unknown" : authorAttrib.Value,
                     Description = (descriptionAttrib == null) ? "" : descriptionAttrib.Value,
                     ProductId = productTrimmed,
-                    Assembly = entryPointAsmFileNameAttrib.Value,
-                    EntryPoint = entryPointTypeAttrib.Value,
+                    Assembly = entryAssembly,
+                    EntryPoint = entryType,
                     InstalledTime = DateTime.Now,
                     PatchedVersion = ApplicationPatcher.Version
                 };
@@ -372,131 +408,148 @@ namespace WPR
                     return error;
                 }
 
-                // Pre-patch: replace any WinRT .winmd / native .dll pairs with managed stubs
-                // so the user's IL can JIT against managed types. Best-effort — failures are
-                // logged but don't fail the install (a hybrid app may still partially work).
-                try
+                // A WP8 native title is ARM machine code: there is no IL to stub, patch or
+                // rescope, and its audio is its own business. It is extracted and recorded only.
+                if (app!.ApplicationType == ApplicationType.ModernNative)
                 {
-                    await Task.Run(() =>
+                    // Native titles have nothing to patch, but a committed catalogue under
+                    // Database/Achievements/<productId>/ still names their achievements. Without
+                    // one, rows are created as the game unlocks them (Wp8NativeXboxHost).
+                    try { await XnaAchievementSeeder.SeedAsync(app.ProductId ?? "", app.Name ?? ""); }
+                    catch (Exception ex)
                     {
-                        WinmdStubber.StubInPlace(appDataFolder);
-                        WindowsTypeSynthesizer.SynthesizeIfNeeded(appDataFolder);
-                        // After everything's stubbed, scrub WinRT content-type flag from every
-                        // asm ref. The user's own DLLs (compiled against .winmd) carry that
-                        // flag and the JIT throws PNS when it encounters one on net8.0.
-                        WinRtRefStripper.StripInPlace(appDataFolder);
-                        // GameMaker Studio apps: read-only scan of game.win for achievement
-                        // metadata, persist into AchievementContext so they show up in WPR's
-                        // UI. Doesn't modify game.win — that's important for the patcher pass
-                        // below, which uses the untouched original as input. No-op for non-GMS.
-                        GameMakerAchievementExtractor.ExtractInPlace(
-                            appDataFolder,
-                            app?.ProductId ?? "",
-                            app?.Name ?? "");
-
-                        // XNA / GamerServices apps: seed AchievementContext from the
-                        // game's committed hardcoded catalogue (Database/Achievements/
-                        // <productId>/), all entries marked locked. Lets the WPR UI show
-                        // the full achievement list immediately, and — more importantly —
-                        // guarantees rows exist by the time the game calls AwardAchievement,
-                        // which only flips IsEarned on rows that are already present. No-op
-                        // for games without a catalogue. Best-effort; we block on the task
-                        // so the install pipeline completes deterministically.
-                        try { XnaAchievementSeeder.SeedAsync(app?.ProductId ?? "", app?.Name ?? "").GetAwaiter().GetResult(); }
-                        catch (Exception ex)
-                        {
-                            Log.Warn(LogCategory.AppInstall, $"XnaAchievementSeeder failed (non-fatal): {ex.Message}");
-                        }
-
-                        // Surgical bytecode neutralization: produces game.win.patched as a
-                        // sibling. One specific script (achievements_add) gets its body
-                        // replaced with a single Exit opcode so games like Briquid Mini boot
-                        // past the WP-specific FATAL where god.PreCreate calls
-                        // achievements_add before achievements_define has run. NO compiler
-                        // invocation, NO other scripts touched — minimizes the chance of
-                        // breaking variable scope info on Runner 2.1.4.200.
-                        // Original game.win is never modified; the launcher prefers .patched
-                        // when present, falls back to original when absent.
-                        GameMakerWinPatcher.PatchInPlace(appDataFolder);
-                    });
-                }
-                catch (Exception exception)
-                {
-                    Log.Warn(LogCategory.AppInstall, $"WinRT stubbing failed (non-fatal):\n{exception}");
-                }
-
-                // 20% for patching DLLs
-                try
-                {
-                    await Task.Run(() =>
-                    {
-                        ApplicationPatcher patcher = new ApplicationPatcher();
-                        patcher.Patch(appDataFolder, progress => progressSet(60 + (int)((double)progress / 5)), cancelSource);
-                    });
-                }
-                catch (Exception exception)
-                {
-                    Log.Error(LogCategory.AppInstall, $"Application DLL patching failed with exception:\n{exception}");
-                    return ApplicationInstallError.PatchFailed;
-                }
-
-                if (cancelSource.IsCancellationRequested)
-                {
-                    Directory.Delete(appDataFolder, true);
-                    ApplicationContext.Current.Remove(app);
-
-                    return ApplicationInstallError.Canceled;
-                }
-
-                // 20% for converting audio to unified support.
-                //
-                // NOT gated on ApplicationType any more. It used to run only for ApplicationType.XNA,
-                // on the reasoning that a Silverlight app does not use XNA's MediaPlayer — but a
-                // Silverlight/XNA MIXED-MODE title does, and all twelve of them in the library
-                // declare RuntimeType="Silverlight", so every one had its soundtrack skipped at
-                // install AND at repatch. Carcassonne is the measured case, and the cost was not
-                // merely silence: MediaPlayer skips a song whose container it cannot decode and
-                // reports it as playing, so the queue ends it immediately, the game's
-                // MediaStateChanged handler starts the next track, and its PlayNextSong queues a
-                // fresh ThreadPool work item every frame. Those race their own playlist index and
-                // one eventually throws IndexOutOfRange on a thread-pool thread — unhandled, so
-                // the process dies several minutes in with nothing in the log to connect it to
-                // audio.
-                //
-                // Safe to widen: ScanWmaAndConvert returns immediately when the package has no
-                // .wma at all (most Silverlight titles), and skips any .wma with no .xnb Song stub
-                // beside it, so a title that merely ships one as a loose asset is untouched.
-                {
-                    try
-                    {
-                        // Task.Run for the same reason the patch step above uses it: this is called
-                        // from the UI thread in both heads, and the work before the converter's
-                        // first await (an external-storage directory walk, plus loading the
-                        // transcoder's native library) is enough to stutter the progress dialog on
-                        // its own. Inside Task.Run there is no SynchronizationContext to capture, so
-                        // nothing in the conversion loop can be posted back to the UI thread.
-                        await Task.Run(() => AudioCompabilityConverter.ScanWmaAndConvert(appDataFolder,
-                            progress => progressSet(80 + (int)((double)progress / 5)),
-                            cancelSource));
-                    } catch (Exception exception)
-                    {
-                        Log.Error(LogCategory.AppInstall, $"Application WMA conversion failed with exception:\n{exception}");
-                        return ApplicationInstallError.ConvertFailed;
+                        Log.Warn(LogCategory.AppInstall, $"XnaAchievementSeeder failed (non-fatal): {ex.Message}");
                     }
                 }
-
-                if (cancelSource.IsCancellationRequested)
+                else
                 {
-                    Directory.Delete(appDataFolder, true);
-                    ApplicationContext.Current.Remove(app);
+                    // Pre-patch: replace any WinRT .winmd / native .dll pairs with managed stubs
+                    // so the user's IL can JIT against managed types. Best-effort — failures are
+                    // logged but don't fail the install (a hybrid app may still partially work).
+                    try
+                    {
+                        await Task.Run(() =>
+                        {
+                            WinmdStubber.StubInPlace(appDataFolder);
+                            WindowsTypeSynthesizer.SynthesizeIfNeeded(appDataFolder);
+                            // After everything's stubbed, scrub WinRT content-type flag from every
+                            // asm ref. The user's own DLLs (compiled against .winmd) carry that
+                            // flag and the JIT throws PNS when it encounters one on net8.0.
+                            WinRtRefStripper.StripInPlace(appDataFolder);
+                            // GameMaker Studio apps: read-only scan of game.win for achievement
+                            // metadata, persist into AchievementContext so they show up in WPR's
+                            // UI. Doesn't modify game.win — that's important for the patcher pass
+                            // below, which uses the untouched original as input. No-op for non-GMS.
+                            GameMakerAchievementExtractor.ExtractInPlace(
+                                appDataFolder,
+                                app?.ProductId ?? "",
+                                app?.Name ?? "");
 
-                    return ApplicationInstallError.Canceled;
+                            // XNA / GamerServices apps: seed AchievementContext from the
+                            // game's committed hardcoded catalogue (Database/Achievements/
+                            // <productId>/), all entries marked locked. Lets the WPR UI show
+                            // the full achievement list immediately, and — more importantly —
+                            // guarantees rows exist by the time the game calls AwardAchievement,
+                            // which only flips IsEarned on rows that are already present. No-op
+                            // for games without a catalogue. Best-effort; we block on the task
+                            // so the install pipeline completes deterministically.
+                            try { XnaAchievementSeeder.SeedAsync(app?.ProductId ?? "", app?.Name ?? "").GetAwaiter().GetResult(); }
+                            catch (Exception ex)
+                            {
+                                Log.Warn(LogCategory.AppInstall, $"XnaAchievementSeeder failed (non-fatal): {ex.Message}");
+                            }
+
+                            // Surgical bytecode neutralization: produces game.win.patched as a
+                            // sibling. One specific script (achievements_add) gets its body
+                            // replaced with a single Exit opcode so games like Briquid Mini boot
+                            // past the WP-specific FATAL where god.PreCreate calls
+                            // achievements_add before achievements_define has run. NO compiler
+                            // invocation, NO other scripts touched — minimizes the chance of
+                            // breaking variable scope info on Runner 2.1.4.200.
+                            // Original game.win is never modified; the launcher prefers .patched
+                            // when present, falls back to original when absent.
+                            GameMakerWinPatcher.PatchInPlace(appDataFolder);
+                        });
+                    }
+                    catch (Exception exception)
+                    {
+                        Log.Warn(LogCategory.AppInstall, $"WinRT stubbing failed (non-fatal):\n{exception}");
+                    }
+
+                    // 20% for patching DLLs
+                    try
+                    {
+                        await Task.Run(() =>
+                        {
+                            ApplicationPatcher patcher = new ApplicationPatcher();
+                            patcher.Patch(appDataFolder, progress => progressSet(60 + (int)((double)progress / 5)), cancelSource);
+                        });
+                    }
+                    catch (Exception exception)
+                    {
+                        Log.Error(LogCategory.AppInstall, $"Application DLL patching failed with exception:\n{exception}");
+                        return ApplicationInstallError.PatchFailed;
+                    }
+
+                    if (cancelSource.IsCancellationRequested)
+                    {
+                        Directory.Delete(appDataFolder, true);
+                        ApplicationContext.Current.Remove(app);
+
+                        return ApplicationInstallError.Canceled;
+                    }
+
+                    // 20% for converting audio to unified support.
+                    //
+                    // NOT gated on ApplicationType any more. It used to run only for ApplicationType.XNA,
+                    // on the reasoning that a Silverlight app does not use XNA's MediaPlayer — but a
+                    // Silverlight/XNA MIXED-MODE title does, and all twelve of them in the library
+                    // declare RuntimeType="Silverlight", so every one had its soundtrack skipped at
+                    // install AND at repatch. Carcassonne is the measured case, and the cost was not
+                    // merely silence: MediaPlayer skips a song whose container it cannot decode and
+                    // reports it as playing, so the queue ends it immediately, the game's
+                    // MediaStateChanged handler starts the next track, and its PlayNextSong queues a
+                    // fresh ThreadPool work item every frame. Those race their own playlist index and
+                    // one eventually throws IndexOutOfRange on a thread-pool thread — unhandled, so
+                    // the process dies several minutes in with nothing in the log to connect it to
+                    // audio.
+                    //
+                    // Safe to widen: ScanWmaAndConvert returns immediately when the package has no
+                    // .wma at all (most Silverlight titles), and skips any .wma with no .xnb Song stub
+                    // beside it, so a title that merely ships one as a loose asset is untouched.
+                    {
+                        try
+                        {
+                            // Task.Run for the same reason the patch step above uses it: this is called
+                            // from the UI thread in both heads, and the work before the converter's
+                            // first await (an external-storage directory walk, plus loading the
+                            // transcoder's native library) is enough to stutter the progress dialog on
+                            // its own. Inside Task.Run there is no SynchronizationContext to capture, so
+                            // nothing in the conversion loop can be posted back to the UI thread.
+                            await Task.Run(() => AudioCompabilityConverter.ScanWmaAndConvert(appDataFolder,
+                                progress => progressSet(80 + (int)((double)progress / 5)),
+                                cancelSource));
+                        } catch (Exception exception)
+                        {
+                            Log.Error(LogCategory.AppInstall, $"Application WMA conversion failed with exception:\n{exception}");
+                            return ApplicationInstallError.ConvertFailed;
+                        }
+                    }
+
+                    if (cancelSource.IsCancellationRequested)
+                    {
+                        Directory.Delete(appDataFolder, true);
+                        ApplicationContext.Current.Remove(app);
+
+                        return ApplicationInstallError.Canceled;
+                    }
+
+                    // Keep a copy of the tile icon in the app's own data store: the achievements page
+                    // outlives the install folder the original lives in. See GameIconStore. Done here
+                    // rather than beside the DB insert so a cancelled install — which deletes the
+                    // folder and the row again above — leaves nothing cached behind.
                 }
 
-                // Keep a copy of the tile icon in the app's own data store: the achievements page
-                // outlives the install folder the original lives in. See GameIconStore. Done here
-                // rather than beside the DB insert so a cancelled install — which deletes the
-                // folder and the row again above — leaves nothing cached behind.
                 GameIconStore.Capture(app);
 
                 if (package != null)
@@ -580,6 +633,13 @@ namespace WPR
             Action<int> progressSet,
             CancellationToken cancelToken)
         {
+            // A WP8 native title is ARM code, never patched at install: nothing to redo.
+            if (app.ApplicationType == ApplicationType.ModernNative)
+            {
+                progressSet(100);
+                return ApplicationInstallError.None;
+            }
+
             try
             {
                 string productTrimmed = app.ProductId.Trim('{').Trim('}');

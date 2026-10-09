@@ -52,6 +52,14 @@ namespace Microsoft.Xna.Framework.Input
 		internal static int INTERNAL_BackBufferWidth = 800;
 		internal static int INTERNAL_BackBufferHeight = 480;
 
+		/* WPR: INTERNAL_WindowWidth/Height are the area of the window the backbuffer is presented
+		 * into, and these are its top-left corner in window coordinates. Both are zero except for
+		 * a desktop game running fullscreen, where the backbuffer is letterboxed to its own aspect
+		 * ratio (see WPR.Xna.Rhi.PresentationLetterbox). Every window-to-game conversion subtracts
+		 * them first, so a click on a side bar lands off the game's surface, not inside it. */
+		internal static int INTERNAL_WindowOffsetX = 0;
+		internal static int INTERNAL_WindowOffsetY = 0;
+
 		internal static int INTERNAL_MouseWheel = 0;
 
 		#endregion
@@ -86,8 +94,8 @@ namespace Microsoft.Xna.Framework.Input
 			);
 
 			// Scale the mouse coordinates for the faux-backbuffer
-			x = (int) ((double) x * INTERNAL_BackBufferWidth / INTERNAL_WindowWidth);
-			y = (int) ((double) y * INTERNAL_BackBufferHeight / INTERNAL_WindowHeight);
+			x = (int) ((double) (x - INTERNAL_WindowOffsetX) * INTERNAL_BackBufferWidth / INTERNAL_WindowWidth);
+			y = (int) ((double) (y - INTERNAL_WindowOffsetY) * INTERNAL_BackBufferHeight / INTERNAL_WindowHeight);
 
 			return new MouseState(
 				x,
@@ -115,8 +123,8 @@ namespace Microsoft.Xna.Framework.Input
 			}
 
 			// Scale the mouse coordinates for the faux-backbuffer
-			x = (int) ((double) x * INTERNAL_WindowWidth / INTERNAL_BackBufferWidth);
-			y = (int) ((double) y * INTERNAL_WindowHeight / INTERNAL_BackBufferHeight);
+			x = (int) ((double) x * INTERNAL_WindowWidth / INTERNAL_BackBufferWidth) + INTERNAL_WindowOffsetX;
+			y = (int) ((double) y * INTERNAL_WindowHeight / INTERNAL_BackBufferHeight) + INTERNAL_WindowOffsetY;
 
 			XnaBackend.Input.SetMousePosition(WindowHandle, x, y);
 		}

@@ -1,23 +1,23 @@
 {
   "Name": "Hexic",
   "Description": "Spin clusters of three hexes to line up colours, clear them, and work toward the black pearls.",
-  "KeySource": "xlast",
+  "KeySource": "xbox-id",
   "Achievements": [
-    { "Key": "Boost Blossom",      "Name": "Boost Blossom",      "GamerScore": 10, "Icon": "boostblossom.png", "Description": "Make a cluster of Line Clear Hexes" },
-    { "Key": "Reaching the Stars", "Name": "Reaching the Stars", "GamerScore": 10, "Icon": "reachingthestars.png", "Description": "Make a Flower Bomb" },
-    { "Key": "Photo Finish",       "Name": "Photo Finish",       "GamerScore": 10, "Icon": "photofinish.png", "Description": "Finish a level by using an Assist on your last move" },
-    { "Key": "Boost Engineer",     "Name": "Boost Engineer",     "GamerScore": 15, "Icon": "boostengineer.png", "Description": "Use every Booster and Assist in the game" },
-    { "Key": "Make em Count",      "Name": "Make 'em Count",     "GamerScore": 10, "Icon": "makeemcount.png", "Description": "Use +3 Moves and finish a level in the last 3 moves" },
-    { "Key": "Five Alive",         "Name": "Five Alive",         "GamerScore": 10, "Icon": "fivealive.png", "Description": "Create a Color Clear Hex from 5 hexes" },
-    { "Key": "Line Clearing",      "Name": "Line Clearing",      "GamerScore": 10, "Icon": "lineclearing.png", "Description": "Make 100 Line Clear Hexes" },
-    { "Key": "Color Clearing",     "Name": "Color Clearing",     "GamerScore": 15, "Icon": "colorclearing.png", "Description": "Make 200 Color Clear Hexes" },
-    { "Key": "Quick Learner",      "Name": "Quick Learner",      "GamerScore": 10, "Icon": "quicklearner.png", "Description": "Finish the Tutorial" },
-    { "Key": "Trying Hard",        "Name": "Trying Hard",        "GamerScore": 10, "Icon": "tryinghard.png", "Description": "Finish 33 levels" },
-    { "Key": "Hexified",           "Name": "Hexified",           "GamerScore": 10, "Icon": "hexified.png", "Description": "Stay in it to win it" },
-    { "Key": "Hexy Hero",          "Name": "Hexy Hero",          "GamerScore": 25, "Icon": "hexyhero.png", "Description": "Bond with your good friend Hexy" },
-    { "Key": "The Number",         "Name": "The Number",         "GamerScore": 15, "Icon": "thenumber.png", "Description": "Earn three stars on 42 levels" },
-    { "Key": "Fear of Cells",      "Name": "Fear of Cells",      "GamerScore": 20, "Icon": "fearofcells.png", "Description": "Use all moves in a level without clearing any Dark Fragments" },
-    { "Key": "Glitch Collector",   "Name": "Anomaly Collector",  "GamerScore": 20, "Icon": "anomalycollector.png", "Description": "Finished an anomaly level without letting an anomaly out" }
+    { "Key": "1",      "Name": "Boost Blossom",      "GamerScore": 10, "Icon": "boostblossom.png", "Description": "Make a cluster of Line Clear Hexes" },
+    { "Key": "2", "Name": "Reaching the Stars", "GamerScore": 10, "Icon": "reachingthestars.png", "Description": "Make a Flower Bomb" },
+    { "Key": "3",       "Name": "Photo Finish",       "GamerScore": 10, "Icon": "photofinish.png", "Description": "Finish a level by using an Assist on your last move" },
+    { "Key": "4",     "Name": "Boost Engineer",     "GamerScore": 15, "Icon": "boostengineer.png", "Description": "Use every Booster and Assist in the game" },
+    { "Key": "5",      "Name": "Make 'em Count",     "GamerScore": 10, "Icon": "makeemcount.png", "Description": "Use +3 Moves and finish a level in the last 3 moves" },
+    { "Key": "6",         "Name": "Five Alive",         "GamerScore": 10, "Icon": "fivealive.png", "Description": "Create a Color Clear Hex from 5 hexes" },
+    { "Key": "7",      "Name": "Line Clearing",      "GamerScore": 10, "Icon": "lineclearing.png", "Description": "Make 100 Line Clear Hexes" },
+    { "Key": "8",     "Name": "Color Clearing",     "GamerScore": 15, "Icon": "colorclearing.png", "Description": "Make 200 Color Clear Hexes" },
+    { "Key": "9",      "Name": "Quick Learner",      "GamerScore": 10, "Icon": "quicklearner.png", "Description": "Finish the Tutorial" },
+    { "Key": "10",        "Name": "Trying Hard",        "GamerScore": 10, "Icon": "tryinghard.png", "Description": "Finish 33 levels" },
+    { "Key": "11",           "Name": "Hexified",           "GamerScore": 10, "Icon": "hexified.png", "Description": "Stay in it to win it" },
+    { "Key": "12",          "Name": "Hexy Hero",          "GamerScore": 25, "Icon": "hexyhero.png", "Description": "Bond with your good friend Hexy" },
+    { "Key": "13",         "Name": "The Number",         "GamerScore": 15, "Icon": "thenumber.png", "Description": "Earn three stars on 42 levels" },
+    { "Key": "19",      "Name": "Fear of Cells",      "GamerScore": 20, "Icon": "fearofcells.png", "Description": "Use all moves in a level without clearing any Dark Fragments" },
+    { "Key": "20",   "Name": "Anomaly Collector",  "GamerScore": 20, "Icon": "anomalycollector.png", "Description": "Finished an anomaly level without letting an anomaly out" }
   ]
 }
 

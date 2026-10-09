@@ -131,6 +131,13 @@ if (Environment.GetEnvironmentVariable("WPR_TRACE") is { Length: > 0 } trace)
     }
 }
 
+// WPR_LUATRACE=0x00471CE4 reads the Lua call stack whenever that address runs, taking r0 as
+// the lua_State. For this title that address is luaL_argerror.
+if (Environment.GetEnvironmentVariable("WPR_LUATRACE") is { Length: > 0 } luaTrace)
+{
+    emulator.LuaTraceAt(Convert.ToInt64(luaTrace.Trim(), 16));
+}
+
 // WPR_SCREENSHOT=path[:frame[+every]] rasterises presented frames and writes them as PNGs.
 // With +every the name gains a six-digit frame number and the run produces a contact sheet
 // rather than one picture, which is the difference between one guess per run and twenty.
@@ -152,11 +159,75 @@ if (Environment.GetEnvironmentVariable("WPR_SCREENSHOT") is { Length: > 0 } shot
 
 Stopwatch clock = Stopwatch.StartNew();
 Stopwatch runClock = Stopwatch.StartNew();
-string? fault = emulator.RunEntryPoint(budget);
+// WPR_WATCHDOG=<seconds>: halt the CPU from another thread after that long, so a run stuck
+// somewhere that retires no instructions still ends with a report and a final PC.
+if (int.TryParse(Environment.GetEnvironmentVariable("WPR_WATCHDOG"), out int watchdogSeconds) && watchdogSeconds > 0)
+{
+    _ = Task.Delay(TimeSpan.FromSeconds(watchdogSeconds)).ContinueWith(_ =>
+    {
+        Console.Error.WriteLine($"[watchdog] {watchdogSeconds}s elapsed - halting the CPU");
+        if (emulator.Cpu is DynarmicArmCpu)
+        {
+            for (int i = 0; i < 5; i++)
+            {
+                Console.Error.WriteLine(
+                    $"[watchdog] translator last fetched 0x{DynarmicNative.wprcpu_last_fetch():X8}, " +
+                    $"{DynarmicNative.wprcpu_fetch_count():N0} fetches so far");
+                Thread.Sleep(500);
+            }
+        }
+        emulator.Cpu.Stop();
+    });
+}
+
+// WPR_UNHANDLED=1: list every import this image declares that has no implementation, and stop.
+if (Environment.GetEnvironmentVariable("WPR_UNHANDLED") == "1")
+{
+    foreach (string name in image.Imports.Select(i => i.Name).Distinct().Where(n => !emulator.Stubs.IsImplemented(n)).Order())
+    {
+        Console.WriteLine($"UNHANDLED {name}");
+    }
+
+    return 0;
+}
+
+// A Direct3D/XAML title is a WinRT component DLL, not an exe: the host activates its class
+// and plays the managed page (XamlShells) instead of calling an entry point.
+XamlShell? shell = image.IsDll ? XamlShells.ForComponent(path) : null;
+string? fault;
+if (shell is not null)
+{
+    string componentDir = Path.GetDirectoryName(Path.GetFullPath(path))!;
+    WinmdReader metadata = WinmdReader.Load(Directory.GetFiles(componentDir, "*.winmd"));
+    long start = emulator.WinRt.StartComponent(image, metadata, shell);
+    fault = emulator.Run(start, budget);
+}
+else
+{
+    fault = emulator.RunEntryPoint(budget);
+}
+
 runClock.Stop();
 clock.Stop();
 
 Console.WriteLine($"  stopped       {fault ?? emulator.StopReason ?? "instruction budget exhausted"}");
+if (shell is not null)
+{
+    Console.WriteLine($"  xaml host     {emulator.WinRt.ComponentFrames:N0} frame(s) drawn");
+    foreach (string line in emulator.WinRt.ComponentLog)
+    {
+        Console.WriteLine($"      {line}");
+    }
+}
+
+if (emulator.GuestThreadsStarted > 0)
+{
+    Console.WriteLine($"  threads       {emulator.GuestThreadsStarted} started, {emulator.ThreadSwitches:N0} switch(es)");
+    foreach (string line in emulator.ThreadLog)
+    {
+        Console.WriteLine($"      {line}");
+    }
+}
 List<string> damagedAfter = emulator.VerifyTrapPage();
 Console.WriteLine($"  trap page     {(damagedAfter.Count == 0 ? "still intact after the run" : $"{damagedAfter.Count} slots DAMAGED")}");
 foreach (string bad in damagedAfter.Take(4))
@@ -169,12 +240,33 @@ Console.WriteLine(emulator.BlockStatsCollected
     ? $"  blocks        {emulator.BlocksExecuted:N0} entries / {emulator.CodeBytesExecuted:N0} bytes of code"
     : "  blocks        not counted (block hook off above a 10M budget)");
 Console.WriteLine($"  lazy pages    {emulator.LazyPagesMapped}");
+Console.WriteLine($"  cpu           {emulator.Cpu.Capabilities.Name}");
+{
+    long finalPc = emulator.ReadRegister(Arm.UC_ARM_REG_PC);
+    long r3 = emulator.ReadRegister(Arm.UC_ARM_REG_R3);
+    Console.WriteLine($"  trap at pc    {emulator.TrapNameAt(finalPc) ?? "(not a trap slot)"}; trap at r3: {emulator.TrapNameAt(r3) ?? "(not a trap slot)"}; slots allocated: {emulator.TrapSlotsAllocated}");
+}
+Console.WriteLine($"  final regs    r0={emulator.ReadRegister(Arm.UC_ARM_REG_R0):X8} r1={emulator.ReadRegister(Arm.UC_ARM_REG_R1):X8} " +
+                  $"r2={emulator.ReadRegister(Arm.UC_ARM_REG_R2):X8} r3={emulator.ReadRegister(Arm.UC_ARM_REG_R3):X8} " +
+                  $"r12={emulator.ReadRegister(Arm.UC_ARM_REG_R12):X8} sp={emulator.ReadRegister(Arm.UC_ARM_REG_SP):X8} " +
+                  $"lr={emulator.ReadRegister(Arm.UC_ARM_REG_LR):X8} cpsr={emulator.ReadRegister(Arm.UC_ARM_REG_CPSR):X8}");
 Console.WriteLine($"  main loop     {emulator.ProcessEventsCalls} call(s) to CoreDispatcher::ProcessEvents");
-Console.WriteLine($"  guest stores  {emulator.GuestStores:N0} into the heap and stack");
+Console.WriteLine(emulator.GuestStoresCounted
+    ? $"  guest stores  {emulator.GuestStores:N0} into the heap and stack"
+    : "  guest stores  not counted (WPR_STORES=1 counts them, at the cost of a hook per store)");
 Console.WriteLine($"  graphics      {emulator.Direct3D.Summary()}");
 if (emulator.Direct3D.ScreenshotSummary is not null)
 {
     Console.WriteLine($"  screenshot    {emulator.Direct3D.ScreenshotSummary}");
+    if (Environment.GetEnvironmentVariable("WPR_DRAWS") == "1")
+    {
+        Console.WriteLine("                -- every draw of the captured frame --");
+        foreach (string line in emulator.Direct3D.Frame.LastFrameDraws)
+        {
+            Console.WriteLine($"                {line}");
+        }
+    }
+
     foreach (string note in emulator.Direct3D.Frame.Notes)
     {
         Console.WriteLine($"                {note}");
@@ -207,6 +299,27 @@ foreach (string line in emulator.InputDelivered)
 {
     Console.WriteLine($"  input         {line}");
 }
+foreach (string line in emulator.Stubs.Maths.Trace)
+{
+    Console.WriteLine($"  maths         {line}");
+}
+
+foreach (string line in emulator.Direct3D.VertexShaderNotes.Take(12))
+{
+    Console.WriteLine($"  shader        {line}");
+}
+
+foreach (string line in emulator.Stubs.Streams.Log.Take(12))
+{
+    Console.WriteLine($"  streams       {line}");
+}
+
+Console.WriteLine($"  DEFAULTED     {emulator.Stubs.DefaultedCalls.Count} import(s) reached no handler and were answered with 0:");
+foreach (var (name, calls) in emulator.Stubs.DefaultedCalls.OrderByDescending(p => p.Value))
+{
+    Console.WriteLine($"       {calls,8:N0}  {name}");
+}
+
 if (emulator.UndeliveredThrows.Count > 0)
 {
     Console.WriteLine($"  UNDELIVERED   {emulator.UndeliveredThrows.Count} throw(s) the runtime was asked for and did not deliver;");
@@ -643,13 +756,16 @@ bool callbackOk = VtableProof.RunCallbackProof(emulator, Console.Out);
 emulator.Dispose();
 
 Console.WriteLine();
-Console.WriteLine(Rule("TIME INSIDE HOST STUBS"));
-foreach (string line in emulator.HostTime(runClock.Elapsed.TotalSeconds))
+if (ArmEmulator.TimingStubs)
 {
-    Console.WriteLine($"  {line}");
-}
+    Console.WriteLine(Rule("TIME INSIDE HOST STUBS"));
+    foreach (string line in emulator.HostTime(runClock.Elapsed.TotalSeconds))
+    {
+        Console.WriteLine($"  {line}");
+    }
 
-Console.WriteLine();
+    Console.WriteLine();
+}
 
 if (emulator.Direct3D.Phases.Count > 0)
 {
@@ -657,6 +773,28 @@ if (emulator.Direct3D.Phases.Count > 0)
     foreach (string phase in emulator.Direct3D.Phases)
     {
         Console.WriteLine($"  {phase}");
+    }
+
+    Console.WriteLine();
+}
+
+if (emulator.LuaTracebacks.Count > 0)
+{
+    Console.WriteLine(Rule("LUA CALL STACK AT ERROR"));
+    foreach (string line in emulator.LuaTracebacks)
+    {
+        Console.WriteLine($"  {line}");
+    }
+
+    Console.WriteLine();
+}
+
+if (emulator.Stubs.ThrowHistory.Count > 0)
+{
+    Console.WriteLine(Rule("EVERY THROW, IN ORDER"));
+    foreach (string line in emulator.Stubs.ThrowHistory)
+    {
+        Console.WriteLine($"  {line}");
     }
 
     Console.WriteLine();
@@ -677,8 +815,24 @@ static void RunThroughputBenchmark()
     MeasureWrites("stores, rwx page", false);
     MeasureWrites("stores, rw page", true);
     MeasureLoads();
+    MeasureUnrolledStores();
     MeasureMixed("mixed, no hook", false);
     MeasureMixed("mixed, code hook", true);
+    MeasureMixedIntr();
+
+    // Off by default: firing an svc with an interrupt hook installed kills the process on this
+    // build, which is the whole finding. WPR_SVCPROBE=1 re-runs the proof.
+    if (Environment.GetEnvironmentVariable("WPR_SVCPROBE") is { Length: > 0 })
+    {
+        ProveSvcTrap();
+    }
+
+    // The same proof against dynarmic through the wprcpu shim, plus the mixed loop for the
+    // like-for-like figure. Needs wprcpu.dll beside the executable.
+    if (Environment.GetEnvironmentVariable("WPR_DYNPROBE") is { Length: > 0 })
+    {
+        ProveDynarmicTrap();
+    }
 
     static void Measure(string label, bool withCodeHook)
     {
@@ -882,6 +1036,236 @@ static void MeasureMixed(string label, bool withCodeHook)
     double mips = instructions / clock.Elapsed.TotalSeconds / 1e6;
     Console.WriteLine($"  {label,-18} {instructions:N0} instruction(s) in " +
                       $"{clock.Elapsed.TotalSeconds:F2}s = {mips:F0} MIPS");
+}
+
+// Eight stores in one basic block, against one store in a three-instruction block. If a
+// store costs the same either way it really is the store; if it gets far cheaper when
+// unrolled, the cost is per *block* - a store forcing the translation block to end - and the
+// number that matters for real code is how often it stores, not how many it makes.
+static void MeasureUnrolledStores()
+{
+    const long code = 0x1000;
+    const long data = 0x2000;
+    const long iterations = 2_000_000;
+
+    using Unicorn uc = new(Common.UC_ARCH_ARM, Common.UC_MODE_THUMB);
+    uc.MemMap(code, 0x1000, Common.UC_PROT_ALL);
+    uc.MemMap(data, 0x1000, Common.UC_PROT_ALL);
+
+    // loop: str r2,[r3] x8 ; subs r0,#1 ; bne loop
+    uc.MemWrite(code,
+    [
+        0x1A, 0x60, 0x1A, 0x60, 0x1A, 0x60, 0x1A, 0x60,
+        0x1A, 0x60, 0x1A, 0x60, 0x1A, 0x60, 0x1A, 0x60,
+        0x01, 0x38, 0xF5, 0xD1,
+    ]);
+
+    uc.RegWrite(Arm.UC_ARM_REG_R0, iterations);
+    uc.RegWrite(Arm.UC_ARM_REG_R3, data);
+
+    long instructions = iterations * 10;
+    long stores = iterations * 8;
+
+    Stopwatch clock = Stopwatch.StartNew();
+    uc.EmuStart(code | 1, 0, 0, instructions);
+    clock.Stop();
+
+    double mips = instructions / clock.Elapsed.TotalSeconds / 1e6;
+    double each = clock.Elapsed.TotalSeconds / stores * 1e9;
+    Console.WriteLine($"  stores, unrolled x8 {stores:N0} store(s) in {clock.Elapsed.TotalSeconds:F2}s = " +
+                      $"{mips:F0} MIPS, {each:F0} ns each");
+}
+
+// The same mixed loop with an *interrupt* hook installed instead of a code hook. An svc-based
+// trap would use one of these, and the question this answers is whether it costs what a code
+// hook costs: a code hook stops Unicorn chaining translation blocks whether or not it ever
+// fires, and if UC_HOOK_INTR does the same then moving the import traps onto svc buys nothing.
+static void MeasureMixedIntr()
+{
+    const long code = 0x1000;
+    const long data = 0x2000;
+    const long count = 5_000_000;
+
+    using Unicorn uc = new(Common.UC_ARCH_ARM, Common.UC_MODE_THUMB);
+    uc.MemMap(code, 0x1000, Common.UC_PROT_ALL);
+    uc.MemMap(data, 0x1000, Common.UC_PROT_ALL);
+
+    uc.MemWrite(code,
+    [
+        0x1A, 0x68, 0x01, 0x32, 0x1A, 0x60, 0xA0, 0x47, 0x01, 0x38, 0xF9, 0xD1, 0xFE, 0xE7, 0x00, 0x00,
+        0x01, 0x31, 0x70, 0x47,
+    ]);
+
+    uc.RegWrite(Arm.UC_ARM_REG_R0, count);
+    uc.RegWrite(Arm.UC_ARM_REG_R3, data);
+    uc.RegWrite(Arm.UC_ARM_REG_R4, (code + 16) | 1);
+
+    uc.AddInterruptHook((Unicorn _, int _, object? _) => { }, null, 1, ulong.MaxValue);
+
+    long instructions = count * 8;
+
+    Stopwatch clock = Stopwatch.StartNew();
+    uc.EmuStart(code | 1, 0, 0, instructions);
+    clock.Stop();
+
+    double mips = instructions / clock.Elapsed.TotalSeconds / 1e6;
+    Console.WriteLine($"  mixed, intr hook   {instructions:N0} instruction(s) in " +
+                      $"{clock.Elapsed.TotalSeconds:F2}s = {mips:F0} MIPS");
+}
+
+// Can an interrupt hook stand in for a trap at all? The mechanism has to do three things:
+// fire on svc, report where it happened, and let the handler choose where execution resumes.
+// Proving that on twenty instructions is the difference between a two-line fix and a crash
+// three million calls into a run with no report.
+static void ProveSvcTrap()
+{
+    const long code = 0x1000;
+
+    using Unicorn uc = new(Common.UC_ARCH_ARM, Common.UC_MODE_THUMB);
+    uc.MemMap(code, 0x1000, Common.UC_PROT_ALL);
+
+    // 0: svc #0     - the trap
+    // 2: bx r12     - the tail call the slot always ended with
+    // 4: movs r0, #7 - where r12 points; proves both halves ran
+    // 6: b .        - park
+    uc.MemWrite(code, [0x00, 0xDF, 0x60, 0x47, 0x07, 0x20, 0xFE, 0xE7]);
+    uc.RegWrite(Arm.UC_ARM_REG_R0, 0);
+    uc.RegWrite(Arm.UC_ARM_REG_R1, 0);
+
+    long seenAt = -1;
+    long spBefore = uc.RegRead(Arm.UC_ARM_REG_SP);
+
+    uc.AddInterruptHook(
+        (Unicorn u, int number, object? _) =>
+        {
+            seenAt = u.RegRead(Arm.UC_ARM_REG_PC);
+
+            // Deliberately NOT writing the PC: that kills the process outright on this build.
+            // The question here is whether execution simply carries on past the svc, which
+            // would let a trap slot be svc followed by the bx r12 it already had.
+            u.RegWrite(Arm.UC_ARM_REG_R12, code + 4);
+        },
+        null,
+        1,
+        ulong.MaxValue);
+
+    string outcome;
+    try
+    {
+        uc.EmuStart(code | 1, 0, 0, 8);
+        long r0 = uc.RegRead(Arm.UC_ARM_REG_R0);
+        long r1 = uc.RegRead(Arm.UC_ARM_REG_R1);
+        long sp = uc.RegRead(Arm.UC_ARM_REG_SP);
+        outcome = $"fired at 0x{seenAt:X}, r0={r0} (want 7), r1={r1}, " +
+                  $"sp {(sp == spBefore ? "unchanged" : $"CHANGED to 0x{sp:X}")}";
+    }
+    catch (UnicornEngineException ex)
+    {
+        outcome = $"threw {ex.Message} (fired at 0x{seenAt:X})";
+    }
+
+    Console.WriteLine($"  svc as a trap   {outcome}");
+}
+
+// Does the trap mechanism work on dynarmic: a slot of svc #0 ; bx r12, a handler that sets
+// r12, and the CPU continuing where the handler said? Then the mixed loop, so the two engines
+// are compared on the same instructions in the same process.
+static void ProveDynarmicTrap()
+{
+    const uint code = 0x1000;
+    const uint slot = 0xA0000000;
+
+    using var cpu = new DynarmicCpu();
+    cpu.Map(code, 0x1000, DynarmicNative.ProtAll);
+    cpu.Map(slot, 0x10000, DynarmicNative.ProtRead | DynarmicNative.ProtExec);
+
+    // 0: blx r1       - call the trap slot as an import would
+    // 2: movs r0, #7  - runs after the trap returns via bx r12 = lr
+    // 4: b .          - park
+    cpu.TryWrite(code, [0x88, 0x47, 0x07, 0x20, 0xFE, 0xE7]);
+    cpu.TryWrite(slot, DynarmicCpu.TrapSlot);
+
+    uint seenPc = 0;
+    int fired = 0;
+    cpu.TrapEntered += pc =>
+    {
+        fired++;
+        seenPc = pc;
+        cpu[12] = cpu[14];      // r12 = lr: plain return, exactly what EnterTrap defaults to
+        cpu[3] = 42;
+    };
+
+    cpu[0] = 0;
+    cpu[1] = slot | 1;
+    int outcome = cpu.Run(code | 1, 40);
+
+    string verdict = fired == 1 && cpu[0] == 7 && cpu[3] == 42 && seenPc == slot + 2 ? "PASS" : "FAIL";
+    Console.WriteLine($"  dynarmic trap   {verdict}: fired {fired}x at pc 0x{seenPc:X} (slot 0x{slot:X}), " +
+                      $"r0={cpu[0]} (want 7), r3={cpu[3]} (want 42), outcome {outcome}");
+
+    // A store into the trap page must be refused, not land.
+    bool refused = false;
+    cpu.UnmappedAccess = (access, address, size) =>
+    {
+        refused = access == DynarmicNative.AccessWrite && address >= slot && address < slot + 0x10000;
+        return false;
+    };
+
+    // str r0, [r1] with r1 = slot (r0 is 7 from above) ; b .
+    cpu.TryWrite(code, [0x08, 0x60, 0xFE, 0xE7]);
+    cpu[1] = slot;
+    outcome = cpu.Run(code | 1, 10);
+    Console.WriteLine($"  trap page write {(refused && outcome == DynarmicNative.OutcomeFault ? "PASS" : "FAIL")}: " +
+                      $"refused={refused} outcome={outcome} (want {DynarmicNative.OutcomeFault})");
+
+    // Lazy mapping: a load from a page nobody mapped reaches the handler, which maps it and
+    // asks for the access to be retried. The image's whole lazily-mapped address space rests
+    // on this one semantic, so it is proved here rather than discovered in a run.
+    const uint lazy = 0x30000000;
+    int lazyCalls = 0;
+    cpu.UnmappedAccess = (access, address, size) =>
+    {
+        lazyCalls++;
+        if (address >= lazy && address < lazy + 0x1000)
+        {
+            cpu.Map(lazy, 0x1000, DynarmicNative.ProtAll);
+            return true;
+        }
+
+        return false;
+    };
+
+    // ldr r0, [r1] ; adds r0, #5 ; b .    with r1 = lazy page, which reads as zero once mapped
+    cpu.TryWrite(code, [0x08, 0x68, 0x05, 0x30, 0xFE, 0xE7]);
+    cpu[0] = 99;
+    cpu[1] = lazy;
+    outcome = cpu.Run(code | 1, 10);
+    Console.WriteLine($"  lazy page       {(lazyCalls == 1 && cpu[0] == 5 && cpu.IsMapped(lazy) && outcome == DynarmicNative.OutcomeBudget ? "PASS" : "FAIL")}: " +
+                      $"handler called {lazyCalls}x, r0={cpu[0]} (want 5), mapped={cpu.IsMapped(lazy)}, outcome={outcome}");
+
+    // The mixed loop, same bytes as the Unicorn figure above.
+    const uint data = 0x2000;
+    cpu.UnmappedAccess = null;
+    cpu.Map(data, 0x1000, DynarmicNative.ProtAll);
+    cpu.TryWrite(code,
+    [
+        0x1A, 0x68, 0x01, 0x32, 0x1A, 0x60, 0xA0, 0x47, 0x01, 0x38, 0xF9, 0xD1, 0xFE, 0xE7, 0x00, 0x00,
+        0x01, 0x31, 0x70, 0x47,
+    ]);
+
+    const long count = 5_000_000;
+    cpu[0] = (uint)count;
+    cpu[3] = data;
+    cpu[4] = (code + 16) | 1;
+    long instructions = count * 8;
+
+    Stopwatch clock = Stopwatch.StartNew();
+    cpu.Run(code | 1, (ulong)instructions);
+    clock.Stop();
+
+    double mips = instructions / clock.Elapsed.TotalSeconds / 1e6;
+    Console.WriteLine($"  mixed, dynarmic    {instructions:N0} instruction(s) in " +
+                      $"{clock.Elapsed.TotalSeconds:F2}s = {mips:F0} MIPS (from C#, through the shim)");
 }
 
 // ASCII only: the Windows console default code page mangles box-drawing characters.

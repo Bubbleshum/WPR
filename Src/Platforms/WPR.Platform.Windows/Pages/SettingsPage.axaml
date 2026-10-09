@@ -58,6 +58,21 @@
 				</StackPanel>
 			</Border>
 
+			<!-- Display section. Hardcoded English, like the Online section below. The same choice
+			     is toggled in game with F11 or Alt+Enter (SDL2_FNAPlatform), which saves it here. -->
+			<TextBlock Text="Display"
+			           FontSize="16" FontWeight="SemiBold"
+			           Foreground="White"
+			           Margin="0,20,0,6"/>
+			<Border BorderBrush="#3FFFFFFF" BorderThickness="1" CornerRadius="3" Padding="12">
+				<StackPanel Spacing="10">
+					<CheckBox Name="gameFullscreenCheckBox" Foreground="White"
+					          Content="Play games fullscreen"/>
+					<TextBlock Foreground="#BFFFFFFF" FontSize="11" TextWrapping="Wrap"
+					           Text="Games fill the screen and keep their shape: a portrait game gets black bars at the sides. Press F11 or Alt+Enter in a game to switch between fullscreen and a window."/>
+				</StackPanel>
+			</Border>
+
 			<!-- WPR Hub (online) section. Hardcoded English: these
 			     strings are new and not in the shared .resx yet. -->
 			<Image Name="hubLogoImage" Height="48" HorizontalAlignment="Left" Margin="-4,20,0,6" IsVisible="False"/>

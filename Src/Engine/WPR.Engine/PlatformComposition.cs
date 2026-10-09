@@ -66,6 +66,7 @@ namespace WPR.Engine
         private sealed class Recorder : IPlatformCapabilities
         {
             private IAccelerometerProvider? _accelerometer;
+            private IGyroscopeProvider? _gyroscope;
             private IVibrationProvider? _vibration;
             /* Fully qualified: the interface member below is also called GraphicsDriver, and a
              * method name shadows a type name inside the class that declares it. */
@@ -84,6 +85,12 @@ namespace WPR.Engine
             public IPlatformCapabilities Accelerometer(IAccelerometerProvider provider)
             {
                 _accelerometer = provider ?? throw new ArgumentNullException(nameof(provider));
+                return this;
+            }
+
+            public IPlatformCapabilities Gyroscope(IGyroscopeProvider provider)
+            {
+                _gyroscope = provider ?? throw new ArgumentNullException(nameof(provider));
                 return this;
             }
 
@@ -160,6 +167,7 @@ namespace WPR.Engine
             internal void Commit()
             {
                 if (_accelerometer != null) WPR.Engine.Sensors.SensorBackend.SetAccelerometer(_accelerometer);
+                if (_gyroscope != null) WPR.Engine.Sensors.SensorBackend.SetGyroscope(_gyroscope);
                 if (_vibration != null) VibrationBackend.SetDevice(_vibration);
 
                 /* Declared even when Unspecified: the preference registry treats that as "leave the
@@ -188,6 +196,7 @@ namespace WPR.Engine
             {
                 List<string> parts = new List<string>();
                 parts.Add("accelerometer=" + Name(_accelerometer));
+                parts.Add("gyroscope=" + Name(_gyroscope));
                 parts.Add("vibration=" + Name(_vibration));
                 parts.Add(GraphicsDriverPreference.Describe());
                 parts.Add(WPR.Engine.Content.ContentPaths.Describe());

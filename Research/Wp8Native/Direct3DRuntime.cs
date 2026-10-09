@@ -20,7 +20,7 @@ namespace WPR.Wp8Native
     /// point of this layer is to get the image through device creation, swap chain creation
     /// and into its main loop, and to say precisely what it does once it is there.
     /// </remarks>
-    public sealed class Direct3DRuntime
+    public sealed partial class Direct3DRuntime
     {
         private const long HResultOk = 0;
         private const long HResultNoInterface = unchecked((int)0x80004002);
@@ -580,7 +580,7 @@ namespace WPR.Wp8Native
 
         private const int DeviceSlots = 50;
 
-        private Dictionary<int, (string, Action)> DeviceMethods() => new()
+        private Dictionary<int, (string, Action)> DeviceCore() => new()
         {
             [3] = ("CreateBuffer", MakeResource("Buffer", outIndex: 3)),
             [4] = ("CreateTexture1D", MakeResource("Texture1D", outIndex: 3)),
@@ -619,16 +619,25 @@ namespace WPR.Wp8Native
                 int count = (int)Math.Clamp(Arg(2), 0, 32);
                 var elements = new List<FrameCapture.VertexElement>();
 
+                // D3D11_APPEND_ALIGNED_ELEMENT (0xFFFFFFFF) means "straight after the previous
+                // element in this slot". Stored raw it was offset -1, every attribute after the first
+                // read the wrong bytes, and Modern Combat 4's world drew nowhere.
+                var nextOffset = new Dictionary<int, int>();
                 for (int i = 0; i < count && descs != 0; i++)
                 {
                     long entry = descs + (i * 28);
                     string semantic = _frame.ReadNarrowString(_emulator.ReadUInt32(entry + 0, 0), 32);
+                    uint format = _emulator.ReadUInt32(entry + 8, 0);
+                    int slot = (int)_emulator.ReadUInt32(entry + 12, 0);
+                    uint raw = _emulator.ReadUInt32(entry + 16, 0);
+                    int offset = raw == 0xFFFFFFFF ? nextOffset.GetValueOrDefault(slot) : (int)raw;
+                    nextOffset[slot] = offset + DxgiElementSize(format);
                     elements.Add(new FrameCapture.VertexElement(
                         semantic,
                         _emulator.ReadUInt32(entry + 4, 0),
-                        _emulator.ReadUInt32(entry + 8, 0),
-                        (int)_emulator.ReadUInt32(entry + 16, 0),
-                        (int)_emulator.ReadUInt32(entry + 12, 0)));
+                        format,
+                        offset,
+                        slot));
                 }
 
                 Count("InputLayout");
@@ -651,7 +660,7 @@ namespace WPR.Wp8Native
             // Index 3 is pClassLinkage, which is almost always null, so this wrote nothing
             // and answered S_OK: the image kept whatever its own memory already held where
             // the shader pointer belonged.
-            [12] = ("CreateVertexShader", MakeChild("VertexShader", outIndex: 4)),
+            [12] = ("CreateVertexShader", CreateVertexShader),
             [13] = ("CreateGeometryShader", MakeChild("GeometryShader", outIndex: 4)),
             [16] = ("CreateHullShader", MakeChild("HullShader", outIndex: 4)),
             [17] = ("CreateDomainShader", MakeChild("DomainShader", outIndex: 4)),
@@ -664,7 +673,7 @@ namespace WPR.Wp8Native
             [20] = ("CreateBlendState", MakeChild("BlendState", outIndex: 2)),
             [21] = ("CreateDepthStencilState", MakeChild("DepthStencilState", outIndex: 2)),
             [22] = ("CreateRasterizerState", MakeChild("RasterizerState", outIndex: 2)),
-            [23] = ("CreateSamplerState", MakeChild("SamplerState", outIndex: 2)),
+            [23] = ("CreateSamplerState", CreateSamplerState),
             [24] = ("CreateQuery", MakeChild("Query", outIndex: 2)),
             [25] = ("CreatePredicate", MakeChild("Predicate", outIndex: 2)),
             [29] = ("CheckFormatSupport", () =>
@@ -779,7 +788,11 @@ namespace WPR.Wp8Native
                 // its real stride and drops half of each one.
                 resource.PixelBytes = resource.Format switch
                 {
-                    85 or 86 or 115 => 2,
+                    // 8-bit: R8 (61-64) and A8 (65), Modern Combat 4's font. Read at four bytes
+                    // a pixel, each glyph came out as vertical stripes.
+                    61 or 62 or 63 or 64 or 65 => 1,
+                    // 16-bit: B5G6R5, B5G5R5A1, B4G4R4A4, and R8G8 (49-52).
+                    85 or 86 or 115 or 49 or 50 or 51 or 52 => 2,
                     _ => 4,
                 };
 
@@ -835,6 +848,7 @@ namespace WPR.Wp8Native
                 _emulator.WriteMemory(
                     resource.Storage, _emulator.ReadMemory(source, (int)resource.StorageSize));
                 resource.HasContent = true;
+                resource.Version++;
             }
             catch (Exception)
             {
@@ -866,6 +880,7 @@ namespace WPR.Wp8Native
                 }
 
                 resource.HasContent = true;
+                resource.Version++;
             }
             catch (Exception)
             {
@@ -901,6 +916,12 @@ namespace WPR.Wp8Native
 
             ComObject created = NewObject($"{kind}{ResourcesCreated[kind]}");
             long pointer = CreateInterface(created, interfaceName, slotCount, methods);
+            if (slotCount == ViewSlots)
+            {
+                // Create*View(ID3D11Resource*, desc, out): what GetResource hands back.
+                _viewResources[pointer] = Arg(1);
+            }
+
             _emulator.WriteUInt32(outPointer, (uint)pointer);
             Return(HResultOk);
         };
@@ -916,8 +937,22 @@ namespace WPR.Wp8Native
         // ID3D11Texture2D and ID3D11Buffer both add GetDesc at 10.
         private const int ResourceSlots = 11;
 
+        /// <summary>The resource each view was created over, for ID3D11View::GetResource.</summary>
+        private readonly Dictionary<long, long> _viewResources = new();
+
         private Dictionary<int, (string, Action)> ViewMethods() => new()
         {
+            // void GetResource(ID3D11Resource** ppResource). Modern Combat 4 reads the render
+            // target's texture back from the view it is handed in Draw, to size its frame.
+            [7] = ("GetResource", () =>
+            {
+                if (Arg(1) != 0)
+                {
+                    _emulator.WriteUInt32(Arg(1), (uint)_viewResources.GetValueOrDefault(Arg(0)));
+                }
+
+                Return(0);
+            }),
             [8] = ("GetDesc", () =>
             {
                 // D3D11_RENDER_TARGET_VIEW_DESC opens with Format then ViewDimension. The
@@ -972,16 +1007,140 @@ namespace WPR.Wp8Native
 
         private const int ContextSlots = 135;
 
-        private Dictionary<int, (string, Action)> ContextMethods() => new()
+        private Dictionary<int, (string, Action)> ContextMethods()
+        {
+            Dictionary<int, (string, Action)> methods = ContextSetters();
+            AddContextGetters(methods);
+            HookGpuContext(methods);
+            return methods;
+        }
+
+        /// <summary>
+        /// ID3D11DeviceContext's Get* half, slots 72-109: every one answers "nothing bound" -
+        /// null interfaces, zero counts, the full sample mask. A caller saves state to restore it,
+        /// or compares what is bound before rebinding, and releases whatever it got back; left
+        /// unwritten, the out-parameters were stack garbage, and Modern Combat 4 released one
+        /// (PSGetShaderResources) through a vtable that was not there.
+        /// </summary>
+        private void AddContextGetters(Dictionary<int, (string, Action)> methods)
+        {
+            void Zero(long address, long words)
+            {
+                if (address != 0 && words > 0 && words < 4096)
+                {
+                    _emulator.WriteMemory(address, new byte[words * 4]);
+                }
+            }
+
+            // (StartSlot, Num, T** out)
+            foreach ((int slot, string name) in new[]
+            {
+                (72, "VSGetConstantBuffers"), (73, "PSGetShaderResources"), (75, "PSGetSamplers"),
+                (77, "PSGetConstantBuffers"), (81, "GSGetConstantBuffers"), (84, "VSGetShaderResources"),
+                (85, "VSGetSamplers"), (87, "GSGetShaderResources"), (88, "GSGetSamplers"),
+                (97, "HSGetShaderResources"), (99, "HSGetSamplers"), (100, "HSGetConstantBuffers"),
+                (101, "DSGetShaderResources"), (103, "DSGetSamplers"), (104, "DSGetConstantBuffers"),
+                (105, "CSGetShaderResources"), (106, "CSGetUnorderedAccessViews"), (108, "CSGetSamplers"),
+                (109, "CSGetConstantBuffers"),
+            })
+            {
+                methods[slot] = (name, () => { Zero(Arg(3), Arg(2)); Return(0); });
+            }
+
+            // (T** shader, ID3D11ClassInstance** instances, UINT* numInstances)
+            foreach ((int slot, string name) in new[]
+            {
+                (74, "PSGetShader"), (76, "VSGetShader"), (82, "GSGetShader"),
+                (98, "HSGetShader"), (102, "DSGetShader"), (107, "CSGetShader"),
+            })
+            {
+                methods[slot] = (name, () => { Zero(Arg(1), 1); Zero(Arg(3), 1); Return(0); });
+            }
+
+            // One out-parameter.
+            foreach ((int slot, string name) in new[] { (78, "IAGetInputLayout"), (83, "IAGetPrimitiveTopology"), (94, "RSGetState") })
+            {
+                methods[slot] = (name, () => { Zero(Arg(1), 1); Return(0); });
+            }
+
+            // (StartSlot, Num, ID3D11Buffer**, UINT* strides, UINT* offsets)
+            methods[79] = ("IAGetVertexBuffers", () => { Zero(Arg(3), Arg(2)); Zero(Arg(4), Arg(2)); Zero(Arg(5), Arg(2)); Return(0); });
+
+            // (ID3D11Buffer**, DXGI_FORMAT*, UINT* offset)
+            methods[80] = ("IAGetIndexBuffer", () => { Zero(Arg(1), 1); Zero(Arg(2), 1); Zero(Arg(3), 1); Return(0); });
+
+            // (ID3D11Predicate**, BOOL*)
+            methods[86] = ("GetPredication", () => { Zero(Arg(1), 1); Zero(Arg(2), 1); Return(0); });
+
+            // (NumViews, ID3D11RenderTargetView**, ID3D11DepthStencilView**)
+            methods[89] = ("OMGetRenderTargets", () => { Zero(Arg(2), Arg(1)); Zero(Arg(3), 1); Return(0); });
+
+            // (NumRTVs, RTV**, DSV**, UAVStart, NumUAVs, UAV**)
+            methods[90] = ("OMGetRenderTargetsAndUnorderedAccessViews", () =>
+            {
+                Zero(Arg(2), Arg(1));
+                Zero(Arg(3), 1);
+                Zero(Arg(6), Arg(5));
+                Return(0);
+            });
+
+            // (ID3D11BlendState**, FLOAT BlendFactor[4], UINT* SampleMask)
+            methods[91] = ("OMGetBlendState", () =>
+            {
+                Zero(Arg(1), 1);
+                if (Arg(2) != 0)
+                {
+                    for (int i = 0; i < 4; i++)
+                    {
+                        _emulator.WriteSingle(Arg(2) + (i * 4), 1f);
+                    }
+                }
+
+                if (Arg(3) != 0)
+                {
+                    _emulator.WriteUInt32(Arg(3), 0xFFFFFFFF);
+                }
+
+                Return(0);
+            });
+
+            // (ID3D11DepthStencilState**, UINT* StencilRef)
+            methods[92] = ("OMGetDepthStencilState", () => { Zero(Arg(1), 1); Zero(Arg(2), 1); Return(0); });
+
+            // (NumBuffers, ID3D11Buffer**)
+            methods[93] = ("SOGetTargets", () => { Zero(Arg(2), Arg(1)); Return(0); });
+
+            // (UINT* NumViewports, D3D11_VIEWPORT*) and the scissor equivalent: none set.
+            methods[95] = ("RSGetViewports", () => { Zero(Arg(1), 1); Return(0); });
+            methods[96] = ("RSGetScissorRects", () => { Zero(Arg(1), 1); Return(0); });
+        }
+
+        private Dictionary<int, (string, Action)> ContextSetters() => new()
         {
             [7] = ("VSSetConstantBuffers", () =>
             {
-                // (StartSlot, NumBuffers, ppConstantBuffers)
-                if (Arg(2) > 0 && Arg(3) != 0)
+                // (StartSlot, NumBuffers, ppConstantBuffers) - only cb0 feeds the position.
+                if (Arg(1) == 0 && Arg(2) > 0 && Arg(3) != 0)
                 {
                     _boundConstants = ResourceAt(_emulator.ReadUInt32(Arg(3), 0));
                 }
 
+                Return(HResultOk);
+            }),
+            [10] = ("PSSetSamplers", () =>
+            {
+                // (StartSlot, NumSamplers, ppSamplers) - slot 0 is the one the sprite shaders sample.
+                if (Arg(1) == 0 && Arg(2) > 0 && Arg(3) != 0)
+                {
+                    _boundSampler = _samplers.GetValueOrDefault(_emulator.ReadUInt32(Arg(3), 0));
+                }
+
+                Return(HResultOk);
+            }),
+            [11] = ("VSSetShader", () =>
+            {
+                // (pVertexShader, ppClassInstances, NumClassInstances)
+                _boundVertexShader = _vertexShaders.GetValueOrDefault(Arg(1));
                 Return(HResultOk);
             }),
             [8] = ("PSSetShaderResources", () =>
@@ -1068,6 +1227,14 @@ namespace WPR.Wp8Native
                     Viewport = (
                         BitConverter.ToSingle(_emulator.ReadMemory(viewports + 8, 4)),
                         BitConverter.ToSingle(_emulator.ReadMemory(viewports + 12, 4)));
+
+                    byte[] raw = _emulator.ReadMemory(viewports, 16);
+                    string described = $"viewport x={BitConverter.ToSingle(raw, 0)} y={BitConverter.ToSingle(raw, 4)} " +
+                                       $"w={BitConverter.ToSingle(raw, 8)} h={BitConverter.ToSingle(raw, 12)}";
+                    if (_viewportsSeen.Add(described))
+                    {
+                        Note(described);
+                    }
                 }
 
                 Return(HResultOk);
@@ -1090,6 +1257,7 @@ namespace WPR.Wp8Native
                                 destination.Storage,
                                 _emulator.ReadMemory(Arg(4), (int)destination.StorageSize));
                             destination.HasContent = true;
+                            destination.Version++;
                         }
                         catch (Exception)
                         {
@@ -1130,6 +1298,22 @@ namespace WPR.Wp8Native
             [53] = ("ClearDepthStencilView", () => Return(HResultOk)),
         };
 
+        /// <summary>Bytes in one vertex element of a DXGI format, for resolving APPEND_ALIGNED offsets.</summary>
+        private static int DxgiElementSize(uint format) => format switch
+        {
+            1 or 2 or 3 or 4 => 16,                        // R32G32B32A32
+            5 or 6 or 7 or 8 => 12,                        // R32G32B32
+            9 or 10 or 11 or 12 or 13 or 14 => 8,          // R16G16B16A16
+            15 or 16 or 17 or 18 => 8,                     // R32G32
+            >= 19 and <= 22 => 8,                          // R32G8X24 family
+            >= 23 and <= 47 => 4,                          // R10G10B10A2, R11G11B10, RGBA8, RG16, R32, R24G8
+            >= 48 and <= 59 => 2,                          // RG8, R16
+            >= 60 and <= 65 => 1,                          // R8, A8
+            87 or 88 or 90 or 91 or 92 or 93 => 4,         // BGRA8/BGRX8
+            85 or 86 or 115 => 2,                          // 16-bit packed
+            _ => 4,
+        };
+
         private Action CountDraw(string kind) => () =>
         {
             DrawCalls++;
@@ -1145,7 +1329,7 @@ namespace WPR.Wp8Native
             DrawCalls++;
             Count(indexed ? "DrawIndexed" : "Draw");
 
-            Frame.Record(FrameCapture.Snapshot(_emulator, new FrameCapture.DrawCall(
+            FrameCapture.DrawCall snapshot = FrameCapture.Snapshot(_emulator, new FrameCapture.DrawCall(
                 count,
                 start,
                 baseVertex,
@@ -1156,11 +1340,188 @@ namespace WPR.Wp8Native
                 _boundTexture,
                 _boundLayout,
                 ReadTransform(),
-                _topology)));
+                _topology)
+            {
+                WrapU = _boundSampler?.WrapU ?? false,
+                WrapV = _boundSampler?.WrapV ?? false,
+            });
+
+            Frame.Record(snapshot);
+            GpuRecordDraw(snapshot);
+        }
+
+        /// <summary>A sampler's addressing, which is all the rasteriser takes from it.</summary>
+        private sealed record SamplerAddressing(bool WrapU, bool WrapV);
+
+        private readonly HashSet<string> _viewportsSeen = new();
+
+        private readonly Dictionary<long, SamplerAddressing> _samplers = new();
+        private SamplerAddressing? _boundSampler;
+
+        /// <summary>
+        /// HRESULT CreateSamplerState(const D3D11_SAMPLER_DESC*, ID3D11SamplerState**). The desc is
+        /// Filter, AddressU, AddressV, AddressW, ...; address 1 is WRAP, 2 MIRROR, 3 CLAMP.
+        /// </summary>
+        /// <remarks>
+        /// Dropped before, so everything was sampled clamp - and a game that tiles a texture
+        /// across a big polygon by running its UVs past 1 got the edge texel smeared over the
+        /// whole thing: Angry Birds Classic's ground came out a flat dark brown.
+        /// </remarks>
+        private void CreateSamplerState()
+        {
+            long desc = Arg(1);
+            MakeChild("SamplerState", outIndex: 2)();
+            long outPointer = Arg(2);
+            if (desc == 0 || outPointer == 0)
+            {
+                return;
+            }
+
+            uint addressU = _emulator.ReadUInt32(desc + 4, 3);
+            uint addressV = _emulator.ReadUInt32(desc + 8, 3);
+            long sampler = _emulator.ReadUInt32(outPointer, 0);
+            if (sampler != 0)
+            {
+                _samplers[sampler] = new SamplerAddressing(addressU is 1 or 2, addressV is 1 or 2);
+            }
         }
 
         /// <summary>
-        /// The first sixteen floats of the bound vertex constant buffer, as a matrix.
+        /// How a vertex shader turns its input position into clip space: the cb0 register its
+        /// matrix starts at, and whether it multiplies by rows (mul/mad: v.x*c0 + v.y*c1 + ...)
+        /// rather than taking dot products (dp4 c0..c3).
+        /// </summary>
+        private sealed record VertexTransform(int BaseRegister, bool ByRows);
+
+        private readonly Dictionary<long, VertexTransform> _vertexShaders = new();
+        private VertexTransform? _boundVertexShader;
+
+        /// <summary>Vertex shaders seen, and what was read out of them, for the report.</summary>
+        public List<string> VertexShaderNotes { get; } = new();
+
+        /// <summary>
+        /// HRESULT CreateVertexShader(pShaderBytecode, BytecodeLength, pClassLinkage, ppVertexShader).
+        /// The bytecode used to be dropped here; now it is read for the one fact the rasteriser
+        /// needs, which matrix the position goes through.
+        /// </summary>
+        /// <remarks>
+        /// Rovio's sprite shaders carry WORLDTM, VIEWTM, PROJTM and TOTALTM in cb0 and transform
+        /// by TOTALTM - registers 12-15 - with mul/mad. Reading the first sixteen floats instead
+        /// picked WORLDTM, which leaves out the camera: Angry Birds Classic's backgrounds stopped
+        /// short of the screen edge whenever the camera zoomed, and its menu showed sky colour
+        /// across the right third. Rio got away with it because its first matrix happened to be
+        /// the one that mattered.
+        /// </remarks>
+        private void CreateVertexShader()
+        {
+            long bytecode = Arg(1);
+            long length = Arg(2);
+            MakeChild("VertexShader", outIndex: 4)();
+
+            long outPointer = Arg(4);
+            if (outPointer == 0 || bytecode == 0 || length <= 0 || length > 1024 * 1024)
+            {
+                return;
+            }
+
+            long shader = _emulator.ReadUInt32(outPointer, 0);
+            VertexTransform? how = AnalyseVertexShader(_emulator.ReadMemory(bytecode, (int)length));
+            if (shader != 0 && how is not null)
+            {
+                _vertexShaders[shader] = how;
+            }
+
+            VertexShaderNotes.Add(how is null
+                ? $"vertex shader 0x{shader:X8}: no cb0 transform found"
+                : $"vertex shader 0x{shader:X8}: position by cb0[{how.BaseRegister}..{how.BaseRegister + 3}], {(how.ByRows ? "mul/mad" : "dp4")}");
+        }
+
+        /// <summary>
+        /// Finds the first dp4/mul/mad in the shader program that reads cb0, and from the
+        /// registers it and its neighbours read, the matrix's base.
+        /// </summary>
+        private static VertexTransform? AnalyseVertexShader(byte[] dxbc)
+        {
+            int chunk = -1;
+            for (int i = 0; i + 8 <= dxbc.Length; i += 4)
+            {
+                uint tag = BitConverter.ToUInt32(dxbc, i);
+                if (tag == 0x52444853 /* SHDR */ || tag == 0x58454853 /* SHEX */)
+                {
+                    chunk = i;
+                    break;
+                }
+            }
+
+            if (chunk < 0)
+            {
+                return null;
+            }
+
+            int size = BitConverter.ToInt32(dxbc, chunk + 4);
+            int start = chunk + 8;
+            int end = Math.Min(dxbc.Length, start + size);
+            int at = start + 8; // version, length
+
+            bool? byRows = null;
+            var registers = new List<int>();
+
+            while (at + 4 <= end && registers.Count < 4)
+            {
+                uint opcodeToken = BitConverter.ToUInt32(dxbc, at);
+                int opcode = (int)(opcodeToken & 0x7FF);
+                int tokens = (int)((opcodeToken >> 24) & 0x7F);
+                if (opcode == 0x35 /* customdata */)
+                {
+                    tokens = BitConverter.ToInt32(dxbc, at + 4);
+                }
+
+                if (tokens <= 0)
+                {
+                    break;
+                }
+
+                bool interesting = opcode is 0x11 /* dp4 */ or 0x38 /* mul */ or 0x32 /* mad */;
+                if (interesting)
+                {
+                    for (int t = 1; t < tokens - 2 && at + ((t + 2) * 4) < end; t++)
+                    {
+                        uint operand = BitConverter.ToUInt32(dxbc, at + (t * 4));
+                        int type = (int)((operand >> 12) & 0xFF);
+                        int dimension = (int)((operand >> 20) & 0x3);
+                        int representation0 = (int)((operand >> 22) & 0x7);
+                        int representation1 = (int)((operand >> 25) & 0x7);
+                        int extended = (operand & 0x80000000u) != 0 ? 1 : 0;
+                        if (type == 8 /* constant buffer */ && dimension == 2 && representation0 == 0 && representation1 == 0
+                            && at + ((t + 2 + extended) * 4) < end)
+                        {
+                            int slot = BitConverter.ToInt32(dxbc, at + ((t + 1 + extended) * 4));
+                            int register = BitConverter.ToInt32(dxbc, at + ((t + 2 + extended) * 4));
+                            if (slot == 0 && register is >= 0 and < 4096)
+                            {
+                                byRows ??= opcode != 0x11;
+                                registers.Add(register);
+                            }
+
+                            t += 2 + extended;
+                        }
+                    }
+                }
+
+                at += tokens * 4;
+            }
+
+            if (byRows is null || registers.Count == 0)
+            {
+                return null;
+            }
+
+            int lowest = registers.Min();
+            return new VertexTransform(lowest - (lowest % 4), byRows.Value);
+        }
+
+        /// <summary>
+        /// The bound vertex shader's position matrix out of cb0, as the rasteriser applies it.
         /// </summary>
         /// <remarks>
         /// Standing in for the vertex shader, which this layer does not run. A 2D engine
@@ -1171,21 +1532,46 @@ namespace WPR.Wp8Native
         /// </remarks>
         private float[]? ReadTransform()
         {
-            if (_boundConstants is null || _boundConstants.Storage == 0 || _boundConstants.StorageSize < 64)
+            // Which four registers of cb0 the bound vertex shader multiplies the position by,
+            // and how. Without a shader to go by, the first four, as dot products.
+            VertexTransform how = _boundVertexShader ?? new VertexTransform(0, ByRows: false);
+            long offset = how.BaseRegister * 16L;
+
+            if (_boundConstants is null || _boundConstants.Storage == 0 || _boundConstants.StorageSize < offset + 64)
             {
                 return null;
             }
 
             try
             {
-                byte[] raw = _emulator.ReadMemory(_boundConstants.Storage, 64);
+                byte[] raw = _emulator.ReadMemory(_boundConstants.Storage + offset, 64);
                 float[] matrix = new float[16];
                 for (int i = 0; i < 16; i++)
                 {
-                    matrix[i] = BitConverter.ToSingle(raw, i * 4);
+                    // mul/mad form: out = v.x*c[n] + v.y*c[n+1] + ... - each register is a row
+                    // of coefficients for one INPUT component. The rasteriser computes
+                    // out.x = dot(v, m[0..3]), so transpose to put it in that shape.
+                    int source = how.ByRows ? ((i % 4) * 4) + (i / 4) : i;
+                    matrix[i] = BitConverter.ToSingle(raw, source * 4);
                     if (!float.IsFinite(matrix[i]))
                     {
                         return null;
+                    }
+                }
+
+                // The full transform renders into the PORTRAIT swapchain, rotated: a WP8 game
+                // draws landscape by turning its scene a quarter into the 480x800 buffer, and the
+                // phone's panel is what made it look upright. The raster here is landscape, so
+                // turn the clip-space result back: x' = -y, y' = x (WPR_UNROTATE=0 to see it raw,
+                // =cw for the other direction).
+                if (_boundVertexShader is not null && BackBufferWidth < BackBufferHeight && Unrotate != "0")
+                {
+                    bool clockwise = Unrotate == "cw";
+                    float[] rowX = matrix[0..4], rowY = matrix[4..8];
+                    for (int c = 0; c < 4; c++)
+                    {
+                        matrix[c] = clockwise ? rowY[c] : -rowY[c];
+                        matrix[4 + c] = clockwise ? -rowX[c] : rowX[c];
                     }
                 }
 
@@ -1196,6 +1582,9 @@ namespace WPR.Wp8Native
                 return null;
             }
         }
+
+        private static readonly string Unrotate =
+            (Environment.GetEnvironmentVariable("WPR_UNROTATE") ?? "ccw").Trim().ToLowerInvariant();
 
         /// <summary>
         /// HRESULT Map(pResource, Subresource, MapType, MapFlags, D3D11_MAPPED_SUBRESOURCE*).
@@ -1239,6 +1628,7 @@ namespace WPR.Wp8Native
             else if (resource is not null)
             {
                 resource.HasContent = true;
+                resource.Version++;
             }
 
             _emulator.WriteUInt32(mapped + 0, (uint)buffer);
@@ -1515,6 +1905,17 @@ namespace WPR.Wp8Native
 
         private void Present()
         {
+            DeliverFrame();
+            Return(HResultOk);
+        }
+
+        /// <summary>
+        /// A frame is finished: count it and hand it to whoever is drawing. Called by the
+        /// swapchain's Present for an exe title, and by the Direct3D/XAML host after each Draw
+        /// for a component title, which has no swapchain of its own.
+        /// </summary>
+        public void DeliverFrame()
+        {
             PresentCount++;
             if (PresentCount == 1)
             {
@@ -1526,11 +1927,16 @@ namespace WPR.Wp8Native
             // A live host wants every frame, not a photograph of one. Rasterising here is a
             // few milliseconds for a 2D title, and it runs on the emulator's thread - the
             // subscriber gets a private copy and must marshal it to wherever it draws.
-            if (FramePresented is { } subscriber)
+            // A host with a GPU takes the draw list and does the pixels itself. That is the
+            // fast path: the software rasteriser below costs more than the game.
+            if (!DeliverGpuFrame() && FrameBuilt is { } gpu)
             {
                 try
                 {
-                    subscriber(Frame.Rasterise(_emulator, out _), FrameCapture.Width, FrameCapture.Height);
+                    long started = System.Diagnostics.Stopwatch.GetTimestamp();
+                    FrameDrawList list = Frame.BuildDrawList(_emulator);
+                    RasteriseTicks += System.Diagnostics.Stopwatch.GetTimestamp() - started;
+                    gpu(list);
                 }
                 catch (Exception ex)
                 {
@@ -1538,8 +1944,52 @@ namespace WPR.Wp8Native
                 }
             }
 
-            Return(HResultOk);
+            if (FramePresented is { } subscriber)
+            {
+                try
+                {
+                    long started = System.Diagnostics.Stopwatch.GetTimestamp();
+                    byte[] pixels = Frame.Rasterise(_emulator, out _);
+                    RasteriseTicks += System.Diagnostics.Stopwatch.GetTimestamp() - started;
+                    subscriber(pixels, FrameCapture.Width, FrameCapture.Height);
+                }
+                catch (Exception ex)
+                {
+                    Note($"frame delivery failed: {ex.Message}");
+                }
+            }
         }
+
+        /// <summary>
+        /// The device and immediate context a Direct3D/XAML title is handed by
+        /// <c>DrawingSurfaceBackgroundGrid</c>: the host creates them, not the game.
+        /// </summary>
+        public (long Device, long Context) CreateHostDevice()
+        {
+            ComObject device = NewObject("Device");
+            long devicePointer = CreateInterface(device, "ID3D11Device1", DeviceSlots, DeviceMethods());
+            ComObject context = NewObject("Context");
+            _immediateContext = CreateInterface(context, "ID3D11DeviceContext1", ContextSlots, ContextMethods());
+            DeviceCreated = true;
+            Note($"host device 0x{devicePointer:X8}, context 0x{_immediateContext:X8}, feature level 9_3");
+            return (devicePointer, _immediateContext);
+        }
+
+        /// <summary>A render target view over the back buffer, the third argument of <c>Draw</c>.</summary>
+        public long CreateHostRenderTargetView()
+        {
+            long backBuffer = BackBufferPointer();
+            ComObject view = NewObject("RenderTargetView_Host");
+            long pointer = CreateInterface(view, "ID3D11RenderTargetView", ViewSlots, ViewMethods());
+            _viewResources[pointer] = backBuffer;
+            return pointer;
+        }
+
+        /// <summary>Stopwatch ticks spent rasterising frames for <see cref="FramePresented"/>.</summary>
+        public long RasteriseTicks { get; private set; }
+
+        /// <summary>Raised with each presented frame as a GPU draw list.</summary>
+        public event Action<FrameDrawList>? FrameBuilt;
 
         /// <summary>Raised with the rasterised RGBA pixels of each presented frame.</summary>
         public event Action<byte[], int, int>? FramePresented;

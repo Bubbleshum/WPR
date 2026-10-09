@@ -1,5 +1,19 @@
 {
   "Name": "Babel Rising 3D (2013)",
   "Description": "Play a wrathful god stopping the Tower of Babel: hurl lightning, floods and earthquakes at the builders below.",
-  "Achievements": []
+  "KeySource": "xbox-id",
+  "Achievements": [
+    {"Key": "1", "Name": "Falling Stone", "GamerScore": 10, "Description": "Crushed 20 workers with one giant boulder.", "Icon": "fallingstone.png"},
+    {"Key": "2", "Name": "Great balls of fire", "GamerScore": 10, "Description": "Destroyed a section of the tower with a meteor shower.", "Icon": "greatballsoffire.png"},
+    {"Key": "3", "Name": "Holy wave", "GamerScore": 10, "Description": "Use a tidal wave that spares cursed jar bearers.", "Icon": "holywave.png"},
+    {"Key": "4", "Name": "Blown away", "GamerScore": 10, "Description": "Send a worker flying 50 meters away in a sand storm.", "Icon": "blownaway.png"},
+    {"Key": "5", "Name": "Full house", "GamerScore": 10, "Description": "Kill a total of 10000 workers.", "Icon": "fullhouse.png"},
+    {"Key": "6", "Name": "Apocalypse", "GamerScore": 25, "Description": "Master the combo system.", "Icon": "apocalypse.png"},
+    {"Key": "7", "Name": "Deity", "GamerScore": 5, "Description": "Kill 50 workers in a single game.", "Icon": "deity.png"},
+    {"Key": "8", "Name": "Babel Falling", "GamerScore": 25, "Description": "Defeat Nabu's ambition.", "Icon": "babelfalling.png"},
+    {"Key": "9", "Name": "Patient god", "GamerScore": 25, "Description": "Use two distinct level 3 powers in a single game.", "Icon": "patientgod.png"},
+    {"Key": "10", "Name": "Eclectic god", "GamerScore": 10, "Description": "Use each passive power and each scroll once.", "Icon": "eclecticgod.png"},
+    {"Key": "11", "Name": "Cursed!", "GamerScore": 10, "Description": "Show no fear when destroying the cursed jars.", "Icon": "cursed.png"},
+    {"Key": "12", "Name": "Survivor", "GamerScore": 50, "Description": "Stop the construction of the tower when everything seems lost.", "Icon": "survivor.png"}
+  ]
 }

@@ -1,5 +1,19 @@
 {
   "Name": "Terraria",
   "Description": "A two-dimensional sandbox of digging, building and fighting, where the world is dug out and rebuilt block by block.",
-  "Achievements": []
+  "KeySource": "xbox-id",
+  "Achievements": [
+    {"Key": "1", "Name": "Terraria Expert", "GamerScore": 12, "Description": "Complete the tutorial", "Icon": "terrariaexpert.png"},
+    {"Key": "2", "Name": "Home Sweet Home", "GamerScore": 12, "Description": "Get the Guide to move into your house", "Icon": "homesweethome.png"},
+    {"Key": "3", "Name": "Family Night", "GamerScore": 20, "Description": "Get every NPC to move into your house", "Icon": "familynight.png"},
+    {"Key": "4", "Name": "Going Down", "GamerScore": 14, "Description": "Reach the bottom of the World", "Icon": "goingdown.png"},
+    {"Key": "5", "Name": "Exterminator", "GamerScore": 24, "Description": "Defeat every boss", "Icon": "exterminator.png"},
+    {"Key": "6", "Name": "All Pumped Up", "GamerScore": 20, "Description": "Max out your health and mana", "Icon": "allpumpedup.png"},
+    {"Key": "7", "Name": "Defeated The Mob", "GamerScore": 16, "Description": "Defeat the Goblin Army", "Icon": "defeatedthemob.png"},
+    {"Key": "8", "Name": "King Of Slimes", "GamerScore": 14, "Description": "Kill every type of slime", "Icon": "kingofslimes.png"},
+    {"Key": "9", "Name": "Could This Be Heaven", "GamerScore": 14, "Description": "Find a floating island", "Icon": "couldthisbeheaven.png"},
+    {"Key": "10", "Name": "Collector", "GamerScore": 20, "Description": "Obtain every type of armor available", "Icon": "collector.png"},
+    {"Key": "11", "Name": "When The Moon Turns Red", "GamerScore": 14, "Description": "Survive the Blood Moon", "Icon": "whenthemoonturnsred.png"},
+    {"Key": "12", "Name": "Expert Crafter", "GamerScore": 20, "Description": "Use every crafting station", "Icon": "expertcrafter.png"}
+  ]
 }

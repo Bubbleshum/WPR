@@ -1,5 +1,27 @@
 {
   "Name": "FIFA 13",
   "Description": "EA's football game, with licensed clubs, players and competitions.",
-  "Achievements": []
+  "KeySource": "xbox-id",
+  "Achievements": [
+    {"Key": "1", "Name": "Three", "GamerScore": 5, "Description": "Win three friendly matches in Quick Match Mode.", "Icon": "three.png"},
+    {"Key": "2", "Name": "Win the derby", "GamerScore": 5, "Description": "Win a match between two rival teams.", "Icon": "winthederby.png"},
+    {"Key": "3", "Name": "Skill Master", "GamerScore": 10, "Description": "Perform 5 different skill moves in a match.", "Icon": "skillmaster.png"},
+    {"Key": "4", "Name": "Extra hand", "GamerScore": 10, "Description": "Call your GK into attack for a last minute corner!", "Icon": "extrahand.png"},
+    {"Key": "5", "Name": "Stardom", "GamerScore": 15, "Description": "Win a game on World Class difficulty.", "Icon": "stardom.png"},
+    {"Key": "6", "Name": "Pro player", "GamerScore": 10, "Description": "Play 100 matches.", "Icon": "proplayer.png"},
+    {"Key": "7", "Name": "International player", "GamerScore": 15, "Description": "Play 200 matches.", "Icon": "internationalplayer.png"},
+    {"Key": "8", "Name": "Amateur player", "GamerScore": 5, "Description": "Play 50 matches.", "Icon": "amateurplayer.png"},
+    {"Key": "9", "Name": "A Handful Of Goals", "GamerScore": 15, "Description": "Score 5 goals in a match - with the same player.", "Icon": "ahandfulofgoals.png"},
+    {"Key": "10", "Name": "One-Two Master", "GamerScore": 5, "Description": "Score a goal after successfully pulling an one-two move.", "Icon": "onetwomaster.png"},
+    {"Key": "11", "Name": "One on One", "GamerScore": 5, "Description": "Score after going 1 on 1 with the goalkeeper.", "Icon": "oneonone.png"},
+    {"Key": "12", "Name": "First Step", "GamerScore": 5, "Description": "Win your first match.", "Icon": "firststep.png"},
+    {"Key": "13", "Name": "Trifecta", "GamerScore": 15, "Description": "Win the same league with 3 different teams.", "Icon": "trifecta.png"},
+    {"Key": "14", "Name": "Three Cups", "GamerScore": 10, "Description": "Win the same Cup with three different teams.", "Icon": "threecups.png"},
+    {"Key": "15", "Name": "Perfect Cup", "GamerScore": 10, "Description": "Win all games in a predefined Cup tournament.", "Icon": "perfectcup.png"},
+    {"Key": "16", "Name": "Perfect League", "GamerScore": 10, "Description": "Win all games in a predefined League tournament.", "Icon": "perfectleague.png"},
+    {"Key": "17", "Name": "Corner Maestro", "GamerScore": 15, "Description": "Score directly from a corner kick.", "Icon": "cornermaestro.png"},
+    {"Key": "18", "Name": "Sniper", "GamerScore": 10, "Description": "Score from an offensive free kick.", "Icon": "sniper.png"},
+    {"Key": "19", "Name": "Tiki Taka", "GamerScore": 10, "Description": "Make 20 consecutive passes in the opponent's half.", "Icon": "tikitaka.png"},
+    {"Key": "20", "Name": "Shot stopper", "GamerScore": 15, "Description": "Win the Penalty Shootout without conceding any goals.", "Icon": "shotstopper.png"}
+  ]
 }

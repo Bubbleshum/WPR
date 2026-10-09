@@ -57,6 +57,11 @@ namespace WPR.Common
             // and TiltOverlayEnabled (which defaults off) is not.
             public bool? VibrationEnabled;
 
+            // Desktop only: games open filling the screen, letterboxed to their own aspect ratio
+            // (side bars for a portrait game). F11 or Alt+Enter toggles it in game and saves the
+            // answer here. Null (absent) = windowed, which is what every existing config.json says.
+            public bool? GameFullscreen;
+
             // Which FNA3D graphics driver games are launched with, as the driver's own name
             // ("Vulkan" / "OpenGL"). Null = whatever the platform declares for itself, which is
             // what every existing config.json says and what the vast majority of devices should
@@ -251,6 +256,15 @@ namespace WPR.Common
         {
             get => _ConfPrivate!.VibrationEnabled ?? true;
             set => _ConfPrivate!.VibrationEnabled = value;
+        }
+        /// <summary>
+        /// Desktop: whether games run fullscreen, letterboxed to the game's own aspect ratio.
+        /// Defaults to false (windowed). Toggled in game with F11 or Alt+Enter.
+        /// </summary>
+        public bool GameFullscreen
+        {
+            get => _ConfPrivate!.GameFullscreen ?? false;
+            set => _ConfPrivate!.GameFullscreen = value ? true : null;
         }
         /// <summary>
         /// The FNA3D graphics driver to launch games with, by the driver's own name

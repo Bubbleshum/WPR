@@ -142,7 +142,8 @@ namespace WPR.Platform.Windows.Pages
 
             // A game patched before v38 still reads the old shared store, so clearing its own store
             // would appear to do nothing. The desktop never repatches by itself, so say so.
-            if (appItem.Model.PatchedVersion < WPR.ApplicationPatcher.Version)
+            if (appItem.Model.PatchedVersion < WPR.ApplicationPatcher.Version &&
+                appItem.Model.ApplicationType != WPR.Models.ApplicationType.ModernNative)
             {
                 await MessageBoxUtils.GetMessageDialogResult(
                     title: "Repatch first",

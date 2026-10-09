@@ -1,4 +1,4 @@
-namespace WPR.Wp8Native
+﻿namespace WPR.Wp8Native
 {
     /// <summary>
     /// The state a frame is assembled from, and a software rasteriser that turns it into
@@ -17,7 +17,7 @@ namespace WPR.Wp8Native
     /// transform. A 2D sprite engine is almost entirely this shape, which is why the
     /// approach is worth anything; a 3D title would need the real thing.
     /// </remarks>
-    public sealed class FrameCapture
+    public sealed partial class FrameCapture
     {
         /// <summary>
         /// The size of the surface everything is rasterised into, which is also the size the
@@ -101,6 +101,22 @@ namespace WPR.Wp8Native
 
             /// <summary>True once anything has been written into it.</summary>
             public bool HasContent { get; set; }
+
+            /// <summary>
+            /// Bumped on every write of content - create with data, UpdateSubresource, a copy, a
+            /// Map. Anything caching a decoded copy keys on (Storage, Version), so a texture the
+            /// game rewrites is picked up instead of drawn stale for ever.
+            /// </summary>
+            public int Version { get; set; }
+
+            /// <summary>The <see cref="Version"/> <see cref="Snapshots"/> were taken at.</summary>
+            internal int SnapshotVersion { get; set; } = -1;
+
+            /// <summary>
+            /// Vertex ranges already copied out at <see cref="SnapshotVersion"/>, so a static
+            /// mesh drawn every frame is copied once rather than once per draw.
+            /// </summary>
+            internal List<(int Offset, int Stride, int First, int Count, byte[] Data)>? Snapshots { get; set; }
         }
 
         /// <summary>One element of a vertex, as CreateInputLayout described it.</summary>
@@ -150,6 +166,11 @@ namespace WPR.Wp8Native
             /// <summary>The indices this draw used, resolved when it was issued.</summary>
             public int[] Indices { get; init; } = [];
 
+            /// <summary>Whether the bound sampler repeats the texture rather than clamping it.</summary>
+            public bool WrapU { get; init; }
+
+            public bool WrapV { get; init; }
+
             public VertexStream? StreamFor(VertexElement element)
                 => element.Slot >= 0 && element.Slot < Streams.Count ? Streams[element.Slot] : null;
         }
@@ -186,9 +207,27 @@ namespace WPR.Wp8Native
         private static VertexStream SnapshotStream(
             ArmEmulator emulator, DrawCall call, VertexStream stream, int lowest, int highest)
         {
-            if (stream.Buffer is null || stream.Buffer.Storage == 0 || stream.Stride <= 0)
+            if (stream.Buffer is null || stream.Buffer.Storage == 0 || stream.Stride < 0)
             {
                 return stream;
+            }
+
+            // Stride 0 is legal in Direct3D 11: every vertex reads the same bytes. Modern Combat 4
+            // binds a per-draw colour this way. Dropped, the shader's input had no stream behind
+            // it and the replay's input layout failed to build, so the draw was lost. Keep one
+            // element's worth (up to 16 bytes, the widest format).
+            if (stream.Stride == 0)
+            {
+                long available = stream.Buffer.StorageSize > 0 ? stream.Buffer.StorageSize - stream.Offset : 16;
+                int size = (int)Math.Clamp(available, 0, 16);
+                try
+                {
+                    return size > 0 ? stream with { Data = emulator.ReadMemory(stream.Buffer.Storage + stream.Offset, size) } : stream;
+                }
+                catch (Exception)
+                {
+                    return stream;
+                }
             }
 
             int first = lowest + call.BaseVertex;
@@ -200,12 +239,39 @@ namespace WPR.Wp8Native
                 return stream;
             }
 
+            // A buffer nothing has written since an earlier draw read it holds the same bytes, so
+            // that draw's copy is reused (snapshots are never written after they are taken). Most
+            // of a 3D scene is static meshes, and copying each one out per draw per frame cost
+            // allocation on this thread and garbage collection pauses on the renderer's.
+            FrameCapture.Resource buffer = stream.Buffer;
+            if (buffer.SnapshotVersion != buffer.Version || buffer.Snapshots is null)
+            {
+                buffer.SnapshotVersion = buffer.Version;
+                (buffer.Snapshots ??= []).Clear();
+            }
+
+            foreach (var known in buffer.Snapshots)
+            {
+                if (known.Offset == stream.Offset && known.Stride == stream.Stride &&
+                    first >= known.First && first + count <= known.First + known.Count)
+                {
+                    return stream with { Data = known.Data, FirstVertex = known.First };
+                }
+            }
+
             try
             {
                 byte[] data = emulator.ReadMemory(
                     stream.Buffer.Storage + stream.Offset + ((long)first * stream.Stride),
                     (int)length);
 
+                // A ring buffer gets many small ranges per version; keep the list short.
+                if (buffer.Snapshots.Count >= 16)
+                {
+                    buffer.Snapshots.Clear();
+                }
+
+                buffer.Snapshots.Add((stream.Offset, stream.Stride, first, count, data));
                 return stream with { Data = data, FirstVertex = first };
             }
             catch (Exception)
@@ -232,6 +298,13 @@ namespace WPR.Wp8Native
         /// <summary>What the rasteriser saw, for working out the coordinate conventions.</summary>
         public List<string> Notes { get; } = new();
 
+        /// <summary>
+        /// One line per draw of the most recently rasterised frame: texture, size, format and the
+        /// screen box its vertices cover. <see cref="Notes"/> keeps the first sixty lines of the
+        /// whole run, which is no use for asking what one particular screen drew.
+        /// </summary>
+        public List<string> LastFrameDraws { get; } = new();
+
         // -------------------------------------------------------------------
         // Rasterising
         // -------------------------------------------------------------------
@@ -254,10 +327,38 @@ namespace WPR.Wp8Native
             int textured = 0;
             int skipped = 0;
 
+            LastFrameDraws.Clear();
             foreach (DrawCall call in _draws)
             {
                 VertexElement? position = Find(call.Layout, "POSITION");
                 VertexElement? uv = Find(call.Layout, "TEXCOORD");
+                if (position is not null && call.StreamFor(position) is { Buffer: not null, Stride: > 0 } && call.Indices.Length >= 3)
+                {
+                    float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
+                    float minU = float.MaxValue, minV = float.MaxValue, maxU = float.MinValue, maxV = float.MinValue;
+                    foreach (int index in call.Indices)
+                    {
+                        Vertex vx = ReadVertex(call, index, position, uv);
+                        ToScreen(vx, out float sx, out float sy);
+                        minX = Math.Min(minX, sx); minY = Math.Min(minY, sy);
+                        maxX = Math.Max(maxX, sx); maxY = Math.Max(maxY, sy);
+                        minU = Math.Min(minU, vx.U); minV = Math.Min(minV, vx.V);
+                        maxU = Math.Max(maxU, vx.U); maxV = Math.Max(maxV, vx.V);
+                    }
+
+                    LastFrameDraws.Add($"{call.Indices.Length,5} idx  {call.Texture?.Name ?? "none",-14} " +
+                                       $"{call.Texture?.PixelWidth}x{call.Texture?.PixelHeight} fmt {call.Texture?.Format,-3} " +
+                                       $"content={call.Texture?.HasContent}  box=({minX:0},{minY:0})-({maxX:0},{maxY:0})  " +
+                                       $"uv=({minU:0.####},{minV:0.####})-({maxU:0.####},{maxV:0.####})  " +
+                                       $"rgba0=({ReadVertex(call, call.Indices[0], position, uv).R:0.##},{ReadVertex(call, call.Indices[0], position, uv).G:0.##},{ReadVertex(call, call.Indices[0], position, uv).B:0.##},{ReadVertex(call, call.Indices[0], position, uv).A:0.##})  " +
+                                       $"colourRaw=[{(Find(call.Layout, "COLOR") is { } ce ? string.Join(",", ReadElement(call, call.Indices[0], ce).Select(f => f.ToString("0.###"))) : "-")}]  " +
+                                       $"layout {string.Join("/", call.Layout.Select(e => $"{e.Semantic}{e.Index}@s{e.Slot}+{e.Offset}:{e.Format}"))}");
+                }
+                else
+                {
+                    LastFrameDraws.Add($"{call.Indices.Length,5} idx  (not rasterisable)");
+                }
+
                 if (position is null || call.StreamFor(position) is not { Buffer: not null, Stride: > 0 })
                 {
                     skipped++;
@@ -329,13 +430,35 @@ namespace WPR.Wp8Native
             return null;
         }
 
-        private readonly record struct Vertex(float X, float Y, float Z, float W, float U, float V);
+        private readonly record struct Vertex(
+            float X, float Y, float Z, float W, float U, float V,
+            float R = 1f, float G = 1f, float B = 1f, float A = 1f);
 
         private static Vertex ReadVertex(
             DrawCall call, int index, VertexElement position, VertexElement? uv)
         {
             float[] p = ReadElement(call, index, position);
             float[] t = uv is null ? [0f, 0f] : ReadElement(call, index, uv);
+
+            // Per-vertex colour. Untextured geometry - the slingshot's elastic is a quad of
+            // POSITION + float4 COLOR - is nothing but this; on a textured draw it tints.
+            float cr = 1f, cg = 1f, cb = 1f, ca = 1f;
+            if (Find(call.Layout, "COLOR") is { } colour)
+            {
+                float[] c = ReadElement(call, index, colour);
+                if (c.Length >= 4)
+                {
+                    (cr, cg, cb, ca) = colour.Format == 87 ? (c[2], c[1], c[0], c[3]) : (c[0], c[1], c[2], c[3]);
+
+                    // Angry Birds stores float colours in 0..255 and its 2d-vertexcolor pixel
+                    // shader is one instruction: mul o0, v1, l(1/255, 1/255, 1/255, 1/255).
+                    // No shader runs here, so a float colour outside 0..1 gets that scale.
+                    if (colour.Format == 2 && Math.Max(Math.Max(cr, cg), Math.Max(cb, ca)) > 1.001f)
+                    {
+                        (cr, cg, cb, ca) = (cr / 255f, cg / 255f, cb / 255f, ca / 255f);
+                    }
+                }
+            }
 
             float x = p[0];
             float y = p[1];
@@ -364,7 +487,7 @@ namespace WPR.Wp8Native
                 w = tw;
             }
 
-            return new Vertex(x, y, z, w, t[0], t.Length > 1 ? t[1] : 0f);
+            return new Vertex(x, y, z, w, t[0], t.Length > 1 ? t[1] : 0f, cr, cg, cb, ca);
         }
 
         /// <summary>Reads one attribute from whichever stream its input slot names.</summary>
@@ -496,7 +619,14 @@ namespace WPR.Wp8Native
                 return false;
             }
 
-            byte[]? texture = LoadTexture(emulator, call.Texture);
+            // A layout with no texture coordinate is untextured whatever is still bound to the
+            // pixel shader slot: sampling that leftover texture at (0,0) is what made the
+            // slingshot's elastic vanish - it read a transparent corner texel.
+            bool untextured = Find(call.Layout, "TEXCOORD") is null;
+            byte[]? texture = untextured ? null : LoadTexture(emulator, call.Texture);
+            bool tinted = !(a.R == 1f && a.G == 1f && a.B == 1f && a.A == 1f &&
+                            b.R == 1f && b.G == 1f && b.B == 1f && b.A == 1f &&
+                            c.R == 1f && c.G == 1f && c.B == 1f && c.A == 1f);
 
             for (int y = minY; y <= maxY; y++)
             {
@@ -517,7 +647,26 @@ namespace WPR.Wp8Native
                     float u = (w0 * a.U) + (w1 * b.U) + (w2 * c.U);
                     float v = (w0 * a.V) + (w1 * b.V) + (w2 * c.V);
 
-                    Sample(texture, call.Texture, u, v, out byte r, out byte g, out byte bl, out byte alpha);
+                    byte r, g, bl, alpha;
+                    if (untextured)
+                    {
+                        r = g = bl = alpha = 255;
+                    }
+                    else
+                    {
+                        if (call.WrapU) u -= MathF.Floor(u);
+                    if (call.WrapV) v -= MathF.Floor(v);
+                    Sample(texture, call.Texture, u, v, out r, out g, out bl, out alpha);
+                    }
+
+                    if (tinted)
+                    {
+                        r = (byte)Math.Clamp(r * ((w0 * a.R) + (w1 * b.R) + (w2 * c.R)), 0f, 255f);
+                        g = (byte)Math.Clamp(g * ((w0 * a.G) + (w1 * b.G) + (w2 * c.G)), 0f, 255f);
+                        bl = (byte)Math.Clamp(bl * ((w0 * a.B) + (w1 * b.B) + (w2 * c.B)), 0f, 255f);
+                        alpha = (byte)Math.Clamp(alpha * ((w0 * a.A) + (w1 * b.A) + (w2 * c.A)), 0f, 255f);
+                    }
+
                     if (alpha == 0)
                     {
                         continue;
@@ -548,7 +697,7 @@ namespace WPR.Wp8Native
                    Math.Abs(x) < Width * 64 && Math.Abs(y) < Height * 64;
         }
 
-        private static readonly Dictionary<long, byte[]> TextureCache = new();
+        private static readonly Dictionary<long, (int Version, byte[] Pixels)> TextureCache = new();
 
         private static byte[]? LoadTexture(ArmEmulator emulator, Resource? texture)
         {
@@ -558,9 +707,9 @@ namespace WPR.Wp8Native
                 return null;
             }
 
-            if (TextureCache.TryGetValue(texture.Storage, out byte[]? cached))
+            if (TextureCache.TryGetValue(texture.Storage, out var cached) && cached.Version == texture.Version)
             {
-                return cached;
+                return cached.Pixels;
             }
 
             try
@@ -573,7 +722,7 @@ namespace WPR.Wp8Native
                     raw = DecodeBlocks(raw, texture);
                 }
 
-                TextureCache[texture.Storage] = raw;
+                TextureCache[texture.Storage] = (texture.Version, raw);
                 return raw;
             }
             catch (Exception)
@@ -604,6 +753,15 @@ namespace WPR.Wp8Native
             bool hasAlphaBlock = blockBytes == 16;
             bool sharpAlpha = texture.Format is 76 or 77 or 78; // BC3
 
+            // Allocated once, not per block: a stackalloc inside the loop is not freed until the
+            // method returns, and a 1024x1024 texture is 65,536 blocks - which overflowed the
+            // stack once dynarmic ran this on the JIT's own (smaller) call stack.
+            Span<int> red = stackalloc int[4];
+            Span<int> green = stackalloc int[4];
+            Span<int> blue = stackalloc int[4];
+            Span<int> alpha = stackalloc int[4];
+            Span<int> alphaRamp = stackalloc int[8];
+
             for (int by = 0; by < blocksDown; by++)
             {
                 for (int bx = 0; bx < blocksAcross; bx++)
@@ -618,11 +776,6 @@ namespace WPR.Wp8Native
                     ushort c0 = BitConverter.ToUInt16(source, colourAt);
                     ushort c1 = BitConverter.ToUInt16(source, colourAt + 2);
                     uint selectors = BitConverter.ToUInt32(source, colourAt + 4);
-
-                    Span<int> red = stackalloc int[4];
-                    Span<int> green = stackalloc int[4];
-                    Span<int> blue = stackalloc int[4];
-                    Span<int> alpha = stackalloc int[4];
 
                     Unpack565(c0, out red[0], out green[0], out blue[0]);
                     Unpack565(c1, out red[1], out green[1], out blue[1]);
@@ -650,7 +803,6 @@ namespace WPR.Wp8Native
                     }
 
                     // BC3's alpha: two endpoints and sixteen three-bit selectors.
-                    Span<int> alphaRamp = stackalloc int[8];
                     ulong alphaBits = 0;
                     if (sharpAlpha)
                     {
@@ -751,6 +903,21 @@ namespace WPR.Wp8Native
             {
                 r = g = b = 220;
                 a = 255;
+                return;
+            }
+
+            if (each == 1)
+            {
+                // Direct3D 11 reads A8 as (0, 0, 0, a) and R8 as (r, 0, 0, 1).
+                byte value = texture[at];
+                (r, g, b, a) = resource.Format == 65 ? ((byte)0, (byte)0, (byte)0, value) : (value, (byte)0, (byte)0, (byte)255);
+                return;
+            }
+
+            if (each == 2 && resource.Format is 49 or 50 or 51 or 52)
+            {
+                // R8G8: (r, g, 0, 1).
+                (r, g, b, a) = (texture[at], texture[at + 1], (byte)0, (byte)255);
                 return;
             }
 
