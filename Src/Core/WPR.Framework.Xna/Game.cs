@@ -796,6 +796,10 @@ namespace Microsoft.Xna.Framework
 			// MediaPlayerLauncher video completing -> title reactivation -> LoadLevel).
 			WprGameThread.DrainPending();
 
+			// WPR: run GPU calls a worker thread handed to this one (OpenGL only; see
+			// WPR.Xna.Rhi.DeviceThreadDispatch). Free when nothing is waiting.
+			WPR.Xna.Rhi.DeviceThreadDispatch.Drain();
+
 			bool wprTraceThisTick = _wprTraceTickCount < 30;
 			int wprTraceIndex = _wprTraceTickCount;
 			if (wprTraceThisTick)

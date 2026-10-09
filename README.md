@@ -6,7 +6,7 @@
 
 **Play your old Windows Phone games again, on a PC or an Android phone.**
 
-`0.2.*` · [Compatibility list](https://bubbleshum.github.io/WPR/) · [MIT licensed](LICENSE)
+`0.2.*` · [Compatibility list](https://wpr.it-stacks.com/compatibility) · [MIT licensed](LICENSE)
 
 </div>
 
@@ -26,7 +26,7 @@ intact.
 Dozens play end to end today, among them *ilomilo*, *Mirror's Edge*, *Plants vs.
 Zombies*, *Fruit Ninja*, *Kinectimals*, *Skulls of the Shogun*, *PAC-MAN* and
 *Sonic the Hedgehog 4*. The
-[compatibility list](https://bubbleshum.github.io/WPR/) tracks every game that's
+[compatibility list](https://wpr.it-stacks.com/compatibility) tracks every game that's
 been tried, and how far it gets.
 
 It isn't an emulator in the usual sense. It doesn't pretend to be a phone;
@@ -162,7 +162,7 @@ after that it's in your library.
 ## Which games work?
 
 There's a searchable, sortable
-**[compatibility list](https://bubbleshum.github.io/WPR/)** with box art, showing
+**[compatibility list](https://wpr.it-stacks.com/compatibility)** with box art, showing
 what's known to run and what isn't.
 
 Broadly: XNA games are the best-supported and most work. Silverlight games, and

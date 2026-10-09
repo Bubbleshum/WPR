@@ -296,7 +296,15 @@ namespace WPR
         // pauses it itself for every level-start jingle, so the music turned itself off at the
         // start of each level. The handler is emptied. Rewrites game IL, so a v38 install keeps
         // the old handler; not identity-binding.
-        public static int Version => 39;
+        // Bumped to 40: Monitor.Enter (every C# `lock`) in game IL now goes to
+        // WPR.Xna.Compat.Monitor. On the OpenGL driver a worker thread's draw calls are run on the
+        // device thread (WPR.Xna.Rhi.DeviceThreadDispatch), and the device thread has to keep
+        // servicing them while it waits for a game lock the worker holds, or the two deadlock.
+        // Plants vs. Zombies (706f822a-a47e-e011-986b-78e7d1fa76f8) is the reference case: its
+        // loader draws into render targets under ResourceManager.DrawLocker, which Main.Draw also
+        // takes. Off OpenGL the shim is a plain Monitor.Enter. Not identity-binding; a v39 install
+        // still launches, so --repatch-installed is enough and Android repatches on next launch.
+        public static int Version => 40;
 
         private AssemblyNameReference FnaBackendRef;
         private AssemblyNameReference FNARef;
@@ -1762,6 +1770,15 @@ namespace WPR
             // *** Member Patches ***
             MemberPatches = new Dictionary<string, Type>
             {
+                // Every C# `lock`. See WPR.Xna.Compat.Monitor and patcher v40.
+                {
+                    "System.Void System.Threading.Monitor::Enter(System.Object)",
+                    typeof(WPR.Xna.Compat.Monitor)
+                },
+                {
+                    "System.Void System.Threading.Monitor::Enter(System.Object,System.Boolean&)",
+                    typeof(WPR.Xna.Compat.Monitor)
+                },
 
                 // RnD ***************************************
                 //{

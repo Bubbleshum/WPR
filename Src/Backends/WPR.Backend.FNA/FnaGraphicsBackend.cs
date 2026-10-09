@@ -91,16 +91,43 @@ namespace WPR.Backend.FNA
 				glDetail);
 			Microsoft.Xna.Framework.Graphics.TextureReadback.SetDeviceSupport(isGles, glDetail);
 
+			/* OpenGL cannot draw from a thread that does not own the context, and FNA3D does not
+			 * defer drawing calls the way it defers resource calls. See DeviceThreadDispatch. */
+			if (created != IntPtr.Zero && IsOpenGLDevice(created))
+			{
+				DeviceThreadDispatch.Enable(isGles ? "OpenGL ES" : "OpenGL");
+			}
+
 			return created;
 		}
 
 		public void DestroyDevice(IntPtr device)
 		{
+			DeviceThreadDispatch.Disable();
 			F3D.FNA3D_DestroyDevice(device);
 			OffThreadGpuCalls.ClearDeviceThread();
 			Microsoft.Xna.Framework.Graphics.VertexFormatExpansion.ClearDeviceSupport();
 			Microsoft.Xna.Framework.Graphics.TextureFormatShim.ClearDeviceSupport();
 			Microsoft.Xna.Framework.Graphics.TextureReadback.ClearDeviceSupport();
+		}
+
+		/* Same sentinel discipline as GlContextProbe: an ignored query must not read as
+		 * rendererType 0, which is OpenGL. */
+		private static bool IsOpenGLDevice(IntPtr device)
+		{
+			const F3D.FNA3D_SysRendererTypeEXT NotWritten = (F3D.FNA3D_SysRendererTypeEXT) (-1);
+			F3D.FNA3D_SysRendererEXT sys = default;
+			sys.version = F3D.FNA3D_SYSRENDERER_VERSION_EXT;
+			sys.rendererType = NotWritten;
+			try
+			{
+				F3D.FNA3D_GetSysRendererEXT(device, ref sys);
+			}
+			catch (Exception)
+			{
+				return false;
+			}
+			return sys.rendererType == F3D.FNA3D_SysRendererTypeEXT.FNA3D_RENDERER_TYPE_OPENGL_EXT;
 		}
 
 		// ---- Presentation ----
@@ -120,6 +147,8 @@ namespace WPR.Backend.FNA
 
 			WPR.Engine.Graphics.GraphicsDriverProbe.MarkWorking(
 				SDL2_FNAPlatform.SelectedDriverName);
+
+			DeviceThreadDispatch.Drain();
 
 			// Dispatch to FNA3D's overload set (the ref/null combinations) here, in the backend.
 			if (sourceRectangle.HasValue && destinationRectangle.HasValue)
@@ -145,83 +174,214 @@ namespace WPR.Backend.FNA
 
 		// ---- Drawing ----
 
-		public void Clear(IntPtr device, ClearOptions options, ref Vector4 color, float depth, int stencil) =>
+		//
+		// Everything from here to the texture section, plus effects and queries, is the
+		// "draw family": FNA3D's OpenGL driver runs it on whatever thread calls it, with no
+		// ForceToMainThread, so from a worker it runs against no GL context and MojoShader's
+		// thread-local context pointer is NULL (SIGSEGV in MOJOSHADER_effectCommitChanges).
+		// Each member hands itself to the device thread when DeviceThreadDispatch.MustMarshal
+		// says so - only on OpenGL, only off the device thread. See DeviceThreadDispatch.
+		// ref arguments are copied into locals first, because a lambda cannot capture them.
+
+		public void Clear(IntPtr device, ClearOptions options, ref Vector4 color, float depth, int stencil)
+		{
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				Vector4 c = color;
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_Clear(device, options, ref c, depth, stencil));
+				return;
+			}
 			F3D.FNA3D_Clear(device, options, ref color, depth, stencil);
+		}
 
 		public void DrawIndexedPrimitives(
 			IntPtr device, PrimitiveType primitiveType, int baseVertex, int minVertexIndex,
-			int numVertices, int startIndex, int primitiveCount, IntPtr indices, IndexElementSize indexElementSize) =>
+			int numVertices, int startIndex, int primitiveCount, IntPtr indices, IndexElementSize indexElementSize)
+		{
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_DrawIndexedPrimitives(device, primitiveType, baseVertex,
+					minVertexIndex, numVertices, startIndex, primitiveCount, indices, indexElementSize));
+				return;
+			}
 			F3D.FNA3D_DrawIndexedPrimitives(device, primitiveType, baseVertex, minVertexIndex,
 				numVertices, startIndex, primitiveCount, indices, indexElementSize);
+		}
 
 		public void DrawInstancedPrimitives(
 			IntPtr device, PrimitiveType primitiveType, int baseVertex, int minVertexIndex,
-			int numVertices, int startIndex, int primitiveCount, int instanceCount, IntPtr indices, IndexElementSize indexElementSize) =>
+			int numVertices, int startIndex, int primitiveCount, int instanceCount, IntPtr indices, IndexElementSize indexElementSize)
+		{
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_DrawInstancedPrimitives(device, primitiveType, baseVertex,
+					minVertexIndex, numVertices, startIndex, primitiveCount, instanceCount, indices, indexElementSize));
+				return;
+			}
 			F3D.FNA3D_DrawInstancedPrimitives(device, primitiveType, baseVertex, minVertexIndex,
 				numVertices, startIndex, primitiveCount, instanceCount, indices, indexElementSize);
+		}
 
-		public void DrawPrimitives(IntPtr device, PrimitiveType primitiveType, int vertexStart, int primitiveCount) =>
+		public void DrawPrimitives(IntPtr device, PrimitiveType primitiveType, int vertexStart, int primitiveCount)
+		{
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_DrawPrimitives(device, primitiveType, vertexStart, primitiveCount));
+				return;
+			}
 			F3D.FNA3D_DrawPrimitives(device, primitiveType, vertexStart, primitiveCount);
+		}
 
 		// ---- Mutable render states ----
 
 		public void SetViewport(IntPtr device, ref RhiViewport viewport)
 		{
 			F3D.FNA3D_Viewport v = ToFna(in viewport);
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_SetViewport(device, ref v));
+				return;
+			}
 			F3D.FNA3D_SetViewport(device, ref v);
 		}
 
-		public void SetScissorRect(IntPtr device, ref Rectangle scissor) => F3D.FNA3D_SetScissorRect(device, ref scissor);
+		public void SetScissorRect(IntPtr device, ref Rectangle scissor)
+		{
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				Rectangle r = scissor;
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_SetScissorRect(device, ref r));
+				return;
+			}
+			F3D.FNA3D_SetScissorRect(device, ref scissor);
+		}
+
+		// Reads of FNA3D's own renderer struct, no GL call: safe on any thread.
 		public void GetBlendFactor(IntPtr device, out Color blendFactor) => F3D.FNA3D_GetBlendFactor(device, out blendFactor);
-		public void SetBlendFactor(IntPtr device, ref Color blendFactor) => F3D.FNA3D_SetBlendFactor(device, ref blendFactor);
 		public int GetMultiSampleMask(IntPtr device) => F3D.FNA3D_GetMultiSampleMask(device);
-		public void SetMultiSampleMask(IntPtr device, int mask) => F3D.FNA3D_SetMultiSampleMask(device, mask);
 		public int GetReferenceStencil(IntPtr device) => F3D.FNA3D_GetReferenceStencil(device);
-		public void SetReferenceStencil(IntPtr device, int reference) => F3D.FNA3D_SetReferenceStencil(device, reference);
+
+		public void SetBlendFactor(IntPtr device, ref Color blendFactor)
+		{
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				Color c = blendFactor;
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_SetBlendFactor(device, ref c));
+				return;
+			}
+			F3D.FNA3D_SetBlendFactor(device, ref blendFactor);
+		}
+
+		public void SetMultiSampleMask(IntPtr device, int mask)
+		{
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_SetMultiSampleMask(device, mask));
+				return;
+			}
+			F3D.FNA3D_SetMultiSampleMask(device, mask);
+		}
+
+		public void SetReferenceStencil(IntPtr device, int reference)
+		{
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_SetReferenceStencil(device, reference));
+				return;
+			}
+			F3D.FNA3D_SetReferenceStencil(device, reference);
+		}
 
 		// ---- Immutable render states ----
 
 		public void SetBlendState(IntPtr device, ref RhiBlendState blendState)
 		{
 			F3D.FNA3D_BlendState s = ToFna(in blendState);
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_SetBlendState(device, ref s));
+				return;
+			}
 			F3D.FNA3D_SetBlendState(device, ref s);
 		}
 
 		public void SetDepthStencilState(IntPtr device, ref RhiDepthStencilState depthStencilState)
 		{
 			F3D.FNA3D_DepthStencilState s = ToFna(in depthStencilState);
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_SetDepthStencilState(device, ref s));
+				return;
+			}
 			F3D.FNA3D_SetDepthStencilState(device, ref s);
 		}
 
 		public void ApplyRasterizerState(IntPtr device, ref RhiRasterizerState rasterizerState)
 		{
 			F3D.FNA3D_RasterizerState s = ToFna(in rasterizerState);
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_ApplyRasterizerState(device, ref s));
+				return;
+			}
 			F3D.FNA3D_ApplyRasterizerState(device, ref s);
 		}
 
 		public void VerifySampler(IntPtr device, int index, IntPtr texture, ref RhiSamplerState sampler)
 		{
 			F3D.FNA3D_SamplerState s = ToFna(in sampler);
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_VerifySampler(device, index, texture, ref s));
+				return;
+			}
 			F3D.FNA3D_VerifySampler(device, index, texture, ref s);
 		}
 
 		public void VerifyVertexSampler(IntPtr device, int index, IntPtr texture, ref RhiSamplerState sampler)
 		{
 			F3D.FNA3D_SamplerState s = ToFna(in sampler);
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_VerifyVertexSampler(device, index, texture, ref s));
+				return;
+			}
 			F3D.FNA3D_VerifyVertexSampler(device, index, texture, ref s);
 		}
 
-		public unsafe void ApplyVertexBufferBindings(IntPtr device, IntPtr bindings, int numBindings, byte bindingsUpdated, int baseVertex) =>
+		public unsafe void ApplyVertexBufferBindings(IntPtr device, IntPtr bindings, int numBindings, byte bindingsUpdated, int baseVertex)
+		{
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				// The caller's pinned array outlives this call: it waits for the device thread.
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_ApplyVertexBufferBindings(device,
+					(F3D.FNA3D_VertexBufferBinding*)bindings, numBindings, bindingsUpdated, baseVertex));
+				return;
+			}
 			F3D.FNA3D_ApplyVertexBufferBindings(device, (F3D.FNA3D_VertexBufferBinding*)bindings, numBindings, bindingsUpdated, baseVertex);
+		}
 
 		// ---- Render targets ----
 
-		public void SetRenderTargets(IntPtr device, IntPtr renderTargets, int numRenderTargets, IntPtr depthStencilBuffer, DepthFormat depthFormat, byte preserveDepthStencilContents) =>
+		public void SetRenderTargets(IntPtr device, IntPtr renderTargets, int numRenderTargets, IntPtr depthStencilBuffer, DepthFormat depthFormat, byte preserveDepthStencilContents)
+		{
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_SetRenderTargets(device, renderTargets, numRenderTargets,
+					depthStencilBuffer, depthFormat, preserveDepthStencilContents));
+				return;
+			}
 			F3D.FNA3D_SetRenderTargets(device, renderTargets, numRenderTargets, depthStencilBuffer, depthFormat, preserveDepthStencilContents);
+		}
 
 		public void ResolveTarget(IntPtr device, ref RhiRenderTargetBinding target)
 		{
 			F3D.FNA3D_RenderTargetBinding t = ToFna(in target);
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_ResolveTarget(device, ref t));
+				return;
+			}
 			F3D.FNA3D_ResolveTarget(device, ref t);
 		}
 
@@ -233,8 +393,15 @@ namespace WPR.Backend.FNA
 			F3D.FNA3D_ResetBackbuffer(device, ref pp);
 		}
 
-		public void ReadBackbuffer(IntPtr device, int x, int y, int w, int h, IntPtr data, int dataLength) =>
+		public void ReadBackbuffer(IntPtr device, int x, int y, int w, int h, IntPtr data, int dataLength)
+		{
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_ReadBackbuffer(device, x, y, w, h, data, dataLength));
+				return;
+			}
 			F3D.FNA3D_ReadBackbuffer(device, x, y, w, h, data, dataLength);
+		}
 
 		public void GetBackbufferSize(IntPtr device, out int w, out int h) => F3D.FNA3D_GetBackbufferSize(device, out w, out h);
 		public SurfaceFormat GetBackbufferSurfaceFormat(IntPtr device) => F3D.FNA3D_GetBackbufferSurfaceFormat(device);
@@ -255,20 +422,44 @@ namespace WPR.Backend.FNA
 		// The AddDispose* members are deliberately NOT bracketed: off-thread they append to a
 		// dispose list and return, they never wait.
 
+		/* On Android FNA3D's OpenGL driver runs texture and buffer creation/upload from a worker
+		 * on a shared worker context of its own (OPENGL_INTERNAL_RunsOnWorkerContext), which is
+		 * concurrent and faster than a round trip through the device thread, so those stay where
+		 * they are. Everywhere else they would park in ForceToMainThread until a swap - which a
+		 * device thread spinning on a game lock never performs - so they are handed over too.
+		 * Effects, renderbuffers and readbacks have no worker-context path on any platform and are
+		 * always handed over (DeviceThreadDispatch.MustMarshal below).
+		 *
+		 * Vertex and index buffer UPLOADS are always handed over as well, Android included. Once a
+		 * worker's draws run on the device context, the buffer they read is one that context
+		 * already has bound - SpriteBatch's shared vertex buffer above all - and GL only promises
+		 * another context's writes become visible after a re-bind. Uploaded on a worker context,
+		 * the draw used the previous sprite's vertices: Plants vs. Zombies' title background came
+		 * out shrunk into one corner on the emulator's GLES. Texture creation is safe on a worker
+		 * context because a new texture cannot already be bound. */
+		private static bool MarshalPooledResourceCalls =>
+			DeviceThreadDispatch.MustMarshal && !OperatingSystem.IsAndroid();
+
 		public IntPtr CreateTexture2D(IntPtr device, SurfaceFormat format, int width, int height, int levelCount, byte isRenderTarget)
 		{
+			if (MarshalPooledResourceCalls)
+				return DeviceThreadDispatch.Invoke(() => F3D.FNA3D_CreateTexture2D(device, format, width, height, levelCount, isRenderTarget));
 			using (OffThreadGpuCalls.Enter())
 				return F3D.FNA3D_CreateTexture2D(device, format, width, height, levelCount, isRenderTarget);
 		}
 
 		public IntPtr CreateTexture3D(IntPtr device, SurfaceFormat format, int width, int height, int depth, int levelCount)
 		{
+			if (MarshalPooledResourceCalls)
+				return DeviceThreadDispatch.Invoke(() => F3D.FNA3D_CreateTexture3D(device, format, width, height, depth, levelCount));
 			using (OffThreadGpuCalls.Enter())
 				return F3D.FNA3D_CreateTexture3D(device, format, width, height, depth, levelCount);
 		}
 
 		public IntPtr CreateTextureCube(IntPtr device, SurfaceFormat format, int size, int levelCount, byte isRenderTarget)
 		{
+			if (MarshalPooledResourceCalls)
+				return DeviceThreadDispatch.Invoke(() => F3D.FNA3D_CreateTextureCube(device, format, size, levelCount, isRenderTarget));
 			using (OffThreadGpuCalls.Enter())
 				return F3D.FNA3D_CreateTextureCube(device, format, size, levelCount, isRenderTarget);
 		}
@@ -277,18 +468,33 @@ namespace WPR.Backend.FNA
 
 		public void SetTextureData2D(IntPtr device, IntPtr texture, int x, int y, int w, int h, int level, IntPtr data, int dataLength)
 		{
+			if (MarshalPooledResourceCalls)
+			{
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_SetTextureData2D(device, texture, x, y, w, h, level, data, dataLength));
+				return;
+			}
 			using (OffThreadGpuCalls.Enter())
 				F3D.FNA3D_SetTextureData2D(device, texture, x, y, w, h, level, data, dataLength);
 		}
 
 		public void SetTextureData3D(IntPtr device, IntPtr texture, int x, int y, int z, int w, int h, int d, int level, IntPtr data, int dataLength)
 		{
+			if (MarshalPooledResourceCalls)
+			{
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_SetTextureData3D(device, texture, x, y, z, w, h, d, level, data, dataLength));
+				return;
+			}
 			using (OffThreadGpuCalls.Enter())
 				F3D.FNA3D_SetTextureData3D(device, texture, x, y, z, w, h, d, level, data, dataLength);
 		}
 
 		public void SetTextureDataCube(IntPtr device, IntPtr texture, int x, int y, int w, int h, CubeMapFace cubeMapFace, int level, IntPtr data, int dataLength)
 		{
+			if (MarshalPooledResourceCalls)
+			{
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_SetTextureDataCube(device, texture, x, y, w, h, cubeMapFace, level, data, dataLength));
+				return;
+			}
 			using (OffThreadGpuCalls.Enter())
 				F3D.FNA3D_SetTextureDataCube(device, texture, x, y, w, h, cubeMapFace, level, data, dataLength);
 		}
@@ -299,6 +505,11 @@ namespace WPR.Backend.FNA
 
 		public void GetTextureData2D(IntPtr device, IntPtr texture, int x, int y, int w, int h, int level, IntPtr data, int dataLength)
 		{
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_GetTextureData2D(device, texture, x, y, w, h, level, data, dataLength));
+				return;
+			}
 			using (OffThreadGpuCalls.Enter())
 				F3D.FNA3D_GetTextureData2D(device, texture, x, y, w, h, level, data, dataLength);
 		}
@@ -309,6 +520,11 @@ namespace WPR.Backend.FNA
 
 		public void GetTextureDataCube(IntPtr device, IntPtr texture, int x, int y, int w, int h, CubeMapFace cubeMapFace, int level, IntPtr data, int dataLength)
 		{
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_GetTextureDataCube(device, texture, x, y, w, h, cubeMapFace, level, data, dataLength));
+				return;
+			}
 			using (OffThreadGpuCalls.Enter())
 				F3D.FNA3D_GetTextureDataCube(device, texture, x, y, w, h, cubeMapFace, level, data, dataLength);
 		}
@@ -317,12 +533,16 @@ namespace WPR.Backend.FNA
 
 		public IntPtr GenColorRenderbuffer(IntPtr device, int width, int height, SurfaceFormat format, int multiSampleCount, IntPtr texture)
 		{
+			if (DeviceThreadDispatch.MustMarshal)
+				return DeviceThreadDispatch.Invoke(() => F3D.FNA3D_GenColorRenderbuffer(device, width, height, format, multiSampleCount, texture));
 			using (OffThreadGpuCalls.Enter())
 				return F3D.FNA3D_GenColorRenderbuffer(device, width, height, format, multiSampleCount, texture);
 		}
 
 		public IntPtr GenDepthStencilRenderbuffer(IntPtr device, int width, int height, DepthFormat format, int multiSampleCount)
 		{
+			if (DeviceThreadDispatch.MustMarshal)
+				return DeviceThreadDispatch.Invoke(() => F3D.FNA3D_GenDepthStencilRenderbuffer(device, width, height, format, multiSampleCount));
 			using (OffThreadGpuCalls.Enter())
 				return F3D.FNA3D_GenDepthStencilRenderbuffer(device, width, height, format, multiSampleCount);
 		}
@@ -333,6 +553,8 @@ namespace WPR.Backend.FNA
 
 		public IntPtr GenVertexBuffer(IntPtr device, byte dynamic, BufferUsage usage, int sizeInBytes)
 		{
+			if (MarshalPooledResourceCalls)
+				return DeviceThreadDispatch.Invoke(() => F3D.FNA3D_GenVertexBuffer(device, dynamic, usage, sizeInBytes));
 			using (OffThreadGpuCalls.Enter())
 				return F3D.FNA3D_GenVertexBuffer(device, dynamic, usage, sizeInBytes);
 		}
@@ -341,12 +563,22 @@ namespace WPR.Backend.FNA
 
 		public void SetVertexBufferData(IntPtr device, IntPtr buffer, int offsetInBytes, IntPtr data, int elementCount, int elementSizeInBytes, int vertexStride, SetDataOptions options)
 		{
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_SetVertexBufferData(device, buffer, offsetInBytes, data, elementCount, elementSizeInBytes, vertexStride, options));
+				return;
+			}
 			using (OffThreadGpuCalls.Enter())
 				F3D.FNA3D_SetVertexBufferData(device, buffer, offsetInBytes, data, elementCount, elementSizeInBytes, vertexStride, options);
 		}
 
 		public void GetVertexBufferData(IntPtr device, IntPtr buffer, int offsetInBytes, IntPtr data, int elementCount, int elementSizeInBytes, int vertexStride)
 		{
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_GetVertexBufferData(device, buffer, offsetInBytes, data, elementCount, elementSizeInBytes, vertexStride));
+				return;
+			}
 			using (OffThreadGpuCalls.Enter())
 				F3D.FNA3D_GetVertexBufferData(device, buffer, offsetInBytes, data, elementCount, elementSizeInBytes, vertexStride);
 		}
@@ -355,6 +587,8 @@ namespace WPR.Backend.FNA
 
 		public IntPtr GenIndexBuffer(IntPtr device, byte dynamic, BufferUsage usage, int sizeInBytes)
 		{
+			if (MarshalPooledResourceCalls)
+				return DeviceThreadDispatch.Invoke(() => F3D.FNA3D_GenIndexBuffer(device, dynamic, usage, sizeInBytes));
 			using (OffThreadGpuCalls.Enter())
 				return F3D.FNA3D_GenIndexBuffer(device, dynamic, usage, sizeInBytes);
 		}
@@ -363,12 +597,22 @@ namespace WPR.Backend.FNA
 
 		public void SetIndexBufferData(IntPtr device, IntPtr buffer, int offsetInBytes, IntPtr data, int dataLength, SetDataOptions options)
 		{
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_SetIndexBufferData(device, buffer, offsetInBytes, data, dataLength, options));
+				return;
+			}
 			using (OffThreadGpuCalls.Enter())
 				F3D.FNA3D_SetIndexBufferData(device, buffer, offsetInBytes, data, dataLength, options);
 		}
 
 		public void GetIndexBufferData(IntPtr device, IntPtr buffer, int offsetInBytes, IntPtr data, int dataLength)
 		{
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_GetIndexBufferData(device, buffer, offsetInBytes, data, dataLength));
+				return;
+			}
 			using (OffThreadGpuCalls.Enter())
 				F3D.FNA3D_GetIndexBufferData(device, buffer, offsetInBytes, data, dataLength);
 		}
@@ -377,30 +621,102 @@ namespace WPR.Backend.FNA
 
 		public void CreateEffect(IntPtr device, byte[] effectCode, int length, out IntPtr effect, out IntPtr effectData)
 		{
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				IntPtr e = IntPtr.Zero, d = IntPtr.Zero;
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_CreateEffect(device, effectCode, length, out e, out d));
+				effect = e;
+				effectData = d;
+				return;
+			}
 			using (OffThreadGpuCalls.Enter())
 				F3D.FNA3D_CreateEffect(device, effectCode, length, out effect, out effectData);
 		}
 
 		public void CloneEffect(IntPtr device, IntPtr cloneSource, out IntPtr effect, out IntPtr effectData)
 		{
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				IntPtr e = IntPtr.Zero, d = IntPtr.Zero;
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_CloneEffect(device, cloneSource, out e, out d));
+				effect = e;
+				effectData = d;
+				return;
+			}
 			using (OffThreadGpuCalls.Enter())
 				F3D.FNA3D_CloneEffect(device, cloneSource, out effect, out effectData);
 		}
 
 		public void AddDisposeEffect(IntPtr device, IntPtr effect) => F3D.FNA3D_AddDisposeEffect(device, effect);
 		public void SetEffectTechnique(IntPtr device, IntPtr effect, IntPtr technique) => F3D.FNA3D_SetEffectTechnique(device, effect, technique);
-		public void ApplyEffect(IntPtr device, IntPtr effect, uint pass, IntPtr stateChanges) => F3D.FNA3D_ApplyEffect(device, effect, pass, stateChanges);
-		public void BeginPassRestore(IntPtr device, IntPtr effect, IntPtr stateChanges) => F3D.FNA3D_BeginPassRestore(device, effect, stateChanges);
-		public void EndPassRestore(IntPtr device, IntPtr effect) => F3D.FNA3D_EndPassRestore(device, effect);
+		public void ApplyEffect(IntPtr device, IntPtr effect, uint pass, IntPtr stateChanges)
+		{
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_ApplyEffect(device, effect, pass, stateChanges));
+				return;
+			}
+			F3D.FNA3D_ApplyEffect(device, effect, pass, stateChanges);
+		}
+
+		public void BeginPassRestore(IntPtr device, IntPtr effect, IntPtr stateChanges)
+		{
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_BeginPassRestore(device, effect, stateChanges));
+				return;
+			}
+			F3D.FNA3D_BeginPassRestore(device, effect, stateChanges);
+		}
+
+		public void EndPassRestore(IntPtr device, IntPtr effect)
+		{
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_EndPassRestore(device, effect));
+				return;
+			}
+			F3D.FNA3D_EndPassRestore(device, effect);
+		}
 
 		// ---- Queries ----
 
-		public IntPtr CreateQuery(IntPtr device) => F3D.FNA3D_CreateQuery(device);
+		public IntPtr CreateQuery(IntPtr device) =>
+			DeviceThreadDispatch.MustMarshal
+				? DeviceThreadDispatch.Invoke(() => F3D.FNA3D_CreateQuery(device))
+				: F3D.FNA3D_CreateQuery(device);
+
 		public void AddDisposeQuery(IntPtr device, IntPtr query) => F3D.FNA3D_AddDisposeQuery(device, query);
-		public void QueryBegin(IntPtr device, IntPtr query) => F3D.FNA3D_QueryBegin(device, query);
-		public void QueryEnd(IntPtr device, IntPtr query) => F3D.FNA3D_QueryEnd(device, query);
-		public byte QueryComplete(IntPtr device, IntPtr query) => F3D.FNA3D_QueryComplete(device, query);
-		public int QueryPixelCount(IntPtr device, IntPtr query) => F3D.FNA3D_QueryPixelCount(device, query);
+
+		public void QueryBegin(IntPtr device, IntPtr query)
+		{
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_QueryBegin(device, query));
+				return;
+			}
+			F3D.FNA3D_QueryBegin(device, query);
+		}
+
+		public void QueryEnd(IntPtr device, IntPtr query)
+		{
+			if (DeviceThreadDispatch.MustMarshal)
+			{
+				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_QueryEnd(device, query));
+				return;
+			}
+			F3D.FNA3D_QueryEnd(device, query);
+		}
+
+		public byte QueryComplete(IntPtr device, IntPtr query) =>
+			DeviceThreadDispatch.MustMarshal
+				? DeviceThreadDispatch.Invoke(() => F3D.FNA3D_QueryComplete(device, query))
+				: F3D.FNA3D_QueryComplete(device, query);
+
+		public int QueryPixelCount(IntPtr device, IntPtr query) =>
+			DeviceThreadDispatch.MustMarshal
+				? DeviceThreadDispatch.Invoke(() => F3D.FNA3D_QueryPixelCount(device, query))
+				: F3D.FNA3D_QueryPixelCount(device, query);
 
 		// ---- Feature queries ----
 
