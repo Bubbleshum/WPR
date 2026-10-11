@@ -189,6 +189,42 @@ namespace WPR.Wp8Native
                 // 1,700 bytes into a sixteen-byte block.
                 ["calloc"] = AllocateZeroed,
                 ["_calloc_crt"] = AllocateZeroed,
+
+                // The Win32 heap (api-ms-win-core-heap-l1-2-0), over the same allocator. One heap
+                // stands for all of them, so the handle only has to be non-null. These used to be
+                // defaulted to 0: MONOPOLY Millionaire builds its own dlmalloc-style arena on a
+                // HeapAlloc block, got a null arena, wrote its bin headers into the null page and
+                // then walked them as chunks across a thousand lazily mapped pages - the walk that
+                // first surfaced as a native abort inside the JIT and then as a silent spin.
+                ["GetProcessHeap"] = () => Return(ProcessHeapHandle),
+                ["HeapCreate"] = () => Return(ProcessHeapHandle),
+                ["HeapDestroy"] = () => Return(1),
+                ["HeapAlloc"] = () => Return(AllocateZeroedBlock(Arg(2))),          // (heap, flags, bytes)
+                ["HeapFree"] = () =>                                                // (heap, flags, block) -> BOOL
+                {
+                    _emulator.FreeHeap(Arg(2));
+                    Return(1);
+                },
+                ["HeapSize"] = () => Return(Arg(2) == 0 ? -1 : _emulator.AllocationSizeOf(Arg(2))),
+                ["HeapReAlloc"] = () =>                                             // (heap, flags, block, bytes)
+                {
+                    long pointer = Arg(2);
+                    long size = Arg(3);
+                    long moved = AllocateZeroedBlock(size);
+                    if (moved != 0 && pointer != 0)
+                    {
+                        long available = _emulator.AllocationSizeOf(pointer);
+                        long copy = Math.Min(size, available);
+                        if (copy > 0)
+                        {
+                            _emulator.WriteMemory(moved, _emulator.ReadMemory(pointer, (int)copy));
+                        }
+
+                        _emulator.FreeHeap(pointer);
+                    }
+
+                    Return(moved);
+                },
                 ["??2@YAPAXI@Z"] = Allocate,                                // operator new(unsigned int)
                 ["??_U@YAPAXI@Z"] = Allocate,                               // operator new[](unsigned int)
                 ["?Allocate@Heap@Details@Platform@@SAPAXI@Z"] = AllocateRefObject,   // Platform::Details::Heap::Allocate
@@ -1816,6 +1852,30 @@ namespace WPR.Wp8Native
         /// moment this allocator learns to recycle, a calloc that quietly stopped zeroing
         /// would be the hardest bug in the whole probe to find.
         /// </remarks>
+        /// <summary>The one Win32 heap handle GetProcessHeap/HeapCreate hand out.</summary>
+        private const long ProcessHeapHandle = 0x00050000;
+
+        /// <summary>A zeroed block of <paramref name="size"/> bytes, or 0 for a size no heap would grant.</summary>
+        /// <remarks>
+        /// Zeroed whether or not HEAP_ZERO_MEMORY was asked for: a recycled block otherwise hands
+        /// the image whatever the last owner left, and zero is always a value fresh memory may hold.
+        /// </remarks>
+        private long AllocateZeroedBlock(long size)
+        {
+            if (size < 0 || size > CallFrame.SaneLengthLimit)
+            {
+                return 0;
+            }
+
+            long block = _emulator.AllocateHeap(Math.Max(size, 1));
+            if (block != 0 && size > 0)
+            {
+                _emulator.WriteMemory(block, new byte[size]);
+            }
+
+            return block;
+        }
+
         private void AllocateZeroed()
         {
             long total = Arg(0) * Arg(1);

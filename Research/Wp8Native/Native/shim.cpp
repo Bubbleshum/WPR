@@ -290,7 +290,18 @@ WPRCPU_API wprcpu* wprcpu_create(const wprcpu_callbacks* callbacks) {
     config.arch_version = Dynarmic::A32::ArchVersion::v7;
     config.page_table = cpu->memory.fast;
     config.absolute_offset_page_table = false;
-    config.detect_misaligned_access_via_page_table = 0;
+    // An access that straddles a page boundary must leave the inline page-table path. That
+    // path looks up only the FIRST page and then reads host[page] + offset for the whole
+    // width, so a word at 0x...FFE runs off the end of that page's host memory. Inside one
+    // wprcpu_map block the next host page happens to be the next guest page, which is why
+    // this went unnoticed; at the end of a block it is uncommitted memory, the host faults
+    // inside JIT code at a PC with no fastmem patch info, and dynarmic asserts - a native
+    // abort that takes the whole process down (MONOPOLY Millionaire, before its first frame).
+    // With these set, only page-crossing accesses (one extra test per access) go to the
+    // MemoryRead*/Write* callbacks, which assemble them a byte at a time and route any part
+    // that lands on an unmapped page to on_unmapped - a reported fault, not an abort.
+    config.detect_misaligned_access_via_page_table = 16 | 32 | 64 | 128;
+    config.only_detect_misalignment_via_page_table_on_page_boundary = true;
     config.coprocessors[15] = cpu->cp15;
     config.global_monitor = &cpu->monitor;
     config.define_unpredictable_behaviour = true;

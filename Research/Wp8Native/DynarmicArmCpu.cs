@@ -149,7 +149,14 @@ public sealed class DynarmicArmCpu : IArmCpu
         {
             DynarmicNative.OutcomeBudget => new RunResult(RunOutcome.Budget, null),
             DynarmicNative.OutcomeHalted => new RunResult(RunOutcome.Stopped, null),
-            DynarmicNative.OutcomeStopped => new RunResult(RunOutcome.Stopped, null),
+
+            // A stop with a message is DynarmicCpu ending the run because a callback threw -
+            // a trap handler or the unmapped-access handler. That is a failure, and the message
+            // is all there is to say why: reported as a plain stop it read as "the image
+            // returned", so the game closed and nothing reached WPR Hub.
+            DynarmicNative.OutcomeStopped => _cpu.StopMessage is { Length: > 0 } message
+                ? new RunResult(RunOutcome.Faulted, message)
+                : new RunResult(RunOutcome.Stopped, null),
             _ => new RunResult(RunOutcome.Faulted, _lastFault ?? "the CPU faulted"),
         };
     }
@@ -191,7 +198,16 @@ public sealed class DynarmicArmCpu : IArmCpu
 
         // The value being stored is not available from the shim; nothing in the emulator reads it
         // except the trap-page write diagnostic, which only needs the address.
-        return MemoryFault?.Invoke(kind, address, size, 0) ?? false;
+        bool retry = MemoryFault?.Invoke(kind, address, size, 0) ?? false;
+        if (!retry)
+        {
+            // Declined: the shim ends the run with a fault. Say which access it was, so the run
+            // never ends on the bare "the CPU faulted" - the emulator usually has a StopReason
+            // of its own as well, but nothing guarantees it.
+            _lastFault ??= $"{kind} of {size} byte(s) at 0x{address:X8}";
+        }
+
+        return retry;
     }
 
     public void Dispose() => _cpu.Dispose();
