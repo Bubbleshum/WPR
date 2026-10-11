@@ -596,6 +596,8 @@ namespace WPR.Wp8Native
             // 25 ms buffers queued (Modern Combat 4) a frame's wait ran the stream dry.
             void ThreadsThenInput() => _emulator.RunOtherThreads(InputThenDraw);
 
+            QueueDueTimers();
+
             _emulator.DrainDeferredCalls(() =>
             {
                 if (!_emulator.XAudio2.Pump(ThreadsThenInput))

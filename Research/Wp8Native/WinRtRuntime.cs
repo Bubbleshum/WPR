@@ -124,6 +124,10 @@ namespace WPR.Wp8Native
             RegisterAppModelObjects();
             RegisterCameras();
             RegisterSensors();
+
+            // The system classes implemented to their WinRT contract (WinRtObjects.cs and its
+            // partials). Last, so each replaces any stand-in registered above.
+            RegisterSystemClasses();
         }
 
         /// <summary>
@@ -1150,6 +1154,7 @@ namespace WPR.Wp8Native
                         // always runs from a return trap rather than inline in this stub.
                         // HTTP failures join the queue here, once they are due.
                         _emulator.Stubs.Http.QueueDue();
+                        QueueDueTimers();
                         if (_emulator.PendingDeferredCalls > 0)
                         {
                             long resumeAfterDrain = _emulator.ReturnAddress;
