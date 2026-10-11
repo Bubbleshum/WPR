@@ -144,7 +144,7 @@ public sealed class Wave1Suite : IContractSuite
         Check("DisableThreadLibraryCalls succeeds", Call("DisableThreadLibraryCalls", 0x400000) == 1);
         Call("_lock", 8); Call("_unlock", 8);
         Check("_lock/_unlock dispatch without trapping", s.FirstUnimplementedImport is null);
-        foreach (string safe in new[] { "?InitializeData@Details@Platform@@YAJH@Z", "?_Orphan_all@_Container_base0@std@@QAAXXZ", "OutputDebugStringW" })
+        foreach (string safe in new[] { "?InitializeData@Details@Platform@@YAJH@Z", "?_Orphan_all@_Container_base0@std@@QAAXXZ", "__crtSetUnhandledExceptionFilter" })
         {
             Check($"{safe} is allowlisted with a reason", HostStubs.SafeToDefault.TryGetValue(safe, out string? why) && why.Length > 20);
         }

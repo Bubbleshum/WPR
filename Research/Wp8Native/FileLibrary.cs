@@ -32,6 +32,12 @@ namespace WPR.Wp8Native
             public long FilePointer { get; set; }
             public int Descriptor { get; set; }
             public bool AtEof { get; set; }
+
+            /// <summary>Opened with FILE_FLAG_OVERLAPPED (CreateFile2's extended flags).</summary>
+            public bool Overlapped { get; set; }
+
+            /// <summary>FILE_FLAG_DELETE_ON_CLOSE, or FileDispositionInfo set to delete.</summary>
+            public bool DeleteOnClose { get; set; }
         }
 
         private readonly ArmEmulator _emulator;
@@ -44,7 +50,25 @@ namespace WPR.Wp8Native
         private readonly Dictionary<int, OpenFile> _byDescriptor = new();
         private int _nextDescriptor = 3;   // 0-2 are stdin/stdout/stderr
         private long _nextHandle = FirstHandle;
-        private int _lastError;
+
+        /// <summary>The last-error value, per guest thread as GetLastError's contract requires.</summary>
+        private readonly Dictionary<int, int> _lastErrors = new();
+
+        private int _lastError
+        {
+            get => _lastErrors.GetValueOrDefault(_emulator.CurrentThreadId);
+            set => _lastErrors[_emulator.CurrentThreadId] = value;
+        }
+
+        /// <summary>
+        /// The calling guest thread's last-error code: what GetLastError answers. Other libraries
+        /// set it through here so there is one value per thread, not one per library.
+        /// </summary>
+        public int LastError
+        {
+            get => _lastError;
+            set => _lastError = value;
+        }
 
         public FileLibrary(ArmEmulator emulator, CallFrame frame, string readRoot, string writeRoot)
         {
@@ -95,14 +119,7 @@ namespace WPR.Wp8Native
             handlers["_lseek"] = SeekDescriptor;
 
             // --- Win32 ---
-            handlers["CreateFile2"] = CreateFile2;
             handlers["CloseHandle"] = () => _frame.Return(CloseStdio(_frame.Arg(0)) ? 1 : 1);
-            handlers["GetFileAttributesExW"] = GetFileAttributes;
-            handlers["CreateDirectoryW"] = CreateDirectory;
-            handlers["MoveFileExW"] = MoveFile;
-            handlers["FlushFileBuffers"] = () => _frame.Return(1);
-            handlers["SetFileInformationByHandle"] = () => _frame.Return(1);
-            handlers["GetFileInformationByHandleEx"] = GetFileInformationByHandleEx;
 
             // The Win32 half of a handle from CreateFile2. Gameloft's engine (Modern Combat 4)
             // does all its I/O through these rather than the CRT.
@@ -124,31 +141,6 @@ namespace WPR.Wp8Native
                 _frame.Return(1);
             };
             handlers["GetOverlappedResult"] = handlers["GetOverlappedResultEx"];
-            handlers["GetFileSizeEx"] = () =>
-            {
-                if (!_byPointer.TryGetValue(_frame.Arg(0), out OpenFile? file))
-                {
-                    _lastError = ErrorInvalidHandle;
-                    _frame.Return(0);
-                    return;
-                }
-
-                if (_frame.Arg(1) != 0)
-                {
-                    _emulator.WriteUInt64(_frame.Arg(1), (ulong)file.Stream.Length);
-                }
-
-                _frame.Return(1);
-            };
-            handlers["SetEndOfFile"] = () =>
-            {
-                if (_byPointer.TryGetValue(_frame.Arg(0), out OpenFile? file) && file.Stream.CanWrite)
-                {
-                    file.Stream.SetLength(file.Stream.Position);
-                }
-
-                _frame.Return(1);
-            };
             // Directory search. Unimplemented, these answered 0 - which for _wfindnext means
             // "found another" - so a game listing a folder looped for ever on a black screen
             // (Angry Birds Space, Classic, Seasons, Star Wars II and Stella all import them).
@@ -162,7 +154,6 @@ namespace WPR.Wp8Native
                 _searchRoots.Remove(handle);
                 _frame.Return(_searches.Remove(handle) ? 0 : -1);
             };
-            handlers["RemoveDirectoryW"] = RemoveDirectory;
 
             // int _mkdir(const char*): 0, or -1 with errno.
             handlers["_mkdir"] = () =>
@@ -178,27 +169,6 @@ namespace WPR.Wp8Native
                 {
                     _frame.Return(0xFFFFFFFFL);
                 }
-            };
-
-            // BOOL DeleteFileW(LPCWSTR): only inside the writable sandbox - never the package.
-            handlers["DeleteFileW"] = () =>
-            {
-                string host = Resolve(ReadWide(0), out bool writable);
-                if (writable && File.Exists(host))
-                {
-                    try
-                    {
-                        File.Delete(host);
-                        _frame.Return(1);
-                        return;
-                    }
-                    catch (IOException)
-                    {
-                    }
-                }
-
-                _lastError = ErrorFileNotFound;
-                _frame.Return(0);
             };
 
             // int getc(FILE*) / int ungetc(int, FILE*): one byte, through the same file pointer
@@ -244,6 +214,7 @@ namespace WPR.Wp8Native
             handlers["SetLastError"] = () => { _lastError = (int)_frame.Arg(0); _frame.Return(0); };
 
             RegisterMappingAndStat(handlers);
+            RegisterWin32Contracts(handlers);
         }
 
         // ---------------------------------------------------------------------------
@@ -426,8 +397,15 @@ namespace WPR.Wp8Native
                 return false;
             }
 
+            // A duplicated handle (DuplicateHandle) shares the file object: only the last close
+            // closes the file, as on Windows.
+            if (_byPointer.Values.Any(other => ReferenceEquals(other, file)))
+            {
+                return true;
+            }
+
             _byDescriptor.Remove(file.Descriptor);
-            file.Stream.Dispose();
+            DisposeFile(file);
             return true;
         }
 
@@ -588,15 +566,14 @@ namespace WPR.Wp8Native
         // Win32
         // ---------------------------------------------------------------------------
 
-        /// <summary>
-        /// HANDLE CreateFile2(PCWSTR name, DWORD access, DWORD share, DWORD creation, ...)
-        /// </summary>
         private const int ErrorInvalidHandle = 6;
 
         /// <summary>
         /// BOOL ReadFile/WriteFile(HANDLE, void* buffer, DWORD bytes, DWORD* done, OVERLAPPED*).
         /// An OVERLAPPED carries the file offset (Offset at +8, OffsetHigh at +12); the call still
-        /// completes before it returns, which an overlapped caller accepts.
+        /// completes before it returns, which an overlapped caller accepts - and the OVERLAPPED's
+        /// event is set, as completion does. Writing through a read-only handle is
+        /// ERROR_ACCESS_DENIED; an overlapped read at end of file is FALSE with ERROR_HANDLE_EOF.
         /// </summary>
         private void Transfer(bool write)
         {
@@ -607,6 +584,13 @@ namespace WPR.Wp8Native
             if (!_byPointer.TryGetValue(_frame.Arg(0), out OpenFile? file))
             {
                 _lastError = ErrorInvalidHandle;
+                _frame.Return(0);
+                return;
+            }
+
+            if (write && !file.Stream.CanWrite)
+            {
+                _lastError = ErrorAccessDenied;
                 _frame.Return(0);
                 return;
             }
@@ -650,13 +634,17 @@ namespace WPR.Wp8Native
                     _emulator.WriteUInt32(done, (uint)moved);
                 }
 
-                if (overlapped != 0)
+                if (!write && moved == 0 && count > 0 && file.Overlapped && overlapped != 0)
                 {
-                    // Internal (status) and InternalHigh (bytes transferred).
-                    _emulator.WriteUInt32(overlapped, 0);
-                    _emulator.WriteUInt32(overlapped + 4, (uint)moved);
+                    CompleteOverlapped(overlapped, 0);
+                    _emulator.WriteUInt32(overlapped, 0xC0000011); // STATUS_END_OF_FILE
+                    _lastError = ErrorHandleEof;
+                    _frame.Return(0);
+                    return;
                 }
 
+                // Internal (status), InternalHigh (bytes transferred), and the event.
+                CompleteOverlapped(overlapped, moved);
                 _frame.Return(1);
             }
             catch (Exception ex)
@@ -706,177 +694,6 @@ namespace WPR.Wp8Native
             }
 
             _frame.Return(1);
-        }
-
-        /// <summary>
-        /// BOOL GetFileInformationByHandleEx(HANDLE, FILE_INFO_BY_HANDLE_CLASS, void*, DWORD).
-        /// FileStandardInfo (1) is AllocationSize, EndOfFile, NumberOfLinks, DeletePending,
-        /// Directory; anything else answers zeros.
-        /// </summary>
-        private void GetFileInformationByHandleEx()
-        {
-            long buffer = _frame.Arg(2);
-            int size = (int)_frame.Arg(3);
-            if (!_byPointer.TryGetValue(_frame.Arg(0), out OpenFile? file))
-            {
-                _lastError = ErrorInvalidHandle;
-                _frame.Return(0);
-                return;
-            }
-
-            if (buffer != 0 && size > 0)
-            {
-                _emulator.WriteMemory(buffer, new byte[size]);
-                if (_frame.Arg(1) == 1 && size >= 24)
-                {
-                    _emulator.WriteUInt64(buffer, (ulong)file.Stream.Length);
-                    _emulator.WriteUInt64(buffer + 8, (ulong)file.Stream.Length);
-                    _emulator.WriteUInt32(buffer + 16, 1);
-                }
-            }
-
-            _frame.Return(1);
-        }
-
-        private void CreateFile2()
-        {
-            string path = ReadWide(0);
-            long access = _frame.Arg(1);
-            long creation = _frame.Arg(3);
-
-            const long genericWrite = 0x40000000;
-            bool wantsWrite = (access & genericWrite) != 0 || creation is 1 or 2; // CREATE_NEW / CREATE_ALWAYS
-
-            string host = Resolve(path, out bool writable);
-            if (wantsWrite && !writable)
-            {
-                host = Path.Combine(_writeRoot, Path.GetFileName(host));
-            }
-
-            try
-            {
-                if (wantsWrite)
-                {
-                    Directory.CreateDirectory(Path.GetDirectoryName(host)!);
-                }
-                else if (!File.Exists(host))
-                {
-                    _lastError = ErrorFileNotFound;
-                    OpenFailed++;
-                    Log.Add($"CreateFile2(\"{path}\") -> not found");
-                    _frame.Return(-1);  // INVALID_HANDLE_VALUE
-                    return;
-                }
-
-                FileStream stream = new(
-                    host,
-                    // CREATE_ALWAYS (2) and TRUNCATE_EXISTING (5) start the file empty; a save
-                    // written over a longer one would otherwise keep the old tail.
-                    !wantsWrite ? FileMode.Open : creation is 2 or 5 ? FileMode.Create : FileMode.OpenOrCreate,
-                    wantsWrite ? FileAccess.ReadWrite : FileAccess.Read,
-                    FileShare.ReadWrite);
-
-                long handle = _nextHandle;
-                _nextHandle += 4;
-
-                OpenFile file = new() { Stream = stream, Path = path, Descriptor = _nextDescriptor++ };
-                _byPointer[handle] = file;
-                _byDescriptor[file.Descriptor] = file;
-
-                OpenedSuccessfully++;
-                Log.Add($"CreateFile2(\"{path}\") -> {stream.Length} bytes");
-                _frame.Return(handle);
-            }
-            catch (Exception ex)
-            {
-                _lastError = ErrorPathNotFound;
-                OpenFailed++;
-                Log.Add($"CreateFile2(\"{path}\") -> {ex.GetType().Name}");
-                _frame.Return(-1);
-            }
-        }
-
-        /// <summary>
-        /// BOOL GetFileAttributesExW(PCWSTR name, level, WIN32_FILE_ATTRIBUTE_DATA* out)
-        /// </summary>
-        private void GetFileAttributes()
-        {
-            string path = ReadWide(0);
-            string host = Resolve(path, out _);
-            long output = _frame.Arg(2);
-
-            const uint attributeDirectory = 0x10;
-            const uint attributeNormal = 0x80;
-
-            bool isDirectory = Directory.Exists(host);
-            if (!isDirectory && !File.Exists(host))
-            {
-                _lastError = ErrorFileNotFound;
-                Log.Add($"GetFileAttributesExW(\"{path}\") -> not found");
-                _frame.Return(0);
-                return;
-            }
-
-            if (output != 0)
-            {
-                long size = isDirectory ? 0 : new FileInfo(host).Length;
-
-                _emulator.WriteUInt32(output, isDirectory ? attributeDirectory : attributeNormal);
-                _emulator.WriteUInt64(output + 4, 0);      // creation time
-                _emulator.WriteUInt64(output + 12, 0);     // last access
-                _emulator.WriteUInt64(output + 20, 0);     // last write
-                _emulator.WriteUInt32(output + 28, (uint)(size >> 32));
-                _emulator.WriteUInt32(output + 32, (uint)size);
-            }
-
-            Log.Add($"GetFileAttributesExW(\"{path}\") -> {(isDirectory ? "directory" : "file")}");
-            _frame.Return(1);
-        }
-
-        private void CreateDirectory()
-        {
-            string path = ReadWide(0);
-            string host = Resolve(path, out _);
-
-            try
-            {
-                Directory.CreateDirectory(host);
-                Log.Add($"CreateDirectoryW(\"{path}\") -> created");
-                _frame.Return(1);
-            }
-            catch (Exception)
-            {
-                _lastError = ErrorPathNotFound;
-                _frame.Return(0);
-            }
-        }
-
-        private void MoveFile()
-        {
-            string from = ReadWide(0);
-            string to = ReadWide(1);
-            if (Environment.GetEnvironmentVariable("WPR_MOVETRACE") is not null)
-            {
-                var calls = _emulator.CallOrder;
-                Console.Error.WriteLine($"[move] {from} -> {to}; preceding: " +
-                    string.Join(" | ", calls.Skip(Math.Max(0, calls.Count - 3000)).Select(c => c.Split((char)33)[^1]).Where(c => c is not ("memcpy" or "memmove" or "memset" or "strlen" or "??2@YAPAXI@Z" or "??3@YAXPAX@Z" or "_lock" or "_unlock"))));
-            }
-
-            try
-            {
-                string source = Resolve(from, out _);
-                string destination = Resolve(to, out _);
-                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-                File.Move(source, destination, overwrite: true);
-                Log.Add($"MoveFileExW(\"{from}\" -> \"{to}\") -> ok");
-                _frame.Return(1);
-            }
-            catch (Exception ex)
-            {
-                _lastError = ErrorFileNotFound;
-                Log.Add($"MoveFileExW(\"{from}\" -> \"{to}\") -> {ex.GetType().Name}");
-                _frame.Return(0);
-            }
         }
 
         /// <summary>
@@ -1024,27 +841,6 @@ namespace WPR.Wp8Native
                 .Replace(@"\*", ".*").Replace(@"\?", ".") + "$";
             return System.Text.RegularExpressions.Regex.IsMatch(
                 name, regex, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        }
-
-        /// <summary>BOOL RemoveDirectoryW(LPCWSTR): only ever inside the writable sandbox.</summary>
-        private void RemoveDirectory()
-        {
-            string host = Resolve(ReadWide(0), out bool writable);
-            try
-            {
-                if (writable && Directory.Exists(host))
-                {
-                    Directory.Delete(host, recursive: false);
-                    _frame.Return(1);
-                    return;
-                }
-            }
-            catch (IOException)
-            {
-            }
-
-            _lastError = ErrorFileNotFound;
-            _frame.Return(0);
         }
 
         private string ReadWide(int argument) => _emulator.ReadUtf16String(_frame.Arg(argument), 1024);
