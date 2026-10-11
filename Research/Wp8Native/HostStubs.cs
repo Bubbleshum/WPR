@@ -363,6 +363,7 @@ namespace WPR.Wp8Native
 
             // The top of the 1b to-do list: what every title reaches before its first frame.
             RegisterStartupImports(imageDirectory);
+            RegisterMediaImports(imageDirectory);
             _winRt.RegisterEventSources(_handlers);
             // After the others: it replaces their single-threaded sleep and thread-id answers.
             Threads = new ThreadLibrary(emulator, _frame);
@@ -750,6 +751,13 @@ namespace WPR.Wp8Native
             // Imports by ordinal are only unique per DLL.
             if (function.StartsWith('#') && Extras.TryWinsock(fullName))
             {
+                return;
+            }
+
+            // Ordinal handlers registered under their qualified "dll!#n" name (XAudio2_8's exports).
+            if (function.StartsWith('#') && _handlers.TryGetValue(fullName, out Action? byOrdinal))
+            {
+                byOrdinal();
                 return;
             }
 
