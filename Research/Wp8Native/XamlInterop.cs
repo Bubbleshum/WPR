@@ -173,11 +173,13 @@ namespace WPR.Wp8Native
                     Log($"DllMain(PROCESS_ATTACH) returned {Arg(0)}");
                     Activate();
                 });
-                return image.EntryPoint;
+
+                // The package DLLs the component imports are initialised before it, as the loader would.
+                return _emulator.StartWithModuleInitialisers(image.EntryPoint);
             }
 
             Activate();
-            return getFactory;
+            return _emulator.StartWithModuleInitialisers(getFactory);
         }
 
         private void Log(string line) => ComponentLog.Add(line);

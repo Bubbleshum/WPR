@@ -110,7 +110,8 @@ namespace WPR.Wp8Native
             registers[Index(Arm.UC_ARM_REG_R0)] = argument;
             registers[Index(Arm.UC_ARM_REG_SP)] = top;
             registers[Index(Arm.UC_ARM_REG_LR)] = ThumbEntry(ThreadExitTrap());
-            registers[Index(Arm.UC_ARM_REG_R12)] = entry;
+            // Through the loader when DLLs want DLL_THREAD_ATTACH/DETACH (ModuleLoader.cs).
+            registers[Index(Arm.UC_ARM_REG_R12)] = ThreadStartThroughLoader(thread.Id, entry);
             registers[Index(Arm.UC_ARM_REG_CPSR)] = _cpu.RegRead(Arm.UC_ARM_REG_CPSR);
             thread.Registers = registers;
             thread.Vfp = new uint[64];

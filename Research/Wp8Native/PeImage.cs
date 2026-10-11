@@ -14,6 +14,12 @@ namespace WPR.Wp8Native
     {
         /// <summary>Bytes the loader reserves for this section once mapped.</summary>
         public uint MappedSize => Math.Max(VirtualSize, RawSize);
+
+        /// <summary>The section header's Characteristics flags.</summary>
+        public uint Characteristics { get; init; }
+
+        /// <summary>IMAGE_SCN_CNT_CODE or IMAGE_SCN_MEM_EXECUTE: the section holds code.</summary>
+        public bool IsExecutable => (Characteristics & 0x20000020) != 0;
     }
 
     /// <summary>
@@ -116,6 +122,16 @@ namespace WPR.Wp8Native
             ExceptionDirectorySize = U32(dataDirectories + 3 * 8 + 4);
             IsManaged = U32(dataDirectories + 14 * 8) != 0;
 
+            // What a loader mapping this image somewhere other than its preferred base needs:
+            // the export directory's extent (an export RVA inside it is a forwarder string),
+            // the base relocations, and the TLS directory.
+            ExportDirectoryRva = exportDirRva;
+            ExportDirectorySize = U32(dataDirectories + 4);
+            BaseRelocationRva = U32(dataDirectories + 5 * 8);
+            BaseRelocationSize = U32(dataDirectories + 5 * 8 + 4);
+            TlsDirectoryRva = U32(dataDirectories + 9 * 8);
+            TlsDirectorySize = U32(dataDirectories + 9 * 8 + 4);
+
             _sections = new PeSection[sectionCount];
             for (int i = 0; i < sectionCount; i++)
             {
@@ -125,12 +141,50 @@ namespace WPR.Wp8Native
                     VirtualSize: U32(so + 8),
                     VirtualAddress: U32(so + 12),
                     RawSize: U32(so + 16),
-                    RawPointer: U32(so + 20));
+                    RawPointer: U32(so + 20))
+                {
+                    Characteristics = U32(so + 36),
+                };
             }
 
             Imports = importDirRva == 0 ? Array.Empty<ImportedFunction>() : ReadImports(importDirRva);
             Exports = exportDirRva == 0 ? new Dictionary<string, uint>() : ReadExports(exportDirRva);
         }
+
+        /// <summary>RVA and size of the export directory. An export whose RVA falls inside it is a forwarder.</summary>
+        public uint ExportDirectoryRva { get; }
+
+        public uint ExportDirectorySize { get; }
+
+        /// <summary>The export directory's Base: the ordinal of the first entry of its address table.</summary>
+        public uint ExportOrdinalBase { get; private set; }
+
+        /// <summary>Every export by ordinal (biased by <see cref="ExportOrdinalBase"/>, as an import names it), as RVAs.</summary>
+        public IReadOnlyDictionary<uint, uint> ExportsByOrdinal => _exportsByOrdinal;
+
+        private readonly Dictionary<uint, uint> _exportsByOrdinal = new();
+
+        /// <summary>The base relocation directory (IMAGE_DIRECTORY_ENTRY_BASERELOC).</summary>
+        public uint BaseRelocationRva { get; }
+
+        public uint BaseRelocationSize { get; }
+
+        /// <summary>The TLS directory (IMAGE_DIRECTORY_ENTRY_TLS), zero when the image has none.</summary>
+        public uint TlsDirectoryRva { get; }
+
+        public uint TlsDirectorySize { get; }
+
+        /// <summary>True when an export's RVA points into the export directory, i.e. at a forwarder string.</summary>
+        public bool IsForwarder(uint exportRva)
+            => ExportDirectorySize != 0 && exportRva >= ExportDirectoryRva && exportRva < ExportDirectoryRva + ExportDirectorySize;
+
+        /// <summary>The "DLL.Function" (or "DLL.#ordinal") string a forwarded export names, or null.</summary>
+        public string? ForwarderOf(uint exportRva)
+            => IsForwarder(exportRva) && RvaToOffset(exportRva) is { } offset ? ReadCString(offset) : null;
+
+        /// <summary>Reads a little-endian word at an RVA from the file, or null when the RVA has no file bytes.</summary>
+        public uint? ReadUInt32AtRva(uint rva)
+            => RvaToOffset(rva) is { } offset && offset + 4 <= _raw.Length ? U32(offset) : null;
 
         private Dictionary<string, uint> ReadExports(uint exportDirRva)
         {
@@ -140,11 +194,24 @@ namespace WPR.Wp8Native
                 return exports;
             }
 
+            ExportOrdinalBase = U32(dir + 16);
             uint functionCount = U32(dir + 20);
             uint nameCount = U32(dir + 24);
             int? functions = RvaToOffset(U32(dir + 28));
             int? names = RvaToOffset(U32(dir + 32));
             int? ordinals = RvaToOffset(U32(dir + 36));
+            if (functions is not null)
+            {
+                for (uint i = 0; i < functionCount && i < 65536; i++)
+                {
+                    uint rva = U32(functions.Value + (int)(i * 4));
+                    if (rva != 0)
+                    {
+                        _exportsByOrdinal[ExportOrdinalBase + i] = rva;
+                    }
+                }
+            }
+
             if (functions is null || names is null || ordinals is null)
             {
                 return exports;

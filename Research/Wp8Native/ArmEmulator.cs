@@ -114,7 +114,11 @@ namespace WPR.Wp8Native
             Unwinder = new ArmUnwinder(image, this);
             ExceptionModel = new CxxExceptionModel(this, image.ImageBase);
             _winRt = new WinRtRuntime(this, _strings);
-            InstallImportTraps();
+
+            // Binding the main image's imports maps every package DLL it needs, recursively
+            // (ModuleLoader.cs); their DllMains run from StartWithModuleInitialisers.
+            RegisterMainModule(imageDirectory);
+            InstallImportTraps(_image, _image.ImageBase);
             _stubs = new HostStubs(this, _winRt, _strings, imageDirectory);
             EnableFloatingPoint();
 
@@ -251,8 +255,8 @@ namespace WPR.Wp8Native
         /// <summary>Where the image is mapped, which every RVA in it is relative to.</summary>
         public long ImageBase => _image.ImageBase;
 
-        /// <summary>Number of import slots redirected into the trap page.</summary>
-        public int TrappedImportCount => _image.Imports.Count;
+        /// <summary>Import slots, across every loaded module, left to the host stubs rather than bound to a package DLL.</summary>
+        public int TrappedImportCount => _trappedImportCount;
 
         /// <summary>Calls that arrived through a synthesised vtable, in order.</summary>
         public IReadOnlyList<string> VtableCalls => _vtableCalls;
@@ -332,7 +336,8 @@ namespace WPR.Wp8Native
         /// </summary>
         public string? RunEntryPoint(long instructionBudget)
         {
-            string? fault = Run(_image.EntryPoint, instructionBudget);
+            // Package DLLs' DllMain(DLL_PROCESS_ATTACH) first, then the image's own entry point.
+            string? fault = Run(StartWithModuleInitialisers(_image.EntryPoint), instructionBudget);
 
             // A background callback that dies takes its own thread down, not the process.
             // Resuming the chain here is what makes that true here as well: the CPU is put
@@ -1636,11 +1641,20 @@ namespace WPR.Wp8Native
         /// <summary>Data imports given a real variable instead of a trap.</summary>
         public List<string> DataImportCells { get; } = new();
 
-        private void InstallImportTraps()
+        /// <summary>Binds one image's IAT: package DLL exports where there are any, host-stub traps otherwise.</summary>
+        private void InstallImportTraps(PeImage image, long imageBase)
         {
-            foreach (ImportedFunction import in _image.Imports)
+            foreach (ImportedFunction import in image.Imports)
             {
-                long slotAddress = _image.ImageBase + import.IatSlotRva;
+                long slotAddress = imageBase + import.IatSlotRva;
+
+                // An import of a DLL shipped in the package goes to that DLL's real export.
+                if (TryBindToPackageModule(import, slotAddress))
+                {
+                    continue;
+                }
+
+                NoteTrappedImport();
 
                 if (DataImports.TryGetValue(import.Name, out byte[]? initial) || MsvcpCore.DataConstants.TryGetValue(import.Name, out initial))
                 {
@@ -2123,22 +2137,8 @@ namespace WPR.Wp8Native
                 return false;
             }
 
-            long target = address & ~1L;
-            foreach (PeSection section in _image.Sections)
-            {
-                if (!section.Name.StartsWith(".text", StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                long start = _image.ImageBase + section.VirtualAddress;
-                if (target >= start && target < start + section.VirtualSize)
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            // Any loaded module's code, not only the main image's (ModuleLoader.cs).
+            return IsInModuleCode(address & ~1L);
         }
 
         private bool OnUnmappedAccess(FaultKind kind, long address, int size, long value)

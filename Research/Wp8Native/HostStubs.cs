@@ -427,6 +427,9 @@ namespace WPR.Wp8Native
             _sync.RegisterInto(_handlers);
             RegisterPushNotifications();
             RegisterAlignedAllocation();
+
+            // Last: replaces StartupImports' DisableThreadLibraryCalls with the loader-backed one.
+            RegisterModuleLoader();
         }
 
         /// <summary>Aligned block -> (block actually allocated, size asked for).</summary>
@@ -973,7 +976,7 @@ namespace WPR.Wp8Native
             if (RaiseLog.Count < 24)
             {
                 RaiseLog.Add($"{raise.TypeName} from {string.Join(" <- ", ThrowStack.Take(8).Select(f => $"0x{f.Address:X8}"))}; " +
-                    (CatchCandidates.Count == 0 ? "uncaught" : $"caught as {CatchCandidates[0].CaughtType} in 0x{CatchCandidates[0].Frame.FunctionRva + _emulator.ImageBase:X8}"));
+                    (CatchCandidates.Count == 0 ? "uncaught" : $"caught as {CatchCandidates[0].CaughtType} in 0x{CatchCandidates[0].Frame.FunctionRva + FrameBase(CatchCandidates[0].Frame):X8}"));
             }
         }
 
@@ -1299,7 +1302,7 @@ namespace WPR.Wp8Native
         private void TransferToHandler(CatchCandidate candidate, ThrownException thrown)
         {
             long frame = candidate.Frame.FramePointer + candidate.FrameOffset;
-            long funclet = _emulator.ImageBase + candidate.FuncletRva;
+            long funclet = FrameBase(candidate.Frame) + candidate.FuncletRva;
 
             if (candidate.FuncletRva == 0)
             {
@@ -1351,7 +1354,7 @@ namespace WPR.Wp8Native
             TransferLog.Add($"   {action.Description} -> funclet 0x{action.FuncletRva:X8}");
 
             EnterFunclet(
-                (_emulator.ImageBase + action.FuncletRva) | 1,
+                (FrameBase(action.Frame) + action.FuncletRva) | 1,
                 action.Frame,
                 "cleanup funclet",
                 onReturn: () => RunCleanups(cleanups, index + 1, onFinished));
@@ -1523,7 +1526,7 @@ namespace WPR.Wp8Native
                         "   stack above sp: " + string.Join(" ", Enumerable.Range(0, 8)
                             .Select(i => $"+0x{i * 4 + 0x74:X2}=0x{_emulator.ReadUInt32(stack + 0x74 + (i * 4)):X8}")));
 
-                    if ((continuation & ~1L) < _emulator.ImageBase)
+                    if ((continuation & ~1L) < _emulator.LowestImageBase)
                     {
                         _emulator.Stop(
                             $"catch funclet returned 0x{continuation:X8}, which is not a code address");

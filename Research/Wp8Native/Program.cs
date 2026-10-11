@@ -89,6 +89,10 @@ foreach (string bad in damagedBefore.Take(4))
 }
 
 Console.WriteLine($"  trapped {emulator.TrappedImportCount} imports, budget {budget:N0} instructions");
+foreach (LoadedModule module in emulator.Modules.Skip(1))
+{
+    Console.WriteLine($"  package DLL   {module}");
+}
 foreach (string cell in emulator.DataImportCells)
 {
     Console.WriteLine($"  data import   {cell}");

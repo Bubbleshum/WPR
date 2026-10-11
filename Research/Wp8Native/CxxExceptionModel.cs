@@ -65,6 +65,14 @@ namespace WPR.Wp8Native
         }
 
         /// <summary>
+        /// The image a frame's RVAs are relative to. With package DLLs loaded (ModuleLoader.cs)
+        /// a throw can cross modules: the thrower, each cleanup and the catch may each live in a
+        /// different image, so every RVA is resolved against its own frame's image, never one
+        /// global base. A frame from before multi-module unwinding carries 0: the main image.
+        /// </summary>
+        private long BaseOf(UnwoundFrame frame) => frame.ImageBase != 0 ? frame.ImageBase : _imageBase;
+
+        /// <summary>
         /// Reads the ThrowInfo handed to <c>_CxxThrowException</c>, listing every type the
         /// thrown object can be caught as, most derived first.
         /// </summary>
@@ -74,10 +82,14 @@ namespace WPR.Wp8Native
 
             if (throwInfo != 0)
             {
+                // The ThrowInfo and everything it names are RVAs of the image that threw, which
+                // is whichever module the ThrowInfo itself lives in.
+                long moduleBase = _emulator.ModuleBaseOf(throwInfo);
+                long imageBase = moduleBase != 0 ? moduleBase : _imageBase;
                 uint catchableArrayRva = _emulator.ReadUInt32(throwInfo + 12);
                 if (catchableArrayRva != 0)
                 {
-                    long array = _imageBase + catchableArrayRva;
+                    long array = imageBase + catchableArrayRva;
                     int count = (int)_emulator.ReadUInt32(array);
 
                     for (int i = 0; i < count && i < 64; i++)
@@ -88,8 +100,8 @@ namespace WPR.Wp8Native
                             continue;
                         }
 
-                        uint typeRva = _emulator.ReadUInt32(_imageBase + catchableRva + 4);
-                        types.Add(ReadTypeName(typeRva));
+                        uint typeRva = _emulator.ReadUInt32(imageBase + catchableRva + 4);
+                        types.Add(ReadTypeName(imageBase, typeRva));
                     }
                 }
             }
@@ -152,7 +164,8 @@ namespace WPR.Wp8Native
                     continue;
                 }
 
-                long funcInfo = _imageBase + frame.HandlerDataRva;
+                long imageBase = BaseOf(frame);
+                long funcInfo = imageBase + frame.HandlerDataRva;
                 if (!KnownMagic.Contains(_emulator.ReadUInt32(funcInfo, 0)))
                 {
                     continue;
@@ -165,14 +178,14 @@ namespace WPR.Wp8Native
 
                 bool isCatchFrame = frame == target.Frame;
                 int stopAt = isCatchFrame ? target.TryLow : -1;
-                int state = FindState(CallSiteOf(frame), ipMapRva, ipMapCount);
+                int state = FindState(imageBase, CallSiteOf(frame), ipMapRva, ipMapCount);
 
                 if (unwindMapRva != 0)
                 {
                     // Bounded by maxState: a malformed chain must not loop forever.
                     for (int guard = 0; guard <= maxState && state > stopAt && state >= 0; guard++)
                     {
-                        long entry = _imageBase + unwindMapRva + (state * 8);
+                        long entry = imageBase + unwindMapRva + (state * 8);
                         int toState = (int)_emulator.ReadUInt32(entry, 0);
                         uint action = _emulator.ReadUInt32(entry + 4, 0);
 
@@ -209,7 +222,8 @@ namespace WPR.Wp8Native
                 return "no handler data";
             }
 
-            long funcInfo = _imageBase + frame.HandlerDataRva;
+            long imageBase = BaseOf(frame);
+            long funcInfo = imageBase + frame.HandlerDataRva;
             uint magic = _emulator.ReadUInt32(funcInfo, 0);
             if (!KnownMagic.Contains(magic))
             {
@@ -219,7 +233,7 @@ namespace WPR.Wp8Native
             int tryBlocks = (int)_emulator.ReadUInt32(funcInfo + 12, 0);
             int ipMapCount = (int)_emulator.ReadUInt32(funcInfo + 20, 0);
             uint ipMapRva = _emulator.ReadUInt32(funcInfo + 24, 0);
-            int state = FindState(CallSiteOf(frame), ipMapRva, ipMapCount);
+            int state = FindState(imageBase, CallSiteOf(frame), ipMapRva, ipMapCount);
 
             if (tryBlocks == 0)
             {
@@ -227,7 +241,7 @@ namespace WPR.Wp8Native
             }
 
             return $"FuncInfo: {tryBlocks} try block(s), state {state} of {ipMapCount} ip entries" +
-                   DescribeTryBlocks(funcInfo, tryBlocks, state);
+                   DescribeTryBlocks(imageBase, funcInfo, tryBlocks, state);
         }
 
         /// <summary>
@@ -239,7 +253,7 @@ namespace WPR.Wp8Native
         /// caught this type". Printing the state ranges and the caught types next to the
         /// frame's own state separates them at a glance.
         /// </remarks>
-        private string DescribeTryBlocks(long funcInfo, int tryBlocks, int state)
+        private string DescribeTryBlocks(long imageBase, long funcInfo, int tryBlocks, int state)
         {
             uint tryBlockMapRva = _emulator.ReadUInt32(funcInfo + 16, 0);
             if (tryBlockMapRva == 0 || tryBlocks > 64)
@@ -250,7 +264,7 @@ namespace WPR.Wp8Native
             var text = new System.Text.StringBuilder();
             for (int i = 0; i < tryBlocks; i++)
             {
-                long entry = _imageBase + tryBlockMapRva + (i * 20);
+                long entry = imageBase + tryBlockMapRva + (i * 20);
                 int tryLow = (int)_emulator.ReadUInt32(entry, 0);
                 int tryHigh = (int)_emulator.ReadUInt32(entry + 4, 0);
                 int catchCount = (int)_emulator.ReadUInt32(entry + 12, 0);
@@ -261,10 +275,10 @@ namespace WPR.Wp8Native
 
                 for (int c = 0; c < catchCount && c < 16 && handlerArrayRva != 0; c++)
                 {
-                    long handler = _imageBase + handlerArrayRva + (c * 16);
+                    long handler = imageBase + handlerArrayRva + (c * 16);
                     uint typeRva = _emulator.ReadUInt32(handler + 4, 0);
                     uint funcletRva = _emulator.ReadUInt32(handler + 12, 0);
-                    string caught = typeRva == 0 ? "..." : ReadTypeName(typeRva);
+                    string caught = typeRva == 0 ? "..." : ReadTypeName(imageBase, typeRva);
                     text.Append($" catch({caught})@0x{funcletRva:X8}");
                 }
             }
@@ -274,7 +288,8 @@ namespace WPR.Wp8Native
 
         private IEnumerable<CatchCandidate> SearchFrame(UnwoundFrame frame, ThrownException thrown)
         {
-            long funcInfo = _imageBase + frame.HandlerDataRva;
+            long imageBase = BaseOf(frame);
+            long funcInfo = imageBase + frame.HandlerDataRva;
             uint magic = _emulator.ReadUInt32(funcInfo, 0);
             if (!KnownMagic.Contains(magic))
             {
@@ -291,11 +306,11 @@ namespace WPR.Wp8Native
                 yield break;
             }
 
-            int state = FindState(CallSiteOf(frame), ipMapRva, ipMapCount);
+            int state = FindState(imageBase, CallSiteOf(frame), ipMapRva, ipMapCount);
 
             for (int i = 0; i < tryBlockCount; i++)
             {
-                long entry = _imageBase + tryBlockMapRva + (i * 20);
+                long entry = imageBase + tryBlockMapRva + (i * 20);
                 int tryLow = (int)_emulator.ReadUInt32(entry, 0);
                 int tryHigh = (int)_emulator.ReadUInt32(entry + 4, 0);
                 int catchCount = (int)_emulator.ReadUInt32(entry + 12, 0);
@@ -322,13 +337,13 @@ namespace WPR.Wp8Native
                     // RVA - that "offset" is the next entry's handler address, read one field
                     // early. That is what the report meant by "the matching catch has no
                     // funclet address", and it cost a Lua exception its handler.
-                    long handler = _imageBase + handlerArrayRva + (c * 16);
+                    long handler = imageBase + handlerArrayRva + (c * 16);
                     uint typeRva = _emulator.ReadUInt32(handler + 4, 0);
                     int catchObject = (int)_emulator.ReadUInt32(handler + 8, 0);
                     uint funcletRva = _emulator.ReadUInt32(handler + 12, 0);
 
                     // A null type descriptor is catch(...), which accepts anything.
-                    string caught = typeRva == 0 ? "..." : ReadTypeName(typeRva);
+                    string caught = typeRva == 0 ? "..." : ReadTypeName(imageBase, typeRva);
 
                     if (caught == "..." || thrown.CatchableTypes.Contains(caught))
                     {
@@ -369,19 +384,19 @@ namespace WPR.Wp8Native
         /// table is sorted, so the state is the one belonging to the last entry at or
         /// before the address.
         /// </summary>
-        private int FindState(long address, uint ipMapRva, int count)
+        private int FindState(long imageBase, long address, uint ipMapRva, int count)
         {
             if (ipMapRva == 0 || count is <= 0 or > 65536)
             {
                 return -1;
             }
 
-            uint target = (uint)(address - _imageBase);
+            uint target = (uint)(address - imageBase);
             int state = -1;
 
             for (int i = 0; i < count; i++)
             {
-                long entry = _imageBase + ipMapRva + (i * 8);
+                long entry = imageBase + ipMapRva + (i * 8);
                 uint ip = _emulator.ReadUInt32(entry, 0);
                 if (ip > target)
                 {
@@ -398,14 +413,14 @@ namespace WPR.Wp8Native
         /// Reads a TypeDescriptor's decorated name, which begins 8 bytes in, past the
         /// vftable pointer and a spare word.
         /// </summary>
-        private string ReadTypeName(uint typeDescriptorRva)
+        private string ReadTypeName(long imageBase, uint typeDescriptorRva)
         {
             if (typeDescriptorRva == 0)
             {
                 return "...";
             }
 
-            long address = _imageBase + typeDescriptorRva + 8;
+            long address = imageBase + typeDescriptorRva + 8;
             System.Text.StringBuilder name = new();
 
             for (int i = 0; i < 512; i++)
