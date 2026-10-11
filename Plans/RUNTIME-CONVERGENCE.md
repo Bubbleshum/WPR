@@ -332,7 +332,17 @@ the single registry.
 games subscribe to `VisibilityChanged` (slot 56, confirmed in `WinRtRuntime`). Raise them from the
 same `Game.Activated` / `Deactivated` the WP7 path turns into `PhoneApplicationService` events.
 
+**Done 2026-10-11** (`Research/Wp8Native/AppLifecycle.cs`): `OnDeactivated` raises
+`CoreWindow.Activated(Deactivated)`, `VisibilityChanged(false)`, then `Suspending` with a working
+deferral (held until `Complete()` or a 5 s deadline); `OnActivated` raises `Resuming`,
+`VisibilityChanged(true)`, `Activated(CodeActivated)`. Delivered on the guest's thread at its next
+`ProcessEvents` or XAML frame. Not done: a XAML shell's page-level `Application_Deactivated` steps.
+
 ### 3d. Vibration and launchers
+
+**Done 2026-10-11** (`Wp8HostServices`): the WP7 link rule moved to `WPR.Engine.Launchers.WebLinkPolicy`
+and both callers use it; vibration honours `VibrationBackend.IsEnabled`, and the motor is stopped on
+deactivation and teardown.
 
 `Windows.Phone.Devices.Notification.VibrationDevice` and `Windows.System.Launcher.LaunchUriAsync`
 are not implemented. Wire them to `VibrationBackend.Device` and `LauncherBackend.Uri`, following

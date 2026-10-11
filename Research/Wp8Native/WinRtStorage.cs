@@ -150,11 +150,11 @@ namespace WPR.Wp8Native
                 ? _installedLocation
                 : _installedLocation = Folder(new ItemState { GuestPath = InstallPath, HostPath = Files.PackageRoot, IsFolder = true, ReadOnly = true });
 
-            public long LocalFolder() => _localFolder != 0 ? _localFolder : _localFolder = SandboxFolder(LocalFolderPath);
+            public long LocalFolder() => _localFolder != 0 ? _localFolder : _localFolder = SandboxFolder(_rt.LocalFolderPath);
 
-            public long RoamingFolder() => _roamingFolder != 0 ? _roamingFolder : _roamingFolder = SandboxFolder(LocalFolderPath[..^5] + "Roaming");
+            public long RoamingFolder() => _roamingFolder != 0 ? _roamingFolder : _roamingFolder = SandboxFolder(_rt.LocalFolderPath[..^5] + "Roaming");
 
-            public long TemporaryFolder() => _temporaryFolder != 0 ? _temporaryFolder : _temporaryFolder = SandboxFolder(LocalFolderPath[..^5] + "Temp");
+            public long TemporaryFolder() => _temporaryFolder != 0 ? _temporaryFolder : _temporaryFolder = SandboxFolder(_rt.LocalFolderPath[..^5] + "Temp");
 
             /// <summary>A writable app-data folder, created on the host if it is not there yet.</summary>
             private long SandboxFolder(string guestPath)

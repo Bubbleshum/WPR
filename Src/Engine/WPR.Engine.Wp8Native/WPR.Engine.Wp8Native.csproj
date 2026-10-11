@@ -55,6 +55,9 @@
   <ItemGroup>
     <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Xna\WPR.Framework.Xna.csproj" />
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Sensors\WPR.Engine.Sensors.csproj" />
+    <!-- Launcher.LaunchUriAsync and VibrationDevice reach the platform through these (Wp8HostServices). -->
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Launchers\WPR.Engine.Launchers.csproj" />
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Vibration\WPR.Engine.Vibration.csproj" />
   </ItemGroup>
 
 </Project>

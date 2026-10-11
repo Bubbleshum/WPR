@@ -76,7 +76,7 @@ namespace WPR.Wp8Native
             _frame = frame;
             _readRoot = readRoot;
             _writeRoot = writeRoot;
-            _localFolderPrefix = WinRtRuntime.LocalFolderPath;
+            _localFolderPrefix = emulator.WinRt.LocalFolderPath;
 
             Directory.CreateDirectory(_writeRoot);
         }
