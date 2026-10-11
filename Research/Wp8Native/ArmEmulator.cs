@@ -1642,7 +1642,7 @@ namespace WPR.Wp8Native
             {
                 long slotAddress = _image.ImageBase + import.IatSlotRva;
 
-                if (DataImports.TryGetValue(import.Name, out byte[]? initial))
+                if (DataImports.TryGetValue(import.Name, out byte[]? initial) || MsvcpCore.DataConstants.TryGetValue(import.Name, out initial))
                 {
                     long cell = AllocateHeap(Math.Max(8, initial.Length));
                     _cpu.MemWrite(cell, initial);

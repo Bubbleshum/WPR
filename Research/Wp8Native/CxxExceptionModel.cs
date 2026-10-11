@@ -5,6 +5,9 @@ namespace WPR.Wp8Native
     {
         /// <summary>The most derived type, which is the one the throw was written against.</summary>
         public string TypeName => CatchableTypes.Count > 0 ? CatchableTypes[0] : "(unknown)";
+
+        /// <summary>The guest ThrowInfo of a guest throw (size, copy constructor, destructor); 0 for an object the host built.</summary>
+        public long ThrowInfo { get; init; }
     }
 
     /// <summary>A catch clause found during the search.</summary>
@@ -91,7 +94,7 @@ namespace WPR.Wp8Native
                 }
             }
 
-            return new ThrownException(exceptionObject, types);
+            return new ThrownException(exceptionObject, types) { ThrowInfo = throwInfo };
         }
 
         /// <summary>
