@@ -48,6 +48,16 @@ namespace WPR.Wp8Native
             _emulator = emulator;
             _strings = strings;
 
+            // Per title: the path the game sees for its local folder carries its own product id.
+            // A package with no readable ProductID gets the placeholder identity Package reports too.
+            string? productId = ReadProductId(emulator.PackageRoot);
+            if (productId is null)
+            {
+                _unimplementedCalls.Add("WMAppManifest.xml names no ProductID; the local folder uses the placeholder identity");
+            }
+
+            LocalFolderPath = LocalFolderPathFor(productId ?? Guid.Empty.ToString("D"));
+
             // The slot constants stay constants because switches need them; this is what keeps
             // each one honest against the interface it claims to describe.
             _slotDrift.AddRange(WinRtSystemInterfaces.Verify(
@@ -55,6 +65,11 @@ namespace WPR.Wp8Native
                 ("Windows.UI.Core.ICoreWindow", "add_PointerMoved", SlotAddPointerMoved),
                 ("Windows.UI.Core.ICoreWindow", "add_PointerPressed", SlotAddPointerPressed),
                 ("Windows.UI.Core.ICoreWindow", "add_PointerReleased", SlotAddPointerReleased),
+                ("Windows.UI.Core.ICoreWindow", "add_Activated", SlotAddWindowActivated),
+                ("Windows.UI.Core.ICoreWindow", "remove_Activated", SlotRemoveWindowActivated),
+                ("Windows.UI.Core.ICoreWindow", "add_VisibilityChanged", SlotAddVisibilityChanged),
+                ("Windows.UI.Core.ICoreWindow", "remove_VisibilityChanged", SlotRemoveVisibilityChanged),
+                ("Windows.UI.Core.ICoreWindow", "get_Visible", SlotWindowVisible),
                 ("Windows.ApplicationModel.Core.ICoreApplication", "Run", SlotCoreApplicationRun),
                 ("Windows.ApplicationModel.Core.IFrameworkViewSource", "CreateView", SlotCreateView),
                 ("Windows.Storage.IApplicationDataStatics", "get_Current", SlotApplicationDataCurrent),
@@ -647,6 +662,19 @@ namespace WPR.Wp8Native
             // A Back press goes ahead of any pointer input; it is rare, and answering it late
             // would let a tap that followed it act on the screen it was meant to leave.
             if (DeliverBack(continueWith))
+            {
+                return true;
+            }
+
+            // The app going to the background or coming back (AppLifecycle.cs), ahead of input for
+            // the same reason: a tap that followed it belongs to the state after it.
+            if (DeliverLifecycle(() =>
+                {
+                    if (!DeliverInput(continueWith, sender))
+                    {
+                        continueWith();
+                    }
+                }))
             {
                 return true;
             }
@@ -1254,7 +1282,11 @@ namespace WPR.Wp8Native
 
                         Return(HResultOk);
                     }),
-                    [InspectableSlots + 11] = ("get_Visible", Boolean(true)),
+                    [SlotWindowVisible] = ("get_Visible", () => Boolean(WindowVisible)()),
+                    [SlotAddWindowActivated] = ("add_Activated", AddLifecycleWindowHandler(SlotAddWindowActivated)),
+                    [SlotRemoveWindowActivated] = ("remove_Activated", RemoveLifecycleWindowHandler(SlotAddWindowActivated)),
+                    [SlotAddVisibilityChanged] = ("add_VisibilityChanged", AddLifecycleWindowHandler(SlotAddVisibilityChanged)),
+                    [SlotRemoveVisibilityChanged] = ("remove_VisibilityChanged", RemoveLifecycleWindowHandler(SlotAddVisibilityChanged)),
                     [InspectableSlots + 12] = ("Activate", () => Return(HResultOk)),
                     [InspectableSlots + 14] = ("GetAsyncKeyState", KeyState()),
                     [InspectableSlots + 15] = ("GetKeyState", KeyState()),
@@ -1412,17 +1444,17 @@ namespace WPR.Wp8Native
         private readonly Dictionary<long, long> _resumingHandlers = new();
         private long _nextLifecycleToken = 1;
 
-        /// <summary>CoreApplication.Suspending handlers the image registered, by token. Not raised yet (RUNTIME-CONVERGENCE 3c).</summary>
+        /// <summary>CoreApplication.Suspending handlers the image registered, by token. Raised by AppLifecycle.cs.</summary>
         public IReadOnlyDictionary<long, long> SuspendingHandlers => _suspendingHandlers;
 
-        /// <summary>CoreApplication.Resuming handlers the image registered, by token. Not raised yet (RUNTIME-CONVERGENCE 3c).</summary>
+        /// <summary>CoreApplication.Resuming handlers the image registered, by token. Raised by AppLifecycle.cs.</summary>
         public IReadOnlyDictionary<long, long> ResumingHandlers => _resumingHandlers;
 
         /// <summary>
         /// <c>HRESULT add_X(handler, EventRegistrationToken*)</c>: records the handler and writes a
         /// distinct 64-bit token, and takes a reference on the handler: the caller releases its own
         /// the moment this returns, and the allocator recycles, so an unreferenced delegate is
-        /// reused memory by the time 3c raises it.
+        /// reused memory by the time AppLifecycle.cs raises it.
         /// </summary>
         private Action AddLifecycleHandler(Dictionary<long, long> handlers) => () =>
         {
@@ -1523,10 +1555,41 @@ namespace WPR.Wp8Native
         // ---------------------------------------------------------------------------
 
         /// <summary>
-        /// Where a WP8 app's local storage actually lived on the device, per product ID.
+        /// Where this title's local storage lived on the device,
+        /// <c>C:\Data\Users\DefApps\AppData\{PRODUCTID}\Local</c>, from the ProductID in the package's
+        /// WMAppManifest.xml. Only the path the game sees is per title: the host side is always the
+        /// sandbox (<see cref="HostStubs.SandboxRoot"/>, i.e. PerGameIsolatedStorage.GameRoot).
         /// </summary>
-        public const string LocalFolderPath =
-            @"C:\Data\Users\DefApps\AppData\{E94059A2-135C-420E-8E60-BCDA5FC3EC30}\Local";
+        public string LocalFolderPath { get; }
+
+        /// <summary>The device path of a title's local folder, for a product id (with or without braces).</summary>
+        public static string LocalFolderPathFor(string productId)
+            => @"C:\Data\Users\DefApps\AppData\{" + productId.Trim().Trim('{', '}').ToUpperInvariant() + @"}\Local";
+
+        /// <summary>
+        /// The ProductID of the package at <paramref name="packageRoot"/> (lower case, no braces), from
+        /// its WMAppManifest.xml; null when there is no readable manifest or it names none.
+        /// </summary>
+        public static string? ReadProductId(string packageRoot)
+        {
+            try
+            {
+                string path = Path.Combine(packageRoot, "WMAppManifest.xml");
+                if (!File.Exists(path))
+                {
+                    return null;
+                }
+
+                System.Xml.Linq.XDocument doc = System.Xml.Linq.XDocument.Load(path);
+                string? id = doc.Descendants().FirstOrDefault(e => e.Name.LocalName == "App")?
+                    .Attributes().FirstOrDefault(a => a.Name.LocalName == "ProductID")?.Value;
+                return string.IsNullOrWhiteSpace(id) ? null : id.Trim().Trim('{', '}').ToLowerInvariant();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Xml.XmlException)
+            {
+                return null;
+            }
+        }
 
         private const int SlotApplicationDataCurrent = InspectableSlots + 0;
         private const int SlotLocalSettings = InspectableSlots + 4;

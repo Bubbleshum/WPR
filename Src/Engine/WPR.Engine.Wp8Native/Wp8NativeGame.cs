@@ -129,6 +129,9 @@ namespace WPR.Wp8Native
 
         private readonly IXboxLiveHost? _xboxHost;
         private IHostAudio? _audio;
+        private Wp8HostServices? _services;
+        private volatile bool _hostActive = true;
+        private int _lifecycleLogged;
 
         private void RunGuest()
         {
@@ -149,6 +152,13 @@ namespace WPR.Wp8Native
                 }
                 _emulator.WinRt.XboxHost = _xboxHost;
                 _emulator.WinRt.Sensors = new Wp8NativeSensorHost();
+                _services = Wp8HostServices.Attach(_emulator.WinRt, Log);
+                if (!_hostActive)
+                {
+                    // Deactivated before the guest existed: it starts in the background.
+                    _emulator.WinRt.InjectVisibility(false);
+                }
+
                 _emulator.XAudio2.Output = _audio;
                 _emulator.WinRt.BackPressDelivered += handled =>
                 {
@@ -703,6 +713,8 @@ namespace WPR.Wp8Native
                 }
             }
 
+            LogLifecycle();
+
             if (HostStubs.CountCalls)
             {
                 KeyValuePair<string, long>[] counts;
@@ -798,17 +810,45 @@ namespace WPR.Wp8Native
         private List<string>? _capture;
 
         // Android's AudioTrack, unlike FAudio's device, is not paused with the app: without this
-        // the buffered tail plays over the home screen.
+        // the buffered tail plays over the home screen. The guest is told too, as WP8 told it:
+        // CoreWindow.Activated/VisibilityChanged and CoreApplication.Suspending/Resuming, raised on
+        // its own thread at its next turn round the main loop (Research/Wp8Native/AppLifecycle.cs).
+        // The motor is ours alone, so a buzz in flight is stopped here, as GameActivity.OnPause does.
         protected override void OnDeactivated(object sender, EventArgs args)
         {
+            _hostActive = false;
             _audio?.Suspend(true);
+            Wp8HostServices.StopVibration();
+            _emulator?.WinRt.InjectVisibility(false);
             base.OnDeactivated(sender, args);
         }
 
         protected override void OnActivated(object sender, EventArgs args)
         {
+            _hostActive = true;
             _audio?.Suspend(false);
+            _emulator?.WinRt.InjectVisibility(true);
             base.OnActivated(sender, args);
+        }
+
+        /// <summary>The lifecycle events raised to the guest since the last call (racy read of a guest-side list; a diagnostic).</summary>
+        private void LogLifecycle()
+        {
+            if (_emulator?.WinRt.AppLifecycleLog is not { } lifecycle)
+            {
+                return;
+            }
+
+            try
+            {
+                for (; _lifecycleLogged < lifecycle.Count; _lifecycleLogged++)
+                {
+                    Log("lifecycle: " + lifecycle[_lifecycleLogged]);
+                }
+            }
+            catch (Exception)
+            {
+            }
         }
 
         /// <summary>
@@ -840,6 +880,9 @@ namespace WPR.Wp8Native
                 try { _emulator?.Stop("host disposed"); } catch { }
                 WakeGuest();
 
+                // A title that exits mid-buzz never cancels it; the motor is ours to stop.
+                Wp8HostServices.StopVibration();
+
                 // The guest thread is inside the JIT; give it a moment to notice the stop before
                 // its CPU and memory are torn down underneath it.
                 // Only then is the CPU released: on the desktop several titles run in one
@@ -851,6 +894,7 @@ namespace WPR.Wp8Native
                         if (_emulator is { } stopping)
                         {
                             stopping.WinRt.StopSensors();
+                            LogLifecycle();
                             foreach (string line in stopping.WinRt.SensorLog.Skip(_sensorLogged))
                             {
                                 Log("sensors: " + line);

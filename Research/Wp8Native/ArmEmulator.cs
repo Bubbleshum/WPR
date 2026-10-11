@@ -103,6 +103,7 @@ namespace WPR.Wp8Native
             }
 
             _image = image;
+            PackageRoot = imageDirectory;
             _cpu = CreateCpu();
 
             MapImage();
@@ -302,6 +303,9 @@ namespace WPR.Wp8Native
 
         /// <summary>The synthetic WinRT surface this image is running against.</summary>
         public WinRtRuntime WinRt => _winRt;
+
+        /// <summary>The unpacked package the image came from (where WMAppManifest.xml is).</summary>
+        public string PackageRoot { get; }
 
         /// <summary>Stack unwinding driven by the image's .pdata table.</summary>
         public ArmUnwinder Unwinder { get; }

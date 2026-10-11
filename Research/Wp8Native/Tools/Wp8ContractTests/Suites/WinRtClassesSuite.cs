@@ -134,7 +134,7 @@ public sealed class WinRtClassesSuite : IContractSuite
         long appData = Static("Windows.Storage.ApplicationData", "Windows.Storage.IApplicationDataStatics", "get_Current");
         long local = Get(appData, "Windows.Storage.IApplicationData", "get_LocalFolder");
         string localPath = Str(Get(QI(local, "Windows.Storage.IStorageItem"), "Windows.Storage.IStorageItem", "get_Path"));
-        Check("LocalFolder.Path is the WP8 local folder", localPath == WinRtRuntime.LocalFolderPath);
+        Check("LocalFolder.Path is the WP8 local folder", localPath == E.WinRt.LocalFolderPath && localPath == WinRtRuntime.LocalFolderPathFor(productId));
         long created = Results(Call(local, "Windows.Storage.IStorageFolder", "CreateFileAsync/2", HS("save.txt"), 1));
         Check("CreateFileAsync(ReplaceExisting) in the local folder", created != 0 && File.Exists(Path.Combine(h.Sandbox, "save.txt")));
         long fileIO = Static("Windows.Storage.FileIO", "Windows.Storage.IFileIOStatics");

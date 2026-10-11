@@ -19,7 +19,8 @@ namespace Microsoft.Phone.Tasks
     /// Chinese locales). With the empty <c>Show</c> the tap did nothing, while the game still
     /// marked the episode watched.</para>
     ///
-    /// <para><b>Two pieces of policy live here, because only the WP7 side knows them:</b></para>
+    /// <para><b>Two pieces of policy apply</b> (<see cref="WebLinkPolicy"/>, shared with the WP8
+    /// runtime's <c>Launcher.LaunchUriAsync</c> so neither can be laxer than the other):</para>
     /// <list type="bullet">
     /// <item><c>vnd.youtube:</c> is the scheme the WP7 YouTube app registered. Android's YouTube
     /// app happens to claim it too, but nothing on a desktop does and a phone without the app has
@@ -83,26 +84,7 @@ namespace Microsoft.Phone.Tasks
         /// <summary>
         /// Turns what a WP7 title passed into an http(s) URI, or null if it is not one we open.
         /// </summary>
-        internal static Uri? Normalise(string raw)
-        {
-            const string youTube = "vnd.youtube:";
-            if (raw.StartsWith(youTube, StringComparison.OrdinalIgnoreCase))
-            {
-                string id = raw.Substring(youTube.Length).TrimStart('/');
-                int cut = id.IndexOfAny(new[] { '?', '&', '#' });
-                if (cut >= 0) id = id.Substring(0, cut);
-                if (id.Length == 0 || id.IndexOf('/') >= 0) return null;
-                raw = "https://www.youtube.com/watch?v=" + global::System.Uri.EscapeDataString(id);
-            }
-            else if (raw.StartsWith("www.", StringComparison.OrdinalIgnoreCase))
-            {
-                // A bare host with no scheme, which the WP7 browser accepted.
-                raw = "http://" + raw;
-            }
-
-            if (!global::System.Uri.TryCreate(raw, UriKind.Absolute, out Uri? uri)) return null;
-            if (uri.Scheme != global::System.Uri.UriSchemeHttp && uri.Scheme != global::System.Uri.UriSchemeHttps) return null;
-            return uri;
-        }
+        /// <remarks>The rule is <see cref="WebLinkPolicy"/>, shared with the WP8 runtime's launcher.</remarks>
+        internal static Uri? Normalise(string raw) => WebLinkPolicy.Normalise(raw);
     }
 }
