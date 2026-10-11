@@ -363,6 +363,7 @@ namespace WPR.Wp8Native
 
             // The top of the 1b to-do list: what every title reaches before its first frame.
             RegisterStartupImports(imageDirectory);
+            RegisterVccorlibAndAbi();
             _winRt.RegisterEventSources(_handlers);
             // After the others: it replaces their single-threaded sleep and thread-id answers.
             Threads = new ThreadLibrary(emulator, _frame);
@@ -785,22 +786,14 @@ namespace WPR.Wp8Native
             // back a null object, and the caller dereferences it a few instructions later
             // with nothing in the trace to explain why. Preserving r0 costs nothing and
             // makes an unimplemented constructor merely uninitialised rather than fatal.
-            // A constructor of any Platform exception type. It has to behave like one: leave a
-            // vtable at this+0 so the object can be thrown, keep the HRESULT at this+4 where
-            // get_HResult expects it, and hand back this. Returning zero from a constructor is
-            // what turned a failing HRESULT into the CPU executing heap data.
+            // A constructor of any Platform exception type: vccorlib's layout (vptrs at 0..0xC,
+            // the HRESULT at 0x20), the host's record of it, and `this` back - see
+            // ConstructPlatformException. Returning zero from a constructor is what turned a
+            // failing HRESULT into the CPU executing heap data.
             if (function.StartsWith("??0", StringComparison.Ordinal) &&
                 function.Contains("Exception@Platform@@", StringComparison.Ordinal))
             {
-                long self = Arg(0);
-                _emulator.WriteUInt32(self, (uint)_winRt.PlatformExceptionVtable());
-                _emulator.WriteUInt32(self + 4, (uint)Arg(1));
-                if (_constructedExceptions.Count < 24)
-                {
-                    _constructedExceptions.Add($"{function} hr=0x{Arg(1):X8} at 0x{_emulator.ReturnAddress:X8}");
-                }
-
-                Return(self);
+                ConstructPlatformException(function);
                 return;
             }
 
@@ -923,9 +916,7 @@ namespace WPR.Wp8Native
         /// </summary>
         private void RaisePlatformException(PlatformRaise raise, string function)
         {
-            long self = _emulator.AllocateHeap(32);
-            _emulator.WriteUInt32(self, (uint)_winRt.PlatformExceptionVtable());
-            _emulator.WriteUInt32(self + 4, (uint)raise.HResult);
+            long self = CreatePlatformException(raise.TypeName, raise.HResult);
             if (_constructedExceptions.Count < 24)
             {
                 _constructedExceptions.Add($"{function} hr=0x{raise.HResult:X8} at 0x{_emulator.ReturnAddress:X8} (raised)");
@@ -971,6 +962,13 @@ namespace WPR.Wp8Native
                 ["WrongThreadException"] = 0x8001010E,
                 ["ObjectDisposedException"] = 0x80000013,   // RO_E_CLOSED
             };
+
+            /// <summary>The HRESULT a named Platform exception carries, if it is one vccorlib names.</summary>
+            public static long? HResultOf(string typeName) => KnownHResults.TryGetValue(typeName, out long hr) ? hr : null;
+
+            /// <summary>The named exception vccorlib's CreateException makes for an HRESULT; null means COMException.</summary>
+            public static string? TypeNameOf(long hresult) =>
+                KnownHResults.FirstOrDefault(p => p.Value == (hresult & 0xFFFFFFFFL)).Key;
 
             public IReadOnlyList<string> CatchableTypes =>
                 TypeName == "COMException"

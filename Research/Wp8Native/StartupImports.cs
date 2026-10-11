@@ -9,10 +9,39 @@ namespace WPR.Wp8Native
     /// </summary>
     public sealed partial class HostStubs
     {
-        private readonly HashSet<int> _comInitialisedThreads = new();
+        /// <summary>CoInitializeEx/RoInitialize calls not yet balanced by an uninitialise, per thread.</summary>
+        private readonly Dictionary<int, int> _comInitialisedThreads = new();
         private long _mainArguments;
         private long _commandLineArguments;
-        private long _boxArrayVtable;
+
+        /// <summary>
+        /// CoInitializeEx / RoInitialize: S_OK the first time on a thread, S_FALSE (1) for each nested
+        /// call after; CoUninitialize / RoUninitialize undo one. There are no apartments here, so
+        /// nothing else is owed.
+        /// </summary>
+        private long InitialiseApartment()
+        {
+            int thread = _emulator.CurrentThreadId;
+            int depth = _comInitialisedThreads.GetValueOrDefault(thread) + 1;
+            _comInitialisedThreads[thread] = depth;
+            return depth == 1 ? 0 : 1;
+        }
+
+        private void UninitialiseApartment()
+        {
+            int thread = _emulator.CurrentThreadId;
+            if (_comInitialisedThreads.TryGetValue(thread, out int depth))
+            {
+                if (depth <= 1)
+                {
+                    _comInitialisedThreads.Remove(thread);
+                }
+                else
+                {
+                    _comInitialisedThreads[thread] = depth - 1;
+                }
+            }
+        }
 
         private void RegisterStartupImports(string imageDirectory)
         {
@@ -27,9 +56,8 @@ namespace WPR.Wp8Native
             // thread handle reads as "the calling thread". 0 is NULL.
             _handlers["GetCurrentThread"] = () => Return(0xFFFFFFFE);
 
-            // HRESULT CoInitializeEx(void*, DWORD): S_OK the first time on a thread, S_FALSE (1)
-            // after. There are no apartments here, so nothing else is owed.
-            _handlers["CoInitializeEx"] = () => Return(_comInitialisedThreads.Add(_emulator.CurrentThreadId) ? 0 : 1);
+            // HRESULT CoInitializeEx(void*, DWORD): see InitialiseApartment.
+            _handlers["CoInitializeEx"] = () => Return(InitialiseApartment());
 
             // void _lock(int) / _unlock(int): the CRT's numbered locks. They follow whatever the
             // critical-section model is, looked up per call so they change when it does.
@@ -78,35 +106,7 @@ namespace WPR.Wp8Native
                 Return(_commandLineArguments);
             };
 
-            // void* Platform::Details::GetIBoxArrayVtable(void*): the vtable vccorlib gives a
-            // Platform::Array so it can be boxed as IBoxArray<T> (IInspectable, then get_Value).
-            // It is fetched when an array is built - main's args, once, at boot - and its slots
-            // matter only if that array is boxed. So the vtable is real, and every slot answers
-            // E_NOTIMPL and is counted as defaulted (a diagnostic run stops there instead).
-            _handlers["?GetIBoxArrayVtable@Details@Platform@@YAPAXPAX@Z"] = () =>
-            {
-                if (_boxArrayVtable == 0)
-                {
-                    string[] slots = ["QueryInterface", "AddRef", "Release", "GetIids", "GetRuntimeClassName", "GetTrustLevel", "get_Value"];
-                    _boxArrayVtable = _emulator.AllocateHeap(slots.Length * 4);
-                    for (int i = 0; i < slots.Length; i++)
-                    {
-                        string name = $"Platform::Array (IBoxArray)::{slots[i]}";
-                        long trap = _emulator.RegisterVtableMethod(name, () =>
-                        {
-                            DefaultedCalls[name] = DefaultedCalls.GetValueOrDefault(name) + 1;
-                            Return(unchecked((int)0x80004001));   // E_NOTIMPL: boxing is not implemented
-                            if (TrapUnknownImports)
-                            {
-                                _emulator.Stop($"unimplemented: {name} - boxing a Platform::Array is not implemented");
-                            }
-                        });
-                        _emulator.WriteUInt32(_boxArrayVtable + (i * 4), (uint)ArmEmulator.ThumbEntry(trap));
-                    }
-                }
-
-                Return(_boxArrayVtable);
-            };
+            // void* Platform::Details::GetIBoxArrayVtable(void*) is in VccorlibLibrary.cs, with GetIBoxVtable.
         }
 
         private readonly HashSet<int> _unwindingThreads = new();
