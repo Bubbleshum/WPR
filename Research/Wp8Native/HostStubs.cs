@@ -399,6 +399,9 @@ namespace WPR.Wp8Native
 
             // The top of the 1b to-do list: what every title reaches before its first frame.
             RegisterStartupImports(imageDirectory);
+            // C runtime first: where another family implements the same name, the owning family registers later and wins
+            // (std::exception_ptr is MSVCP core's, string functions are CrtStrings').
+            RegisterCrtRuntime();   // MSVCR110's runtime proper: CrtRuntime.cs
             RegisterMsvcpCore();
             RegisterWinsock();
             new CrtStrings(emulator, _frame).RegisterInto(_handlers);   // MSVCR110 strings and conversions; replaces older entries

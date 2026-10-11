@@ -215,6 +215,7 @@ namespace WPR.Wp8Native
 
             RegisterMappingAndStat(handlers);
             RegisterWin32Contracts(handlers);
+            RegisterCrtStdio(handlers);
         }
 
         // ---------------------------------------------------------------------------
