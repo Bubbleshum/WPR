@@ -43,6 +43,6 @@ namespace WPR.Wp8Native
         public bool IsImplemented(string dll, string function) =>
             function.StartsWith('#') && dll.StartsWith("WS2_32", StringComparison.OrdinalIgnoreCase)
                 ? WinsockLibrary.OrdinalNames.TryGetValue(function, out string? name) && _handlers.ContainsKey(name)
-                : IsImplemented(function);
+                : (function.StartsWith('#') && _handlers.ContainsKey($"{dll}!{function}")) || IsImplemented(function);
     }
 }

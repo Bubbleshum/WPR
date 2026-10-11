@@ -503,7 +503,7 @@ namespace WPR.Wp8Native
         }
 
         /// <summary>The "C" locale's lconv: "." for the decimal point, and empty everything else.</summary>
-        private long LocaleConventions()
+        internal long LocaleConventions()
         {
             if (_lconv != 0)
             {

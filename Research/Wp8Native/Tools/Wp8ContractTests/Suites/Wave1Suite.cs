@@ -146,7 +146,7 @@ public sealed class Wave1Suite : IContractSuite
         Check("_lock/_unlock dispatch without trapping", s.FirstUnimplementedImport is null);
         foreach (string safe in new[] { "?InitializeData@Details@Platform@@YAJH@Z", "?_Orphan_all@_Container_base0@std@@QAAXXZ", "__crtSetUnhandledExceptionFilter" })
         {
-            Check($"{safe} is allowlisted with a reason", HostStubs.SafeToDefault.TryGetValue(safe, out string? why) && why.Length > 20);
+            Check($"{safe} is implemented, not allowlisted", s.IsImplemented(safe) && !HostStubs.SafeToDefault.ContainsKey(safe));
         }
 
         // ---- second wave: the trap2 stops ----

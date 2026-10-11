@@ -143,6 +143,9 @@ foreach (var (cls, titles) in classTitles.Where(p => p.Value.Count >= 1).OrderBy
 }
 
 File.WriteAllText(Path.Combine(outDir, "wp8-census.md"), sb.ToString());
+File.WriteAllLines(Path.Combine(outDir, "all-imports.tsv"),
+    importTitles.OrderByDescending(p => p.Value.Count)
+        .Select(p => $"{p.Value.Count}	{(Implemented(p.Key) ? "yes" : "no")}	{p.Key}"));
 File.WriteAllLines(Path.Combine(outDir, "unimplemented.tsv"),
     importTitles.Where(p => !Implemented(p.Key)).OrderByDescending(p => p.Value.Count)
         .Select(p => $"{p.Value.Count}\t{p.Key}\t{string.Join(";", p.Value.OrderBy(x => x))}"));

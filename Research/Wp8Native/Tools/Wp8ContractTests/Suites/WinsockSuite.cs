@@ -392,7 +392,8 @@ public sealed class WinsockSuite : IContractSuite
         // ---- the census sees the ordinals ----
         Check("IsImplemented(WS2_32, #23)", s.IsImplemented("WS2_32.dll", "#23"));
         Check("IsImplemented(WS2_32, #151)", s.IsImplemented("WS2_32.dll", "#151"));
-        Check("an XAudio2 ordinal is not mistaken for Winsock", !s.IsImplemented("XAudio2_8.dll", "#5"));
+        Check("an XAudio2 ordinal is not mistaken for Winsock", !s.IsImplemented("XAudio2_8.dll", "#9"));
+        Check("XAudio2_8's own ordinals count (#5 is X3DAudioCalculate)", s.IsImplemented("XAudio2_8.dll", "#5"));
 
         Check("WSACleanup", Call("WSACleanup") == 0);
         Check("WSACleanup once too often is WSANOTINITIALISED", Call("WSACleanup") == SocketError && LastError() == 10093);

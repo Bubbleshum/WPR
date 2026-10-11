@@ -290,7 +290,11 @@ namespace WPR.Wp8Native
             int assigned = 0;
             bool matched = false;
 
-            int Finish(bool inputFailure) => inputFailure && !matched ? -1 : assigned;
+            int Finish(bool inputFailure)
+            {
+                LastScanConsumed = at;
+                return inputFailure && !matched ? -1 : assigned;
+            }
 
             for (int f = 0; f < format.Length; f++)
             {
@@ -565,6 +569,7 @@ namespace WPR.Wp8Native
                                 }
 
                                 SetErrno(Enomem);
+                                LastScanConsumed = at;
                                 return assigned;
                             }
                         }
@@ -585,7 +590,22 @@ namespace WPR.Wp8Native
                 }
             }
 
+            LastScanConsumed = at;
             return assigned;
+        }
+
+        /// <summary>How many input characters the last <see cref="Scan"/> consumed: what fscanf advances the stream by.</summary>
+        internal int LastScanConsumed { get; private set; }
+
+        /// <summary>
+        /// The scanf engine over text that came from somewhere other than a guest string (fscanf's
+        /// stream): the fields assigned, or EOF, and how much of <paramref name="input"/> was consumed.
+        /// </summary>
+        internal int ScanText(string input, string format, VarArgReader arguments, bool wide, bool secure, out int consumed)
+        {
+            int result = Scan(input, format, arguments, wide, secure);
+            consumed = LastScanConsumed;
+            return result;
         }
 
         /// <summary>Stores an integer conversion's result at the width its size prefix names.</summary>

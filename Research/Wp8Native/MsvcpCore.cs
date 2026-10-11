@@ -274,6 +274,32 @@ namespace WPR.Wp8Native
             return self;
         }
 
+        /// <summary>
+        /// Constructs an instance in memory the caller allocated (an imported constructor): vfptr, then
+        /// <c>_Mywhat</c> as <see cref="NewObject"/> writes it, or null and <c>_Mydofree</c> 0 for no message.
+        /// </summary>
+        public void InitObject(StdClass type, long self, string? message)
+        {
+            if (self == 0)
+            {
+                return;
+            }
+
+            _emulator.WriteMemory(self, new byte[type.Size]);
+            Write(self, type.Vtable);
+            if (message is not null)
+            {
+                Write(self + 4, HeapString(message));
+                _emulator.WriteMemory(self + 8, [1]);
+            }
+        }
+
+        /// <summary>
+        /// A ConcRT exception class (concrt.h): <c>Concurrency::&lt;name&gt; : std::exception</c>, the
+        /// shape of task_canceled, invalid_operation, missing_wait and the rest.
+        /// </summary>
+        public StdClass ConcurrencyException(string name) => Class([name + "@Concurrency", "exception" + Std]);
+
         /// <summary>Throws a host-built object into the image, catchable as every class in its chain.</summary>
         public void Throw(StdClass type, long self) => _throw(new ThrownException(self, type.Catchable));
 
@@ -807,6 +833,11 @@ namespace WPR.Wp8Native
 
                 _frame.Return(self);
             };
+
+            // _Container_base0 is the base with debug iterators off (_ITERATOR_DEBUG_LEVEL 0): its
+            // _Orphan_all() and _Swap_all(_Container_base0&) are empty, as VC11's <xutility>.
+            handlers["?_Orphan_all@_Container_base0@std@@QAAXXZ"] = () => _frame.Return(0);
+            handlers["?_Swap_all@_Container_base0@std@@QAAXAAU12@@Z"] = () => _frame.Return(0);
 
             // ~_Container_base12(): _Orphan_all().
             handlers["??1_Container_base12@std@@QAA@XZ"] = () =>
