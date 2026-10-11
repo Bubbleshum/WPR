@@ -46,6 +46,18 @@ namespace WPR.Wp8Native
 
             /// <summary>Instructions retired while this thread held the CPU (WPR_WP8_CALLSTATS only).</summary>
             public long Retired { get; set; }
+
+            /// <summary>Its thread environment block (ModuleTls.cs); 0 with the loader disabled.</summary>
+            public long Teb { get; set; }
+
+            public long StackLow { get; set; }
+
+            public long StackHigh { get; set; }
+
+            /// <summary>ThreadLocalStoragePointer: one word per TLS index.</summary>
+            public long TlsArray { get; set; }
+
+            public int TlsCapacity { get; set; }
         }
 
         private const int GuestThreadStackBytes = 1024 * 1024;
@@ -115,6 +127,7 @@ namespace WPR.Wp8Native
             registers[Index(Arm.UC_ARM_REG_CPSR)] = _cpu.RegRead(Arm.UC_ARM_REG_CPSR);
             thread.Registers = registers;
             thread.Vfp = new uint[64];
+            SetUpThreadEnvironment(thread, stack, stack + GuestThreadStackBytes);
 
             _threads.Add(thread);
             ThreadNote($"thread {thread.Id} '{name}' created by {creator.Id} at 0x{entry:X8}({argument:X8}), stack 0x{stack:X8}");
@@ -325,6 +338,7 @@ namespace WPR.Wp8Native
             Action? resumed = thread.OnResume;
             thread.OnResume = null;
             _currentThread = thread;
+            LoadThreadPointer(thread);
             ThreadSwitches++;
             resumed?.Invoke();
         }

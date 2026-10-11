@@ -269,6 +269,23 @@ public sealed class CrtStringsSuite : IContractSuite
         Check("strtod underflow: 0, ERANGE", h.D64(0) == 0 && Errno() == Erange);
         Call("strtod", N("-.5e1"), 0);
         Check("strtod(\"-.5e1\")", h.D64(0) == -5);
+
+        // The number parsers read in growing steps now (ReadNumberText); a number longer than the
+        // first step, and one whose exponent straddles it, must parse exactly as before.
+        string longMantissa = new string(' ', 60) + "1" + new string('0', 100) + "e-98;tail";
+        long f4 = N(longMantissa);
+        Call("strtod", f4, end);
+        Check("strtod: 60 spaces and a 101-digit mantissa past the first read step", h.D64(0) == 100 && e.ReadUInt32(end) == f4 + longMantissa.IndexOf(';'));
+        string straddle = new string('0', 62) + "1e+5 x";
+        long f5 = N(straddle);
+        Call("strtod", f5, end);
+        Check("strtod: an exponent that straddles the read step", h.D64(0) == 100000 && e.ReadUInt32(end) == f5 + straddle.IndexOf(' '));
+        ClearErrno();
+        long s6 = N(new string('9', 80) + "!");
+        Check("strtol: 80 digits overflow, end past all of them", Call("strtol", s6, end, 10) == 0x7FFFFFFF && Errno() == Erange && e.ReadUInt32(end) == s6 + 80);
+        Check("strncmp: equal in the first n, different after", Call("strncmp", N("abcdef" + new string('x', 200)), N("abcdeg"), 5) == 0);
+        Check("strncmp: different inside the first n", I(Call("strncmp", N("abcdef"), N("abcdeg"), 6)) < 0);
+        Check("strncmp: a shorter string compares lower inside n", I(Call("strncmp", N("abc"), N("abcd"), 10)) < 0);
         Call("wcstod", W(" 2.25"), 0);
         Check("wcstod", h.D64(0) == 2.25);
         Call("_wtof", W("-3.5"));

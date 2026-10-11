@@ -646,8 +646,20 @@ namespace WPR.Wp8Native
 
         private int CompareBounded()
         {
+            // Only the first `count` bytes can matter, so only those are read. Reading each string
+            // whole (up to 64 KB) made strncmp(cursor, "token", n) over a big buffer cost the rest of
+            // the buffer on every call: Angry Birds Seasons spent most of its load in here. The
+            // result is unchanged - the same prefix, under the same 64 KB cap.
             int count = (int)_frame.Arg(2);
-            return count <= 0 ? 0 : Compare(Truncate(Read(0), count), Truncate(Read(1), count));
+            if (count <= 0)
+            {
+                return 0;
+            }
+
+            int limit = Math.Min(count, 64 * 1024);
+            return Compare(
+                Truncate(_frame.ReadNarrowString(_frame.Arg(0), limit), count),
+                Truncate(_frame.ReadNarrowString(_frame.Arg(1), limit), count));
         }
 
         private void CopyString(long destination, string text)
