@@ -402,6 +402,7 @@ namespace WPR.Wp8Native
             RegisterMsvcpCore();
             RegisterWinsock();
             new CrtStrings(emulator, _frame).RegisterInto(_handlers);   // MSVCR110 strings and conversions; replaces older entries
+            new Win32Core(emulator, _frame, this).RegisterInto(_handlers);
             _winRt.RegisterEventSources(_handlers);
             // After the others: it replaces their single-threaded sleep and thread-id answers.
             Threads = new ThreadLibrary(emulator, _frame);
@@ -923,12 +924,9 @@ namespace WPR.Wp8Native
             new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["__crtSetUnhandledExceptionFilter"] = "installs a top-level SEH filter; there is no SEH here, and the previous filter it returns is only ever passed back to itself",
-                ["IsProcessorFeaturePresent"] = "0 is FALSE: the CRT then takes its portable path, which is what it does on a CPU without the feature",
                 ["?InitializeData@Details@Platform@@YAJH@Z"] = "vccorlib's per-module set-up, returning S_OK (0); vccorlib is this host, so there is no module state to set up",
                 ["?_Orphan_all@_Container_base0@std@@QAAXXZ"] = "_Container_base0 is the base with debug iterators off; every member of it is an empty void function",
                 ["?_Swap_all@_Container_base0@std@@QAAXAAU12@@Z"] = "empty void function on the no-debug-iterator base, as _Orphan_all (the _Container_base12 one is NOT empty)",
-                ["OutputDebugStringW"] = "void; the string goes to an attached debugger and none is",
-                ["OutputDebugStringA"] = "void; the string goes to an attached debugger and none is",
             };
 
         /// <summary>Calls to <see cref="SafeToDefault"/> imports, by name.</summary>
