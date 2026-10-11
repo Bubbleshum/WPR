@@ -240,6 +240,12 @@ namespace WPR.Wp8Native
                 Log("slot drift: " + drift);
             }
 
+            if (stubs.Winsock.Log.Count > 0)
+            {
+                // Every host the game reached for: connect targets, UDP destinations, name lookups.
+                Log("network: " + string.Join("; ", stubs.Winsock.Log.Take(40)));
+            }
+
             Log($"summary: frames={_presented} trap={trap} " +
                 $"defaulted=[{string.Join(", ", stubs.DefaultedCalls.Select(p => $"{p.Key} x{p.Value}"))}] " +
                 $"allowed=[{string.Join(", ", stubs.AllowedDefaults.Select(p => $"{p.Key} x{p.Value}"))}] " +
