@@ -53,7 +53,11 @@ namespace WPR.Wp8Native
                 }
 
                 string className = _strings.ReadText(Arg(0));
-                long? factory = className.Length == 0 ? null : _winRt.GetActivationFactory(className);
+                // By IID, as GetActivationFactoryByPCWSTR does: a class with several factory/statics
+                // interfaces (Uri, DataWriter) has a vtable for each.
+                long? factory = className.Length == 0 ? null
+                    : Arg(1) != 0 ? _winRt.GetActivationFactory(className, _emulator.ReadGuid(Arg(1)))
+                    : _winRt.GetActivationFactory(className);
                 if (factory is null)
                 {
                     RequestedClasses.Add($"{className} -> REGDB_E_CLASSNOTREG (RoGetActivationFactory)");
