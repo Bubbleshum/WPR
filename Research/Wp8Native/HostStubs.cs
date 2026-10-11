@@ -641,12 +641,41 @@ namespace WPR.Wp8Native
         /// </remarks>
         private Dictionary<string, Action> ComStubs => _comStubs ??= new(StringComparer.Ordinal)
         {
-            // HRESULT CoGetObjectContext(REFIID riid, void **ppv). There is no apartment
-            // here, so failing is the truthful answer and the one PPL is written to handle.
-            ["CoGetObjectContext"] = () => FailWithNull(Arg(1), CoNotInitialized),
+            // HRESULT CoGetObjectContext(REFIID riid, void **ppv). A WP8 app's threads are already
+            // in an apartment (the app model initialises them), so this succeeds on a phone. There
+            // is one context here - vccorlib's ObjectContext, whose IContextCallback runs the
+            // callback in place - handed out AddRef'd for IUnknown/IContextCallback; any other
+            // interface is E_NOINTERFACE with the out-parameter blanked, which PPL's
+            // _ContextCallback::_Capture handles (it nulls its member on failure).
+            ["CoGetObjectContext"] = () =>
+            {
+                Guid iid = Arg(0) == 0 ? Guid.Empty : _emulator.ReadGuid(Arg(0));
+                if (iid != IidUnknown && iid != IidContextCallback)
+                {
+                    FailWithNull(Arg(1), NoInterface);
+                    return;
+                }
 
-            // HRESULT CoGetContextToken(ULONG_PTR *pToken).
-            ["CoGetContextToken"] = () => FailWithNull(Arg(0), CoNotInitialized),
+                HostObject context = ObjectContext();
+                context.References++;
+                WriteIfPointer(Arg(1), (uint)context.Address);
+                Return(0);
+            },
+
+            // HRESULT CoGetContextToken(ULONG_PTR *pToken): identifies the current context; not
+            // a reference. Answering CO_E_NOTINITIALIZED made Angry Birds Rio's context-callback
+            // release path (Platform::Agile / ReleaseInContextImpl) raise a COMException and exit.
+            ["CoGetContextToken"] = () =>
+            {
+                if (Arg(0) == 0)
+                {
+                    Return(unchecked((int)0x80004003));   // E_POINTER
+                    return;
+                }
+
+                WriteIfPointer(Arg(0), (uint)ObjectContext().Address);
+                Return(0);
+            },
 
             // HRESULT CoCreateFreeThreadedMarshaler(IUnknown *pUnkOuter, IUnknown **ppunkMarshal).
             //

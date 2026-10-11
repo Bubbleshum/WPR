@@ -354,6 +354,13 @@ namespace WPR.Wp8Native
                     Log("   unimplemented: " + line);
                 }
 
+                // The last file operations: a failure is often a file that did not open, and the
+                // game's own message rarely names the path in a form that survives.
+                foreach (string line in emulator.Stubs.Files.Log.TakeLast(12))
+                {
+                    Log("   file: " + line);
+                }
+
                 foreach (string line in emulator.Stubs.ThrowHistory.TakeLast(5))
                 {
                     Log("   throw: " + line);
