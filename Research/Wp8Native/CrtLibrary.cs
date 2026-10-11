@@ -182,171 +182,16 @@ namespace WPR.Wp8Native
         }
 
         /// <summary>
-        /// The Concurrency Runtime, as far as a single CPU can honour it.
+        /// critical_section's members, for a host without guest threads (WPR_NOTHREADS): ThreadLibrary
+        /// replaces them with the blocking ones. The rest of ConcRT and PPL lives in ConcurrencyRuntime.
         /// </summary>
-        /// <remarks>
-        /// Locks are the easy part: with one thread of execution nothing is ever
-        /// contended, so acquiring one always succeeds immediately and a no-op is not an
-        /// approximation but the correct answer. Waiting is the awkward part - an event
-        /// wait that returns immediately is a lie if something else was supposed to signal
-        /// it, and there is no something else. It is reported as signalled because the
-        /// alternative is to block forever, and deferred work at least gets a chance to run.
-        /// </remarks>
         private void RegisterConcurrency(Dictionary<string, Action> handlers)
         {
-            // Concurrency::Alloc / Free - a separate allocator from the CRT heap.
-            handlers["?Alloc@Concurrency@@YAPAXI@Z"] = () => _frame.Return(_emulator.AllocateHeap(_frame.Arg(0)));
-            handlers["?Free@Concurrency@@YAXPAX@Z"] = () => _frame.Return(0);
-
-            // critical_section and its scoped_lock. Constructors return `this` through the
-            // general rule in HostStubs; locking and unlocking have nothing to do.
             handlers["?lock@critical_section@Concurrency@@QAAXXZ"] = () => _frame.Return(_frame.Arg(0));
             handlers["?unlock@critical_section@Concurrency@@QAAXXZ"] = () => _frame.Return(0);
             handlers["?try_lock@critical_section@Concurrency@@QAA_NXZ"] = () => _frame.Return(1);
 
-            // Concurrency::event lives in SyncLibrary, because it needs state and a yield.
-
-            // Concurrency::wait(milliseconds) - a sleep, and time does not pass here.
-            handlers["?wait@Concurrency@@YAXI@Z"] = () => _frame.Return(0);
-
-            // One hardware thread, which is the truth.
-            handlers["?_GetConcurrency@details@Concurrency@@YAIXZ"] = () => _frame.Return(1);
-            handlers["?_Id@_CurrentScheduler@details@Concurrency@@SAIXZ"] = () => _frame.Return(1);
-
-            // Returns unsigned& - a reference, so it owes the caller an address that stays
-            // valid and readable, not a value.
-            handlers["?_GetCurrentInlineDepth@_StackGuard@details@Concurrency@@CAAAIXZ"] = () =>
-            {
-                _inlineDepth = _inlineDepth == 0 ? _emulator.AllocateHeap(4) : _inlineDepth;
-                _frame.Return(_inlineDepth);
-            };
-
-            // static void _ScheduleTask(void (*proc)(void*), void* data) - the raw-function
-            // shape of the same "run this elsewhere" request the thread pool makes.
-            handlers["?_ScheduleTask@_CurrentScheduler@details@Concurrency@@SAXP6AXPAX@Z0@Z"] = () =>
-            {
-                _emulator.QueueDeferredCall("Concurrency::ScheduledTask", _frame.Arg(0), _frame.Arg(1));
-                _frame.Return(0);
-            };
-
-            RegisterTaskCollections(handlers);
             RegisterTime(handlers);
-        }
-
-        /// <summary>
-        /// PPL task collections - the machinery behind <c>Concurrency::task</c>.
-        /// </summary>
-        /// <remarks>
-        /// A task collection owns a set of chores and runs them. With one CPU there is
-        /// nothing to run them on concurrently, so the collection is a stand-in object and
-        /// the work it is given is queued alongside everything else.
-        ///
-        /// The important part is that <c>_NewCollection</c> hands back an **object**.
-        /// Returning zero here is what stopped the previous run: the image took the null,
-        /// called <c>_Schedule</c> through it, and died.
-        /// </remarks>
-        private void RegisterTaskCollections(Dictionary<string, Action> handlers)
-        {
-            // static _AsyncTaskCollection* _NewCollection(_CancellationTokenState*)
-            handlers["?_NewCollection@_AsyncTaskCollection@details@Concurrency@@SAPAV123@PAV_CancellationTokenState@23@@Z"] =
-                () => _frame.Return(_emulator.CreateShapedObject("_AsyncTaskCollection"));
-
-            // void _TaskCollection::_Schedule(_UnrealizedChore*)
-            handlers["?_Schedule@_TaskCollection@details@Concurrency@@QAAXPAV_UnrealizedChore@23@@Z"] = () =>
-            {
-                ScheduleChore(_frame.Arg(1));
-                _frame.Return(0);
-            };
-
-            // _TaskCollectionStatus _TaskCollection::_RunAndWait(_UnrealizedChore*)
-            // 0 = _NotComplete, 1 = _Completed, 2 = _Canceled.
-            handlers["?_RunAndWait@_TaskCollection@details@Concurrency@@QAA?AW4_TaskCollectionStatus@23@PAV_UnrealizedChore@23@@Z"] = () =>
-            {
-                TaskCollectionLog.Add($"_RunAndWait(chore 0x{_frame.Arg(1):X8}) -> reported complete");
-                _frame.Return(1);
-            };
-
-            handlers["?_Cancel@_TaskCollection@details@Concurrency@@QAAXXZ"] = () => _frame.Return(0);
-
-            // void Concurrency::wait(unsigned milliseconds) - the image's only sleep, and
-            // the point where it says it is willing to be interrupted. Anything queued runs
-            // here; if nothing is queued this is just a return, exactly as a zero-length
-            // sleep would be.
-            handlers["?wait@Concurrency@@YAXI@Z"] = () =>
-            {
-                _frame.Return(0);
-                if (!_emulator.BlockCurrentThread(() => true))
-                {
-                    _emulator.YieldToDeferredWork();
-                }
-            };
-
-            // A cancellation registration is another object the caller keeps and later
-            // hands back, so it cannot be null either.
-            handlers["?_RegisterCallback@_CancellationTokenState@details@Concurrency@@QAAPAV_CancellationTokenRegistration@23@P6AXPAX@Z0H@Z"] =
-                () => _frame.Return(_emulator.CreateShapedObject("_CancellationTokenRegistration", 8));
-
-            handlers["?_DeregisterCallback@_CancellationTokenState@details@Concurrency@@QAAXPAV_CancellationTokenRegistration@23@@Z"] =
-                () => _frame.Return(0);
-
-            // Called when a task's exception was never observed. Worth recording: it means
-            // something threw inside a task and nothing looked at it.
-            handlers["?_ReportUnobservedException@details@Concurrency@@YAXXZ"] = () =>
-            {
-                TaskCollectionLog.Add("_ReportUnobservedException - a task exception went unobserved");
-                _frame.Return(0);
-            };
-        }
-
-        /// <summary>
-        /// Queues a ConcRT chore so it runs at the next yield point.
-        /// </summary>
-        /// <remarks>
-        /// A chore is not dispatched through its vtable. <c>_Chore</c> declares exactly one
-        /// virtual - its destructor - and its vtable here has exactly one slot to match;
-        /// <c>_UnrealizedChore::_Invoke</c> is an ordinary member that calls a function
-        /// pointer stored in the object, which ConcRT sets to a bridge that knows the real
-        /// handle type. So the thing to call is that member, and finding it means looking at
-        /// the object rather than at the class.
-        ///
-        /// The scan is for the first word that lands in the image's executable range. That is
-        /// deliberately empirical: the layout of _Chore is not published, and guessing an
-        /// offset here is exactly the mistake that had this probe calling a deleting
-        /// destructor as if it were a work item.
-        /// </remarks>
-        private void ScheduleChore(long chore)
-        {
-            if (chore == 0)
-            {
-                TaskCollectionLog.Add("_Schedule(null) - ignored");
-                return;
-            }
-
-            string words = string.Join(" ", Enumerable.Range(0, 8)
-                .Select(i => $"+{i * 4:X2}={_emulator.ReadUInt32(chore + (i * 4)):X8}"));
-
-            long invoke = 0;
-            int foundAt = -1;
-            for (int i = 0; i < 8; i++)
-            {
-                long candidate = _emulator.ReadUInt32(chore + (i * 4));
-                if (_emulator.IsExecutableCode(candidate))
-                {
-                    invoke = candidate;
-                    foundAt = i * 4;
-                    break;
-                }
-            }
-
-            if (invoke == 0)
-            {
-                TaskCollectionLog.Add($"_Schedule(chore 0x{chore:X8}) - no chore function found; {words}");
-                return;
-            }
-
-            TaskCollectionLog.Add(
-                $"_Schedule(chore 0x{chore:X8}) -> queued 0x{invoke:X8} from +0x{foundAt:X}; {words}");
-            _emulator.QueueDeferredCall("_UnrealizedChore::_Invoke", invoke, chore);
         }
 
         /// <summary>
@@ -610,11 +455,6 @@ namespace WPR.Wp8Native
             "January", "February", "March", "April", "May", "June",
             "July", "August", "September", "October", "November", "December",
         ];
-
-        /// <summary>What the image asked the task machinery to do.</summary>
-        public List<string> TaskCollectionLog { get; } = new();
-
-        private long _inlineDepth;
 
         /// <summary>
         /// Functions this library knowingly does not implement. Both consume varargs; the

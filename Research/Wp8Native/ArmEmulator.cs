@@ -1524,6 +1524,43 @@ namespace WPR.Wp8Native
         }
 
         /// <summary>
+        /// Runs the oldest queued callback on the calling thread, then <paramref name="onReturn"/>
+        /// (which inherits the trap-handler contract and must set r12). False if nothing was queued.
+        /// </summary>
+        /// <remarks>
+        /// For a wait that has nothing else to hand the CPU to: the deferred queue stands for the
+        /// thread pool, whose work would be running concurrently on a phone, so pumping one item is
+        /// what lets the awaited thing happen.
+        /// </remarks>
+        public bool RunOneDeferredCall(Action onReturn)
+        {
+            if (_deferred.Count == 0)
+            {
+                return false;
+            }
+
+            (string name, long function, long[] arguments) = _deferred.Dequeue();
+            _deferredLog.Add($"-> {name} at 0x{function:X8} (from a wait)");
+            Yields++;
+            long importsBefore = CallOrderTotal;
+            _insideDeferred = new List<string>();
+            long[] snapshot = CaptureRegisters();
+
+            long resumeTrap = CallEmulated(name, function, arguments, onReturn: () =>
+            {
+                _domain = null;
+                _deferredLog.Add(
+                    $"   {name} returned 0x{_cpu.RegRead(Arm.UC_ARM_REG_R0):X8} " +
+                    $"after {CallOrderTotal - importsBefore:N0} import call(s)" +
+                    DescribeDeferredWork());
+                onReturn();
+            });
+
+            _domain = new FaultDomain(name, resumeTrap, snapshot);
+            return true;
+        }
+
+        /// <summary>
         /// Runs every queued callback to completion, then continues with
         /// <paramref name="onDrained"/>.
         /// </summary>
@@ -1637,6 +1674,17 @@ namespace WPR.Wp8Native
             ["_FInf"] = BitConverter.GetBytes(float.PositiveInfinity),
             ["_acmdln"] = BitConverter.GetBytes(0),                      // char*, filled in below
         };
+
+        /// <summary>
+        /// Whether an import is a variable the emulator backs with real storage (or, for std::cout and
+        /// friends, a real object) rather than a function: implemented, though no handler serves it.
+        /// </summary>
+        public static bool IsBackedDataImport(string name) =>
+            DataImports.ContainsKey(name) ||
+            MsvcpCore.DataConstants.ContainsKey(name) ||
+            name.StartsWith("?cerr@std@@3", StringComparison.Ordinal) ||
+            name.StartsWith("?cout@std@@3", StringComparison.Ordinal) ||
+            name.StartsWith("?clog@std@@3", StringComparison.Ordinal);
 
         /// <summary>Data imports given a real variable instead of a trap.</summary>
         public List<string> DataImportCells { get; } = new();

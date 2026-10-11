@@ -81,6 +81,9 @@ namespace WPR.Wp8Native
 
         public bool IsThreadFinished(int id) => _threads.FirstOrDefault(t => t.Id == id) is not { } t || t.Finished;
 
+        /// <summary>Whether a live thread is parked in <see cref="BlockCurrentThread"/> waiting for its condition.</summary>
+        public bool IsThreadBlocked(int id) => _threads.FirstOrDefault(t => t.Id == id) is { Finished: false, Ready: not null };
+
         private void ThreadNote(string line)
         {
             if (_threadLog.Count < 200)

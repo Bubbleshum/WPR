@@ -404,7 +404,8 @@ namespace WPR.Wp8Native
             RegisterCrtRuntime();   // MSVCR110's runtime proper: CrtRuntime.cs
             RegisterMsvcpCore();
             RegisterWinsock();
-            new CrtStrings(emulator, _frame).RegisterInto(_handlers);   // MSVCR110 strings and conversions; replaces older entries
+            Strings = new CrtStrings(emulator, _frame);
+            Strings.RegisterInto(_handlers);   // MSVCR110 strings and conversions; replaces older entries
             new Win32Core(emulator, _frame, this).RegisterInto(_handlers);
             RegisterVccorlibAndAbi();
             RegisterMediaImports(imageDirectory);
@@ -437,6 +438,10 @@ namespace WPR.Wp8Native
 
             // Last: replaces StartupImports' DisableThreadLibraryCalls with the loader-backed one.
             RegisterModuleLoader();
+
+            // After every family: what the census still listed (HostStubs.Remainder.cs) and ConcRT/PPL
+            // (ConcurrencyRuntime.cs). Every name in them is one no earlier family registers.
+            RegisterRemainderImports();
         }
 
         /// <summary>Aligned block -> (block actually allocated, size asked for).</summary>
@@ -755,6 +760,7 @@ namespace WPR.Wp8Native
         /// </summary>
         public bool IsImplemented(string function) =>
             _handlers.ContainsKey(function) ||
+            ArmEmulator.IsBackedDataImport(function) ||
             ComStubs.ContainsKey(function) ||
             function is "D3D11CreateDevice" or "XAudio2Create" or "#1" ||
             PlatformRaise.TryParse(function, 0, out _) ||
@@ -927,10 +933,8 @@ namespace WPR.Wp8Native
         public static readonly IReadOnlyDictionary<string, string> SafeToDefault =
             new Dictionary<string, string>(StringComparer.Ordinal)
             {
-                ["__crtSetUnhandledExceptionFilter"] = "installs a top-level SEH filter; there is no SEH here, and the previous filter it returns is only ever passed back to itself",
-                ["?InitializeData@Details@Platform@@YAJH@Z"] = "vccorlib's per-module set-up, returning S_OK (0); vccorlib is this host, so there is no module state to set up",
-                ["?_Orphan_all@_Container_base0@std@@QAAXXZ"] = "_Container_base0 is the base with debug iterators off; every member of it is an empty void function",
-                ["?_Swap_all@_Container_base0@std@@QAAXAAU12@@Z"] = "empty void function on the no-debug-iterator base, as _Orphan_all (the _Container_base12 one is NOT empty)",
+                // Empty: its four entries (vccorlib's InitializeData, _Container_base0's _Orphan_all and
+                // _Swap_all, __crtSetUnhandledExceptionFilter) are implemented to their contracts now.
             };
 
         /// <summary>Calls to <see cref="SafeToDefault"/> imports, by name.</summary>
@@ -1623,7 +1627,7 @@ namespace WPR.Wp8Native
         public IReadOnlyList<string> FormattedStrings => _crt.FormattedStrings;
 
         /// <summary>What the image asked the PPL task machinery to do.</summary>
-        public IReadOnlyList<string> TaskCollectionLog => _crt.TaskCollectionLog;
+        public IReadOnlyList<string> TaskCollectionLog => Ppl.Log;
 
         /// <summary>
         /// <c>void _initterm(void (**first)(), void (**last)())</c> - walks a table of
