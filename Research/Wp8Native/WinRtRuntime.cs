@@ -124,6 +124,10 @@ namespace WPR.Wp8Native
             RegisterAppModelObjects();
             RegisterCameras();
             RegisterSensors();
+
+            // The system classes implemented to their WinRT contract (WinRtObjects.cs and its
+            // partials). Last, so each replaces any stand-in registered above.
+            RegisterSystemClasses();
         }
 
         /// <summary>
@@ -1152,6 +1156,7 @@ namespace WPR.Wp8Native
                         _emulator.Stubs.Http.QueueDue();
                         // Socket events (WSAEventSelect) and overlapped completions, so a wait on a WSAEVENT sees them.
                         _emulator.Stubs.Winsock.Pump();
+                        QueueDueTimers();
                         if (_emulator.PendingDeferredCalls > 0)
                         {
                             long resumeAfterDrain = _emulator.ReturnAddress;

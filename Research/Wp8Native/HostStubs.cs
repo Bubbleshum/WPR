@@ -1070,7 +1070,9 @@ namespace WPR.Wp8Native
             string className = _emulator.ReadUtf16String(Arg(0));
             long outFactory = Arg(2);
 
-            long? factory = _winRt.GetActivationFactory(className);
+            long? factory = Arg(1) != 0
+                ? _winRt.GetActivationFactory(className, _emulator.ReadGuid(Arg(1)))
+                : _winRt.GetActivationFactory(className);
             if (factory is null)
             {
                 RequestedClasses.Add($"{className} -> REGDB_E_CLASSNOTREG");
