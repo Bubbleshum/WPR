@@ -115,6 +115,11 @@ namespace WPR.Platform.Android
                 // GameActivity gives for a game run, for the same reason.
                 caps.AudioTranscoder(new Audio.RemoteAudioTranscoder(_context));
 
+                // Deliberately no AudioDecoder yet. The desktop's is ffmpeg.exe, and ffmpeg-kit
+                // cannot run in the game process (the stop-the-world hang above). The Android one
+                // to write is MediaExtractor + MediaCodec, which decodes MP3 on every device; until
+                // then a WP8 title's MP3 through the media engine fails as on a codec-less phone.
+
                 // Where achievement-unlock toasts go. Nothing in this head assigned this for a
                 // long time, so every unlock NullReferenced into BeginAwardAchievement's own catch
                 // and no notification ever appeared — the achievement was still awarded and

@@ -42,6 +42,19 @@ namespace WPR.Wp8Native
     /// <summary>One guest call to make from a handler: a function and its word arguments.</summary>
     internal readonly record struct GuestCall(string Name, long Function, long[] Args);
 
+    /// <summary>What a guest-call script (<see cref="MediaCom.Run"/>) shares with its caller.</summary>
+    internal sealed class GuestOp
+    {
+        /// <summary>r0 of the call last yielded.</summary>
+        public long Last;
+
+        /// <summary>The script's HRESULT.</summary>
+        public long Hr;
+
+        /// <summary>What it produced: a length, a count of bytes.</summary>
+        public long Value;
+    }
+
     /// <summary>An interface shape: its name, the IIDs that resolve to it, and its methods.</summary>
     internal sealed record MediaInterface(
         string Name,
@@ -63,6 +76,7 @@ namespace WPR.Wp8Native
         public const long EInvalidArg = unchecked((int)0x80070057);
         public const long EOutOfMemory = unchecked((int)0x8007000E);
         public const long EHandle = unchecked((int)0x80070006);
+        public const long EAccessDenied = unchecked((int)0x80070005);
         public const long ENotSufficientBuffer = unchecked((int)0x8007007A);
         public const long ENotFound = unchecked((int)0x80070490);
         public const long ClassNotAvailable = unchecked((int)0x80040111);
@@ -482,6 +496,32 @@ namespace WPR.Wp8Native
             }
 
             Run(first.Value);
+        }
+
+        /// <summary>
+        /// Runs a script of guest calls - an iterator that yields each call and reads its r0 from
+        /// <see cref="GuestOp.Last"/> when resumed - then <paramref name="finish"/>, which sets the
+        /// handler's result. Same rules as <see cref="Then"/>.
+        /// </summary>
+        /// <remarks>
+        /// The way to chain guest calls: a <paramref name="finish"/> (of this, Then or Sequence)
+        /// must never start more of them, because the original caller is resumed straight after it.
+        /// Scripts compose with <c>foreach (var c in inner) yield return c;</c> over one shared op.
+        /// </remarks>
+        public void Run(GuestOp op, IEnumerable<GuestCall> script, Action finish)
+        {
+            IEnumerator<GuestCall> steps = script.GetEnumerator();
+            Sequence(
+                results =>
+                {
+                    if (results.Count > 0)
+                    {
+                        op.Last = results[^1];
+                    }
+
+                    return steps.MoveNext() ? steps.Current : null;
+                },
+                _ => finish());
         }
 
         /// <summary>

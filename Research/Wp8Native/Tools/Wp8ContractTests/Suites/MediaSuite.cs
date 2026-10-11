@@ -242,8 +242,9 @@ public sealed class MediaSuite : IContractSuite
         // ---- documented failures ----
         long pbs = Out();
         e.WriteUInt32(pbs, 0xDEAD);
-        Check("MFCreateMFByteStreamOnStreamEx fails and writes NULL", Call("MFCreateMFByteStreamOnStreamEx", a, pbs) == 0x80004001 && Ptr(pbs) == 0);
-        Check("and is recorded", s0(h).Any(x => x.Contains("MFCreateMFByteStreamOnStreamEx")));
+        Check("MFCreateMFByteStreamOnStreamEx over attributes (not a stream) is E_NOINTERFACE with NULL", Call("MFCreateMFByteStreamOnStreamEx", a, pbs) == ENoInterface && Ptr(pbs) == 0);
+        Check("MFCreateVideoSampleAllocatorEx fails and writes NULL", Call("MFCreateVideoSampleAllocatorEx", h.Guid(Guid.NewGuid()), pbs) == 0x80004001 && Ptr(pbs) == 0);
+        Check("and is recorded", s0(h).Any(x => x.Contains("MFCreateVideoSampleAllocatorEx")));
 
         // ---- the media engine ----
         MediaEngine(h, a, b);

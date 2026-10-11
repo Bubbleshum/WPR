@@ -11,6 +11,13 @@ namespace WPR.Wp8Native
         private MediaCom? _mediaCom;
         private MediaEngine? _mediaEngine;
         private PhoneAudio? _phoneAudio;
+        private MediaFoundation? _mediaFoundation;
+
+        /// <summary>
+        /// Decodes the compressed media the media engine is given (MP3 and the like). Set by the
+        /// host from the platform's decoder; null leaves only uncompressed WAVE playable.
+        /// </summary>
+        public IMediaDecoder? MediaDecoder { get; set; }
 
         /// <summary>Media calls answered with a documented failure because nothing behind them exists here.</summary>
         public IReadOnlyList<string> MediaUnimplemented => _mediaCom?.Unimplemented ?? [];
@@ -28,8 +35,9 @@ namespace WPR.Wp8Native
         private void RegisterMediaImports(string imageDirectory)
         {
             _mediaCom = new MediaCom(_emulator, _frame);
-            new MediaFoundation(_mediaCom, imageDirectory).RegisterInto(_handlers);
-            _mediaEngine = new MediaEngine(_mediaCom, imageDirectory, () => XAudio2.Output);
+            _mediaFoundation = new MediaFoundation(_mediaCom, imageDirectory) { HostStreams = new MediaStreams(this) };
+            _mediaFoundation.RegisterInto(_handlers);
+            _mediaEngine = new MediaEngine(_mediaCom, imageDirectory, () => XAudio2.Output, () => MediaDecoder, _mediaFoundation);
             _phoneAudio = new PhoneAudio(_mediaCom, () => XAudio2.Output, SignalEvent);
             _phoneAudio.RegisterInto(_handlers);
             new X3DAudioLibrary(_mediaCom).RegisterInto(_handlers);

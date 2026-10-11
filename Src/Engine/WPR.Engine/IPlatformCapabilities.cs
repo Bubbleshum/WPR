@@ -86,6 +86,13 @@ namespace WPR.Engine
         /// <summary>Install-time audio transcoding (WMA soundtracks to Ogg Vorbis).</summary>
         IPlatformCapabilities AudioTranscoder(IAudioTranscoder transcoder);
 
+        /// <summary>
+        /// Run-time decoding of compressed audio a game hands to the OS (MP3 to the WP8 media
+        /// engine). Omit it and only uncompressed audio plays there; compressed sources fail as on
+        /// a phone without the codec.
+        /// </summary>
+        IPlatformCapabilities AudioDecoder(IAudioDecoder decoder);
+
         /// <summary>Where achievements are persisted.</summary>
         IPlatformCapabilities Achievements(WPR.Xna.Achievements.IAchievementStore store);
 

@@ -42,6 +42,12 @@ namespace WPR.Wp8Native
         public long? GetActivationFactory(string className, Guid iid)
             => Classes.FactoryInterface(className, iid) ?? GetActivationFactory(className);
 
+        /// <summary>A host binding to a WinRT stream of this runtime's (Media Foundation's byte streams use it); null for anything else.</summary>
+        internal HostStreamBinding? BindStream(long pointer) => Classes.BindStream(pointer);
+
+        /// <summary>A new WinRT random-access stream over a binding's data, as <paramref name="iid"/>; 0 when it has no such interface.</summary>
+        internal long StreamOver(HostStreamBinding binding, Guid iid) => Classes.StreamOver(binding, iid);
+
         /// <summary>Opens a URI outside the game (the host's browser or store). Null: there is none, and <c>LaunchUriAsync</c> answers false.</summary>
         public Func<string, bool>? UriLauncher { get; set; }
 

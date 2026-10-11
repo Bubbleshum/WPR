@@ -75,6 +75,7 @@ namespace WPR.Engine
             private ContentPathRules? _contentPaths;
             private readonly List<IAudioModule> _audio = new List<IAudioModule>();
             private IAudioTranscoder? _transcoder;
+            private IAudioDecoder? _decoder;
             private WPR.Xna.Achievements.IAchievementStore? _achievements;
             private INotificationManager? _notifications;
             private IKeyboardEmulationHost? _tilt;
@@ -125,6 +126,12 @@ namespace WPR.Engine
             public IPlatformCapabilities AudioTranscoder(IAudioTranscoder transcoder)
             {
                 _transcoder = transcoder ?? throw new ArgumentNullException(nameof(transcoder));
+                return this;
+            }
+
+            public IPlatformCapabilities AudioDecoder(IAudioDecoder decoder)
+            {
+                _decoder = decoder ?? throw new ArgumentNullException(nameof(decoder));
                 return this;
             }
 
@@ -184,6 +191,7 @@ namespace WPR.Engine
                 foreach (IAudioModule module in _audio) AudioBackendRegistry.Register(module);
 
                 if (_transcoder != null) AudioTranscoderBackend.SetTranscoder(_transcoder);
+                if (_decoder != null) AudioDecoderBackend.SetDecoder(_decoder);
                 if (_achievements != null) XnaBackend.SetAchievements(_achievements);
                 if (_notifications != null) NotificationBackend.SetManager(_notifications);
                 if (_tilt != null) XnaBackend.SetKeyboardEmulation(_tilt);
@@ -202,6 +210,7 @@ namespace WPR.Engine
                 parts.Add(WPR.Engine.Content.ContentPaths.Describe());
                 parts.Add("audio=[" + string.Join(", ", _audio.ConvertAll(m => m.Name)) + "]");
                 parts.Add("transcoder=" + Name(_transcoder));
+                parts.Add("decoder=" + Name(_decoder));
                 parts.Add("achievements=" + Name(_achievements));
                 parts.Add("notifications=" + Name(_notifications));
                 parts.Add("tilt=" + Name(_tilt));

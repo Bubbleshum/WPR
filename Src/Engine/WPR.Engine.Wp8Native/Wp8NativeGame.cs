@@ -150,6 +150,7 @@ namespace WPR.Wp8Native
                 _emulator.WinRt.XboxHost = _xboxHost;
                 _emulator.WinRt.Sensors = new Wp8NativeSensorHost();
                 _emulator.XAudio2.Output = _audio;
+                _emulator.Stubs.MediaDecoder = new Wp8NativeMediaDecoder(Log);
                 _emulator.WinRt.BackPressDelivered += handled =>
                 {
                     Log($"back press {(handled ? "kept by the game" : "let through: closing")}");
