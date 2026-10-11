@@ -790,6 +790,7 @@ namespace WPR.Wp8Native
         public bool IsImplemented(string function) =>
             _handlers.ContainsKey(function) ||
             ArmEmulator.IsBackedDataImport(function) ||
+            StreamLibrary.IsDataImport(function) ||   // iostream/locale objects: std::cout, locale ids, vtables
             ComStubs.ContainsKey(function) ||
             function is "D3D11CreateDevice" or "XAudio2Create" or "#1" ||
             PlatformRaise.TryParse(function, 0, out _) ||

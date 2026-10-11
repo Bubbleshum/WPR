@@ -26,7 +26,7 @@ namespace WPR.Wp8Native
             Ppl.RegisterInto(_handlers);
             RegisterCrtRemainder();
             RegisterLocaleObjects();
-            RegisterCollation();
+            // _Strcoll/_Strxfrm/_Wcscoll/_Wcsxfrm/_Mbrtowc are LocaleLibrary's (their owner, with the facets).
             RegisterVccorlibRemainder();
         }
 
@@ -283,77 +283,6 @@ namespace WPR.Wp8Native
             _emulator.WriteMemory(_cLocaleName, [(byte)'C', 0]);
             _cLocaleWideName = _emulator.AllocateHeap(4);
             _emulator.WriteMemory(_cLocaleWideName, [(byte)'C', 0, 0, 0]);
-        }
-
-        // ------------------------------------------------------------------------------------
-        // MSVCP110's C-locale helpers (xlocinfo.h): collation and one multibyte conversion
-        // ------------------------------------------------------------------------------------
-
-        private void RegisterCollation()
-        {
-            // int _Strcoll(const char* s1, const char* e1, const char* s2, const char* e2, const _Collvec*):
-            // the "C" locale compares the ranges as unsigned bytes, the shorter first when one is a prefix.
-            _handlers["_Strcoll"] = () => Return(unchecked((uint)CompareRanges(Arg(0), Arg(1), Arg(2), Arg(3), unit: 1)));
-            _handlers["_Wcscoll"] = () => Return(unchecked((uint)CompareRanges(Arg(0), Arg(1), Arg(2), Arg(3), unit: 2)));
-
-            // size_t _Strxfrm(char* s1, char* e1, const char* s2, const char* e2, const _Collvec*): in
-            // the "C" locale the key is the string itself: copied when it fits in [s1, e1); the length
-            // of the key is answered either way.
-            _handlers["_Strxfrm"] = () => Return(TransformRange(Arg(0), Arg(1), Arg(2), Arg(3), unit: 1));
-            _handlers["_Wcsxfrm"] = () => Return(TransformRange(Arg(0), Arg(1), Arg(2), Arg(3), unit: 2));
-
-            // int _Mbrtowc(wchar_t* pwc, const char* s, size_t n, mbstate_t*, const _Cvtvec*): the "C"
-            // locale maps each byte to the same code unit. 0 for a null/empty input or the NUL char,
-            // otherwise 1 (one byte consumed).
-            _handlers["_Mbrtowc"] = () =>
-            {
-                long pwc = Arg(0), s = Arg(1);
-                if (s == 0 || Arg(2) == 0)
-                {
-                    Return(0);
-                    return;
-                }
-
-                byte b = _emulator.ReadMemory(s, 1)[0];
-                if (pwc != 0)
-                {
-                    _emulator.WriteMemory(pwc, BitConverter.GetBytes((ushort)b));
-                }
-
-                Return(b == 0 ? 0 : 1);
-            };
-        }
-
-        private int CompareRanges(long s1, long e1, long s2, long e2, int unit)
-        {
-            long n1 = Math.Max(0, (e1 - s1) / unit), n2 = Math.Max(0, (e2 - s2) / unit);
-            long common = Math.Min(n1, n2);
-            if (common > 0)
-            {
-                byte[] a = _emulator.ReadMemory(s1, (int)(common * unit)), b = _emulator.ReadMemory(s2, (int)(common * unit));
-                for (int i = 0; i < common; i++)
-                {
-                    uint x = unit == 1 ? a[i] : BitConverter.ToUInt16(a, i * 2);
-                    uint y = unit == 1 ? b[i] : BitConverter.ToUInt16(b, i * 2);
-                    if (x != y)
-                    {
-                        return x < y ? -1 : 1;
-                    }
-                }
-            }
-
-            return n1 == n2 ? 0 : n1 < n2 ? -1 : 1;
-        }
-
-        private long TransformRange(long s1, long e1, long s2, long e2, int unit)
-        {
-            long room = Math.Max(0, (e1 - s1) / unit), length = Math.Max(0, (e2 - s2) / unit);
-            if (length > 0 && length <= room)
-            {
-                _emulator.WriteMemory(s1, _emulator.ReadMemory(s2, (int)(length * unit)));
-            }
-
-            return length;
         }
 
         // ------------------------------------------------------------------------------------
