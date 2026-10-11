@@ -23,6 +23,10 @@ namespace WPR.Wp8Native
             public long Object, Callback, State;
             public long Status;
 
+            /// <summary>For a byte stream's BeginRead/BeginWrite: the bytes moved, and the stream that moved them.</summary>
+            public int Transferred;
+            public MediaObject? Origin;
+
             public override IEnumerable<long> Destroy() => new[] { Object, Callback, State }.Where(p => p != 0).ToList();
         }
 
@@ -825,13 +829,6 @@ namespace WPR.Wp8Native
                 };
             }
 
-            const string noStreamBridge = "no bridge from a WinRT IRandomAccessStream / IStream to IMFByteStream exists here";
-            Refuse("MFCreateMFByteStreamOnStreamEx", 1, noStreamBridge);
-            Refuse("MFCreateMFByteStreamOnStream", 1, noStreamBridge);
-            Refuse("MFCreateStreamOnMFByteStreamEx", 2, noStreamBridge);
-            Refuse("MFCreateStreamOnMFByteStream", 1, noStreamBridge);
-            Refuse("MFCreateMediaTypeFromProperties", 1, "media types from an IPropertyStore are not built here");
-            Refuse("MFCreatePropertiesFromMediaType", 2, "no IPropertyStore implementation exists here");
             Refuse("MFCreateVideoSampleAllocatorEx", 1, "video frames are never decoded, so there is nothing to allocate surfaces for");
 
             // MFCreateDXGISurfaceBuffer(REFIID, IUnknown* punkSurface, UINT uSubresourceIndex, BOOL fBottomUp, IMFMediaBuffer**).

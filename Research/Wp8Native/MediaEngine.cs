@@ -5,13 +5,17 @@ namespace WPR.Wp8Native
     /// the HTML5-media-element-shaped player WP8 games use for cutscenes and music.
     /// </summary>
     /// <remarks>
-    /// It plays what this host can decode honestly - uncompressed RIFF/WAVE - through the host's
-    /// audio output, with the documented event sequence, clock, pause, seek, loop and volume.
-    /// Everything else (MP4/H.264, WMV, MP3, AAC) fails as the element does when it cannot play
-    /// a source: MF_MEDIA_ENGINE_EVENT_ERROR with MF_MEDIA_ENGINE_ERR_SRC_NOT_SUPPORTED and the
-    /// HRESULT, delivered asynchronously through the game's IMFMediaEngineNotify. A game written
-    /// for a phone that cannot play its intro movie skips it; one told the movie played waits
-    /// for frames that never come.
+    /// <para>It plays audio through the host's audio output, with the documented event sequence,
+    /// clock, pause, seek, loop and volume: uncompressed RIFF/WAVE decoded here, and compressed
+    /// audio (MP3 above all - what the library's media-engine users ship) through the platform's
+    /// <see cref="IMediaDecoder"/> when the host has one. Sources come from a URL or from an
+    /// IMFByteStream made by <c>MFCreateMFByteStreamOnStream(Ex)</c>.</para>
+    /// <para>Video is never decoded, so a source with a video stream (MP4/H.264, WMV), and any
+    /// audio no decoder takes, fails as the element does when it cannot play a source:
+    /// MF_MEDIA_ENGINE_EVENT_ERROR with MF_MEDIA_ENGINE_ERR_SRC_NOT_SUPPORTED and the HRESULT,
+    /// delivered asynchronously through the game's IMFMediaEngineNotify. A game written for a
+    /// phone that cannot play its intro movie skips it; one told the movie played - or handed its
+    /// soundtrack with no picture - waits for frames that never come.</para>
     /// </remarks>
     internal sealed class MediaEngine
     {
@@ -35,15 +39,22 @@ namespace WPR.Wp8Native
         private readonly ArmEmulator _e;
         private readonly string _packageRoot;
         private readonly Func<IAudioOutput?> _output;
+        private readonly Func<IMediaDecoder?> _decoder;
+        private readonly MediaFoundation? _mf;
         private readonly List<Engine> _engines = new();
 
-        public MediaEngine(MediaCom com, string packageRoot, Func<IAudioOutput?> output)
+        public MediaEngine(MediaCom com, string packageRoot, Func<IAudioOutput?> output, Func<IMediaDecoder?>? decoder = null, MediaFoundation? mediaFoundation = null)
         {
             _com = com;
             _e = com.Emulator;
             _packageRoot = packageRoot;
             _output = output;
+            _decoder = decoder ?? (() => null);
+            _mf = mediaFoundation;
         }
+
+        /// <summary>Sources decoded by the platform decoder - for the report and the tests.</summary>
+        public List<string> Decoded { get; } = new();
 
         private long Arg(int i) => _com.Arg(i);
 
@@ -303,13 +314,14 @@ namespace WPR.Wp8Native
             [11] = ("GetBuffered", () => With(e => OutRange(e.Wave is null ? [] : [(0, e.Wave.Duration)]))),
             [12] = ("Load", () => With(e => { SetSource(e, e.Source, data: null); Return(MediaCom.SOk); })),
 
-            // CanPlayType(BSTR type, MF_MEDIA_ENGINE_CANPLAY*): only uncompressed WAVE is playable.
+            // CanPlayType(BSTR type, MF_MEDIA_ENGINE_CANPLAY*): WAVE, and audio the platform decoder
+            // takes. Video is never playable here, whatever its codec.
             [13] = ("CanPlayType", () => With(e =>
             {
-                string type = _com.ReadWide(Arg(1)).Trim().ToLowerInvariant();
-                bool wave = type.StartsWith("audio/wav", StringComparison.Ordinal) || type.StartsWith("audio/x-wav", StringComparison.Ordinal) ||
-                            type.StartsWith("audio/wave", StringComparison.Ordinal);
-                _com.W32(Arg(2), wave ? 1 /* MAYBE */ : 0 /* NOT_SUPPORTED */);
+                string type = MediaContainer.MimeBase(_com.ReadWide(Arg(1)));
+                bool playable = MediaContainer.IsWaveMime(type) ||
+                                (type.StartsWith("audio/", StringComparison.Ordinal) && _decoder()?.CanDecode(type) == true);
+                _com.W32(Arg(2), playable ? 1 /* MAYBE */ : 0 /* NOT_SUPPORTED */);
                 Return(Arg(2) == 0 ? MediaCom.EPointer : MediaCom.SOk);
             })),
             [14] = ("GetReadyState", () => Value(e => e.ReadyState)),
@@ -371,15 +383,41 @@ namespace WPR.Wp8Native
             [44] = ("OnVideoStreamTick", () => With(_ => Return(MediaCom.SFalse))),
 
             // IMFMediaEngineEx.
+            // SetSourceFromByteStream(IMFByteStream*, BSTR pURL): the stream is read whole, then
+            // loaded as a file would be; the URL only names it. A game's own IMFByteStream cannot
+            // be read here, and fails the load as any unplayable source does.
             [45] = ("SetSourceFromByteStream", () => With(e =>
             {
-                // No IMFByteStream can be made here (MFCreateMFByteStreamOnStreamEx refuses), so
-                // whatever arrived is a game's own and cannot be read: the load fails, reported
-                // through the notify callback as for any unplayable source.
                 string url = Arg(2) == 0 ? string.Empty : _com.ReadWide(Arg(2));
-                _com.Record($"IMFMediaEngineEx::SetSourceFromByteStream({url}): reading a guest IMFByteStream is not implemented -> load fails");
-                FailLoad(e, url, MediaCom.ENotImpl);
-                Return(MediaCom.SOk);
+                if (Arg(1) == 0)
+                {
+                    Return(MediaCom.EPointer);
+                    return;
+                }
+
+                if (_mf?.ByteStream(Arg(1)) is not { } stream)
+                {
+                    _com.Record($"IMFMediaEngineEx::SetSourceFromByteStream({url}): an IMFByteStream the game implemented itself cannot be read here -> load fails");
+                    SetSourceFailed(e, url, MediaCom.ENotImpl);
+                    Return(MediaCom.SOk);
+                    return;
+                }
+
+                GuestOp op = new();
+                byte[]? data = null;
+                _com.Run(op, _mf.ReadAll(stream, op, bytes => data = bytes), () =>
+                {
+                    if (data is null)
+                    {
+                        SetSourceFailed(e, url, op.Hr);
+                    }
+                    else
+                    {
+                        SetSource(e, url, data);
+                    }
+
+                    Return(MediaCom.SOk);
+                });
             })),
             [46] = ("GetStatistics", () => With(e => { _com.Record("IMFMediaEngineEx::GetStatistics -> E_NOTIMPL"); Return(MediaCom.ENotImpl); })),
             [47] = ("UpdateVideoStream", () => With(_ => Return(MediaFoundation.MfEInvalidRequest))),
@@ -555,10 +593,10 @@ namespace WPR.Wp8Native
             }
 
             byte[] bytes = data ?? File.ReadAllBytes(file!);
-            PcmAudio.Wave? wave = PcmAudio.ReadWave(bytes);
+            string name = Path.GetFileName(file ?? url);
+            PcmAudio.Wave? wave = PcmAudio.ReadWave(bytes) ?? Decode(bytes, name);
             if (wave is null)
             {
-                _com.Record($"IMFMediaEngine source {Path.GetFileName(file ?? url)}: no decoder for this format here (only uncompressed WAVE) -> MF_MEDIA_ENGINE_ERR_SRC_NOT_SUPPORTED");
                 FailLoad(e, url, MediaFoundation.MfEUnsupportedByteStreamType);
                 return;
             }
@@ -575,6 +613,58 @@ namespace WPR.Wp8Native
             {
                 Play(e);
             }
+        }
+
+        /// <summary>
+        /// Compressed audio through the platform decoder; null (recorded, with the reason) when
+        /// there is no decoder, it cannot decode this, or the source carries video.
+        /// </summary>
+        private PcmAudio.Wave? Decode(byte[] bytes, string name)
+        {
+            string container = MediaContainer.Sniff(bytes);
+            IMediaDecoder? decoder = _decoder();
+            if (decoder is null)
+            {
+                _com.Record($"IMFMediaEngine source {name} ({container}): no decoder on this platform (only uncompressed WAVE) -> MF_MEDIA_ENGINE_ERR_SRC_NOT_SUPPORTED");
+                return null;
+            }
+
+            DecodedAudio? decoded;
+            try
+            {
+                decoded = decoder.Decode(bytes, name);
+            }
+            catch (Exception ex)
+            {
+                // The contract says a decoder does not throw; one that does costs the source, never the game.
+                _com.Record($"IMFMediaEngine source {name} ({container}): {decoder.Name} threw {ex.GetType().Name} -> MF_MEDIA_ENGINE_ERR_SRC_NOT_SUPPORTED");
+                return null;
+            }
+
+            if (decoded is { HasVideo: true })
+            {
+                _com.Record($"IMFMediaEngine source {name} ({container}): has a video stream, and video is not decoded here -> MF_MEDIA_ENGINE_ERR_SRC_NOT_SUPPORTED");
+                return null;
+            }
+
+            if (decoded is null || decoded.SampleRate <= 0 || decoded.Channels is not (1 or 2) ||
+                decoded.Pcm16.Length == 0 || decoded.Pcm16.Length % (decoded.Channels * 2) != 0)
+            {
+                _com.Record($"IMFMediaEngine source {name} ({container}): {decoder.Name} found no audio it could decode -> MF_MEDIA_ENGINE_ERR_SRC_NOT_SUPPORTED");
+                return null;
+            }
+
+            Decoded.Add($"{name} ({container}, {decoded.SampleRate} Hz, {decoded.Channels} ch)");
+            return new PcmAudio.Wave(decoded.SampleRate, decoded.Channels, decoded.Pcm16);
+        }
+
+        /// <summary>The load algorithm for a source that cannot even be read: LOADSTART, then the error.</summary>
+        private void SetSourceFailed(Engine e, string url, long hr)
+        {
+            SetSource(e, null, data: null);
+            e.NetworkState = 2;
+            Fire(e, EventLoadStart);
+            FailLoad(e, url, hr);
         }
 
         private void FailLoad(Engine e, string url, long hr)

@@ -169,6 +169,8 @@ namespace WPR.Wp8Native
             RegisterWorkQueues(handlers);
             RegisterDxgiManager(handlers);
             RegisterBlobsAndFormats(handlers);
+            RegisterByteStreams(handlers);
+            RegisterProperties(handlers);
             RegisterUnsupported(handlers);
         }
 

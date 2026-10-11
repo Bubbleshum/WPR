@@ -554,6 +554,39 @@ schemes) and `BingMapsTask`. `MarketplaceDetailTask` stays empty on purpose (see
 
 No `ApplicationPatcher.Version` bump and no reinstall — shim behaviour, picked up on next launch.
 
+### WP8 media: byte streams, property stores, and decoding through the platform (2026-10-11)
+
+The WP8 runtime's Media Foundation (`Research/Wp8Native/Media*.cs`) gained three things:
+
+* **`IMFByteStream`** (`MediaByteStream.cs`) over the host's streams - WinRT random-access streams
+  and `CreateStreamOnHGlobal` IStreams, through `IHostStreams` (`HostStubs.MediaStreams.cs`) - and
+  over a game's own IStream by calling its methods. **One position, shared** with the source stream,
+  as Media Foundation's wrappers do. BeginRead/BeginWrite transfer at once and queue the callback
+  through `InvokeLater`. Refused, recorded: a game's own `IRandomAccessStream` (its reads are WinRT
+  async operations) and an IStream made over a WinRT stream.
+* **`IPropertyStore` + PROPVARIANT** (`MediaPropertyStore.cs`): `MFCreatePropertiesFromMediaType`,
+  `MFCreateMediaTypeFromProperties` (ours directly, a game's through its methods), `PropVariantClear`,
+  `PropVariantCopy`. Key mapping is `{fmtid = attribute GUID, pid = 2}`; Windows' other answer,
+  `IMediaEncodingProperties`, is not in this runtime's metadata, so it is E_NOINTERFACE.
+* **Compressed audio in the media engine** through a new seam: `WPR.Engine.Audio.IAudioDecoder` +
+  `AudioDecoderBackend`, declared by `caps.AudioDecoder(...)`, bridged into the runtime's
+  `IMediaDecoder` by `Wp8NativeMediaDecoder`. Windows: `FFmpegAudioDecoder` over the head's ffmpeg.exe
+  (temp file in, WAVE on stdout; ~30-80 ms per file). **Android declares none yet** (ffmpeg-kit cannot
+  run in the game process; the one to write is MediaExtractor + MediaCodec), so there compressed
+  sources still fail as on a codec-less phone.
+
+**Why a run-time decoder and not install-time transcoding** (measured over the 102 ARM titles in
+the library): the media engine's users (Assassin's Creed Pirates, Doodle God Blitz, FIFA 14/15,
+GameMaker and Unity runners) feed it MP3; the same library ships thousands of MP3s their own code
+decodes (Angry Birds), so transcoding by extension would break those; and byte-stream sources never
+touch the disk. **Video is never decoded**: a source whose container has a video stream (FIFA's
+`ealogo.mp4`, Halo: Spartan Assault's `.wmv`) is refused even though its audio decodes, because a
+game handed its intro's soundtrack with no picture waits for frames that never come.
+
+**Chaining guest calls: use `MediaCom.Run` with an iterator script.** A `finish` of `Then`/`Sequence`
+must never start more guest calls - the original caller is resumed straight after it, so a nested
+call silently never happens. Contract tests are `Suites/MediaStreamsSuite.cs`.
+
 ### WPR Hub: leaderboards and automatic crash reports (2026-09-27)
 
 The online backend is **WPR Hub** (Laravel, `C:\Users\BenSl\PhpstormProjects\WPR-Hub`). Same

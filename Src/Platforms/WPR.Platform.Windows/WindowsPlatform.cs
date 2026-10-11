@@ -64,6 +64,10 @@ namespace WPR.Platform.Windows
             // is correct on desktop — its once-per-second song stutter only bites on a phone.
             .AudioTranscoder(new Audio.FFMpegCoreAudioTranscoder())
 
+            // The same ffmpeg.exe decodes, at run time, the compressed audio a WP8 native title
+            // hands its media engine (MP3 in every title that uses it). Video is not decoded.
+            .AudioDecoder(new Audio.FFmpegAudioDecoder())
+
             // Links a game opens (WebBrowserTask) go to the default browser via the shell.
             // Deliberately no ShareSheet yet: the Windows share UI is WinRT DataTransferManager
             // bound to a window handle, so ShareLinkTask stays a logged no-op on the desktop.

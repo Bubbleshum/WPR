@@ -856,6 +856,83 @@ namespace WPR.Wp8Native
                         })));
             }
 
+            // -----------------------------------------------------------------------------------
+            // Media Foundation's view of these streams (MediaByteStream.cs).
+            // -----------------------------------------------------------------------------------
+
+            /// <summary>A host binding to the stream behind <paramref name="pointer"/>, holding the data open; null when it is not one of these.</summary>
+            public HostStreamBinding? BindStream(long pointer)
+            {
+                if (StateOf<StreamState>(pointer) is not { } s)
+                {
+                    return null;
+                }
+
+                s.Shared.Open++;
+                bool released = false;
+                return new HostStreamBinding
+                {
+                    Data = s.Shared.Data,
+                    GetPosition = () => s.Position,
+                    SetPosition = p => s.Position = p,
+                    CanRead = s.CanRead,
+                    CanWrite = s.CanWrite,
+                    ContentType = s.ContentType,
+                    IsClosed = () => s.Closed,
+                    Source = pointer,
+                    Release = () =>
+                    {
+                        if (!released)
+                        {
+                            released = true;
+                            if (--s.Shared.Open == 0)
+                            {
+                                s.Shared.Data.Dispose();
+                            }
+                        }
+                    },
+                };
+            }
+
+            /// <summary>
+            /// A new random-access stream over <paramref name="data"/> (a stream of these when the
+            /// binding came from one, sharing its data), at <paramref name="position"/>, as interface
+            /// <paramref name="iid"/>; 0 when it has no such interface.
+            /// </summary>
+            public long StreamOver(HostStreamBinding binding, Guid iid)
+            {
+                SharedStream shared;
+                string contentType = binding.ContentType ?? string.Empty;
+                if (StateOf<StreamState>(binding.Source) is { } source)
+                {
+                    shared = source.Shared;
+                    shared.Open++;
+                }
+                else
+                {
+                    shared = new SharedStream(binding.Data);
+                }
+
+                ComObject stream = RandomAccessStream(shared, binding.CanRead, binding.CanWrite, contentType, position: binding.GetPosition());
+                if (iid == HostStubs.IidUnknown || iid == HostStubs.IidInspectable)
+                {
+                    return stream.Primary;
+                }
+
+                if (stream.Pointers.TryGetValue(iid, out long pointer))
+                {
+                    return pointer;
+                }
+
+                // Nothing asked for that this stream is; it is dropped unseen.
+                if (--shared.Open == 0)
+                {
+                    shared.Data.Dispose();
+                }
+
+                return 0;
+            }
+
             private long StreamReference(Func<long> open)
             {
                 ComClass cls = Class("Windows.Storage.Streams.RandomAccessStreamReference", [
