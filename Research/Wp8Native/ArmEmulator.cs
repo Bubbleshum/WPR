@@ -1384,6 +1384,9 @@ namespace WPR.Wp8Native
         /// set r12, because lr still points at the return trap - leaving it alone would
         /// send the CPU straight back here forever. Typically it restores the return
         /// address that the original caller was going to use.
+        ///
+        /// Arguments past the fourth are passed on the stack, one word each: a 64-bit argument is
+        /// two entries, already placed on an even word by the caller.
         /// </remarks>
         public long CallEmulated(string debugName, long function, ReadOnlySpan<long> arguments, Action onReturn)
             => CallEmulated(debugName, function, arguments, onReturn, recycle: false);
@@ -1397,21 +1400,35 @@ namespace WPR.Wp8Native
         /// </param>
         public long CallEmulated(string debugName, long function, ReadOnlySpan<long> arguments, Action onReturn, bool recycle)
         {
-            if (arguments.Length > 4)
-            {
-                throw new ArgumentException(
-                    "Only the four register arguments are supported; stack arguments are not.",
-                    nameof(arguments));
-            }
-
             int[] argumentRegisters =
             [
                 Arm.UC_ARM_REG_R0, Arm.UC_ARM_REG_R1, Arm.UC_ARM_REG_R2, Arm.UC_ARM_REG_R3,
             ];
 
-            for (int i = 0; i < arguments.Length; i++)
+            for (int i = 0; i < arguments.Length && i < 4; i++)
             {
                 _cpu.RegWrite(argumentRegisters[i], arguments[i]);
+            }
+
+            // Arguments past r3 go on the stack, below the trapped caller's frame (which is
+            // live), 8-byte aligned as AAPCS requires at a call. The caller cleans up under AAPCS,
+            // so sp is put back when the return trap fires, before onReturn sees anything.
+            if (arguments.Length > 4)
+            {
+                long callerSp = _cpu.RegRead(Arm.UC_ARM_REG_SP);
+                long sp = (callerSp - ((arguments.Length - 4) * 4)) & ~7L;
+                for (int i = 4; i < arguments.Length; i++)
+                {
+                    WriteUInt32(sp + ((i - 4) * 4), (uint)arguments[i]);
+                }
+
+                _cpu.RegWrite(Arm.UC_ARM_REG_SP, sp);
+                Action resume = onReturn;
+                onReturn = () =>
+                {
+                    _cpu.RegWrite(Arm.UC_ARM_REG_SP, callerSp);
+                    resume();
+                };
             }
 
             long returnTrap = recycle && _freeReturnTraps.Count > 0

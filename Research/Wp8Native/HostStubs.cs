@@ -15,7 +15,7 @@ namespace WPR.Wp8Native
     /// The ARM procedure call standard puts the first four arguments in r0-r3 and the
     /// return value in r0, with 64-bit values returned in the r0:r1 pair.
     /// </remarks>
-    public sealed class HostStubs
+    public sealed partial class HostStubs
     {
         private readonly ArmEmulator _emulator;
         private readonly WinRtRuntime _winRt;
@@ -191,8 +191,8 @@ namespace WPR.Wp8Native
                 ["_calloc_crt"] = AllocateZeroed,
                 ["??2@YAPAXI@Z"] = Allocate,                                // operator new(unsigned int)
                 ["??_U@YAPAXI@Z"] = Allocate,                               // operator new[](unsigned int)
-                ["?Allocate@Heap@Details@Platform@@SAPAXI@Z"] = Allocate,   // Platform::Details::Heap::Allocate
-                ["?AllocateException@Heap@Details@Platform@@SAPAXI@Z"] = Allocate,
+                ["?Allocate@Heap@Details@Platform@@SAPAXI@Z"] = AllocateRefObject,   // Platform::Details::Heap::Allocate
+                ["?AllocateException@Heap@Details@Platform@@SAPAXI@Z"] = AllocateRefObject,
 
                 // --- CRT initialisation ---
                 ["_initterm"] = () => RunStaticInitialisers(stopOnError: false),
@@ -352,6 +352,17 @@ namespace WPR.Wp8Native
             Extras.RegisterInto(_handlers);
             Concurrency = new ConcurrencyLibrary(emulator, _frame);
             Concurrency.RegisterInto(_handlers);
+            // InitializeSListHead and the interlocked list: job systems run on them.
+            new SListLibrary(emulator, _frame).RegisterInto(_handlers);
+
+            // _onexit(fn) and __dllonexit(fn, begin, end) register an atexit callback and return
+            // fn on success; 0 is failure. A WP8 app is terminated, never exits through the CRT,
+            // so the callbacks are never run here either - but the registration succeeds.
+            _handlers["_onexit"] = () => Return(Arg(0));
+            _handlers["__dllonexit"] = () => Return(Arg(0));
+
+            // The top of the 1b to-do list: what every title reaches before its first frame.
+            RegisterStartupImports(imageDirectory);
             _winRt.RegisterEventSources(_handlers);
             // After the others: it replaces their single-threaded sleep and thread-id answers.
             Threads = new ThreadLibrary(emulator, _frame);
@@ -698,6 +709,7 @@ namespace WPR.Wp8Native
             _handlers.ContainsKey(function) ||
             ComStubs.ContainsKey(function) ||
             function is "D3D11CreateDevice" or "XAudio2Create" or "#1" ||
+            PlatformRaise.TryParse(function, 0, out _) ||
             (function.StartsWith("??0", StringComparison.Ordinal) &&
              function.Contains("Exception@Platform@@", StringComparison.Ordinal));
 
@@ -808,16 +820,201 @@ namespace WPR.Wp8Native
             // Recording them is the honest half of what can be done without wiring
             // vccorlib into the C++ exception machinery: the report then names every point
             // where the image gave up, whether or not it survived doing so.
+            // vccorlib's __abi_WinRTraise* family is the image asking for a Platform exception.
+            // Throwing it is the only honest answer: returning runs code the compiler emitted on
+            // the assumption it is unreachable.
+            if (PlatformRaise.TryParse(function, Arg(0), out PlatformRaise raise))
+            {
+                RaisePlatformException(raise, function);
+                return;
+            }
+
             if (function.Contains("raise", StringComparison.OrdinalIgnoreCase))
             {
                 _undeliveredThrows.Add(function);
             }
 
-            // Everything else returns zero. For a function returning void or a handle
-            // nobody checks that is harmless; for anything else it is a lie the caller
-            // will eventually notice, which is exactly what this probe measures.
-            DefaultedCalls[function] = DefaultedCalls.TryGetValue(function, out int calls) ? calls + 1 : 1;
+            // An import that is genuinely safe to answer with 0: see SafeToDefault.
+            if (SafeToDefault.ContainsKey(function))
+            {
+                AllowedDefaults[function] = AllowedDefaults.GetValueOrDefault(function) + 1;
+                Return(0);
+                return;
+            }
+
+            // A diagnostic run stops here, by name, so the first unimplemented import is the answer.
+            if (TrapUnknownImports)
+            {
+                TrapUnimplemented(fullName);
+                return;
+            }
+
+            // A player's run never stops for this: answer 0, write it down, keep going. For a
+            // function returning void or a handle nobody checks that is harmless; for anything else
+            // it is a lie the caller may notice frames later - and when it does, DefaultedCalls (in
+            // the order first met) goes to WPR Hub with the crash, which is how the list of imports
+            // to implement gets built from real play rather than guessed.
+            DefaultedCalls[function] = DefaultedCalls.GetValueOrDefault(function) + 1;
             Return(0);
+        }
+
+        /// <summary>
+        /// WPR_WP8_TRAP_IMPORTS=1: stop the guest at the first unimplemented import instead of
+        /// answering 0 (Plans/RUNTIME-CONVERGENCE.md, 1a). A diagnostic for the regression harness
+        /// only: a game is never blocked up front for using something not yet implemented - it
+        /// runs until it actually fails, and the failure is reported.
+        /// </summary>
+        public static readonly bool TrapUnknownImports =
+            Environment.GetEnvironmentVariable("WPR_WP8_TRAP_IMPORTS") == "1";
+
+        /// <summary>
+        /// Imports with no handler that may nonetheless be answered with 0, each with the reason
+        /// that is true. They are not counted as defaulted, and never trap even under <see cref="TrapUnknownImports"/>.
+        /// </summary>
+        /// <remarks>
+        /// The bar is the same one the patcher tables hold their entries to: an entry needs a
+        /// reason a reviewer can check against the function's contract. "The game did not crash"
+        /// is not a reason. Never add a <c>__abi_WinRTraise*</c> function here: that is the game
+        /// throwing, and <see cref="PlatformRaise"/> delivers it.
+        /// </remarks>
+        public static readonly IReadOnlyDictionary<string, string> SafeToDefault =
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["__crtSetUnhandledExceptionFilter"] = "installs a top-level SEH filter; there is no SEH here, and the previous filter it returns is only ever passed back to itself",
+                ["IsProcessorFeaturePresent"] = "0 is FALSE: the CRT then takes its portable path, which is what it does on a CPU without the feature",
+                ["?InitializeData@Details@Platform@@YAJH@Z"] = "vccorlib's per-module set-up, returning S_OK (0); vccorlib is this host, so there is no module state to set up",
+                ["?_Orphan_all@_Container_base0@std@@QAAXXZ"] = "_Container_base0 is the base with debug iterators off; every member of it is an empty void function",
+                ["?_Swap_all@_Container_base0@std@@QAAXAAU12@@Z"] = "empty void function on the no-debug-iterator base, as _Orphan_all (the _Container_base12 one is NOT empty)",
+                ["OutputDebugStringW"] = "void; the string goes to an attached debugger and none is",
+                ["OutputDebugStringA"] = "void; the string goes to an attached debugger and none is",
+            };
+
+        /// <summary>Calls to <see cref="SafeToDefault"/> imports, by name.</summary>
+        public Dictionary<string, int> AllowedDefaults { get; } = new(StringComparer.Ordinal);
+
+        /// <summary>The first unimplemented import that stopped the guest, as <c>dll!function</c>.</summary>
+        public string? FirstUnimplementedImport { get; private set; }
+
+        /// <summary>Where <see cref="FirstUnimplementedImport"/> was called from.</summary>
+        public long FirstUnimplementedCaller { get; private set; }
+
+        /// <summary>
+        /// Stops the guest at an import nothing implements, naming it. The alternative, answering
+        /// 0, made a crash report name a null call several frames later and not the import that
+        /// caused it (Angry Birds Go!: an unlinked SList flush, then a call through 0x00000000).
+        /// </summary>
+        private void TrapUnimplemented(string fullName)
+        {
+            long from = _emulator.ReturnAddress & ~1L;
+            if (FirstUnimplementedImport is null)
+            {
+                FirstUnimplementedImport = fullName;
+                FirstUnimplementedCaller = from;
+            }
+
+            Return(0);
+            _emulator.Stop($"unimplemented import {fullName}, called from 0x{from:X8}");
+        }
+
+        /// <summary>
+        /// Throws a Platform exception into the image as though vccorlib had: an object with the
+        /// Platform::Exception vtable and its HRESULT at +4, caught by type name through the same
+        /// handler search a guest <c>throw</c> uses.
+        /// </summary>
+        private void RaisePlatformException(PlatformRaise raise, string function)
+        {
+            long self = _emulator.AllocateHeap(32);
+            _emulator.WriteUInt32(self, (uint)_winRt.PlatformExceptionVtable());
+            _emulator.WriteUInt32(self + 4, (uint)raise.HResult);
+            if (_constructedExceptions.Count < 24)
+            {
+                _constructedExceptions.Add($"{function} hr=0x{raise.HResult:X8} at 0x{_emulator.ReturnAddress:X8} (raised)");
+            }
+
+            ThrowIntoImage(new ThrownException(self, raise.CatchableTypes));
+            if (RaiseLog.Count < 24)
+            {
+                RaiseLog.Add($"{raise.TypeName} from {string.Join(" <- ", ThrowStack.Take(8).Select(f => $"0x{f.Address:X8}"))}; " +
+                    (CatchCandidates.Count == 0 ? "uncaught" : $"caught as {CatchCandidates[0].CaughtType} in 0x{CatchCandidates[0].Frame.FunctionRva + _emulator.ImageBase:X8}"));
+            }
+        }
+
+        /// <summary>Each host-raised Platform exception: the stack it unwound and where it was caught.</summary>
+        public List<string> RaiseLog { get; } = new();
+
+        /// <summary>
+        /// One <c>__abi_WinRTraise*</c> import, decoded: the Platform exception it throws and the
+        /// HRESULT that exception carries.
+        /// </summary>
+        public readonly record struct PlatformRaise(string TypeName, long HResult)
+        {
+            private const string Prefix = "?__abi_WinRTraise";
+
+            // vccorlib's hierarchy: every named exception derives from COMException, which derives
+            // from Exception, from Object. C++/CX throws handles, so the catchable names are the
+            // pointer-to-hat form (.P$AAV...), exactly as they appear in the images' own catch
+            // clauses. .PAX is the void* every pointer throw is also catchable as.
+            private static readonly Dictionary<string, long> KnownHResults = new(StringComparer.Ordinal)
+            {
+                ["NotImplementedException"] = 0x80004001,
+                ["InvalidCastException"] = 0x80004002,
+                ["NullReferenceException"] = 0x80004003,
+                ["OperationCanceledException"] = 0x80004004,
+                ["FailureException"] = 0x80004005,
+                ["AccessDeniedException"] = 0x80070005,
+                ["OutOfMemoryException"] = 0x8007000E,
+                ["InvalidArgumentException"] = 0x80070057,
+                ["OutOfBoundsException"] = 0x8000000B,
+                ["ChangedStateException"] = 0x8000000C,
+                ["ClassNotRegisteredException"] = 0x80040154,
+                ["DisconnectedException"] = 0x80010108,
+                ["WrongThreadException"] = 0x8001010E,
+                ["ObjectDisposedException"] = 0x80000013,   // RO_E_CLOSED
+            };
+
+            public IReadOnlyList<string> CatchableTypes =>
+                TypeName == "COMException"
+                    ? [".P$AAVCOMException@Platform@@", ".P$AAVException@Platform@@", ".P$AAVObject@Platform@@", ".PAX"]
+                    : [$".P$AAV{TypeName}@Platform@@", ".P$AAVCOMException@Platform@@", ".P$AAVException@Platform@@", ".P$AAVObject@Platform@@", ".PAX"];
+
+            /// <summary>
+            /// Decodes <c>?__abi_WinRTraise&lt;Name&gt;@@YAX...</c>. <c>COMException</c> and the
+            /// bare <c>Exception</c> form take the HRESULT as their only argument; the bare form is
+            /// raised as the named exception that HRESULT maps to, as vccorlib does.
+            /// </summary>
+            public static bool TryParse(string function, long firstArgument, out PlatformRaise raise)
+            {
+                raise = default;
+                if (!function.StartsWith(Prefix, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                int end = function.IndexOf("@@", Prefix.Length, StringComparison.Ordinal);
+                if (end <= Prefix.Length)
+                {
+                    return false;
+                }
+
+                string name = function[Prefix.Length..end];
+                if (name is "COMException" or "Exception")
+                {
+                    long hr = firstArgument & 0xFFFFFFFFL;
+                    string? mapped = name == "Exception"
+                        ? KnownHResults.FirstOrDefault(p => p.Value == hr).Key
+                        : null;
+                    raise = new PlatformRaise(mapped ?? "COMException", hr);
+                    return true;
+                }
+
+                if (!KnownHResults.TryGetValue(name, out long known))
+                {
+                    return false;
+                }
+
+                raise = new PlatformRaise(name, known);
+                return true;
+            }
         }
 
         /// <summary>
@@ -894,7 +1091,12 @@ namespace WPR.Wp8Native
         /// <summary>Whether a word could be a vtable pointer: it points at a slot holding code.</summary>
         private bool LooksLikeVtable(long candidate)
         {
-            if (candidate == 0)
+            // Ask before reading. A recycled block's first word is often string data (0x42413938,
+            // "89AB", on Angry Birds Go!), and reading it through the exception path cost a
+            // first-chance CpuMemoryException in the log for every such object. MSVC vtables are
+            // word aligned, and both ends are checked because a word can straddle a page.
+            if (candidate == 0 || (candidate & 3) != 0
+                || !_emulator.Cpu.IsMapped(candidate) || !_emulator.Cpu.IsMapped(candidate + 3))
             {
                 return false;
             }
@@ -934,6 +1136,30 @@ namespace WPR.Wp8Native
         /// </remarks>
         private void ThrowCxxException()
         {
+            // `throw;` is _CxxThrowException(NULL, NULL): rethrow the exception the innermost
+            // catch is handling. Read it before the walk, which trims the active catches. Read
+            // as a throw of nothing it had no type, so only catch(...) could match: Angry Birds
+            // Stella rethrows rcs::CloudServiceException that way, and it skipped the typed catch
+            // that handles it, reached its thread wrapper's catch(...) and called std::terminate.
+            ThrownException? rethrown = Arg(0) == 0 && Arg(1) == 0 ? CurrentlyHandled() : null;
+
+            // r0 is the exception object, r1 its ThrowInfo.
+            ThrownException thrown = rethrown ?? _emulator.ExceptionModel.ReadThrow(Arg(0), Arg(1));
+            if (rethrown is not null)
+            {
+                TransferLog.Add($"rethrow of the {rethrown.TypeName} being handled");
+            }
+
+            ThrowIntoImage(thrown);
+        }
+
+        /// <summary>
+        /// Delivers a throw from the import trap the CPU is sitting on: unwinds from the caller,
+        /// finds the first catch that accepts one of <paramref name="thrown"/>'s type names, and
+        /// enters it. Shared by a guest <c>throw</c> and a host-raised Platform exception.
+        /// </summary>
+        private void ThrowIntoImage(ThrownException thrown)
+        {
             // The whole live register file: unwinding needs more than sp and lr, because
             // a frame-pointer restore reads the stack pointer straight out of a register.
             int[] coreRegisters =
@@ -951,33 +1177,21 @@ namespace WPR.Wp8Native
             // this, never on the frame they are unwinding to.
             _funcletStack = _emulator.ReadRegister(Arm.UC_ARM_REG_SP) - FuncletStackMargin;
 
-            // `throw;` is _CxxThrowException(NULL, NULL): rethrow the exception the innermost
-            // catch is handling. Read it before the walk, which trims the active catches. Read
-            // as a throw of nothing it had no type, so only catch(...) could match: Angry Birds
-            // Stella rethrows rcs::CloudServiceException that way, and it skipped the typed catch
-            // that handles it, reached its thread wrapper's catch(...) and called std::terminate.
-            ThrownException? rethrown = Arg(0) == 0 && Arg(1) == 0 ? CurrentlyHandled() : null;
-
             ThrowStack = _emulator.Unwinder.Walk(
                 pc: _emulator.ReturnAddress & ~1L,
                 liveRegisters: coreRegisters.Select(_emulator.ReadRegister).ToArray());
             ThrowStack = ContinueThroughCatchFunclet(ThrowStack);
 
-            ThrownText = ReadableStringsIn(rethrown?.Object ?? Arg(0), 0x100);
+            ThrownText = ReadableStringsIn(thrown.Object, 0x100);
 
-            // r0 is the exception object, r1 its ThrowInfo.
-            CxxExceptionModel model = _emulator.ExceptionModel;
-            Thrown = rethrown ?? model.ReadThrow(Arg(0), Arg(1));
-            if (rethrown is not null)
-            {
-                TransferLog.Add($"rethrow of the {rethrown.TypeName} being handled");
-            }
-            CatchCandidates = model.FindHandlers(ThrowStack, Thrown);
+            Thrown = thrown;
+            CatchCandidates = _emulator.ExceptionModel.FindHandlers(ThrowStack, Thrown);
 
             RecordThrow();
 
             if (CatchCandidates.Count == 0)
             {
+                _unwindingThreads.Remove(_emulator.CurrentThreadId);
                 // Escaping a background thread ends that thread, as an unhandled exception in a
                 // worker would on a device that kept the app alive - not the whole run. Angry
                 // Birds' network thread throws HttpRequestException with no catch of its own once
@@ -993,6 +1207,9 @@ namespace WPR.Wp8Native
                 return;
             }
 
+            // From here until the catch is entered the exception is in flight: what
+            // std::uncaught_exception reports, and what the cleanup funclets' destructors ask.
+            _unwindingThreads.Add(_emulator.CurrentThreadId);
             TransferToHandler(CatchCandidates[0], Thrown);
         }
 
@@ -1228,6 +1445,8 @@ namespace WPR.Wp8Native
 
         private void EnterCatchFunclet(CatchCandidate candidate, long frame, long funclet, ThrownException thrown)
         {
+            _unwindingThreads.Remove(_emulator.CurrentThreadId);
+
             // The code after the catch belongs to the establisher frame and expects its own
             // r4-r11, not whatever the last cleanup funclet left in them.
             IReadOnlyList<UnwoundFrame> stack = ThrowStack;
@@ -1563,6 +1782,29 @@ namespace WPR.Wp8Native
         {
             long size = Arg(0);
             Return(_emulator.AllocateHeap(size));
+        }
+
+        /// <summary>
+        /// Platform::Details::Heap::Allocate / AllocateException: the storage behind <c>ref new</c>,
+        /// zeroed.
+        /// </summary>
+        /// <remarks>
+        /// C++/CX code reads fields of a new ref-class object that nothing initialises and expects
+        /// 0. Measured on Modern Combat 4: its weak-reference getter tests a byte at this+0x78 and
+        /// raises ObjectDisposedException when it is set; a recycled block left it set, the throw
+        /// went uncaught, and the game stopped after four frames. It had worked only because the
+        /// allocator never reused memory. malloc and operator new stay unzeroed, as on a phone.
+        /// </remarks>
+        private void AllocateRefObject()
+        {
+            long size = Arg(0);
+            long block = _emulator.AllocateHeap(size);
+            if (block != 0 && size > 0)
+            {
+                _emulator.WriteMemory(block, new byte[size]);
+            }
+
+            Return(block);
         }
 
         /// <summary>

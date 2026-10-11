@@ -66,7 +66,7 @@ namespace WPR.Wp8Native
             Buffer = 0x38, Tie = 0x3C, Fill = 0x40, IosSize = 0x48;
 
         // basic_streambuf<char> vtable slots
-        private const int SlotOverflow = 3, SlotUnderflow = 6, SlotUflow = 7, SlotXsputn = 9, SlotSync = 13;
+        private const int SlotOverflow = 3, SlotUnderflow = 6, SlotUflow = 7, SlotXsgetn = 8, SlotXsputn = 9, SlotSeekoff = 10, SlotSync = 13;
 
         private const string Sb = "basic_streambuf@DU?$char_traits@D@std@@@std@@";
         private const string Ios = "basic_ios@DU?$char_traits@D@std@@@std@@";
@@ -198,6 +198,113 @@ namespace WPR.Wp8Native
             handlers[$"??5?${Is}QAAAAV01@AAI@Z"] = () => ReadUnsigned(4);   // unsigned int&
             handlers[$"??5?${Is}QAAAAV01@AAG@Z"] = () => ReadUnsigned(2);   // unsigned short&
 
+            // operator>>(ios_base& (*)(ios_base&)) - hex, dec, skipws, ...: called on the ios, returns *this.
+            handlers[$"??5?${Is}QAAAAV01@P6AAAVios_base@1@AAV21@@Z@Z"] = () =>
+            {
+                long self = _frame.Arg(0);
+                long function = _frame.Arg(1);
+                long returnTo = _emulator.ReturnAddress;
+                CallGuest(function, [IosOf(self)], _ => Finish(self, returnTo));
+            };
+
+            // pos_type tellg(): rdbuf()->pubseekoff(0, cur, in) unless fail(), else pos_type(-1).
+            // MSVC on ARM passes this in r0 and the hidden pos_type* in r1 - read off Terraria's own
+            // call site - and returns that pointer. The caller's buffer is handed straight to the
+            // game's seekoff, which fills it.
+            handlers[$"?tellg@?${Is}QAA?AV?$fpos@H@2@XZ"] = () =>
+            {
+                long self = _frame.Arg(0);
+                long result = _frame.Arg(1);
+                long returnTo = _emulator.ReturnAddress;
+                long ios = IosOf(self);
+                long sb = Read32(ios + Buffer);
+                Prefix(self, noSkip: true, ok =>
+                {
+                    if (!ok)
+                    {
+                        WriteFpos(result, -1);
+                        Finish(result, returnTo);
+                        return;
+                    }
+
+                    CallGuest(VirtualSlot(sb, SlotSeekoff), [sb, result, 0, 0, SeekCur, OpenIn], _ => Finish(result, returnTo));
+                });
+            };
+
+            // basic_istream& seekg(off_type, seekdir): off_type is 64-bit, so r2:r3, and the
+            // direction is on the stack. C++11 clears eofbit first (a stream read to its end can be
+            // rewound); failbit if the buffer answers -1.
+            handlers[$"?seekg@?${Is}QAAAAV12@_JH@Z"] = () =>
+            {
+                long self = _frame.Arg(0);
+                long offset = Arg64();
+                long direction = _frame.Arg(4);
+                long returnTo = _emulator.ReturnAddress;
+                long ios = IosOf(self);
+                long sb = Read32(ios + Buffer);
+                Write32(ios + State, Read32(ios + State) & ~EofBit);
+                Prefix(self, noSkip: true, ok =>
+                {
+                    if (!ok)
+                    {
+                        Finish(self, returnTo);
+                        return;
+                    }
+
+                    long position = _emulator.AllocateHeap(24);
+                    CallGuest(
+                        VirtualSlot(sb, SlotSeekoff),
+                        [sb, position, offset & 0xFFFFFFFF, (offset >> 32) & 0xFFFFFFFF, direction, OpenIn],
+                        _ =>
+                        {
+                            if (FposOffset(position) == -1)
+                            {
+                                SetState(ios, FailBit);
+                            }
+
+                            _emulator.FreeHeap(position);
+                            Finish(self, returnTo);
+                        });
+                });
+            };
+
+            // basic_istream& read(char*, streamsize): rdbuf()->sgetn into the buffer, the count in
+            // _Chcount (+8), eof|fail on a short read. streamsize is 64-bit: r2:r3, and xsgetn
+            // answers it in r0:r1.
+            handlers[$"?read@?${Is}QAAAAV12@PAD_J@Z"] = () =>
+            {
+                long self = _frame.Arg(0);
+                long buffer = _frame.Arg(1);
+                long count = Arg64();
+                long returnTo = _emulator.ReturnAddress;
+                long ios = IosOf(self);
+                long sb = Read32(ios + Buffer);
+                _emulator.WriteUInt64(self + 8, 0);
+                Prefix(self, noSkip: true, ok =>
+                {
+                    if (!ok)
+                    {
+                        Finish(self, returnTo);
+                        return;
+                    }
+
+                    CallGuest(
+                        VirtualSlot(sb, SlotXsgetn),
+                        [sb, buffer, count & 0xFFFFFFFF, (count >> 32) & 0xFFFFFFFF],
+                        low =>
+                        {
+                            long got = (long)((ulong)(uint)low | ((ulong)(uint)_frame.Arg(1) << 32));
+                            _emulator.WriteUInt64(self + 8, (ulong)Math.Max(0, got));
+                            if (got != count)
+                            {
+                                SetState(ios, EofBit | FailBit);
+                            }
+
+                            Finish(self, returnTo);
+                        });
+                });
+            };
+
             // int_type get(): one character, unformatted. Unimplemented, it answered 0 rather
             // than EOF, and Modern Combat 4's read-to-end loop span for ever.
             handlers[$"?get@?${Is}QAAHXZ"] = () =>
@@ -314,6 +421,22 @@ namespace WPR.Wp8Native
 
             Write32(ios + State, state);
         }
+
+        private const long SeekCur = 1, OpenIn = 1;
+
+        /// <summary>
+        /// fpos&lt;_Mbstatet&gt; as VC11 lays it out: streamoff _Myoff (8), fpos_t _Fpos (8), then the
+        /// conversion state (8). The offset it stands for is _Myoff + _Fpos.
+        /// </summary>
+        private void WriteFpos(long fpos, long offset)
+        {
+            _emulator.WriteUInt64(fpos, (ulong)offset);
+            _emulator.WriteUInt64(fpos + 8, 0);
+            _emulator.WriteUInt64(fpos + 16, 0);
+        }
+
+        private long FposOffset(long fpos) =>
+            BitConverter.ToInt64(_emulator.ReadMemory(fpos, 8)) + BitConverter.ToInt64(_emulator.ReadMemory(fpos + 8, 8));
 
         private void Finish(long value, long returnTo)
         {

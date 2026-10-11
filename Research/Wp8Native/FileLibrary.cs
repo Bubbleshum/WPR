@@ -17,7 +17,7 @@ namespace WPR.Wp8Native
     /// an asset opened as <c>Data/Scripts/x.lua</c> would not be found on disk as
     /// <c>data/scripts/x.lua</c>. Every lookup falls back to a case-insensitive walk.
     /// </remarks>
-    public sealed class FileLibrary
+    public sealed partial class FileLibrary
     {
         private const int ErrorFileNotFound = 2;
         private const int ErrorPathNotFound = 3;
@@ -242,6 +242,8 @@ namespace WPR.Wp8Native
 
             handlers["GetLastError"] = () => _frame.Return(_lastError);
             handlers["SetLastError"] = () => { _lastError = (int)_frame.Arg(0); _frame.Return(0); };
+
+            RegisterMappingAndStat(handlers);
         }
 
         // ---------------------------------------------------------------------------

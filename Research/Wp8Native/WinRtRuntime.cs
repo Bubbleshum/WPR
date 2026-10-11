@@ -48,6 +48,24 @@ namespace WPR.Wp8Native
             _emulator = emulator;
             _strings = strings;
 
+            // The slot constants stay constants because switches need them; this is what keeps
+            // each one honest against the interface it claims to describe.
+            _slotDrift.AddRange(WinRtSystemInterfaces.Verify(
+            [
+                ("Windows.UI.Core.ICoreWindow", "add_PointerMoved", SlotAddPointerMoved),
+                ("Windows.UI.Core.ICoreWindow", "add_PointerPressed", SlotAddPointerPressed),
+                ("Windows.UI.Core.ICoreWindow", "add_PointerReleased", SlotAddPointerReleased),
+                ("Windows.ApplicationModel.Core.ICoreApplication", "Run", SlotCoreApplicationRun),
+                ("Windows.ApplicationModel.Core.IFrameworkViewSource", "CreateView", SlotCreateView),
+                ("Windows.Storage.IApplicationDataStatics", "get_Current", SlotApplicationDataCurrent),
+                ("Windows.Storage.IApplicationData", "get_LocalSettings", SlotLocalSettings),
+                ("Windows.Storage.IApplicationData", "get_LocalFolder", SlotLocalFolder),
+                ("Windows.Storage.IApplicationData", "get_RoamingFolder", SlotRoamingFolder),
+                ("Windows.Storage.IApplicationData", "get_TemporaryFolder", SlotTemporaryFolder),
+                ("Windows.Storage.IStorageItem", "get_Name", SlotStorageItemName),
+                ("Windows.Storage.IStorageItem", "get_Path", SlotStorageItemPath),
+            ]));
+
             RegisterMemoryManager();
             RegisterCoreApplicationProbe();
 
@@ -1337,20 +1355,94 @@ namespace WPR.Wp8Native
             for (int i = 0; i < CoreApplicationProbeSlots; i++)
             {
                 int slot = InspectableSlots + i;
-                methods[i] = slot == SlotCoreApplicationRun
-                    ? ("Run", CoreApplicationRun)
-                    : ($"slot{slot}", () =>
+                methods[i] = slot switch
+                {
+                    SlotCoreApplicationRun => ("Run", CoreApplicationRun),
+
+                    // HRESULT get_Id(HSTRING*). The null HSTRING is the empty string.
+                    InspectableSlots + 0 => ("get_Id", () =>
+                    {
+                        if (Arg(1) != 0)
+                        {
+                            _emulator.WriteUInt32(Arg(1), 0);
+                        }
+
+                        Return(HResultOk);
+                    }),
+
+                    // The two lifecycle events, by the documented member order. Every Angry
+                    // Birds title subscribes to Suspending at boot; answered E_NOTIMPL, the
+                    // image threw NotImplementedException out of its own App constructor, which
+                    // only went unnoticed while that throw was silently dropped.
+                    InspectableSlots + 1 => ("add_Suspending", AddLifecycleHandler(_suspendingHandlers)),
+                    InspectableSlots + 2 => ("remove_Suspending", RemoveLifecycleHandler(_suspendingHandlers)),
+                    InspectableSlots + 3 => ("add_Resuming", AddLifecycleHandler(_resumingHandlers)),
+                    InspectableSlots + 4 => ("remove_Resuming", RemoveLifecycleHandler(_resumingHandlers)),
+
+                    _ => (WinRtSystemInterfaces.NameAt("ICoreApplication", slot), () =>
                     {
                         // Log the argument registers too: for an unidentified slot they are
                         // the only evidence of what the method actually is.
                         _unimplementedCalls.Add(
-                            $"ICoreApplication::slot{slot}  this=0x{Arg(0):X8} r1=0x{Arg(1):X8} r2=0x{Arg(2):X8}");
+                            $"{WinRtSystemInterfaces.Describe("ICoreApplication", slot)}  this=0x{Arg(0):X8} r1=0x{Arg(1):X8} r2=0x{Arg(2):X8}");
                         Return(HResultNotImplemented);
-                    });
+                    }),
+                };
             }
 
             _factories[CoreApplicationClass] = CreateObject("ICoreApplication", methods);
         }
+
+        private readonly List<string> _slotDrift = new();
+
+        /// <summary>
+        /// Hand-named slots that disagree with the WinRT metadata (<see cref="WinRtSystemInterfaces"/>).
+        /// Expected empty; anything here is a stand-in answering the wrong member.
+        /// </summary>
+        public IReadOnlyList<string> SlotDrift => _slotDrift;
+
+        private readonly Dictionary<long, long> _suspendingHandlers = new();
+        private readonly Dictionary<long, long> _resumingHandlers = new();
+        private long _nextLifecycleToken = 1;
+
+        /// <summary>CoreApplication.Suspending handlers the image registered, by token. Not raised yet (RUNTIME-CONVERGENCE 3c).</summary>
+        public IReadOnlyDictionary<long, long> SuspendingHandlers => _suspendingHandlers;
+
+        /// <summary>CoreApplication.Resuming handlers the image registered, by token. Not raised yet (RUNTIME-CONVERGENCE 3c).</summary>
+        public IReadOnlyDictionary<long, long> ResumingHandlers => _resumingHandlers;
+
+        /// <summary>
+        /// <c>HRESULT add_X(handler, EventRegistrationToken*)</c>: records the handler and writes a
+        /// distinct 64-bit token, and takes a reference on the handler: the caller releases its own
+        /// the moment this returns, and the allocator recycles, so an unreferenced delegate is
+        /// reused memory by the time 3c raises it.
+        /// </summary>
+        private Action AddLifecycleHandler(Dictionary<long, long> handlers) => () =>
+        {
+            long token = _nextLifecycleToken++;
+            handlers[token] = Arg(1);
+            if (Arg(2) != 0)
+            {
+                _emulator.WriteUInt64(Arg(2), (ulong)token);
+            }
+
+            if (KeepAlive(Arg(1)))
+            {
+                return;
+            }
+
+            Return(HResultOk);
+        };
+
+        /// <summary>
+        /// <c>HRESULT remove_X(EventRegistrationToken)</c>. The token is 64 bits, so on ARM it
+        /// arrives in the aligned register pair r2:r3, not r1.
+        /// </summary>
+        private Action RemoveLifecycleHandler(Dictionary<long, long> handlers) => () =>
+        {
+            handlers.Remove((Arg(3) << 32) | (Arg(2) & 0xFFFFFFFFL));
+            Return(HResultOk);
+        };
 
         /// <summary>
         /// Implements the WinRT app model entry point by calling back into the image.
@@ -1901,10 +1993,12 @@ namespace WPR.Wp8Native
                     continue;
                 }
 
-                methods[i] = ($"slot{slot}", () =>
+                string described = WinRtSystemInterfaces.Describe(interfaceName, slot);
+                WinRtSystemInterfaces.Method? declared = WinRtSystemInterfaces.Find(interfaceName)?.At(slot);
+                methods[i] = (WinRtSystemInterfaces.NameAt(interfaceName, slot), () =>
                 {
                     _unimplementedCalls.Add(
-                        $"{interfaceName}::slot{slot}  this=0x{Arg(0):X8} r1=0x{Arg(1):X8} r2=0x{Arg(2):X8}");
+                        $"{described}  this=0x{Arg(0):X8} r1=0x{Arg(1):X8} r2=0x{Arg(2):X8}");
 
                     // Every call on a class nobody implements is a line in the specification
                     // of what implementing it would take.
@@ -1914,6 +2008,13 @@ namespace WPR.Wp8Native
                         () => VtableProfile.DescribeCall(_emulator, _strings, Arg(1), Arg(2), Arg(3)),
                         VtableProfile.LooksLikeDelegate(_emulator, Arg(1)) ||
                         VtableProfile.LooksLikeDelegate(_emulator, Arg(2)));
+
+                    // The metadata knows this member: answer it by its signature (WinRtSignatureAnswers.cs).
+                    // What follows is the shape-guessing, for interfaces the metadata does not cover.
+                    if (declared is not null && AnswerBySignature(declared, interfaceName, slot, described, failing))
+                    {
+                        return;
+                    }
 
                     // A class this runtime cannot honestly stand in for answers failure - but
                     // still fills the out-parameter, which is the one place this probe
@@ -1934,7 +2035,7 @@ namespace WPR.Wp8Native
                     {
                         if (ArmEmulator.IsStackAddress(Arg(1)))
                         {
-                            _emulator.WriteUInt32(Arg(1), (uint)GetPlaceholder($"{interfaceName}::slot{slot}"));
+                            _emulator.WriteUInt32(Arg(1), (uint)GetPlaceholder(described));
                         }
 
                         Return(HResultFail);
@@ -1949,7 +2050,7 @@ namespace WPR.Wp8Native
                     // the whole point is to see what gets called next.
                     if (ArmEmulator.IsStackAddress(Arg(1)))
                     {
-                        _emulator.WriteUInt32(Arg(1), (uint)GetPlaceholder($"{interfaceName}::slot{slot}"));
+                        _emulator.WriteUInt32(Arg(1), (uint)GetPlaceholder(described));
                     }
                     else if (ArmEmulator.IsStackAddress(Arg(2)) && !LooksLikeDelegate(Arg(1)))
                     {
@@ -1958,7 +2059,7 @@ namespace WPR.Wp8Native
                         // event registration wrote an 8-byte token into a 4-byte out slot, over
                         // the caller's stack cookie, and the image __fastfail'd. One word, a
                         // placeholder object, as for an out-pointer in r1.
-                        _emulator.WriteUInt32(Arg(2), (uint)GetPlaceholder($"{interfaceName}::slot{slot}"));
+                        _emulator.WriteUInt32(Arg(2), (uint)GetPlaceholder(described));
                     }
                     else if (ArmEmulator.IsStackAddress(Arg(2)))
                     {
@@ -2002,7 +2103,7 @@ namespace WPR.Wp8Native
                         // quietest way to hang an image there is. It carries on, drawing
                         // frames, running its main loop, waiting for an answer that this
                         // runtime accepted responsibility for and never gave.
-                        if (CompleteAsync(Arg(0), Arg(1), $"{interfaceName}::slot{slot}"))
+                        if (CompleteAsync(Arg(0), Arg(1), described))
                         {
                             return;
                         }
@@ -2169,6 +2270,20 @@ namespace WPR.Wp8Native
                 ("GetTrustLevel", GetTrustLevel),
                 .. methods,
             ];
+
+            // A slot the code names by hand must be the member the metadata puts there.
+            if (WinRtSystemInterfaces.Find(interfaceName) is { } layout)
+            {
+                for (int i = InspectableSlots; i < all.Length; i++)
+                {
+                    // "RunAsync+priority" labels one overload of RunAsync: compare the name part.
+                    if (layout.At(i) is { } declared && all[i].Name.Split('+')[0] != declared.Name &&
+                        !all[i].Name.StartsWith("slot", StringComparison.Ordinal))
+                    {
+                        _slotDrift.Add($"{interfaceName} slot {i}: code says {all[i].Name}, metadata says {declared.Name}");
+                    }
+                }
+            }
 
             for (int i = 0; i < all.Length; i++)
             {

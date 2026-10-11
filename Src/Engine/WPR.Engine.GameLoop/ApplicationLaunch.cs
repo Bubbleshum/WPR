@@ -407,6 +407,45 @@ namespace WPR
         }
 
         /// <summary>
+        /// Queues a WPR Hub crash report for a WP8 guest that stopped on its own. The guest has no
+        /// managed stack, so the report's "stack" is the guest's own post-mortem: the stop reason
+        /// first (the hub groups crashes by their top lines, so one guest fault is one group), then
+        /// the run summary - including every import and WinRT member that was answered with a
+        /// default rather than implemented - and the registers, threads and last calls.
+        /// </summary>
+        private static void ReportGuestFailure(Application app, WPR.Wp8Native.Wp8GuestFailure failure)
+        {
+            try
+            {
+                if (OnlineBackend.Crashes is not { } reporter)
+                {
+                    return;
+                }
+
+                CrashReport report = new CrashReport
+                {
+                    Source = CrashReport.Sources.GameRun,
+                    RuntimePath = CrashReport.RuntimePaths.Other,
+                    ExceptionType = "WP8 guest stopped",
+                    ExceptionMessage = $"{failure.Reason} (after {failure.FramesPresented} frame(s))",
+                    StackTrace = failure.Reason + '\n' + failure.Details,
+                    TitleId = app.ProductId,
+                    TitleName = app.Name,
+                    InstallFolder = WprHostEnvironment.CurrentInstallFolder
+                        ?? Path.Combine(Configuration.Current!.DataPath(Application.DataStoreFolder), app.ProductId!),
+                    GraphicsBackend = WPR.Engine.Graphics.GraphicsCapabilitiesStore.Current?.Backend
+                        ?? WPR.Engine.Graphics.GraphicsDriverPreference.ResolveDriverName(),
+                };
+                reporter.Report(report);
+                TeardownLog($"WP8 guest failure reported: {failure.Reason}");
+            }
+            catch (Exception reportEx)
+            {
+                TeardownLog("WP8 guest failure could not be reported: " + reportEx.Message);
+            }
+        }
+
+        /// <summary>
         /// Reports an exception that kills the process while a game is running - one thrown on a
         /// thread the game started, which nothing above can catch.
         ///
@@ -756,8 +795,7 @@ namespace WPR
                     {
                         // The guest's local folder sits where PerGameIsolatedStorage puts every
                         // title's store, so "clear data" and uninstall-with-saves cover it too.
-                        string sandbox = Path.Combine(
-                            Configuration.Current!.DataPath("IsolatedStore"), app.ProductId!, "AppFiles");
+                        string sandbox = WPR.WindowsCompability.PerGameIsolatedStorage.GameRoot(app.ProductId!);
                         obj = new WPR.Wp8Native.Wp8NativeGame(
                             asmPath, sandbox, msg => Trace.WriteLine(msg),
                             new WPR.Wp8Native.Wp8NativeXboxHost(app.ProductId!, app.Name));
@@ -901,6 +939,13 @@ namespace WPR
                         {
                             obj.Run();
                             WprTrace("[wpr-trace] ApplicationLaunch: Game.Run() returned normally");
+
+                            // A WP8 guest that died ends its Game normally - Exit() from the guest
+                            // thread - so nothing above sees an exception. Report it here instead.
+                            if (obj is WPR.Wp8Native.Wp8NativeGame { Failure: { } wp8Failure })
+                            {
+                                ReportGuestFailure(app, wp8Failure);
+                            }
                         }
                         catch (Exception ex)
                         {

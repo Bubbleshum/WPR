@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Generates Research/Wp8Native/WinRtSystemInterfaces.g.cs: the vtable layout of every WinRT
+    system interface in the namespaces WP8 titles reach, read from Windows' own metadata
+    (%WINDIR%\System32\WinMetadata). The output is committed, because an Android device has no
+    WinMetadata to read at run time.
+
+      run Research/Wp8Native/Tools/WinRtSlotGen (dotnet run, double-dash project option)
+
+    Not part of WPR.sln. Reuses the probe's WinmdReader so the generator and the runtime agree on
+    what a slot is.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>WPR.Wp8Native.Tools</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\WinmdReader.cs" Link="WinmdReader.cs" />
+  </ItemGroup>
+
+</Project>

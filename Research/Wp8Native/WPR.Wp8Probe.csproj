@@ -33,6 +33,8 @@
     <Compile Remove="Desktop\**" />
     <None Remove="Desktop\**" />
     <Compile Remove="Runtime\**" />
+    <None Remove="Tools\**" />
+    <Compile Remove="Tools\**" />
     <None Remove="Runtime\**" />
   </ItemGroup>
 

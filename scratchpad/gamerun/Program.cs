@@ -40,6 +40,17 @@ namespace GameRun
             Configuration.Current = new Configuration(Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WPR"));
 
+            // gamerun --install <xap>: one XAP through the real install pipeline, then exit. The
+            // desktop head's --reinstall-all would also repatch every installed game.
+            if (productId == "--install" && args.Length > 1)
+            {
+                using var xap = new FileStream(args[1], FileMode.Open, FileAccess.Read, FileShare.Read);
+                var err = WPR.ApplicationInstaller.Install(xap, _ => { }, _ => new AlwaysTrue(), System.Threading.CancellationToken.None, packageSource: args[1])
+                    .GetAwaiter().GetResult();
+                Console.Error.WriteLine($"[gamerun] install {Path.GetFileName(args[1])} -> {err}");
+                Environment.Exit(err == WPR.ApplicationInstallError.None ? 0 : 1);
+            }
+
             using var ctx = new ApplicationContext();
             var apps = ctx.Applications.AsNoTracking().ToList();
             var app = apps.FirstOrDefault(a =>
@@ -59,6 +70,10 @@ namespace GameRun
 
             WPR.Xna.Rhi.XnaBackend.SetAchievements(new WPR.Database.Achievements.EfAchievementStore());
             Console.Error.WriteLine("[gamerun] achievement store registered");
+
+            // What a crash report would carry to WPR Hub, printed instead of queued (the real
+            // reporter is composed by a head, which this harness has none of).
+            WPR.Engine.Online.OnlineBackend.SetCrashReporter(new PrintingCrashReporter());
 
             var host = new FnaGameHost(app);
             if (script != null)
@@ -98,6 +113,36 @@ namespace GameRun
             host.RunAsync().GetAwaiter().GetResult();
             Console.Error.WriteLine($"[gamerun] game loop returned, host state={host.State}");
             Environment.Exit(0);
+        }
+    }
+
+    internal sealed class PrintingCrashReporter : WPR.Engine.Online.ICrashReporter
+    {
+        public void Report(WPR.Engine.Online.CrashReport r)
+        {
+            Console.Error.WriteLine($"[crash-report] {r.Source} {r.RuntimePath} title={r.TitleId} type={r.ExceptionType}");
+            Console.Error.WriteLine($"[crash-report] message: {r.ExceptionMessage}");
+            foreach (string line in (r.StackTrace ?? "").Split('\n').Take(40))
+            {
+                Console.Error.WriteLine("[crash-report]   " + line);
+            }
+        }
+
+        public System.Threading.Tasks.Task FlushAsync() => System.Threading.Tasks.Task.CompletedTask;
+    }
+
+    internal sealed class AlwaysTrue : IObservable<bool>
+    {
+        public IDisposable Subscribe(IObserver<bool> observer)
+        {
+            observer.OnNext(true);
+            observer.OnCompleted();
+            return new Nothing();
+        }
+
+        private sealed class Nothing : IDisposable
+        {
+            public void Dispose() { }
         }
     }
 }

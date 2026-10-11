@@ -115,6 +115,14 @@ namespace WPR.WindowsCompability
         public static string GameRoot(string storesRoot, string productId)
             => Path.Combine(storesRoot, productId, ScopeFolderName) + Path.DirectorySeparatorChar;
 
+        /// <summary>
+        /// <see cref="GameRoot(string, string)"/> under the current configuration's data store.
+        /// For a host that keeps a game's local folder itself (the WP8 native sandbox), so it
+        /// lands where "clear data" and uninstall-with-saves look.
+        /// </summary>
+        public static string GameRoot(string productId)
+            => GameRoot(Configuration.Current!.DataPath(StoresFolderName), productId);
+
         private static FieldInfo? ResolveRootField()
         {
             if (!s_rootFieldResolved)

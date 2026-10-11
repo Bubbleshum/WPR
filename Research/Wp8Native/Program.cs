@@ -314,7 +314,13 @@ foreach (string line in emulator.Stubs.Streams.Log.Take(12))
     Console.WriteLine($"  streams       {line}");
 }
 
-Console.WriteLine($"  DEFAULTED     {emulator.Stubs.DefaultedCalls.Count} import(s) reached no handler and were answered with 0:");
+Console.WriteLine($"  TRAPPED       {(emulator.Stubs.FirstUnimplementedImport is { } trapped ? $"{trapped} from 0x{emulator.Stubs.FirstUnimplementedCaller:X8}" : "nothing")}");
+foreach (var (name, calls) in emulator.Stubs.AllowedDefaults.OrderByDescending(p => p.Value))
+{
+    Console.WriteLine($"  allowed 0     {calls,8:N0}  {name}");
+}
+
+Console.WriteLine($"  DEFAULTED     {emulator.Stubs.DefaultedCalls.Count} import(s) reached no handler and were answered with 0, in the order first met:");
 foreach (var (name, calls) in emulator.Stubs.DefaultedCalls.OrderByDescending(p => p.Value))
 {
     Console.WriteLine($"       {calls,8:N0}  {name}");

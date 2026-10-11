@@ -135,6 +135,44 @@ namespace WPR.Wp8Native
                 Unlock(_frame.Arg(0));
                 _frame.Return(ThrdSuccess);
             };
+            // --- Concurrency::critical_section and its scoped_lock ---
+            // The same owner-count model as _Mtx, keyed by the critical_section's address. Titles
+            // import only the four constructors and destructors (lock and unlock are inlined into
+            // them), so these are the whole class as far as any image here is concerned. ConcRT's
+            // lock is not recursive - re-locking from the owner throws improper_lock - but taking
+            // it again is the lenient answer and matches what _Mtx does here.
+            handlers["??0critical_section@Concurrency@@QAA@XZ"] = () =>
+            {
+                _mutexes.Remove(_frame.Arg(0));
+                _frame.Return(_frame.Arg(0));
+            };
+            handlers["??1critical_section@Concurrency@@QAA@XZ"] = () =>
+            {
+                _mutexes.Remove(_frame.Arg(0));
+                _frame.Return(0);
+            };
+            handlers["?lock@critical_section@Concurrency@@QAAXXZ"] = () => LockAndReturn(_frame.Arg(0), 0);
+            handlers["?unlock@critical_section@Concurrency@@QAAXXZ"] = () =>
+            {
+                Unlock(_frame.Arg(0));
+                _frame.Return(0);
+            };
+            handlers["?try_lock@critical_section@Concurrency@@QAA_NXZ"] = () => _frame.Return(TryTake(_frame.Arg(0)) ? 1 : 0);
+
+            // scoped_lock(critical_section&): stores the reference at this+0 and locks it; the
+            // destructor unlocks whatever this+0 names. Returns this, as a constructor does.
+            handlers["??0scoped_lock@critical_section@Concurrency@@QAA@AAV12@@Z"] = () =>
+            {
+                long self = _frame.Arg(0), section = _frame.Arg(1);
+                _emulator.WriteUInt32(self, (uint)section);
+                LockAndReturn(section, self);
+            };
+            handlers["??1scoped_lock@critical_section@Concurrency@@QAA@XZ"] = () =>
+            {
+                Unlock(_emulator.ReadUInt32(_frame.Arg(0)));
+                _frame.Return(0);
+            };
+
             handlers["_Mtx_current_owns"] = () =>
                 _frame.Return(_mutexes.TryGetValue(_frame.Arg(0), out var m) && m.Owner == _emulator.CurrentThreadId ? 1 : 0);
 
@@ -202,10 +240,12 @@ namespace WPR.Wp8Native
             return false;
         }
 
-        private void Lock()
+        private void Lock() => LockAndReturn(_frame.Arg(0), ThrdSuccess);
+
+        /// <summary>Takes <paramref name="mutex"/>, blocking while another thread holds it, and leaves <paramref name="result"/> in r0.</summary>
+        private void LockAndReturn(long mutex, long result)
         {
-            long mutex = _frame.Arg(0);
-            _frame.Return(ThrdSuccess);
+            _frame.Return(result);
             if (TryTake(mutex))
             {
                 return;

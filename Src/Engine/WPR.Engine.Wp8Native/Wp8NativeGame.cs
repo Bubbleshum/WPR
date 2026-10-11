@@ -87,6 +87,13 @@ namespace WPR.Wp8Native
             TargetElapsedTime = TimeSpan.FromTicks(166667);
         }
 
+        /// <summary>
+        /// Set when the guest stopped on its own - a fault, an uncaught throw, a diagnostic trap -
+        /// rather than because the game was closed. ApplicationLaunch turns it into a WPR Hub crash
+        /// report, which is how a WP8 title that fails in a player's hands reaches the to-do list.
+        /// </summary>
+        public Wp8GuestFailure? Failure { get; private set; }
+
         /// <summary>Why the guest stopped, once it has.</summary>
         public string? Outcome { get; private set; }
 
@@ -184,8 +191,24 @@ namespace WPR.Wp8Native
             }
 
             Outcome = fault ?? _emulator?.StopReason ?? "the image returned";
+
+            // The guest ending on its own is a failure to report, unless the player closed the game
+            // (OnExiting/Dispose set _closing first) or the image simply returned from its entry point.
+            bool failed = !_closing && Outcome != "the image returned";
+            if (failed)
+            {
+                _capture = new List<string>();
+            }
+
             Log($"guest stopped after {_presented:N0} frame(s): {Outcome}");
+            LogSummary();
             LogPostMortem();
+
+            if (failed)
+            {
+                Failure = new Wp8GuestFailure(Outcome, _presented, string.Join('\n', _capture!));
+                _capture = null;
+            }
 
             // The guest is gone; there is nothing left to show. Ending the Game takes the window
             // down the way any XNA title's exit does, and the launcher reports the outcome.
@@ -193,6 +216,36 @@ namespace WPR.Wp8Native
             {
                 Exit();
             }
+        }
+
+        /// <summary>
+        /// One line per run, whatever ended it, for the library regression table
+        /// (Plans/RUNTIME-CONVERGENCE.md, 1b): frames presented, the import that stopped the guest
+        /// if one did, and every import still answered with 0. Logged even on a normal exit,
+        /// which <see cref="LogPostMortem"/> is not.
+        /// </summary>
+        private void LogSummary()
+        {
+            HostStubs? stubs = _emulator?.Stubs;
+            if (stubs is null)
+            {
+                return;
+            }
+
+            string trap = stubs.FirstUnimplementedImport is { } import
+                ? $"{import} from 0x{stubs.FirstUnimplementedCaller:X8}"
+                : "none";
+            foreach (string drift in _emulator!.WinRt.SlotDrift)
+            {
+                Log("slot drift: " + drift);
+            }
+
+            Log($"summary: frames={_presented} trap={trap} " +
+                $"defaulted=[{string.Join(", ", stubs.DefaultedCalls.Select(p => $"{p.Key} x{p.Value}"))}] " +
+                $"allowed=[{string.Join(", ", stubs.AllowedDefaults.Select(p => $"{p.Key} x{p.Value}"))}] " +
+                $"raised=[{string.Join("; ", stubs.RaiseLog)}] " +
+                $"slottrap={_emulator!.WinRt.FirstUnanswerableSlot ?? "none"} " +
+                $"defaultedslots=[{string.Join(", ", _emulator.WinRt.DefaultedSlots.Select(p => $"{p.Key} x{p.Value}"))}]");
         }
 
         /// <summary>
@@ -416,10 +469,7 @@ namespace WPR.Wp8Native
             _audio?.Pump();
 
             // One guest frame per tick, never banked beyond two.
-            if (_tick.CurrentCount < 2)
-            {
-                try { _tick.Release(); } catch (SemaphoreFullException) { }
-            }
+            WakeGuest();
 
             ReportStatistics();
             base.Update(gameTime);
@@ -732,7 +782,14 @@ namespace WPR.Wp8Native
         private long _statsCalls;
         private Dictionary<string, int> _lastCounts = new();
 
-        private void Log(string message) => _log?.Invoke("[wpr-wp8] " + message);
+        private void Log(string message)
+        {
+            _capture?.Add(message);
+            _log?.Invoke("[wpr-wp8] " + message);
+        }
+
+        /// <summary>While set, every logged line is also kept, to become <see cref="Failure"/>.</summary>
+        private List<string>? _capture;
 
         // Android's AudioTrack, unlike FAudio's device, is not paused with the app: without this
         // the buffered tail plays over the home screen.
@@ -748,11 +805,24 @@ namespace WPR.Wp8Native
             base.OnActivated(sender, args);
         }
 
+        /// <summary>
+        /// Releases one guest tick unless two are already banked. Shutdown reaches this from both
+        /// <see cref="OnExiting"/> and <see cref="Dispose(bool)"/>, and an unguarded second release
+        /// threw <see cref="SemaphoreFullException"/>: caught, but it put a first-chance stack trace
+        /// in every crash report. The catch stays because the check and the release are not atomic.
+        /// </summary>
+        private void WakeGuest()
+        {
+            if (_tick.CurrentCount >= 2)
+                return;
+            try { _tick.Release(); } catch (SemaphoreFullException) { }
+        }
+
         protected override void OnExiting(object sender, EventArgs args)
         {
             _closing = true;
             try { _emulator?.Stop("host exiting"); } catch { }
-            try { _tick.Release(); } catch { }
+            WakeGuest();
             base.OnExiting(sender, args);
         }
 
@@ -762,7 +832,7 @@ namespace WPR.Wp8Native
             {
                 _closing = true;
                 try { _emulator?.Stop("host disposed"); } catch { }
-                try { _tick.Release(); } catch { }
+                WakeGuest();
 
                 // The guest thread is inside the JIT; give it a moment to notice the stop before
                 // its CPU and memory are torn down underneath it.
@@ -803,4 +873,7 @@ namespace WPR.Wp8Native
             base.Dispose(disposing);
         }
     }
+
+    /// <summary>A WP8 guest that stopped on its own: why, how far it got, and the post-mortem (summary first).</summary>
+    public sealed record Wp8GuestFailure(string Reason, long FramesPresented, string Details);
 }
