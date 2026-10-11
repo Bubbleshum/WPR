@@ -1238,6 +1238,9 @@ namespace WPR.Wp8Native
         /// finds the first catch that accepts one of <paramref name="thrown"/>'s type names, and
         /// enters it. Shared by a guest <c>throw</c> and a host-raised Platform exception.
         /// </summary>
+        /// <summary>Throws into the image from the import trap the CPU is on (lr is the call site).</summary>
+        public void ThrowIntoGuest(ThrownException thrown) => ThrowIntoImage(thrown);
+
         private void ThrowIntoImage(ThrownException thrown)
         {
             // The whole live register file: unwinding needs more than sp and lr, because

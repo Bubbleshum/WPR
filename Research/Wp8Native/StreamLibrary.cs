@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text;
 
 namespace WPR.Wp8Native
@@ -6,8 +5,9 @@ namespace WPR.Wp8Native
     using Arm = UnicornEngine.Const.Arm;
 
     /// <summary>
-    /// MSVCP110's <c>char</c> iostreams: basic_streambuf, basic_ios, basic_istream,
-    /// basic_ostream and basic_iostream, as the ARM build of Visual C++ 2012 lays them out.
+    /// MSVCP110's iostreams for <c>char</c> and <c>wchar_t</c>: basic_streambuf, ios_base,
+    /// basic_ios, basic_istream, basic_ostream and basic_iostream, as the ARM build of Visual
+    /// C++ 2012 lays them out. The locale side is <see cref="LocaleLibrary"/>, owned by this.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -18,15 +18,17 @@ namespace WPR.Wp8Native
     /// 0x4F000104 / 0x06000104 before their first frame, inside the ostream sentry.
     /// </para>
     /// <para>
-    /// <b>Layouts</b>, read off the games' own inlined code rather than assumed:
+    /// <b>Layouts</b>, read off the games' own inlined code rather than assumed, and the same for
+    /// both element types (counts are in elements, pointers address elements):
     /// <list type="bullet">
     /// <item>basic_streambuf (0x38): vfptr; _Gfirst +4; _Pfirst +8; _IGfirst +0xC; _IPfirst +0x10;
     /// _Gnext +0x14; _Pnext +0x18; _IGnext +0x1C; _IPnext +0x20; _Gcount +0x24; _Pcount +0x28;
     /// _IGcount +0x2C; _IPcount +0x30; _Plocale +0x34. No lock member. A game's basic_stringbuf
     /// then puts _Seekhigh at +0x38 and its state at +0x3C - Classic's overflow reads +0x3C.</item>
-    /// <item>basic_ios (0x48): vfptr; _Mystate +0xC; _Except +0x10; _Fmtfl +0x14; _Prec +0x18 (8);
-    /// _Wide +0x20 (8); _Ploc +0x30; _Mystrbuf +0x38; _Tiestr +0x3C; _Fillch +0x40 - the ostream
-    /// sentry reads the state at +0xC, the buffer at +0x38 and the tie at +0x3C.</item>
+    /// <item>ios_base / basic_ios (0x48): vfptr; (4 bytes for the empty _Iosb base); _Stdstr +8;
+    /// _Mystate +0xC; _Except +0x10; _Fmtfl +0x14; _Prec +0x18 (8); _Wide +0x20 (8); _Arr +0x28;
+    /// _Calls +0x2C; _Ploc +0x30 (a locale*); _Mystrbuf +0x38; _Tiestr +0x3C; _Fillch +0x40 - the
+    /// ostream sentry reads the state at +0xC, the buffer at +0x38 and the tie at +0x3C.</item>
     /// <item>A stream subobject starts with its vbptr; the shared basic_ios is at
     /// <c>this + vbtable[1]</c>. basic_istream keeps _Chcount (8 bytes) at +8.</item>
     /// </list>
@@ -38,52 +40,123 @@ namespace WPR.Wp8Native
     /// a game that makes a plain ostream directly passes 1, and then the vbptr is ours to set.
     /// </para>
     /// <para>
-    /// <b>Virtuals live in the game.</b> basic_stringbuf's overflow, underflow, pbackfail and
-    /// seekoff/seekpos are game code (vtable slots 3, 6, 4, 10, 11), so the base implementations
-    /// here - xsputn, xsgetn, uflow, and the non-virtual sputc/sbumpc/sgetc/snextc - call back into
-    /// the image through <see cref="ArmEmulator.CallEmulated(string,long,ReadOnlySpan{long},Action,bool)"/>
-    /// whenever the buffer they are working on runs dry. Those that would only ever tail-call do
-    /// so, leaving lr alone so the virtual returns straight to the caller.
+    /// <b>Virtuals live in the game.</b> basic_stringbuf's and basic_filebuf's overflow,
+    /// underflow, pbackfail, seekoff/seekpos and sync are game code (vtable slots 3, 6, 4, 10, 11,
+    /// 13), so everything here that runs a buffer dry calls back into the image through
+    /// <see cref="ArmEmulator.CallEmulated(string,long,ReadOnlySpan{long},Action,bool)"/>, in
+    /// continuation style. Those that would only ever tail-call do so, leaving lr alone so the
+    /// virtual returns straight to the caller.
+    /// </para>
+    /// <para>
+    /// <b>Struct results.</b> A member returning <c>fpos</c> or <c>locale</c> by value takes
+    /// <c>this</c> in r0 and the hidden result pointer in r1 (measured on Terraria's <c>tellg</c>
+    /// call site); a static one takes the result in r0.
     /// </para>
     /// </remarks>
-    public sealed class StreamLibrary
+    public sealed partial class StreamLibrary
     {
-        private const int Eof = -1;
-
         // ios_base::iostate
-        private const uint GoodBit = 0, EofBit = 1, FailBit = 2, BadBit = 4;
+        private const uint GoodBit = 0, EofBit = 1, FailBit = 2, BadBit = 4, StateMask = 0x17;
 
         // ios_base::fmtflags (VC11)
         private const uint SkipWs = 0x0001, UnitBuf = 0x0002, Uppercase = 0x0004, ShowBase = 0x0008,
-            ShowPos = 0x0020, Left = 0x0040, Internal = 0x0100, Dec = 0x0200, Oct = 0x0400, Hex = 0x0800;
+            ShowPoint = 0x0010, ShowPos = 0x0020, Left = 0x0040, Right = 0x0080, Internal = 0x0100,
+            Dec = 0x0200, Oct = 0x0400, Hex = 0x0800, Scientific = 0x1000, Fixed = 0x2000, BoolAlpha = 0x4000,
+            AdjustField = Left | Right | Internal, BaseField = Dec | Oct | Hex, FloatField = Scientific | Fixed, FmtMask = 0xFFFF;
+
+        // ios_base::event
+        private const int EraseEvent = 0, ImbueEvent = 1;
+
+        // seekdir and openmode
+        private const long SeekCur = 1, OpenIn = 1, OpenOut = 2;
 
         // basic_streambuf fields
-        private const int IGfirst = 0x0C, IPfirst = 0x10, Gfirst = 0x04, Pfirst = 0x08, Gnext = 0x14, Pnext = 0x18,
-            IGnext = 0x1C, IPnext = 0x20, Gcount = 0x24, Pcount = 0x28, IGcount = 0x2C, IPcount = 0x30, Plocale = 0x34;
+        private const int Gfirst = 0x04, Pfirst = 0x08, IGfirst = 0x0C, IPfirst = 0x10, Gnext = 0x14, Pnext = 0x18,
+            IGnext = 0x1C, IPnext = 0x20, Gcount = 0x24, Pcount = 0x28, IGcount = 0x2C, IPcount = 0x30, Plocale = 0x34,
+            StreambufSize = 0x38;
 
-        // basic_ios fields
-        private const int State = 0x0C, Except = 0x10, Flags = 0x14, Precision = 0x18, Width = 0x20, Locale = 0x30,
-            Buffer = 0x38, Tie = 0x3C, Fill = 0x40, IosSize = 0x48;
+        // ios_base / basic_ios fields
+        private const int Stdstr = 0x08, State = 0x0C, Except = 0x10, Flags = 0x14, Precision = 0x18, Width = 0x20,
+            Arr = 0x28, Calls = 0x2C, Locale = 0x30, Buffer = 0x38, Tie = 0x3C, Fill = 0x40, IosSize = 0x48;
 
-        // basic_streambuf<char> vtable slots
-        private const int SlotOverflow = 3, SlotUnderflow = 6, SlotUflow = 7, SlotXsgetn = 8, SlotXsputn = 9, SlotSeekoff = 10, SlotSync = 13;
+        // basic_streambuf vtable slots
+        private const int SlotOverflow = 3, SlotPbackfail = 4, SlotShowmanyc = 5, SlotUnderflow = 6, SlotUflow = 7,
+            SlotXsgetn = 8, SlotXsputn = 9, SlotSeekoff = 10, SlotSeekpos = 11, SlotSetbuf = 12, SlotSync = 13, SlotImbue = 14;
 
-        private const string Sb = "basic_streambuf@DU?$char_traits@D@std@@@std@@";
-        private const string Ios = "basic_ios@DU?$char_traits@D@std@@@std@@";
-        private const string Os = "basic_ostream@DU?$char_traits@D@std@@@std@@";
-        private const string Is = "basic_istream@DU?$char_traits@D@std@@@std@@";
-        private const string IoS = "basic_iostream@DU?$char_traits@D@std@@@std@@";
+        private static readonly string[] StreambufSlots =
+        [
+            "dtor", "_Lock", "_Unlock", "overflow", "pbackfail", "showmanyc", "underflow", "uflow",
+            "xsgetn", "xsputn", "seekoff", "seekpos", "setbuf", "sync", "imbue",
+        ];
+
+        /// <summary>One element type: its size, mangled names and EOF.</summary>
+        private sealed class Kind
+        {
+            public Kind(bool wide)
+            {
+                Wide = wide;
+                C = wide ? "_W" : "D";
+                I = wide ? "G" : "H";
+                T = $"{C}U?$char_traits@{C}@std@@";
+            }
+
+            public bool Wide { get; }
+
+            public int Size => Wide ? 2 : 1;
+
+            /// <summary>The element type's mangled name.</summary>
+            public string C { get; }
+
+            /// <summary>int_type: int for char, unsigned short (wint_t) for wchar_t.</summary>
+            public string I { get; }
+
+            /// <summary>The template arguments, <c>&lt;C, char_traits&lt;C&gt;&gt;</c>.</summary>
+            public string T { get; }
+
+            /// <summary>traits::eof() as it sits in r0.</summary>
+            public long EofRegister => Wide ? 0xFFFF : 0xFFFFFFFF;
+
+            public string Name => Wide ? "wchar_t" : "char";
+
+            public long StreambufVtable { get; set; }
+
+            /// <summary>Expands {Sb} {Ios} {Os} {Is} {IoS} {T} {C} {I} {P} {PB} in a mangled-name pattern.</summary>
+            public string Mangle(string pattern) => pattern
+                .Replace("{Sb}", "?$basic_streambuf@{T}@std@@")
+                .Replace("{Ios}", "?$basic_ios@{T}@std@@")
+                .Replace("{Os}", "?$basic_ostream@{T}@std@@")
+                .Replace("{Is}", "?$basic_istream@{T}@std@@")
+                .Replace("{IoS}", "?$basic_iostream@{T}@std@@")
+                .Replace("{T}", T)
+                .Replace("{PB}", "PB" + C)
+                .Replace("{P}", "PA" + C)
+                .Replace("{C}", C)
+                .Replace("{I}", I);
+        }
 
         private readonly ArmEmulator _emulator;
         private readonly CallFrame _frame;
-        private long _streambufVtable;
+        private readonly Kind _narrow = new(wide: false);
+        private readonly Kind _wide = new(wide: true);
         private readonly Dictionary<int, long> _vbtables = new();
+        private readonly Dictionary<long, int> _stdOpens = new();
+        private int _xallocIndex;
+        private long _deadIos;
+        private string? _pendingFailure;
 
         public StreamLibrary(ArmEmulator emulator, CallFrame frame)
         {
             _emulator = emulator;
             _frame = frame;
+            Locales = new LocaleLibrary(emulator, frame)
+            {
+                StreamPut = (sb, chars, done) => PutChars(_narrow, sb, chars, 0, done),
+            };
+            FillDataImports();
         }
+
+        /// <summary>The locale and facet side of MSVCP110.</summary>
+        public LocaleLibrary Locales { get; }
 
         /// <summary>What the streams did, for the report.</summary>
         public List<string> Log { get; } = new();
@@ -96,278 +169,38 @@ namespace WPR.Wp8Native
             }
         }
 
+        private Kind[] Kinds => [_narrow, _wide];
+
+        /// <summary>Registers one handler per element type for a mangled-name pattern.</summary>
+        private void Both(Dictionary<string, Action> handlers, string pattern, Action<Kind> body)
+        {
+            foreach (Kind kind in Kinds)
+            {
+                Kind k = kind;
+                handlers[k.Mangle(pattern)] = () => body(k);
+            }
+        }
+
         public void RegisterInto(Dictionary<string, Action> handlers)
         {
-            // --- basic_streambuf ---
-            handlers[$"??0?${Sb}IAA@XZ"] = ConstructStreambuf;
-            handlers[$"??1?${Sb}UAA@XZ"] = () => _frame.Return(0);
-            handlers[$"?_Init@?${Sb}IAAXXZ"] = () => { InitStreambuf(_frame.Arg(0)); _frame.Return(0); };
-            handlers[$"?setg@?${Sb}IAAXPAD00@Z"] = () =>
-            {
-                SetGet(_frame.Arg(0), _frame.Arg(1), _frame.Arg(2), _frame.Arg(3));
-                _frame.Return(0);
-            };
-            handlers[$"?_Pninc@?${Sb}IAAPADXZ"] = () =>
-            {
-                long sb = _frame.Arg(0);
-                long next = Deref(sb, IPnext);
-                Store(sb, IPnext, next + 1);
-                Store(sb, IPcount, (uint)(Deref(sb, IPcount) - 1));
-                _frame.Return(next);
-            };
-            handlers[$"?_Lock@?${Sb}UAAXXZ"] = () => _frame.Return(0);
-            handlers[$"?_Unlock@?${Sb}UAAXXZ"] = () => _frame.Return(0);
-            handlers[$"?showmanyc@?${Sb}MAA_JXZ"] = () => _frame.Return64(0);
-            handlers[$"?sync@?${Sb}MAAHXZ"] = () => _frame.Return(0);
-            handlers[$"?setbuf@?${Sb}MAAPAV12@PAD_J@Z"] = () => _frame.Return(_frame.Arg(0));
-            handlers[$"?imbue@?${Sb}MAAXABVlocale@2@@Z"] = () => _frame.Return(0);
-            handlers[$"?sgetc@?${Sb}QAAHXZ"] = Sgetc;
-            handlers[$"?sbumpc@?${Sb}QAAHXZ"] = Sbumpc;
-            handlers[$"?snextc@?${Sb}QAAHXZ"] = Snextc;
-            handlers[$"?sputc@?${Sb}QAAHD@Z"] = Sputc;
-            handlers[$"?sputn@?${Sb}QAA_JPBD_J@Z"] = () => TailCallVirtual(_frame.Arg(0), SlotXsputn);
-            handlers[$"?xsputn@?${Sb}MAA_JPBD_J@Z"] = Xsputn;
-            handlers[$"?xsgetn@?${Sb}MAA_JPAD_J@Z"] = Xsgetn;
-            handlers[$"?uflow@?${Sb}MAAHXZ"] = Uflow;
-
-            // --- basic_ios ---
-            handlers[$"??0?${Ios}IAA@XZ"] = () =>
-            {
-                ZeroIos(_frame.Arg(0));
-                _frame.Return(_frame.Arg(0));
-            };
-            handlers[$"??1?${Ios}UAA@XZ"] = () => _frame.Return(0);
-            handlers[$"?setstate@?${Ios}QAAXH_N@Z"] = () =>
-            {
-                SetState(_frame.Arg(0), (uint)_frame.Arg(1));
-                _frame.Return(0);
-            };
-            handlers[$"?widen@?${Ios}QBADD@Z"] = () => _frame.Return(_frame.Arg(1) & 0xFF);
-            handlers[$"?_Add_vtordisp1@?${Ios}UAAXXZ"] = () => _frame.Return(0);
-            handlers[$"?_Add_vtordisp2@?${Ios}UAAXXZ"] = () => _frame.Return(0);
-
-            // --- constructors / destructors of the streams ---
-            handlers[$"??0?${Os}QAA@PAV?$basic_streambuf@DU?$char_traits@D@std@@@1@_N@Z"] = () => ConstructStream(_frame.Arg(0), _frame.Arg(1), _frame.Arg(3), iosOffset: 0x08, isInput: false);
-            handlers[$"??0?${Is}QAA@PAV?$basic_streambuf@DU?$char_traits@D@std@@@1@_N@Z"] = () => ConstructStream(_frame.Arg(0), _frame.Arg(1), _frame.Arg(3), iosOffset: 0x10, isInput: true);
-            handlers[$"??0?${IoS}QAA@PAV?$basic_streambuf@DU?$char_traits@D@std@@@1@@Z"] = ConstructIostream;
-            handlers[$"??1?${Os}UAA@XZ"] = () => _frame.Return(0);
-            handlers[$"??1?${Is}UAA@XZ"] = () => _frame.Return(0);
-            handlers[$"??1?${IoS}UAA@XZ"] = () => _frame.Return(0);
-            handlers[$"?_Add_vtordisp1@?${Is}UAAXXZ"] = () => _frame.Return(0);
-            handlers[$"?_Add_vtordisp2@?${Os}UAAXXZ"] = () => _frame.Return(0);
-
-            // --- basic_ostream ---
-            handlers[$"?flush@?${Os}QAAAAV12@XZ"] = () => _frame.Return(_frame.Arg(0));
-            handlers[$"?_Osfx@?${Os}QAAXXZ"] = () => _frame.Return(0);
-            handlers["?endl@std@@YAAAV?$basic_ostream@DU?$char_traits@D@std@@@1@AAV21@@Z"] = () =>
-                WriteFormatted(_frame.Arg(0), "\n", pad: false);
-            handlers[$"??6?${Os}QAAAAV01@H@Z"] = () => WriteNumber((int)_frame.Arg(1), signed: true);
-            handlers[$"??6?${Os}QAAAAV01@I@Z"] = () => WriteNumber((uint)_frame.Arg(1), signed: false);
-            handlers[$"??6?${Os}QAAAAV01@K@Z"] = () => WriteNumber((uint)_frame.Arg(1), signed: false);
-            handlers[$"??6?${Os}QAAAAV01@G@Z"] = () => WriteNumber((ushort)_frame.Arg(1), signed: false);
-            handlers[$"??6?${Os}QAAAAV01@_J@Z"] = () => WriteNumber(Arg64(), signed: true);
-            handlers[$"??6?${Os}QAAAAV01@_K@Z"] = () => WriteNumber(Arg64(), signed: false);
-
-            // operator<<(ostream& (*)(ostream&)) - endl, flush, ends: the function returns its
-            // argument, which is what operator<< returns, so this is a plain tail call.
-            handlers[$"??6?${Os}QAAAAV01@P6AAAV01@AAV01@@Z@Z"] = () =>
-            {
-                long function = _frame.Arg(1);
-                _emulator.ContinueAt(function);
-            };
-
-            // operator<<(ios_base& (*)(ios_base&)) - hex, dec, ...: called on the ios, returns *this.
-            handlers[$"??6?${Os}QAAAAV01@P6AAAVios_base@1@AAV21@@Z@Z"] = () =>
-            {
-                long self = _frame.Arg(0);
-                long function = _frame.Arg(1);
-                long returnTo = _emulator.ReturnAddress;
-                CallGuest(function, [IosOf(self)], _ => Finish(self, returnTo));
-            };
-
-            // --- basic_istream ---
-            handlers[$"?_Ipfx@?${Is}QAA_N_N@Z"] = () =>
-            {
-                long self = _frame.Arg(0);
-                bool noSkip = (_frame.Arg(1) & 0xFF) != 0;
-                long returnTo = _emulator.ReturnAddress;
-                Prefix(self, noSkip, ok => Finish(ok ? 1 : 0, returnTo));
-            };
-            handlers[$"??5?${Is}QAAAAV01@AA_K@Z"] = () => ReadUnsigned(8);
-            handlers[$"??5?${Is}QAAAAV01@AAK@Z"] = () => ReadUnsigned(4);   // unsigned long&
-            handlers[$"??5?${Is}QAAAAV01@AAI@Z"] = () => ReadUnsigned(4);   // unsigned int&
-            handlers[$"??5?${Is}QAAAAV01@AAG@Z"] = () => ReadUnsigned(2);   // unsigned short&
-
-            // operator>>(ios_base& (*)(ios_base&)) - hex, dec, skipws, ...: called on the ios, returns *this.
-            handlers[$"??5?${Is}QAAAAV01@P6AAAVios_base@1@AAV21@@Z@Z"] = () =>
-            {
-                long self = _frame.Arg(0);
-                long function = _frame.Arg(1);
-                long returnTo = _emulator.ReturnAddress;
-                CallGuest(function, [IosOf(self)], _ => Finish(self, returnTo));
-            };
-
-            // pos_type tellg(): rdbuf()->pubseekoff(0, cur, in) unless fail(), else pos_type(-1).
-            // MSVC on ARM passes this in r0 and the hidden pos_type* in r1 - read off Terraria's own
-            // call site - and returns that pointer. The caller's buffer is handed straight to the
-            // game's seekoff, which fills it.
-            handlers[$"?tellg@?${Is}QAA?AV?$fpos@H@2@XZ"] = () =>
-            {
-                long self = _frame.Arg(0);
-                long result = _frame.Arg(1);
-                long returnTo = _emulator.ReturnAddress;
-                long ios = IosOf(self);
-                long sb = Read32(ios + Buffer);
-                Prefix(self, noSkip: true, ok =>
-                {
-                    if (!ok)
-                    {
-                        WriteFpos(result, -1);
-                        Finish(result, returnTo);
-                        return;
-                    }
-
-                    CallGuest(VirtualSlot(sb, SlotSeekoff), [sb, result, 0, 0, SeekCur, OpenIn], _ => Finish(result, returnTo));
-                });
-            };
-
-            // basic_istream& seekg(off_type, seekdir): off_type is 64-bit, so r2:r3, and the
-            // direction is on the stack. C++11 clears eofbit first (a stream read to its end can be
-            // rewound); failbit if the buffer answers -1.
-            handlers[$"?seekg@?${Is}QAAAAV12@_JH@Z"] = () =>
-            {
-                long self = _frame.Arg(0);
-                long offset = Arg64();
-                long direction = _frame.Arg(4);
-                long returnTo = _emulator.ReturnAddress;
-                long ios = IosOf(self);
-                long sb = Read32(ios + Buffer);
-                Write32(ios + State, Read32(ios + State) & ~EofBit);
-                Prefix(self, noSkip: true, ok =>
-                {
-                    if (!ok)
-                    {
-                        Finish(self, returnTo);
-                        return;
-                    }
-
-                    long position = _emulator.AllocateHeap(24);
-                    CallGuest(
-                        VirtualSlot(sb, SlotSeekoff),
-                        [sb, position, offset & 0xFFFFFFFF, (offset >> 32) & 0xFFFFFFFF, direction, OpenIn],
-                        _ =>
-                        {
-                            if (FposOffset(position) == -1)
-                            {
-                                SetState(ios, FailBit);
-                            }
-
-                            _emulator.FreeHeap(position);
-                            Finish(self, returnTo);
-                        });
-                });
-            };
-
-            // basic_istream& read(char*, streamsize): rdbuf()->sgetn into the buffer, the count in
-            // _Chcount (+8), eof|fail on a short read. streamsize is 64-bit: r2:r3, and xsgetn
-            // answers it in r0:r1.
-            handlers[$"?read@?${Is}QAAAAV12@PAD_J@Z"] = () =>
-            {
-                long self = _frame.Arg(0);
-                long buffer = _frame.Arg(1);
-                long count = Arg64();
-                long returnTo = _emulator.ReturnAddress;
-                long ios = IosOf(self);
-                long sb = Read32(ios + Buffer);
-                _emulator.WriteUInt64(self + 8, 0);
-                Prefix(self, noSkip: true, ok =>
-                {
-                    if (!ok)
-                    {
-                        Finish(self, returnTo);
-                        return;
-                    }
-
-                    CallGuest(
-                        VirtualSlot(sb, SlotXsgetn),
-                        [sb, buffer, count & 0xFFFFFFFF, (count >> 32) & 0xFFFFFFFF],
-                        low =>
-                        {
-                            long got = (long)((ulong)(uint)low | ((ulong)(uint)_frame.Arg(1) << 32));
-                            _emulator.WriteUInt64(self + 8, (ulong)Math.Max(0, got));
-                            if (got != count)
-                            {
-                                SetState(ios, EofBit | FailBit);
-                            }
-
-                            Finish(self, returnTo);
-                        });
-                });
-            };
-
-            // int_type get(): one character, unformatted. Unimplemented, it answered 0 rather
-            // than EOF, and Modern Combat 4's read-to-end loop span for ever.
-            handlers[$"?get@?${Is}QAAHXZ"] = () =>
-            {
-                long self = _frame.Arg(0);
-                long returnTo = _emulator.ReturnAddress;
-                long ios = IosOf(self);
-                long sb = Read32(ios + Buffer);
-                _emulator.WriteUInt64(self + 8, 0); // _Chcount
-                Prefix(self, noSkip: true, ok =>
-                {
-                    if (!ok)
-                    {
-                        Finish(unchecked((uint)Eof), returnTo);
-                        return;
-                    }
-
-                    NextChar(sb, bump: true, c =>
-                    {
-                        if (c == Eof)
-                        {
-                            SetState(ios, EofBit | FailBit);
-                            Finish(unchecked((uint)Eof), returnTo);
-                            return;
-                        }
-
-                        _emulator.WriteUInt64(self + 8, 1);
-                        Finish(c & 0xFF, returnTo);
-                    });
-                });
-            };
+            Locales.RegisterInto(handlers);
+            RegisterStreambuf(handlers);
+            RegisterIos(handlers);
+            RegisterOstream(handlers);
+            RegisterIstream(handlers);
         }
 
         // ------------------------------------------------------------------------------
-        // Data imports: std::cerr / std::cout / std::clog
-        // ------------------------------------------------------------------------------
-
-        /// <summary>
-        /// A standard stream object for a data import: a well-formed ostream whose ios has no
-        /// buffer and badbit set, so every insertion is a no-op exactly as the library defines it.
-        /// </summary>
-        public static long BuildDisabledOstream(ArmEmulator emulator)
-        {
-            long vbtable = emulator.AllocateHeap(8);
-            emulator.WriteMemory(vbtable, [0, 0, 0, 0, 8, 0, 0, 0]);
-            long stream = emulator.AllocateHeap(0x60);
-            emulator.WriteMemory(stream, new byte[0x60]);
-            emulator.WriteUInt32(stream, (uint)vbtable);
-            long ios = stream + 8;
-            emulator.WriteUInt32(ios + State, BadBit);
-            emulator.WriteUInt32(ios + Flags, SkipWs | Dec);
-            emulator.WriteMemory(ios + Precision, BitConverter.GetBytes(6L));
-            emulator.WriteUInt32(ios + Fill, ' ');
-            return stream;
-        }
-
-        // ------------------------------------------------------------------------------
-        // Fields
+        // Memory and calls
         // ------------------------------------------------------------------------------
 
         private uint Read32(long address) => _emulator.ReadUInt32(address);
 
         private void Write32(long address, long value) => _emulator.WriteUInt32(address, (uint)value);
+
+        private long ReadInt64(long address) => BitConverter.ToInt64(_emulator.ReadMemory(address, 8));
+
+        private void WriteInt64(long address, long value) => _emulator.WriteMemory(address, BitConverter.GetBytes(value));
 
         /// <summary>*(this->_IXxx): the value an indirect field points at.</summary>
         private long Deref(long sb, int field)
@@ -385,68 +218,212 @@ namespace WPR.Wp8Native
             }
         }
 
+        /// <summary>A 64-bit argument in r2:r3 (after this in r0 and a skipped r1).</summary>
         private long Arg64() => (long)((ulong)(uint)_frame.Arg(2) | ((ulong)(uint)_frame.Arg(3) << 32));
 
-        private long IosOf(long stream)
+        private long ArgPair(int low) => (long)((ulong)(uint)_frame.Arg(low) | ((ulong)(uint)_frame.Arg(low + 1) << 32));
+
+        private int ReadChar(Kind k, long address)
         {
-            long vbtable = _emulator.ReadUInt32(stream, 0);
-            long ios = vbtable == 0 ? 0 : stream + unchecked((int)_emulator.ReadUInt32(vbtable + 4, 0x7FFFFFFF));
-            if (vbtable == 0 || !_emulator.Cpu.IsMapped(ios) || !_emulator.Cpu.IsMapped(ios + IosSize - 1))
+            byte[] b = _emulator.ReadMemory(address, k.Size);
+            return k.Wide ? b[0] | (b[1] << 8) : b[0];
+        }
+
+        private int[] ReadChars(Kind k, long address, int count)
+        {
+            if (count <= 0)
             {
-                Note($"stream 0x{stream:X8} has no readable vbtable (word 0x{vbtable:X8}) - treated as a failed stream");
-                return _deadIos != 0 ? _deadIos : (_deadIos = DeadIos());
+                return [];
             }
 
-            return ios;
-        }
-
-        private long _deadIos;
-
-        /// <summary>A basic_ios in permanent badbit, for streams we cannot find the ios of.</summary>
-        private long DeadIos()
-        {
-            long ios = _emulator.AllocateHeap(IosSize);
-            _emulator.WriteMemory(ios, new byte[IosSize]);
-            Write32(ios + State, BadBit);
-            return ios;
-        }
-
-        private void SetState(long ios, uint add)
-        {
-            uint state = Read32(ios + State) | add;
-            if (Read32(ios + Buffer) == 0)
+            byte[] b = _emulator.ReadMemory(address, count * k.Size);
+            int[] chars = new int[count];
+            for (int i = 0; i < count; i++)
             {
-                state |= BadBit;
+                chars[i] = k.Wide ? b[i * 2] | (b[(i * 2) + 1] << 8) : b[i];
             }
 
-            Write32(ios + State, state);
+            return chars;
         }
 
-        private const long SeekCur = 1, OpenIn = 1;
+        private void WriteChars(Kind k, long address, int[] chars, int index, int count)
+        {
+            if (count <= 0)
+            {
+                return;
+            }
+
+            byte[] b = new byte[count * k.Size];
+            for (int i = 0; i < count; i++)
+            {
+                int c = chars[index + i];
+                if (k.Wide)
+                {
+                    b[i * 2] = (byte)c;
+                    b[(i * 2) + 1] = (byte)(c >> 8);
+                }
+                else
+                {
+                    b[i] = (byte)c;
+                }
+            }
+
+            _emulator.WriteMemory(address, b);
+        }
+
+        /// <summary>A guest int_type in r0 as a character, or -1 for traits::eof().</summary>
+        private static int CharResult(Kind k, long r0) =>
+            k.Wide ? ((r0 & 0xFFFF) == 0xFFFF ? -1 : (int)(r0 & 0xFFFF)) : (unchecked((int)(uint)r0) == -1 ? -1 : (int)(r0 & 0xFF));
+
+        /// <summary>A character (or -1) as the int_type a function returns.</summary>
+        private static long CharRegister(Kind k, int c) => c == -1 ? k.EofRegister : c;
+
+        /// <summary>Text as elements: Latin-1 bytes for char (anything wider becomes '?'), UTF-16 units for wchar_t.</summary>
+        private static int[] Elements(Kind k, string text) =>
+            text.Select(ch => k.Wide ? ch : ch > 0xFF ? '?' : (int)ch).ToArray();
+
+        private long VirtualSlot(long obj, int slot) => Read32(Read32(obj) + (slot * 4));
+
+        /// <summary>Hands the call to a virtual with the same arguments; it returns to our caller.</summary>
+        private void TailCallVirtual(long obj, int slot) => _emulator.ContinueAt(VirtualSlot(obj, slot));
+
+        private void CallGuest(long function, long[] arguments, Action<long> then)
+            => _emulator.CallEmulated("iostream callback", function, arguments, onReturn: () => then(_frame.Arg(0)), recycle: true);
 
         /// <summary>
-        /// fpos&lt;_Mbstatet&gt; as VC11 lays it out: streamoff _Myoff (8), fpos_t _Fpos (8), then the
-        /// conversion state (8). The offset it stands for is _Myoff + _Fpos.
+        /// Returns <paramref name="value"/> to <paramref name="returnTo"/>. Every handler ends here,
+        /// so an <c>ios_base::failure</c> an exception mask asked for is thrown from here, at the
+        /// game's call site.
         /// </summary>
-        private void WriteFpos(long fpos, long offset)
-        {
-            _emulator.WriteUInt64(fpos, (ulong)offset);
-            _emulator.WriteUInt64(fpos + 8, 0);
-            _emulator.WriteUInt64(fpos + 16, 0);
-        }
-
-        private long FposOffset(long fpos) =>
-            BitConverter.ToInt64(_emulator.ReadMemory(fpos, 8)) + BitConverter.ToInt64(_emulator.ReadMemory(fpos + 8, 8));
-
         private void Finish(long value, long returnTo)
         {
             _frame.Return(value);
             _emulator.ContinueAt(returnTo);
+            ThrowPendingFailure(returnTo);
         }
+
+        private void Finish64(long value, long returnTo)
+        {
+            _frame.Return64(value);
+            _emulator.ContinueAt(returnTo);
+            ThrowPendingFailure(returnTo);
+        }
+
+        /// <summary>Finish from a handler that has not called the guest: lr is still the caller.</summary>
+        private void Done(long value) => Finish(value, _emulator.ReturnAddress);
 
         // ------------------------------------------------------------------------------
         // basic_streambuf
         // ------------------------------------------------------------------------------
+
+        private void RegisterStreambuf(Dictionary<string, Action> h)
+        {
+            Both(h, "??0{Sb}IAA@XZ", ConstructStreambuf);
+            Both(h, "??1{Sb}UAA@XZ", k =>
+            {
+                long returnTo = _emulator.ReturnAddress;
+                DestroyStreambuf(_frame.Arg(0), () => Finish(0, returnTo));
+            });
+            Both(h, "?_Init@{Sb}IAAXXZ", _ => { InitStreambuf(_frame.Arg(0)); Done(0); });
+
+            // _Init(_Gf, _Gn, _Gc, _Pf, _Pn, _Pc): point the indirect fields at the caller's pointers.
+            Both(h, "?_Init@{Sb}IAAXPA{P}0PAH001@Z", _ =>
+            {
+                long sb = _frame.Arg(0);
+                Write32(sb + IGfirst, _frame.Arg(1));
+                Write32(sb + IGnext, _frame.Arg(2));
+                Write32(sb + IGcount, _frame.Arg(3));
+                Write32(sb + IPfirst, _frame.Arg(4));
+                Write32(sb + IPnext, _frame.Arg(5));
+                Write32(sb + IPcount, _frame.Arg(6));
+                Done(0);
+            });
+
+            Both(h, "?eback@{Sb}IBA{P}XZ", _ => Done(Deref(_frame.Arg(0), IGfirst)));
+            Both(h, "?gptr@{Sb}IBA{P}XZ", _ => Done(Deref(_frame.Arg(0), IGnext)));
+            Both(h, "?egptr@{Sb}IBA{P}XZ", k => Done(EndOfArea(k, _frame.Arg(0), IGnext, IGcount)));
+            Both(h, "?pbase@{Sb}IBA{P}XZ", _ => Done(Deref(_frame.Arg(0), IPfirst)));
+            Both(h, "?pptr@{Sb}IBA{P}XZ", _ => Done(Deref(_frame.Arg(0), IPnext)));
+            Both(h, "?epptr@{Sb}IBA{P}XZ", k => Done(EndOfArea(k, _frame.Arg(0), IPnext, IPcount)));
+            Both(h, "?gbump@{Sb}IAAXH@Z", k => { Advance(k, _frame.Arg(0), IGnext, IGcount, _frame.SignedArg(1)); Done(0); });
+            Both(h, "?pbump@{Sb}IAAXH@Z", k => { Advance(k, _frame.Arg(0), IPnext, IPcount, _frame.SignedArg(1)); Done(0); });
+            Both(h, "?setg@{Sb}IAAX{P}00@Z", k => { SetArea(k, _frame.Arg(0), IGfirst, IGnext, IGcount, _frame.Arg(1), _frame.Arg(2), _frame.Arg(3)); Done(0); });
+            Both(h, "?setp@{Sb}IAAX{P}0@Z", k => { SetArea(k, _frame.Arg(0), IPfirst, IPnext, IPcount, _frame.Arg(1), _frame.Arg(1), _frame.Arg(2)); Done(0); });
+            Both(h, "?setp@{Sb}IAAX{P}00@Z", k => { SetArea(k, _frame.Arg(0), IPfirst, IPnext, IPcount, _frame.Arg(1), _frame.Arg(2), _frame.Arg(3)); Done(0); });
+
+            // _Gninc: return the next get pointer, then step it. _Gndec: step back, return it. _Pninc likewise.
+            Both(h, "?_Gninc@{Sb}IAA{P}XZ", k => Done(Step(k, _frame.Arg(0), IGnext, IGcount, +1, returnOld: true)));
+            Both(h, "?_Gndec@{Sb}IAA{P}XZ", k => Done(Step(k, _frame.Arg(0), IGnext, IGcount, -1, returnOld: false)));
+            Both(h, "?_Pninc@{Sb}IAA{P}XZ", k => Done(Step(k, _frame.Arg(0), IPnext, IPcount, +1, returnOld: true)));
+            Both(h, "?_Gnavail@{Sb}IBA_JXZ", _ => { _frame.Return64(GetAvailable(_frame.Arg(0))); });
+            Both(h, "?_Pnavail@{Sb}IBA_JXZ", _ => { _frame.Return64(PutAvailable(_frame.Arg(0))); });
+
+            // locale getloc() const: the result by hidden pointer in r1.
+            Both(h, "?getloc@{Sb}QBA?AVlocale@2@XZ", _ =>
+            {
+                long sb = _frame.Arg(0), result = _frame.Arg(1);
+                Locales.CopyLocale(Read32(sb + Plocale), result);
+                Done(result);
+            });
+
+            // locale pubimbue(const locale&): the buffer's imbue (slot 14) first, then the swap.
+            Both(h, "?pubimbue@{Sb}QAA?AVlocale@2@ABV32@@Z", _ =>
+            {
+                long sb = _frame.Arg(0), result = _frame.Arg(1), incoming = _frame.Arg(2);
+                long returnTo = _emulator.ReturnAddress;
+                PubImbue(sb, incoming, result, () => Finish(result, returnTo));
+            });
+
+            // The public forwarders: same arguments, so a plain tail call.
+            Both(h, "?pubsetbuf@{Sb}QAAPAV12@{P}_J@Z", _ => TailCallVirtual(_frame.Arg(0), SlotSetbuf));
+            Both(h, "?pubseekoff@{Sb}QAA?AV?$fpos@H@2@_JHH@Z", _ => TailCallVirtual(_frame.Arg(0), SlotSeekoff));
+            Both(h, "?pubseekpos@{Sb}QAA?AV?$fpos@H@2@V32@H@Z", _ => TailCallVirtual(_frame.Arg(0), SlotSeekpos));
+            Both(h, "?pubsync@{Sb}QAAHXZ", _ => TailCallVirtual(_frame.Arg(0), SlotSync));
+            Both(h, "?sputn@{Sb}QAA_J{PB}_J@Z", _ => TailCallVirtual(_frame.Arg(0), SlotXsputn));
+            Both(h, "?sgetn@{Sb}QAA_J{P}_J@Z", _ => TailCallVirtual(_frame.Arg(0), SlotXsgetn));
+
+            // streamsize in_avail(): what the get area holds, else showmanyc().
+            Both(h, "?in_avail@{Sb}QAA_JXZ", _ =>
+            {
+                long sb = _frame.Arg(0);
+                int available = GetAvailable(sb);
+                if (available > 0)
+                {
+                    _frame.Return64(available);
+                    return;
+                }
+
+                TailCallVirtual(sb, SlotShowmanyc);
+            });
+
+            Both(h, "?sgetc@{Sb}QAA{I}XZ", Sgetc);
+            Both(h, "?sbumpc@{Sb}QAA{I}XZ", Sbumpc);
+            Both(h, "?snextc@{Sb}QAA{I}XZ", Snextc);
+            Both(h, "?stossc@{Sb}QAAXXZ", k =>
+            {
+                long returnTo = _emulator.ReturnAddress;
+                NextChar(k, _frame.Arg(0), _ => Finish(0, returnTo));
+            });
+            Both(h, "?sputc@{Sb}QAA{I}{C}@Z", Sputc);
+            Both(h, "?sungetc@{Sb}QAA{I}XZ", k => PutBack(k, _frame.Arg(0), null));
+            Both(h, "?sputbackc@{Sb}QAA{I}{C}@Z", k => PutBack(k, _frame.Arg(0), (int)(_frame.Arg(1) & (k.Wide ? 0xFFFF : 0xFF))));
+            Both(h, "?_Lock@{Sb}UAAXXZ", _ => Done(0));
+            Both(h, "?_Unlock@{Sb}UAAXXZ", _ => Done(0));
+
+            // The base virtuals, exported because a game's derived vtable names them.
+            Both(h, "?overflow@{Sb}MAA{I}{I}@Z", k => Done(k.EofRegister));
+            Both(h, "?pbackfail@{Sb}MAA{I}{I}@Z", k => Done(k.EofRegister));
+            Both(h, "?underflow@{Sb}MAA{I}XZ", k => Done(k.EofRegister));
+            Both(h, "?showmanyc@{Sb}MAA_JXZ", _ => _frame.Return64(0));
+            Both(h, "?uflow@{Sb}MAA{I}XZ", Uflow);
+            Both(h, "?xsgetn@{Sb}MAA_J{P}_J@Z", Xsgetn);
+            Both(h, "?xsputn@{Sb}MAA_J{PB}_J@Z", Xsputn);
+            Both(h, "?seekoff@{Sb}MAA?AV?$fpos@H@2@_JHH@Z", _ => { WriteFpos(_frame.Arg(1), -1); Done(_frame.Arg(1)); });
+            Both(h, "?seekpos@{Sb}MAA?AV?$fpos@H@2@V32@H@Z", _ => { WriteFpos(_frame.Arg(1), -1); Done(_frame.Arg(1)); });
+            Both(h, "?setbuf@{Sb}MAAPAV12@{P}_J@Z", _ => Done(_frame.Arg(0)));
+            Both(h, "?sync@{Sb}MAAHXZ", _ => Done(0));
+            Both(h, "?imbue@{Sb}MAAXABVlocale@2@@Z", _ => Done(0));
+        }
 
         private void InitStreambuf(long sb)
         {
@@ -462,16 +439,44 @@ namespace WPR.Wp8Native
             }
         }
 
-        private void ConstructStreambuf()
+        /// <summary>basic_streambuf(): the base vtable, empty areas, and <c>_Plocale = new locale</c> (the global one).</summary>
+        private void ConstructStreambuf(Kind k)
         {
             long sb = _frame.Arg(0);
-            _emulator.WriteMemory(sb, new byte[0x38]);
-            Write32(sb, StreambufVtable());
+            InitializeStreambuf(k, sb);
+            Done(sb);
+        }
+
+        private void InitializeStreambuf(Kind k, long sb)
+        {
+            _emulator.WriteMemory(sb, new byte[StreambufSize]);
+            Write32(sb, StreambufVtable(k));
             InitStreambuf(sb);
-            long locale = _emulator.AllocateHeap(16);
-            _emulator.WriteMemory(locale, new byte[16]);
-            Write32(sb + Plocale, locale);
-            _frame.Return(sb);
+            Write32(sb + Plocale, Locales.NewLocaleObject());
+        }
+
+        /// <summary>~basic_streambuf: <c>delete _Plocale</c>.</summary>
+        private void DestroyStreambuf(long sb, Action then)
+        {
+            long locale = Read32(sb + Plocale);
+            Write32(sb + Plocale, 0);
+            Locales.DeleteLocaleObject(locale, then);
+        }
+
+        private void PubImbue(long sb, long incoming, long result, Action then)
+        {
+            long held = Read32(sb + Plocale);
+            Locales.CopyLocale(held, result);
+            CallGuest(VirtualSlot(sb, SlotImbue), [sb, incoming], _ =>
+            {
+                if (held == 0)
+                {
+                    Write32(sb + Plocale, Locales.NewLocaleObject());
+                    held = Read32(sb + Plocale);
+                }
+
+                Locales.AssignLocale(held, incoming, then);
+            });
         }
 
         /// <summary>
@@ -479,253 +484,325 @@ namespace WPR.Wp8Native
         /// one that replaces it: every slot is the base behaviour, routed back through the same
         /// import names so they cannot disagree.
         /// </summary>
-        private long StreambufVtable()
+        private long StreambufVtable(Kind k)
         {
-            if (_streambufVtable != 0)
+            if (k.StreambufVtable != 0)
             {
-                return _streambufVtable;
+                return k.StreambufVtable;
             }
 
-            string[] slots =
-            [
-                "dtor", "_Lock", "_Unlock", "overflow", "pbackfail", "showmanyc", "underflow", "uflow",
-                "xsgetn", "xsputn", "seekoff", "seekpos", "setbuf", "sync", "imbue",
-            ];
-            _streambufVtable = _emulator.AllocateHeap(slots.Length * 4);
-            for (int i = 0; i < slots.Length; i++)
+            long table = _emulator.AllocateHeap(StreambufSlots.Length * 4);
+            for (int i = 0; i < StreambufSlots.Length; i++)
             {
-                string slot = slots[i];
-                long trap = _emulator.RegisterVtableMethod($"basic_streambuf::{slot} (base)", () => BaseVirtual(slot));
-                Write32(_streambufVtable + (i * 4), ArmEmulator.ThumbEntry(trap));
+                string slot = StreambufSlots[i];
+                long trap = _emulator.RegisterVtableMethod($"basic_streambuf<{k.Name}>::{slot} (base)", () => BaseVirtual(k, slot));
+                Write32(table + (i * 4), ArmEmulator.ThumbEntry(trap));
             }
 
-            return _streambufVtable;
+            k.StreambufVtable = table;
+            return table;
         }
 
-        private void BaseVirtual(string slot)
+        private void BaseVirtual(Kind k, string slot)
         {
             switch (slot)
             {
-                case "uflow": Uflow(); break;
-                case "xsgetn": Xsgetn(); break;
-                case "xsputn": Xsputn(); break;
+                case "dtor":
+                {
+                    long sb = _frame.Arg(0);
+                    bool free = (_frame.Arg(1) & 1) != 0;
+                    long returnTo = _emulator.ReturnAddress;
+                    DestroyStreambuf(sb, () =>
+                    {
+                        if (free)
+                        {
+                            _emulator.FreeHeap(sb);
+                        }
+
+                        Finish(sb, returnTo);
+                    });
+                    break;
+                }
+
+                case "uflow": Uflow(k); break;
+                case "xsgetn": Xsgetn(k); break;
+                case "xsputn": Xsputn(k); break;
                 case "showmanyc": _frame.Return64(0); break;
                 case "seekoff":
-                case "seekpos": _frame.Return64(-1); break;
+                case "seekpos":
+                    WriteFpos(_frame.Arg(1), -1);
+                    Done(_frame.Arg(1));
+                    break;
                 case "overflow":
                 case "pbackfail":
-                case "underflow": _frame.Return(unchecked((uint)Eof)); break;
-                case "setbuf": _frame.Return(_frame.Arg(0)); break;
-                default: _frame.Return(0); break;
+                case "underflow": Done(k.EofRegister); break;
+                case "setbuf": Done(_frame.Arg(0)); break;
+                default: Done(0); break;
             }
         }
 
-        private void SetGet(long sb, long first, long next, long last)
+        private void SetArea(Kind k, long sb, int first, int next, int count, long firstValue, long nextValue, long lastValue)
         {
-            Store(sb, IGfirst, first);
-            Store(sb, IGnext, next);
-            Store(sb, IGcount, (uint)(last - next));
+            Store(sb, first, firstValue);
+            Store(sb, next, nextValue);
+            Store(sb, count, (uint)((lastValue - nextValue) / k.Size));
+        }
+
+        private long EndOfArea(Kind k, long sb, int next, int count)
+        {
+            long pointer = Deref(sb, next);
+            return pointer == 0 ? 0 : pointer + (unchecked((int)(uint)Deref(sb, count)) * (long)k.Size);
+        }
+
+        private void Advance(Kind k, long sb, int next, int count, int by)
+        {
+            Store(sb, count, (uint)(unchecked((int)(uint)Deref(sb, count)) - by));
+            Store(sb, next, Deref(sb, next) + ((long)by * k.Size));
+        }
+
+        private long Step(Kind k, long sb, int next, int count, int by, bool returnOld)
+        {
+            long old = Deref(sb, next);
+            Advance(k, sb, next, count, by);
+            return returnOld ? old : Deref(sb, next);
         }
 
         private int GetAvailable(long sb)
         {
             long next = Deref(sb, IGnext);
-            return next == 0 ? 0 : (int)Deref(sb, IGcount);
+            return next == 0 ? 0 : unchecked((int)(uint)Deref(sb, IGcount));
         }
 
         private int PutAvailable(long sb)
         {
             long next = Deref(sb, IPnext);
-            return next == 0 ? 0 : (int)Deref(sb, IPcount);
+            return next == 0 ? 0 : unchecked((int)(uint)Deref(sb, IPcount));
         }
 
-        private long VirtualSlot(long sb, int slot) => Read32(Read32(sb) + (slot * 4));
-
-        /// <summary>Hands the call to a virtual with the same arguments; it returns to our caller.</summary>
-        private void TailCallVirtual(long sb, int slot) => _emulator.ContinueAt(VirtualSlot(sb, slot));
-
-        private void CallGuest(long function, long[] arguments, Action<long> then)
+        private int Bump(Kind k, long sb)
         {
-            _emulator.CallEmulated("iostream callback", function, arguments, onReturn: () => then(_frame.Arg(0)), recycle: true);
+            long next = Deref(sb, IGnext);
+            int c = ReadChar(k, next);
+            Advance(k, sb, IGnext, IGcount, 1);
+            return c;
         }
 
-        private void Sgetc()
+        private void Sgetc(Kind k)
         {
             long sb = _frame.Arg(0);
             if (GetAvailable(sb) > 0)
             {
-                _frame.Return(_emulator.ReadMemory(Deref(sb, IGnext), 1)[0]);
+                Done(ReadChar(k, Deref(sb, IGnext)));
                 return;
             }
 
             TailCallVirtual(sb, SlotUnderflow);
         }
 
-        private int Bump(long sb)
-        {
-            long next = Deref(sb, IGnext);
-            byte c = _emulator.ReadMemory(next, 1)[0];
-            Store(sb, IGnext, next + 1);
-            Store(sb, IGcount, (uint)(Deref(sb, IGcount) - 1));
-            return c;
-        }
-
-        private void Sbumpc()
+        private void Sbumpc(Kind k)
         {
             long sb = _frame.Arg(0);
             if (GetAvailable(sb) > 0)
             {
-                _frame.Return(Bump(sb));
+                Done(Bump(k, sb));
                 return;
             }
 
             TailCallVirtual(sb, SlotUflow);
         }
 
-        private void Snextc()
+        /// <summary>int_type snextc(): sbumpc, then sgetc - eof if the bump found nothing.</summary>
+        private void Snextc(Kind k)
         {
             long sb = _frame.Arg(0);
             if (GetAvailable(sb) > 1)
             {
-                Bump(sb);
-                _frame.Return(_emulator.ReadMemory(Deref(sb, IGnext), 1)[0]);
+                Bump(k, sb);
+                Done(ReadChar(k, Deref(sb, IGnext)));
                 return;
             }
 
             long returnTo = _emulator.ReturnAddress;
-            NextChar(sb, bump: true, bumped =>
+            NextChar(k, sb, bumped =>
             {
-                if (bumped == Eof)
+                if (bumped == -1)
                 {
-                    Finish(unchecked((uint)Eof), returnTo);
+                    Finish(k.EofRegister, returnTo);
                     return;
                 }
 
-                PeekChar(sb, c => Finish(c == Eof ? unchecked((uint)Eof) : c, returnTo));
+                PeekChar(k, sb, c => Finish(CharRegister(k, c), returnTo));
             });
         }
 
         /// <summary>sgetc, continuation-style: underflow in the image when the buffer is dry.</summary>
-        private void PeekChar(long sb, Action<int> then)
+        private void PeekChar(Kind k, long sb, Action<int> then)
         {
             if (GetAvailable(sb) > 0)
             {
-                then(_emulator.ReadMemory(Deref(sb, IGnext), 1)[0]);
+                then(ReadChar(k, Deref(sb, IGnext)));
                 return;
             }
 
-            CallGuest(VirtualSlot(sb, SlotUnderflow), [sb], r0 => then(unchecked((int)(uint)r0)));
+            // A standard buffer of ours has nothing to read (stdin is at its end): no round trip.
+            if (_hostBuffers.ContainsKey(sb))
+            {
+                then(-1);
+                return;
+            }
+
+            CallGuest(VirtualSlot(sb, SlotUnderflow), [sb], r0 => then(CharResult(k, r0)));
         }
 
         /// <summary>sbumpc, continuation-style.</summary>
-        private void NextChar(long sb, bool bump, Action<int> then)
+        private void NextChar(Kind k, long sb, Action<int> then)
         {
             if (GetAvailable(sb) > 0)
             {
-                then(Bump(sb));
+                then(Bump(k, sb));
                 return;
             }
 
-            CallGuest(VirtualSlot(sb, SlotUflow), [sb], r0 => then(unchecked((int)(uint)r0)));
+            // A standard buffer of ours has nothing to read (stdin is at its end): no round trip.
+            if (_hostBuffers.ContainsKey(sb))
+            {
+                then(-1);
+                return;
+            }
+
+            CallGuest(VirtualSlot(sb, SlotUflow), [sb], r0 => then(CharResult(k, r0)));
         }
 
-        private void Uflow()
+        /// <summary>The base uflow: underflow, then take the character it made available.</summary>
+        private void Uflow(Kind k)
         {
             long sb = _frame.Arg(0);
             long returnTo = _emulator.ReturnAddress;
             CallGuest(VirtualSlot(sb, SlotUnderflow), [sb], r0 =>
             {
-                int c = unchecked((int)(uint)r0);
-                Finish(c == Eof || GetAvailable(sb) == 0 ? unchecked((uint)Eof) : Bump(sb), returnTo);
+                int c = CharResult(k, r0);
+                Finish(c == -1 || GetAvailable(sb) == 0 ? k.EofRegister : Bump(k, sb), returnTo);
             });
         }
 
-        private void Sputc()
+        private void Sputc(Kind k)
         {
             long sb = _frame.Arg(0);
-            byte c = (byte)_frame.Arg(1);
+            int c = (int)(_frame.Arg(1) & (k.Wide ? 0xFFFF : 0xFF));
             if (PutAvailable(sb) > 0)
             {
-                PutDirect(sb, c);
-                _frame.Return(c);
+                WriteChars(k, Deref(sb, IPnext), [c], 0, 1);
+                Advance(k, sb, IPnext, IPcount, 1);
+                Done(c);
+                return;
+            }
+
+            if (IsHostOutput(sb))
+            {
+                HostWrite(k, sb, [c]);
+                Done(c);
                 return;
             }
 
             TailCallVirtual(sb, SlotOverflow);
         }
 
-        private void PutDirect(long sb, byte c)
+        /// <summary>
+        /// sungetc / sputbackc(c): step back over the last character read when there is one (and,
+        /// for sputbackc, it is <paramref name="c"/>); otherwise pbackfail.
+        /// </summary>
+        private void PutBack(Kind k, long sb, int? c)
         {
-            long next = Deref(sb, IPnext);
-            _emulator.WriteMemory(next, [c]);
-            Store(sb, IPnext, next + 1);
-            Store(sb, IPcount, (uint)(Deref(sb, IPcount) - 1));
+            long next = Deref(sb, IGnext);
+            long first = Deref(sb, IGfirst);
+            if (next != 0 && first < next && (c is null || ReadChar(k, next - k.Size) == c))
+            {
+                Advance(k, sb, IGnext, IGcount, -1);
+                Done(ReadChar(k, next - k.Size));
+                return;
+            }
+
+            // pbackfail() for sungetc, pbackfail(to_int_type(c)) for sputbackc.
+            _emulator.WriteRegister(Arm.UC_ARM_REG_R1, c is null ? k.EofRegister : c.Value);
+            TailCallVirtual(sb, SlotPbackfail);
+        }
+
+        /// <summary>Continuation form of <see cref="PutBack"/>.</summary>
+        private void PutBackChar(Kind k, long sb, int? c, Action<int> then)
+        {
+            long next = Deref(sb, IGnext);
+            long first = Deref(sb, IGfirst);
+            if (next != 0 && first < next && (c is null || ReadChar(k, next - k.Size) == c))
+            {
+                Advance(k, sb, IGnext, IGcount, -1);
+                then(ReadChar(k, next - k.Size));
+                return;
+            }
+
+            CallGuest(VirtualSlot(sb, SlotPbackfail), [sb, c is null ? k.EofRegister : c.Value], r0 => then(CharResult(k, r0)));
         }
 
         /// <summary>
-        /// Writes bytes through the put area, calling the image's overflow for each byte that
+        /// Writes elements through the put area, calling the image's overflow for each one that
         /// does not fit - which is how a stringbuf grows. Reports how many were written.
         /// </summary>
-        private void PutBytes(long sb, byte[] bytes, int index, Action<int> done)
+        private void PutChars(Kind k, long sb, int[] chars, int index, Action<int> done)
         {
-            while (index < bytes.Length)
+            if (IsHostOutput(sb))
+            {
+                HostWrite(k, sb, chars[index..]);
+                done(chars.Length);
+                return;
+            }
+
+            while (index < chars.Length)
             {
                 int room = PutAvailable(sb);
                 if (room <= 0)
                 {
                     int at = index;
-                    CallGuest(VirtualSlot(sb, SlotOverflow), [sb, bytes[at]], r0 =>
+                    CallGuest(VirtualSlot(sb, SlotOverflow), [sb, chars[at]], r0 =>
                     {
-                        if (unchecked((int)(uint)r0) == Eof)
+                        if (CharResult(k, r0) == -1 && !(k.Wide && chars[at] == 0xFFFF))
                         {
                             done(at);
                             return;
                         }
 
-                        PutBytes(sb, bytes, at + 1, done);
+                        PutChars(k, sb, chars, at + 1, done);
                     });
                     return;
                 }
 
-                int count = Math.Min(room, bytes.Length - index);
-                long next = Deref(sb, IPnext);
-                _emulator.WriteMemory(next, bytes.AsSpan(index, count).ToArray());
-                Store(sb, IPnext, next + count);
-                Store(sb, IPcount, (uint)(room - count));
+                int count = Math.Min(room, chars.Length - index);
+                WriteChars(k, Deref(sb, IPnext), chars, index, count);
+                Advance(k, sb, IPnext, IPcount, count);
                 index += count;
             }
 
-            done(bytes.Length);
+            done(chars.Length);
         }
 
-        private void Xsputn()
+        private void Xsputn(Kind k)
         {
             long sb = _frame.Arg(0);
             long source = _frame.Arg(1);
             long count = Arg64();
             long returnTo = _emulator.ReturnAddress;
-            byte[] bytes = count <= 0 ? [] : _emulator.ReadMemory(source, (int)Math.Min(count, CallFrame.SaneLengthLimit));
-            PutBytes(sb, bytes, 0, written =>
-            {
-                _frame.Return64(written);
-                _emulator.ContinueAt(returnTo);
-            });
+            int[] chars = count <= 0 ? [] : ReadChars(k, source, (int)Math.Min(count, CallFrame.SaneLengthLimit / k.Size));
+            PutChars(k, sb, chars, 0, written => Finish64(written, returnTo));
         }
 
-        private void Xsgetn()
+        private void Xsgetn(Kind k)
         {
             long sb = _frame.Arg(0);
             long destination = _frame.Arg(1);
             long count = Arg64();
             long returnTo = _emulator.ReturnAddress;
-            GetBytes(sb, destination, count, 0, got =>
-            {
-                _frame.Return64(got);
-                _emulator.ContinueAt(returnTo);
-            });
+            GetChars(k, sb, destination, count, 0, got => Finish64(got, returnTo));
         }
 
-        private void GetBytes(long sb, long destination, long count, long done, Action<long> finished)
+        private void GetChars(Kind k, long sb, long destination, long count, long done, Action<long> finished)
         {
             while (done < count)
             {
@@ -735,288 +812,572 @@ namespace WPR.Wp8Native
                     long at = done;
                     CallGuest(VirtualSlot(sb, SlotUflow), [sb], r0 =>
                     {
-                        int c = unchecked((int)(uint)r0);
-                        if (c == Eof)
+                        int c = CharResult(k, r0);
+                        if (c == -1)
                         {
                             finished(at);
                             return;
                         }
 
-                        _emulator.WriteMemory(destination + at, [(byte)c]);
-                        GetBytes(sb, destination, count, at + 1, finished);
+                        WriteChars(k, destination + (at * k.Size), [c], 0, 1);
+                        GetChars(k, sb, destination, count, at + 1, finished);
                     });
                     return;
                 }
 
                 int take = (int)Math.Min(available, count - done);
                 long next = Deref(sb, IGnext);
-                _emulator.WriteMemory(destination + done, _emulator.ReadMemory(next, take));
-                Store(sb, IGnext, next + take);
-                Store(sb, IGcount, (uint)(available - take));
+                _emulator.WriteMemory(destination + (done * k.Size), _emulator.ReadMemory(next, take * k.Size));
+                Advance(k, sb, IGnext, IGcount, take);
                 done += take;
             }
 
             finished(done);
         }
 
-        // ------------------------------------------------------------------------------
-        // basic_ios and the stream constructors
-        // ------------------------------------------------------------------------------
-
-        private void ZeroIos(long ios)
+        /// <summary>
+        /// fpos&lt;_Mbstatet&gt; as VC11 lays it out: streamoff _Myoff (8), fpos_t _Fpos (8), then the
+        /// conversion state (8). The offset it stands for is _Myoff + _Fpos.
+        /// </summary>
+        private void WriteFpos(long fpos, long offset)
         {
-            // The vfptr is left as found: the derived constructor sets it.
-            _emulator.WriteMemory(ios + 4, new byte[IosSize - 4]);
+            if (fpos == 0)
+            {
+                return;
+            }
+
+            WriteInt64(fpos, offset);
+            WriteInt64(fpos + 8, 0);
+            WriteInt64(fpos + 16, 0);
         }
 
-        private void InitIos(long ios, long sb)
+        private long FposOffset(long fpos) => ReadInt64(fpos) + ReadInt64(fpos + 8);
+
+        /// <summary>pubsync: the buffer's sync (slot 13); -1 is failure.</summary>
+        private void SyncBuffer(long sb, Action<int> then)
+        {
+            if (IsHostOutput(sb))
+            {
+                HostSync(sb);
+                then(0);
+                return;
+            }
+
+            CallGuest(VirtualSlot(sb, SlotSync), [sb], r0 => then(unchecked((int)(uint)r0)));
+        }
+
+        /// <summary>
+        /// pubseekoff(off, way, mode) into a scratch fpos; answers the offset it stands for (-1 on failure).
+        /// </summary>
+        private void SeekBuffer(long sb, long offset, long way, long mode, Action<long> then)
+        {
+            long position = _emulator.AllocateHeap(24);
+            WriteFpos(position, -1);
+            CallGuest(
+                VirtualSlot(sb, SlotSeekoff),
+                [sb, position, offset & 0xFFFFFFFF, (offset >> 32) & 0xFFFFFFFF, way, mode],
+                _ =>
+                {
+                    long result = FposOffset(position);
+                    _emulator.FreeHeap(position);
+                    then(result);
+                });
+        }
+
+        /// <summary>pubseekpos(pos, mode), the fpos passed by value: r2:r3 then four stack words.</summary>
+        private void SeekBufferTo(long sb, long[] fposWords, long mode, Action<long> then)
+        {
+            long position = _emulator.AllocateHeap(24);
+            WriteFpos(position, -1);
+            CallGuest(
+                VirtualSlot(sb, SlotSeekpos),
+                [sb, position, .. fposWords, mode],
+                _ =>
+                {
+                    long result = FposOffset(position);
+                    _emulator.FreeHeap(position);
+                    then(result);
+                });
+        }
+
+        // ------------------------------------------------------------------------------
+        // ios_base and basic_ios
+        // ------------------------------------------------------------------------------
+
+        private void RegisterIos(Dictionary<string, Action> h)
+        {
+            const string B = "ios_base@std@@";
+
+            h[$"?getloc@{B}QBA?AVlocale@2@XZ"] = () =>
+            {
+                long ios = _frame.Arg(0), result = _frame.Arg(1);
+                Locales.CopyLocale(Read32(ios + Locale), result);
+                Done(result);
+            };
+            h[$"?flags@{B}QBAHXZ"] = () => Done(Read32(_frame.Arg(0) + Flags));
+            h[$"?flags@{B}QAAHH@Z"] = () =>
+            {
+                long ios = _frame.Arg(0);
+                uint old = Read32(ios + Flags);
+                Write32(ios + Flags, _frame.Arg(1) & FmtMask);
+                Done(old);
+            };
+            h[$"?setf@{B}QAAHH@Z"] = () =>
+            {
+                long ios = _frame.Arg(0);
+                uint old = Read32(ios + Flags);
+                Write32(ios + Flags, old | ((uint)_frame.Arg(1) & FmtMask));
+                Done(old);
+            };
+            h[$"?setf@{B}QAAHHH@Z"] = () =>
+            {
+                long ios = _frame.Arg(0);
+                uint old = Read32(ios + Flags);
+                uint mask = (uint)_frame.Arg(2);
+                Write32(ios + Flags, (old & ~mask) | ((uint)_frame.Arg(1) & mask & FmtMask));
+                Done(old);
+            };
+            h[$"?unsetf@{B}QAAXH@Z"] = () =>
+            {
+                long ios = _frame.Arg(0);
+                Write32(ios + Flags, Read32(ios + Flags) & ~(uint)_frame.Arg(1));
+                Done(0);
+            };
+
+            // streamsize precision()/width() const, and the setters taking a streamsize in r2:r3.
+            h[$"?precision@{B}QBA_JXZ"] = () => _frame.Return64(ReadInt64(_frame.Arg(0) + Precision));
+            h[$"?width@{B}QBA_JXZ"] = () => _frame.Return64(ReadInt64(_frame.Arg(0) + Width));
+            h[$"?precision@{B}QAA_J_J@Z"] = () => SwapInt64(Precision);
+            h[$"?width@{B}QAA_J_J@Z"] = () => SwapInt64(Width);
+
+            h[$"?rdstate@{B}QBAHXZ"] = () => Done(Read32(_frame.Arg(0) + State));
+            h[$"?good@{B}QBA_NXZ"] = () => Done(Read32(_frame.Arg(0) + State) == GoodBit ? 1 : 0);
+            h[$"?eof@{B}QBA_NXZ"] = () => Done((Read32(_frame.Arg(0) + State) & EofBit) != 0 ? 1 : 0);
+            h[$"?fail@{B}QBA_NXZ"] = () => Done((Read32(_frame.Arg(0) + State) & (FailBit | BadBit)) != 0 ? 1 : 0);
+            h[$"?bad@{B}QBA_NXZ"] = () => Done((Read32(_frame.Arg(0) + State) & BadBit) != 0 ? 1 : 0);
+            h[$"??B{B}QBAPAXXZ"] = () =>
+            {
+                long ios = _frame.Arg(0);
+                Done((Read32(ios + State) & (FailBit | BadBit)) != 0 ? 0 : ios);
+            };
+            h[$"??7{B}QBA_NXZ"] = () => Done((Read32(_frame.Arg(0) + State) & (FailBit | BadBit)) != 0 ? 1 : 0);
+
+            h[$"?exceptions@{B}QBAHXZ"] = () => Done(Read32(_frame.Arg(0) + Except));
+            h[$"?exceptions@{B}QAAXH@Z"] = () => SetExceptions();
+            h[$"?exceptions@{B}QAAXI@Z"] = () => SetExceptions();
+            h[$"?clear@{B}QAAXH_N@Z"] = () => { ClearState(_frame.Arg(0), (uint)_frame.Arg(1), basicIos: false); Done(0); };
+            h[$"?clear@{B}QAAXI@Z"] = () => { ClearState(_frame.Arg(0), (uint)_frame.Arg(1), basicIos: false); Done(0); };
+            h[$"?setstate@{B}QAAXH_N@Z"] = () => { AddState(_frame.Arg(0), (uint)_frame.Arg(1), basicIos: false); Done(0); };
+            h[$"?setstate@{B}QAAXI@Z"] = () => { AddState(_frame.Arg(0), (uint)_frame.Arg(1), basicIos: false); Done(0); };
+
+            h[$"?imbue@{B}QAA?AVlocale@2@ABV32@@Z"] = () =>
+            {
+                long ios = _frame.Arg(0), result = _frame.Arg(1), incoming = _frame.Arg(2);
+                long returnTo = _emulator.ReturnAddress;
+                IosBaseImbue(ios, incoming, result, () => Finish(result, returnTo));
+            };
+
+            h[$"?_Ios_base_dtor@{B}CAXPAV12@@Z"] = () =>
+            {
+                long returnTo = _emulator.ReturnAddress;
+                DestroyIosBase(_frame.Arg(0), () => Finish(0, returnTo));
+            };
+            h[$"??1{B}UAA@XZ"] = () =>
+            {
+                long returnTo = _emulator.ReturnAddress;
+                DestroyIosBase(_frame.Arg(0), () => Finish(0, returnTo));
+            };
+            h[$"?_Init@{B}IAAXXZ"] = () => { InitIosBase(_frame.Arg(0)); Done(0); };
+
+            // _Addstd: a standard stream, whose destruction is suppressed while it is open.
+            h[$"?_Addstd@{B}SAXPAV12@@Z"] = () => { AddStd(_frame.Arg(0)); Done(0); };
+
+            h[$"?xalloc@{B}SAHXZ"] = () => Done(_xallocIndex++);
+            h[$"?iword@{B}QAAAAJH@Z"] = () => Done(FindArray(_frame.Arg(0), _frame.SignedArg(1)) + 8);
+            h[$"?pword@{B}QAAAAPAXH@Z"] = () => Done(FindArray(_frame.Arg(0), _frame.SignedArg(1)) + 12);
+
+            // register_callback(event_callback, int): pushed at the head of _Calls, { next, index, fn }.
+            h[$"?register_callback@{B}QAAXP6AXW4event@12@AAV12@H@ZH@Z"] = () =>
+            {
+                long ios = _frame.Arg(0);
+                long node = _emulator.AllocateHeap(12);
+                Write32(node, Read32(ios + Calls));
+                Write32(node + 4, _frame.Arg(2));
+                Write32(node + 8, _frame.Arg(1));
+                Write32(ios + Calls, node);
+                Done(0);
+            };
+
+            // There is one C library under these streams, so synchronising with it is a no-op
+            // that reports the previous setting, which starts true.
+            bool sync = true;
+            h[$"?sync_with_stdio@{B}SA_N_N@Z"] = () =>
+            {
+                bool old = sync;
+                sync = (_frame.Arg(0) & 0xFF) != 0;
+                Done(old ? 1 : 0);
+            };
+
+            // ios_base::Init: the standard streams already exist (they are built with the image's
+            // imports), so the init object has nothing to do.
+            h[$"??0Init@{B}QAA@XZ"] = () => Done(_frame.Arg(0));
+            h[$"??1Init@{B}QAA@XZ"] = () => Done(0);
+
+            // --- basic_ios ---
+            Both(h, "??0{Ios}IAA@XZ", k =>
+            {
+                long ios = _frame.Arg(0);
+                _emulator.WriteMemory(ios + 4, new byte[IosSize - 4]);
+                Write32(ios, StreamVtable(k, "basic_ios", 0));
+                Done(ios);
+            });
+            Both(h, "??0{Ios}QAA@PAV?$basic_streambuf@{T}@1@@Z", k =>
+            {
+                long ios = _frame.Arg(0);
+                _emulator.WriteMemory(ios + 4, new byte[IosSize - 4]);
+                Write32(ios, StreamVtable(k, "basic_ios", 0));
+                InitIos(k, ios, _frame.Arg(1), standard: false);
+                Done(ios);
+            });
+            Both(h, "??1{Ios}UAA@XZ", _ =>
+            {
+                long returnTo = _emulator.ReturnAddress;
+                DestroyIosBase(_frame.Arg(0), () => Finish(0, returnTo));
+            });
+            Both(h, "?init@{Ios}IAAXPAV?$basic_streambuf@{T}@2@_N@Z", k =>
+            {
+                InitIos(k, _frame.Arg(0), _frame.Arg(1), standard: (_frame.Arg(2) & 0xFF) != 0);
+                Done(0);
+            });
+            Both(h, "?clear@{Ios}QAAXH_N@Z", _ => { ClearState(_frame.Arg(0), (uint)_frame.Arg(1), basicIos: true); Done(0); });
+            Both(h, "?clear@{Ios}QAAXI@Z", _ => { ClearState(_frame.Arg(0), (uint)_frame.Arg(1), basicIos: true); Done(0); });
+            Both(h, "?setstate@{Ios}QAAXH_N@Z", _ => { AddState(_frame.Arg(0), (uint)_frame.Arg(1), basicIos: true); Done(0); });
+            Both(h, "?setstate@{Ios}QAAXI@Z", _ => { AddState(_frame.Arg(0), (uint)_frame.Arg(1), basicIos: true); Done(0); });
+            Both(h, "?rdbuf@{Ios}QBAPAV?$basic_streambuf@{T}@2@XZ", _ => Done(Read32(_frame.Arg(0) + Buffer)));
+
+            // rdbuf(sb): swap in a new buffer and clear(goodbit) - badbit if it is null.
+            Both(h, "?rdbuf@{Ios}QAAPAV?$basic_streambuf@{T}@2@PAV32@@Z", _ =>
+            {
+                long ios = _frame.Arg(0);
+                long old = Read32(ios + Buffer);
+                Write32(ios + Buffer, _frame.Arg(1));
+                ClearState(ios, GoodBit, basicIos: true);
+                Done(old);
+            });
+            Both(h, "?tie@{Ios}QBAPAV?$basic_ostream@{T}@2@XZ", _ => Done(Read32(_frame.Arg(0) + Tie)));
+            Both(h, "?tie@{Ios}QAAPAV?$basic_ostream@{T}@2@PAV32@@Z", _ =>
+            {
+                long ios = _frame.Arg(0);
+                long old = Read32(ios + Tie);
+                Write32(ios + Tie, _frame.Arg(1));
+                Done(old);
+            });
+            Both(h, "?fill@{Ios}QBA{C}XZ", k => Done(ReadFill(k, _frame.Arg(0))));
+            Both(h, "?fill@{Ios}QAA{C}{C}@Z", k =>
+            {
+                long ios = _frame.Arg(0);
+                int old = ReadFill(k, ios);
+                Write32(ios + Fill, _frame.Arg(1) & (k.Wide ? 0xFFFF : 0xFF));
+                Done(old);
+            });
+
+            // narrow/widen go through the stream's ctype facet; in "C" a byte is itself, and a
+            // wide character without a single-byte form narrows to the default.
+            Both(h, "?narrow@{Ios}QBAD{C}D@Z", k =>
+            {
+                int c = (int)(_frame.Arg(1) & (k.Wide ? 0xFFFF : 0xFF));
+                Done(c <= 0xFF ? c : _frame.Arg(2) & 0xFF);
+            });
+            Both(h, "?widen@{Ios}QBA{C}D@Z", _ => Done(_frame.Arg(1) & 0xFF));
+
+            // locale imbue(const locale&): ios_base::imbue (with its callbacks), then rdbuf()->pubimbue.
+            Both(h, "?imbue@{Ios}QAA?AVlocale@2@ABV32@@Z", _ =>
+            {
+                long ios = _frame.Arg(0), result = _frame.Arg(1), incoming = _frame.Arg(2);
+                long returnTo = _emulator.ReturnAddress;
+                IosBaseImbue(ios, incoming, result, () =>
+                {
+                    long sb = Read32(ios + Buffer);
+                    if (sb == 0)
+                    {
+                        Finish(result, returnTo);
+                        return;
+                    }
+
+                    long discarded = _emulator.AllocateHeap(4);
+                    PubImbue(sb, incoming, discarded, () => Locales.ReleaseLocimp(Read32(discarded), () =>
+                    {
+                        _emulator.FreeHeap(discarded);
+                        Finish(result, returnTo);
+                    }));
+                });
+            });
+
+            Both(h, "?_Add_vtordisp1@{Ios}UAAXXZ", _ => Done(0));
+            Both(h, "?_Add_vtordisp2@{Ios}UAAXXZ", _ => Done(0));
+        }
+
+        private void SwapInt64(int field)
+        {
+            long ios = _frame.Arg(0);
+            long old = ReadInt64(ios + field);
+            WriteInt64(ios + field, Arg64());
+            _frame.Return64(old);
+        }
+
+        private int ReadFill(Kind k, long ios) => (int)(Read32(ios + Fill) & (k.Wide ? 0xFFFF : 0xFF));
+
+        private void SetExceptions()
+        {
+            long ios = _frame.Arg(0);
+            Write32(ios + Except, _frame.Arg(1) & StateMask);
+            ClearState(ios, Read32(ios + State), basicIos: false);
+            Done(0);
+        }
+
+        private long IosOf(long stream)
+        {
+            long vbtable = _emulator.ReadUInt32(stream, 0);
+            long ios = vbtable == 0 ? 0 : stream + unchecked((int)_emulator.ReadUInt32(vbtable + 4, 0x7FFFFFFF));
+            if (vbtable == 0 || !_emulator.Cpu.IsMapped(ios) || !_emulator.Cpu.IsMapped(ios + IosSize - 1))
+            {
+                Note($"stream 0x{stream:X8} has no readable vbtable (word 0x{vbtable:X8}) - treated as a failed stream");
+                return _deadIos != 0 ? _deadIos : (_deadIos = DeadIos());
+            }
+
+            return ios;
+        }
+
+        /// <summary>A basic_ios in permanent badbit, for streams we cannot find the ios of.</summary>
+        private long DeadIos()
+        {
+            long ios = _emulator.AllocateHeap(IosSize);
+            _emulator.WriteMemory(ios, new byte[IosSize]);
+            Write32(ios + State, BadBit);
+            return ios;
+        }
+
+        /// <summary>
+        /// clear(state): the new state (badbit added when basic_ios has no buffer); if it meets the
+        /// exception mask, an <c>ios_base::failure</c> is thrown when the handler returns.
+        /// </summary>
+        private void ClearState(long ios, uint state, bool basicIos)
+        {
+            if (basicIos && Read32(ios + Buffer) == 0)
+            {
+                state |= BadBit;
+            }
+
+            state &= StateMask;
+            Write32(ios + State, state);
+            uint raised = state & Read32(ios + Except);
+            if (raised != 0 && ios != _deadIos)
+            {
+                _pendingFailure = (raised & BadBit) != 0 ? "ios_base::badbit set"
+                    : (raised & FailBit) != 0 ? "ios_base::failbit set"
+                    : "ios_base::eofbit set";
+            }
+        }
+
+        private void AddState(long ios, uint add, bool basicIos)
+        {
+            if (add != GoodBit)
+            {
+                ClearState(ios, Read32(ios + State) | add, basicIos);
+            }
+        }
+
+        /// <summary>basic_ios::setstate: what every stream operation here reports through.</summary>
+        private void SetState(long ios, uint add) => AddState(ios, add, basicIos: true);
+
+        /// <summary>ios_base::_Init: the default format state, and <c>_Ploc = new locale</c>.</summary>
+        private void InitIosBase(long ios)
+        {
+            Write32(ios + Stdstr, 0);
+            Write32(ios + Except, GoodBit);
+            Write32(ios + Flags, SkipWs | Dec);
+            WriteInt64(ios + Precision, 6);
+            WriteInt64(ios + Width, 0);
+            Write32(ios + Arr, 0);
+            Write32(ios + Calls, 0);
+            Write32(ios + State, GoodBit);
+            Write32(ios + Locale, Locales.NewLocaleObject());
+        }
+
+        /// <summary>basic_ios::init(sb, isstd).</summary>
+        private void InitIos(Kind k, long ios, long sb, bool standard)
         {
             Write32(ios + Buffer, sb);
             Write32(ios + Tie, 0);
             Write32(ios + Fill, ' ');
-            Write32(ios + State, sb == 0 ? BadBit : GoodBit);
-            Write32(ios + Except, 0);
-            Write32(ios + Flags, SkipWs | Dec);
-            _emulator.WriteMemory(ios + Precision, BitConverter.GetBytes(6L));
-            _emulator.WriteMemory(ios + Width, BitConverter.GetBytes(0L));
-            if (Read32(ios + Locale) == 0)
+            _ = k;
+            InitIosBase(ios);
+            if (sb == 0)
             {
-                long locale = _emulator.AllocateHeap(16);
-                _emulator.WriteMemory(locale, new byte[16]);
-                Write32(ios + Locale, locale);
+                Write32(ios + State, BadBit);
+            }
+
+            if (standard)
+            {
+                AddStd(ios);
             }
         }
 
-        private long VbTable(int iosOffset)
+        private void AddStd(long ios)
         {
-            if (!_vbtables.TryGetValue(iosOffset, out long table))
-            {
-                table = _emulator.AllocateHeap(8);
-                _emulator.WriteMemory(table, [0, 0, 0, 0, .. BitConverter.GetBytes(iosOffset)]);
-                _vbtables[iosOffset] = table;
-            }
-
-            return table;
-        }
-
-        private void ConstructStream(long self, long sb, long constructVirtualBases, int iosOffset, bool isInput)
-        {
-            if (constructVirtualBases != 0)
-            {
-                Write32(self, VbTable(iosOffset));
-                ZeroIos(self + iosOffset);
-            }
-
-            if (isInput)
-            {
-                _emulator.WriteMemory(self + 8, BitConverter.GetBytes(0L)); // _Chcount
-            }
-
-            InitIos(IosOf(self), sb);
-            Note($"{(isInput ? "istream" : "ostream")} at 0x{self:X8}, buffer 0x{sb:X8}{(constructVirtualBases != 0 ? ", most derived" : "")}");
-            _frame.Return(self);
-        }
-
-        private void ConstructIostream()
-        {
-            long self = _frame.Arg(0);
-            long sb = _frame.Arg(1);
-            if (_frame.Arg(2) != 0)
-            {
-                // istream part [vbptr, _Chcount], ostream part [vbptr] at +0x10, ios at +0x18.
-                Write32(self, VbTable(0x18));
-                Write32(self + 0x10, VbTable(0x08));
-                ZeroIos(self + 0x18);
-            }
-
-            _emulator.WriteMemory(self + 8, BitConverter.GetBytes(0L));
-            InitIos(IosOf(self), sb);
-            Note($"iostream at 0x{self:X8}, buffer 0x{sb:X8}");
-            _frame.Return(self);
-        }
-
-        // ------------------------------------------------------------------------------
-        // Formatted output
-        // ------------------------------------------------------------------------------
-
-        private void WriteNumber(long value, bool signed)
-        {
-            long self = _frame.Arg(0);
-            long ios = IosOf(self);
-            uint flags = Read32(ios + Flags);
-            uint basefield = flags & (Dec | Oct | Hex);
-            string text;
-            if (basefield == Hex)
-            {
-                ulong bits = signed ? unchecked((ulong)value) : (ulong)value;
-                text = bits.ToString((flags & Uppercase) != 0 ? "X" : "x", CultureInfo.InvariantCulture);
-                if ((flags & ShowBase) != 0 && bits != 0) text = ((flags & Uppercase) != 0 ? "0X" : "0x") + text;
-            }
-            else if (basefield == Oct)
-            {
-                text = Convert.ToString(value, 8);
-                if ((flags & ShowBase) != 0 && value != 0) text = "0" + text;
-            }
-            else
-            {
-                text = signed ? value.ToString(CultureInfo.InvariantCulture) : ((ulong)value).ToString(CultureInfo.InvariantCulture);
-                if ((flags & ShowPos) != 0 && value >= 0) text = "+" + text;
-            }
-
-            WriteFormatted(self, text, pad: true);
+            Write32(ios + Stdstr, 1);
+            _stdOpens[ios] = _stdOpens.GetValueOrDefault(ios) + 1;
         }
 
         /// <summary>
-        /// The tail every inserter shares: sentry, padding to width with the fill character,
-        /// write through the buffer, width(0), badbit on a short write, return *this.
+        /// ~ios_base (_Ios_base_dtor): a standard stream is left alone while it is open; otherwise
+        /// the erase_event callbacks run, the iword/pword and callback lists are freed and the
+        /// locale is deleted.
         /// </summary>
-        private void WriteFormatted(long self, string text, bool pad)
+        private void DestroyIosBase(long ios, Action then)
         {
-            long ios = IosOf(self);
-            long returnTo = _emulator.ReturnAddress;
-            long sb = Read32(ios + Buffer);
-            if (Read32(ios + State) != GoodBit || sb == 0)
+            if (Read32(ios + Stdstr) != 0 && _stdOpens.TryGetValue(ios, out int opens))
             {
-                SetState(ios, FailBit);
-                Finish(self, returnTo);
-                return;
+                _stdOpens[ios] = opens - 1;
+                if (opens - 1 > 0)
+                {
+                    then();
+                    return;
+                }
             }
 
-            if (pad)
+            CallCallbacks(ios, EraseEvent, () =>
             {
-                long width = BitConverter.ToInt64(_emulator.ReadMemory(ios + Width, 8));
-                char fill = (char)(Read32(ios + Fill) & 0xFF);
-                if (width > text.Length)
+                for (long node = Read32(ios + Arr); node != 0;)
                 {
-                    uint adjust = Read32(ios + Flags) & (Left | Internal | 0x0080);
-                    string padding = new(fill, (int)(width - text.Length));
-                    text = adjust == Left ? text + padding : padding + text;
+                    long next = Read32(node);
+                    _emulator.FreeHeap(node);
+                    node = next;
                 }
 
-                _emulator.WriteMemory(ios + Width, BitConverter.GetBytes(0L));
-            }
-
-            byte[] bytes = Encoding.Latin1.GetBytes(text);
-            PutBytes(sb, bytes, 0, written =>
-            {
-                if (written < bytes.Length)
+                for (long node = Read32(ios + Calls); node != 0;)
                 {
-                    SetState(ios, BadBit);
+                    long next = Read32(node);
+                    _emulator.FreeHeap(node);
+                    node = next;
                 }
 
-                Finish(self, returnTo);
+                Write32(ios + Arr, 0);
+                Write32(ios + Calls, 0);
+                long locale = Read32(ios + Locale);
+                Write32(ios + Locale, 0);
+                Locales.DeleteLocaleObject(locale, then);
             });
         }
 
-        // ------------------------------------------------------------------------------
-        // Formatted input
-        // ------------------------------------------------------------------------------
-
-        /// <summary>basic_istream::_Ipfx: state check, then skip leading whitespace unless asked not to.</summary>
-        private void Prefix(long self, bool noSkip, Action<bool> then)
+        /// <summary>_Callfns(event): every registered callback, newest first, as (event, ios_base&amp;, index).</summary>
+        private void CallCallbacks(long ios, int ev, Action then)
         {
-            long ios = IosOf(self);
-            long sb = Read32(ios + Buffer);
-            if (Read32(ios + State) != GoodBit || sb == 0)
+            void Next(long node)
             {
-                SetState(ios, FailBit);
-                then(false);
-                return;
-            }
-
-            if (noSkip || (Read32(ios + Flags) & SkipWs) == 0)
-            {
-                then(true);
-                return;
-            }
-
-            void Skip()
-            {
-                PeekChar(sb, c =>
+                if (node == 0)
                 {
-                    if (c == Eof)
-                    {
-                        SetState(ios, EofBit | FailBit);
-                        then(false);
-                        return;
-                    }
-
-                    if (!char.IsWhiteSpace((char)c))
-                    {
-                        then(true);
-                        return;
-                    }
-
-                    NextChar(sb, bump: true, _ => Skip());
-                });
-            }
-
-            Skip();
-        }
-
-        /// <summary>operator&gt;&gt; for an unsigned integer of <paramref name="width"/> bytes.</summary>
-        private void ReadUnsigned(int width)
-        {
-            long self = _frame.Arg(0);
-            long target = _frame.Arg(1);
-            long returnTo = _emulator.ReturnAddress;
-            long ios = IosOf(self);
-            long sb = Read32(ios + Buffer);
-
-            Prefix(self, noSkip: false, ok =>
-            {
-                if (!ok)
-                {
-                    Finish(self, returnTo);
+                    then();
                     return;
                 }
 
-                uint basefield = Read32(ios + Flags) & (Dec | Oct | Hex);
-                int radix = basefield == Hex ? 16 : basefield == Oct ? 8 : 10;
-                ulong value = 0;
-                int digits = 0;
-
-                void Next()
+                long function = Read32(node + 8);
+                long index = Read32(node + 4);
+                long following = Read32(node);
+                if (function == 0)
                 {
-                    PeekChar(sb, c =>
-                    {
-                        int digit = c switch
-                        {
-                            >= '0' and <= '9' => c - '0',
-                            >= 'a' and <= 'f' => c - 'a' + 10,
-                            >= 'A' and <= 'F' => c - 'A' + 10,
-                            _ => 99,
-                        };
-
-                        if (c == Eof || digit >= radix)
-                        {
-                            uint state = c == Eof ? EofBit : GoodBit;
-                            if (digits == 0)
-                            {
-                                state |= FailBit;
-                            }
-                            else
-                            {
-                                _emulator.WriteMemory(target, BitConverter.GetBytes(value)[..width]);
-                            }
-
-                            if (state != GoodBit)
-                            {
-                                SetState(ios, state);
-                            }
-
-                            Finish(self, returnTo);
-                            return;
-                        }
-
-                        value = unchecked((value * (ulong)radix) + (ulong)digit);
-                        digits++;
-                        NextChar(sb, bump: true, _ => Next());
-                    });
+                    Next(following);
+                    return;
                 }
 
-                Next();
-            });
+                CallGuest(function, [ev, ios, index], _ => Next(following));
+            }
+
+            Next(Read32(ios + Calls));
+        }
+
+        /// <summary>ios_base::imbue: the old locale out, the new one in, then the imbue_event callbacks.</summary>
+        private void IosBaseImbue(long ios, long incoming, long result, Action then)
+        {
+            long held = Read32(ios + Locale);
+            if (held == 0)
+            {
+                held = Locales.NewLocaleObject();
+                Write32(ios + Locale, held);
+            }
+
+            Locales.CopyLocale(held, result);
+            Locales.AssignLocale(held, incoming, () => CallCallbacks(ios, ImbueEvent, then));
+        }
+
+        /// <summary>_Findarr(index): the iword/pword node for an index, made zeroed if missing.</summary>
+        private long FindArray(long ios, int index)
+        {
+            for (long node = Read32(ios + Arr); node != 0; node = Read32(node))
+            {
+                if (unchecked((int)Read32(node + 4)) == index)
+                {
+                    return node;
+                }
+            }
+
+            long fresh = _emulator.AllocateHeap(16);
+            _emulator.WriteMemory(fresh, new byte[16]);
+            Write32(fresh, Read32(ios + Arr));
+            Write32(fresh + 4, index);
+            Write32(ios + Arr, fresh);
+            return fresh;
+        }
+
+        // ------------------------------------------------------------------------------
+        // ios_base::failure
+        // ------------------------------------------------------------------------------
+
+        private long _failureVtable;
+
+        /// <summary>
+        /// Throws the <c>ios_base::failure</c> a <c>clear</c> asked for, into the game, from its
+        /// call site. VC11's failure is a system_error: vfptr, exception's _Mywhat (+4) and
+        /// _Mydofree (+8), then the error_code (+0xC value 1 = io_errc::stream, +0x10 category).
+        /// </summary>
+        private void ThrowPendingFailure(long returnTo)
+        {
+            if (_pendingFailure is not { } what)
+            {
+                return;
+            }
+
+            _pendingFailure = null;
+            if (_failureVtable == 0)
+            {
+                _failureVtable = _emulator.AllocateHeap(8);
+                long dtor = _emulator.RegisterVtableMethod("ios_base::failure::dtor", () =>
+                {
+                    if ((_frame.Arg(1) & 1) != 0)
+                    {
+                        _emulator.FreeHeap(_frame.Arg(0));
+                    }
+
+                    Done(_frame.Arg(0));
+                });
+                long whatSlot = _emulator.RegisterVtableMethod("ios_base::failure::what", () => Done(Read32(_frame.Arg(0) + 4)));
+                Write32(_failureVtable, ArmEmulator.ThumbEntry(dtor));
+                Write32(_failureVtable + 4, ArmEmulator.ThumbEntry(whatSlot));
+            }
+
+            byte[] text = Encoding.ASCII.GetBytes(what + "\0");
+            long message = _emulator.AllocateHeap(text.Length);
+            _emulator.WriteMemory(message, text);
+            long failure = _emulator.AllocateHeap(0x14);
+            _emulator.WriteMemory(failure, new byte[0x14]);
+            Write32(failure, _failureVtable);
+            Write32(failure + 4, message);
+            Write32(failure + 0xC, 1);
+            Note($"throwing ios_base::failure(\"{what}\") to 0x{returnTo:X8}");
+            _emulator.WriteRegister(Arm.UC_ARM_REG_LR, returnTo);
+            _emulator.Stubs.ThrowIntoGuest(new ThrownException(
+                failure,
+                [".?AVfailure@ios_base@std@@", ".?AVsystem_error@std@@", ".?AVruntime_error@std@@", ".?AVexception@std@@"]));
         }
     }
 }
