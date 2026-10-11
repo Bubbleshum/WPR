@@ -30,6 +30,13 @@ namespace WPR.Wp8Native
         /// </remarks>
         public IReadOnlyList<long> Registers { get; init; } = [];
 
+        /// <summary>
+        /// Where the image this frame's function lives in is mapped. Every RVA on the frame
+        /// (function, handler, handler data, and everything the FuncInfo names) is relative to
+        /// it - with package DLLs loaded that is not always the main image.
+        /// </summary>
+        public long ImageBase { get; init; }
+
         public override string ToString()
             => FunctionRva == 0
                 ? $"0x{Address:X8}  {Encoding}"
@@ -60,63 +67,118 @@ namespace WPR.Wp8Native
     public sealed class ArmUnwinder
     {
         private readonly ArmEmulator _emulator;
-        private readonly long _imageBase;
-        private readonly long _codeStart;
-        private readonly long _codeEnd;
-        private readonly uint[] _beginRvas;
-        private readonly uint[] _unwindData;
+
+        /// <summary>
+        /// One image's .pdata, and the code range it covers. A process with package DLLs loaded
+        /// (see ModuleLoader.cs) has one per module: each is searched by the address being
+        /// unwound, and every RVA a frame carries is relative to the image that frame is in.
+        /// </summary>
+        private sealed class Table
+        {
+            public required long ImageBase { get; init; }
+            public required long CodeStart { get; init; }
+            public required long CodeEnd { get; init; }
+            public required uint[] BeginRvas { get; init; }
+            public required uint[] UnwindData { get; init; }
+        }
+
+        private readonly List<Table> _tables = new();
 
         public ArmUnwinder(PeImage image, ArmEmulator emulator)
         {
             _emulator = emulator;
-            _imageBase = image.ImageBase;
-
-            PeSection code = image.Sections.First(s =>
-                image.EntryPointRva >= s.VirtualAddress &&
-                image.EntryPointRva < s.VirtualAddress + s.MappedSize);
-
-            _codeStart = image.ImageBase + code.VirtualAddress;
-            _codeEnd = _codeStart + code.MappedSize;
-
-            int count = (int)(image.ExceptionDirectorySize / 8);
-            _beginRvas = new uint[count];
-            _unwindData = new uint[count];
-
-            long table = image.ImageBase + image.ExceptionDirectoryRva;
-            for (int i = 0; i < count; i++)
-            {
-                _beginRvas[i] = emulator.ReadUInt32(table + (i * 8));
-                _unwindData[i] = emulator.ReadUInt32(table + (i * 8) + 4);
-            }
+            AddImage(image, image.ImageBase);
         }
 
-        public int FunctionCount => _beginRvas.Length;
+        /// <summary>
+        /// Adds a mapped image's .pdata, read from guest memory at <paramref name="imageBase"/>
+        /// (where it was mapped, which need not be its preferred base: the table is RVAs).
+        /// </summary>
+        public void AddImage(PeImage image, long imageBase)
+        {
+            // The code range is the section holding the entry point - the main image's rule
+            // from the start - or, for a DLL with no entry point, its first executable section.
+            PeSection? code = image.EntryPointRva != 0
+                ? image.Sections.FirstOrDefault(s =>
+                    image.EntryPointRva >= s.VirtualAddress &&
+                    image.EntryPointRva < s.VirtualAddress + s.MappedSize)
+                : null;
+            if (code is null || code.Value.MappedSize == 0)
+            {
+                code = image.Sections.FirstOrDefault(s => s.IsExecutable || s.Name.StartsWith(".text", StringComparison.Ordinal));
+            }
+
+            if (code is null || code.Value.MappedSize == 0)
+            {
+                return;
+            }
+
+            int count = (int)(image.ExceptionDirectorySize / 8);
+            uint[] begin = new uint[count];
+            uint[] unwind = new uint[count];
+
+            long table = imageBase + image.ExceptionDirectoryRva;
+            for (int i = 0; i < count; i++)
+            {
+                begin[i] = _emulator.ReadUInt32(table + (i * 8));
+                unwind[i] = _emulator.ReadUInt32(table + (i * 8) + 4);
+            }
+
+            long start = imageBase + code.Value.VirtualAddress;
+            _tables.Add(new Table
+            {
+                ImageBase = imageBase,
+                CodeStart = start,
+                CodeEnd = start + code.Value.MappedSize,
+                BeginRvas = begin,
+                UnwindData = unwind,
+            });
+        }
+
+        /// <summary>Forgets an unloaded module's table.</summary>
+        public void RemoveImage(long imageBase) => _tables.RemoveAll(t => t.ImageBase == imageBase);
+
+        private Table? TableFor(long address)
+        {
+            foreach (Table table in _tables)
+            {
+                if (address >= table.CodeStart && address < table.CodeEnd)
+                {
+                    return table;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>RUNTIME_FUNCTION entries across every image.</summary>
+        public int FunctionCount => _tables.Sum(t => t.BeginRvas.Length);
 
         /// <summary>
         /// The start address of the function containing <paramref name="address"/>, or zero
-        /// if the .pdata table does not cover it.
+        /// if no image's .pdata table covers it.
         /// </summary>
         /// <remarks>
         /// The table has no end addresses, so a hit past the last function - or in a range
         /// .pdata simply does not describe, which includes every leaf function too small to
-        /// need unwind data - is indistinguishable from a hit inside one. Anything outside the
+        /// need unwind data - is indistinguishable from a hit inside one. Anything outside a
         /// code section is rejected outright; beyond that this is the same answer the real
         /// unwinder would give, with the same limitation.
         /// </remarks>
         public long FunctionStart(long address)
         {
-            if (address < _codeStart || address >= _codeEnd)
+            if (TableFor(address) is not { } table)
             {
                 return 0;
             }
 
-            int index = FindIndex(address);
-            return index < 0 ? 0 : _imageBase + _beginRvas[index];
+            int index = FindIndex(table, address);
+            return index < 0 ? 0 : table.ImageBase + table.BeginRvas[index];
         }
 
-        public int PackedCount => _unwindData.Count(u => (u & 3) != 0);
+        public int PackedCount => _tables.Sum(t => t.UnwindData.Count(u => (u & 3) != 0));
 
-        public int XdataCount => _unwindData.Count(u => (u & 3) == 0);
+        public int XdataCount => _tables.Sum(t => t.UnwindData.Count(u => (u & 3) == 0));
 
         /// <summary>The machine state an unwind operates on, one frame at a time.</summary>
         private sealed class UnwindState
@@ -145,17 +207,18 @@ namespace WPR.Wp8Native
         /// Finds the RUNTIME_FUNCTION covering an address. The table is sorted, so this is
         /// the same binary search the real unwinder does.
         /// </summary>
-        private int FindIndex(long address)
+        private static int FindIndex(Table table, long address)
         {
-            uint rva = (uint)(address - _imageBase);
+            uint rva = (uint)(address - table.ImageBase);
+            uint[] beginRvas = table.BeginRvas;
             int low = 0;
-            int high = _beginRvas.Length - 1;
+            int high = beginRvas.Length - 1;
             int found = -1;
 
             while (low <= high)
             {
                 int middle = (low + high) / 2;
-                if (_beginRvas[middle] <= rva)
+                if (beginRvas[middle] <= rva)
                 {
                     found = middle;
                     low = middle + 1;
@@ -189,15 +252,16 @@ namespace WPR.Wp8Native
 
             for (int depth = 0; depth < maxFrames; depth++)
             {
-                int index = FindIndex(currentPc);
-                if (index < 0)
+                Table? table = TableFor(currentPc);
+                int index = table is null ? -1 : FindIndex(table, currentPc);
+                if (table is null || index < 0)
                 {
                     frames.Add(new UnwoundFrame(currentPc, 0, 0, false, "walk stopped: no .pdata entry"));
                     break;
                 }
 
-                uint functionRva = _beginRvas[index];
-                uint unwind = _unwindData[index];
+                uint functionRva = table.BeginRvas[index];
+                uint unwind = table.UnwindData[index];
                 long entrySp = state.Sp;
 
                 // Snapshot before unwinding: this is the register state *inside* this frame.
@@ -209,12 +273,15 @@ namespace WPR.Wp8Native
                 string failure;
                 bool ok = (unwind & 3) != 0
                     ? RunPacked(unwind, state, out failure)
-                    : RunXdata(_imageBase + unwind, state, out hasHandler, out handlerRva, out handlerDataRva, out failure);
+                    : RunXdata(table.ImageBase + unwind, state, out hasHandler, out handlerRva, out handlerDataRva, out failure);
 
                 string encoding = (unwind & 3) != 0 ? "packed" : "xdata";
                 if (!ok)
                 {
-                    frames.Add(new UnwoundFrame(currentPc, functionRva, 0, hasHandler, $"{encoding} ({failure})"));
+                    frames.Add(new UnwoundFrame(currentPc, functionRva, 0, hasHandler, $"{encoding} ({failure})")
+                    {
+                        ImageBase = table.ImageBase,
+                    });
                     break;
                 }
 
@@ -224,10 +291,13 @@ namespace WPR.Wp8Native
                     HandlerDataRva = handlerDataRva,
                     FramePointer = entrySp,
                     Registers = registersHere,
+                    ImageBase = table.ImageBase,
                 });
 
+                // The caller may be in another module: a callback from a package DLL into the
+                // game, or the game calling a DLL export, unwinds straight across.
                 long target = state.Lr & ~1L;
-                if (target < _codeStart || target >= _codeEnd || FindIndex(target) < 0)
+                if (TableFor(target) is not { } next || FindIndex(next, target) < 0)
                 {
                     frames.Add(new UnwoundFrame(
                         target, 0, 0, false, "walk stopped: return address is not in executable code"));
@@ -530,19 +600,20 @@ namespace WPR.Wp8Native
         /// <summary>The raw unwind record for an address, for checking a decode against the bytes.</summary>
         public string Dump(long address)
         {
-            int index = FindIndex(address);
-            if (index < 0)
+            Table? table = TableFor(address);
+            int index = table is null ? -1 : FindIndex(table, address);
+            if (table is null || index < 0)
             {
                 return "no .pdata entry";
             }
 
-            uint unwind = _unwindData[index];
+            uint unwind = table.UnwindData[index];
             if ((unwind & 3) != 0)
             {
                 return $"packed 0x{unwind:X8}";
             }
 
-            long record = _imageBase + unwind;
+            long record = table.ImageBase + unwind;
             uint header = _emulator.ReadUInt32(record);
             byte[] following = _emulator.ReadMemory(record + 4, 16);
 
