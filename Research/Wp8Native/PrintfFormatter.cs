@@ -22,8 +22,18 @@ namespace WPR.Wp8Native
             _frame = frame;
         }
 
-        public string Format(string format, VarArgReader arguments)
+        /// <summary>
+        /// True while formatting for a wide function (swprintf and friends), where a bare %s and %c
+        /// take wide arguments and %S / %C narrow ones - the reverse of the narrow functions. An h
+        /// prefix always means narrow and l or w always means wide.
+        /// </summary>
+        private bool _wideFunction;
+
+        public string Format(string format, VarArgReader arguments) => Format(format, arguments, wideFunction: false);
+
+        public string Format(string format, VarArgReader arguments, bool wideFunction)
         {
+            _wideFunction = wideFunction;
             StringBuilder output = new();
 
             for (int i = 0; i < format.Length; i++)
@@ -113,6 +123,7 @@ namespace WPR.Wp8Native
             // --- length modifier ---
             bool isLong64 = false;
             bool isWide = false;
+            bool isShort = false;
             while (index < format.Length)
             {
                 if (format.AsSpan(index).StartsWith("I64", StringComparison.Ordinal))
@@ -122,8 +133,24 @@ namespace WPR.Wp8Native
                     continue;
                 }
 
+                // I32 is the explicit 32-bit size, which is what an int already is here.
+                if (format.AsSpan(index).StartsWith("I32", StringComparison.Ordinal))
+                {
+                    index += 3;
+                    continue;
+                }
+
                 char modifier = format[index];
-                if (modifier is 'h' or 'j' or 't' or 'z' or 'L' or 'I')
+
+                // h: a short for an integer conversion, a narrow string or character for s and c.
+                if (modifier == 'h')
+                {
+                    isShort = true;
+                    index++;
+                    continue;
+                }
+
+                if (modifier is 'j' or 't' or 'z' or 'L' or 'I')
                 {
                     index++;
                     continue;
@@ -160,7 +187,15 @@ namespace WPR.Wp8Native
                 case 'i':
                 {
                     long value = isLong64 ? arguments.NextInt64() : arguments.NextInt32();
-                    string digits = Math.Abs(value).ToString(CultureInfo.InvariantCulture);
+                    if (isShort)
+                    {
+                        value = unchecked((short)value);
+                    }
+
+                    // The magnitude as unsigned, so long.MinValue has one; and precision 0 with a
+                    // value of 0 prints no digits at all.
+                    ulong magnitude = value < 0 ? unchecked((ulong)-value) : (ulong)value;
+                    string digits = precision == 0 && value == 0 ? string.Empty : magnitude.ToString(CultureInfo.InvariantCulture);
                     string sign = value < 0 ? "-" : forceSign ? "+" : spaceSign ? " " : string.Empty;
                     return PadNumber(digits, sign, precision, width, leftAlign, zeroPad);
                 }
@@ -168,8 +203,13 @@ namespace WPR.Wp8Native
                 case 'u':
                 {
                     ulong value = isLong64 ? arguments.NextUInt64() : arguments.NextUInt32();
+                    if (isShort)
+                    {
+                        value = (ushort)value;
+                    }
+
                     return PadNumber(
-                        value.ToString(CultureInfo.InvariantCulture),
+                        precision == 0 && value == 0 ? string.Empty : value.ToString(CultureInfo.InvariantCulture),
                         string.Empty, precision, width, leftAlign, zeroPad);
                 }
 
@@ -177,7 +217,14 @@ namespace WPR.Wp8Native
                 case 'X':
                 {
                     ulong value = isLong64 ? arguments.NextUInt64() : arguments.NextUInt32();
-                    string digits = value.ToString(conversion == 'x' ? "x" : "X", CultureInfo.InvariantCulture);
+                    if (isShort)
+                    {
+                        value = (ushort)value;
+                    }
+
+                    string digits = precision == 0 && value == 0
+                        ? string.Empty
+                        : value.ToString(conversion == 'x' ? "x" : "X", CultureInfo.InvariantCulture);
                     string prefix = alternate && value != 0 ? (conversion == 'x' ? "0x" : "0X") : string.Empty;
                     return PadNumber(digits, prefix, precision, width, leftAlign, zeroPad);
                 }
@@ -185,7 +232,12 @@ namespace WPR.Wp8Native
                 case 'o':
                 {
                     ulong value = isLong64 ? arguments.NextUInt64() : arguments.NextUInt32();
-                    string digits = Convert.ToString((long)value, 8);
+                    if (isShort)
+                    {
+                        value = (ushort)value;
+                    }
+
+                    string digits = precision == 0 && value == 0 ? string.Empty : Convert.ToString((long)value, 8);
                     return PadNumber(
                         alternate && !digits.StartsWith('0') ? "0" + digits : digits,
                         string.Empty, precision, width, leftAlign, zeroPad);
@@ -217,19 +269,25 @@ namespace WPR.Wp8Native
                 }
 
                 case 'c':
+                case 'C':
                 {
                     int raw = arguments.NextInt32();
-                    return Pad(((char)(isWide ? raw & 0xFFFF : raw & 0xFF)).ToString(), width, leftAlign, false);
+                    bool wide = WideArgument(conversion == 'C', isWide, isShort);
+                    return Pad(((char)(wide ? raw & 0xFFFF : raw & 0xFF)).ToString(), width, leftAlign, false);
                 }
 
                 case 's':
                 case 'S':
                 {
                     long pointer = arguments.NextPointer();
-                    bool wide = conversion == 'S' || isWide;
+                    bool wide = WideArgument(conversion == 'S', isWide, isShort);
+
+                    // A precision bounds what is read as well as what is printed: it is how a
+                    // caller prints a character array that is not NUL-terminated.
+                    int limit = precision >= 0 ? precision : CallFrame.SaneLengthLimit;
                     string text = pointer == 0
                         ? "(null)"
-                        : wide ? _emulator.ReadUtf16String(pointer) : _frame.ReadNarrowString(pointer);
+                        : wide ? _emulator.ReadUtf16String(pointer, limit) : _frame.ReadNarrowString(pointer, limit);
 
                     if (precision >= 0 && text.Length > precision)
                     {
@@ -253,72 +311,25 @@ namespace WPR.Wp8Native
             }
         }
 
-        private static string FormatFloat(double value, char conversion, int precision, bool alternate)
-        {
-            if (double.IsNaN(value))
-            {
-                return char.IsUpper(conversion) ? "NAN" : "nan";
-            }
-
-            if (double.IsInfinity(value))
-            {
-                string text = value < 0 ? "-inf" : "inf";
-                return char.IsUpper(conversion) ? text.ToUpperInvariant() : text;
-            }
-
-            switch (char.ToLowerInvariant(conversion))
-            {
-                case 'f':
-                    return value.ToString("F" + precision, CultureInfo.InvariantCulture);
-
-                case 'e':
-                    return NormaliseExponent(
-                        value.ToString((conversion == 'E' ? "E" : "e") + precision, CultureInfo.InvariantCulture));
-
-                default:
-                {
-                    // %g: whichever of %e and %f is shorter, with trailing zeros removed
-                    // unless # was given. Precision 0 is treated as 1.
-                    int significant = precision == 0 ? 1 : precision;
-                    int exponent = value == 0 ? 0 : (int)Math.Floor(Math.Log10(Math.Abs(value)));
-
-                    string text = exponent < -4 || exponent >= significant
-                        ? NormaliseExponent(value.ToString(
-                            (char.IsUpper(conversion) ? "E" : "e") + Math.Max(0, significant - 1),
-                            CultureInfo.InvariantCulture))
-                        : value.ToString("F" + Math.Max(0, significant - 1 - exponent), CultureInfo.InvariantCulture);
-
-                    if (!alternate && text.Contains('.'))
-                    {
-                        // Trim the fraction, but never into the exponent.
-                        int exponentAt = text.IndexOfAny(['e', 'E']);
-                        string mantissa = exponentAt < 0 ? text : text[..exponentAt];
-                        string suffix = exponentAt < 0 ? string.Empty : text[exponentAt..];
-                        mantissa = mantissa.TrimEnd('0').TrimEnd('.');
-                        text = mantissa + suffix;
-                    }
-
-                    return text;
-                }
-            }
-        }
+        /// <summary>
+        /// Whether a %s / %c argument is wide: l or w says wide and h says narrow outright;
+        /// otherwise the lower-case conversion matches the function (narrow for printf, wide for
+        /// wprintf) and the upper-case one is the other kind.
+        /// </summary>
+        private bool WideArgument(bool upperCase, bool longPrefix, bool shortPrefix)
+            => longPrefix || (!shortPrefix && (upperCase ? !_wideFunction : _wideFunction));
 
         /// <summary>
-        /// .NET writes a three-digit exponent (<c>e+006</c>); C writes at least two
-        /// (<c>e+06</c>). Anything reading the output back expects the C form.
+        /// %e %f %g as the VC11 CRT renders them - 17 significant digits then zeros, a
+        /// three-digit exponent, 1.#INF and friends; see <see cref="CrtFloatText"/>.
         /// </summary>
-        private static string NormaliseExponent(string text)
-        {
-            int at = text.IndexOfAny(['e', 'E']);
-            if (at < 0 || at + 2 >= text.Length)
+        private static string FormatFloat(double value, char conversion, int precision, bool alternate)
+            => char.ToLowerInvariant(conversion) switch
             {
-                return text;
-            }
-
-            string mantissa = text[..(at + 2)];       // includes the sign
-            string digits = text[(at + 2)..].TrimStart('0');
-            return mantissa + (digits.Length < 2 ? digits.PadLeft(2, '0') : digits);
-        }
+                'f' => CrtFloatText.Fixed(value, precision, alternate),
+                'e' => CrtFloatText.Exponential(value, precision, char.IsUpper(conversion), alternate),
+                _ => CrtFloatText.General(value, precision, char.IsUpper(conversion), alternate),
+            };
 
         /// <summary>
         /// Applies precision (a minimum digit count for integers) and then width, keeping
