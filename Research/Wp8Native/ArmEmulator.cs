@@ -1636,6 +1636,9 @@ namespace WPR.Wp8Native
         /// <summary>Data imports given a real variable instead of a trap.</summary>
         public List<string> DataImportCells { get; } = new();
 
+        /// <summary>IAT slots of iostream/locale variables, for StreamLibrary to fill.</summary>
+        public List<(string Name, long Slot)> StreamDataImports { get; } = new();
+
         private void InstallImportTraps()
         {
             foreach (ImportedFunction import in _image.Imports)
@@ -1660,16 +1663,13 @@ namespace WPR.Wp8Native
                     continue;
                 }
 
-                // std::cerr / cout / clog are objects, not functions: the IAT slot holds the
-                // object's address. A trap there makes the game use trap-page memory as an
-                // ostream. Give it a real, disabled one (see StreamLibrary).
-                if (import.Name.StartsWith("?cerr@std@@3", StringComparison.Ordinal) ||
-                    import.Name.StartsWith("?cout@std@@3", StringComparison.Ordinal) ||
-                    import.Name.StartsWith("?clog@std@@3", StringComparison.Ordinal))
+                // The iostream and locale variables - std::cout and friends, facet ids, vtables,
+                // _BADOFF - are objects, not functions. StreamLibrary fills these slots once the
+                // host exists, before any guest code runs (StreamLibrary.FillDataImports).
+                if (StreamLibrary.IsDataImport(import.Name))
                 {
-                    long stream = StreamLibrary.BuildDisabledOstream(this);
-                    _cpu.MemWrite(slotAddress, BitConverter.GetBytes((uint)stream));
-                    DataImportCells.Add($"{import.FullName} -> disabled ostream at 0x{stream:X8}");
+                    _cpu.MemWrite(slotAddress, new byte[4]);
+                    StreamDataImports.Add((import.Name, slotAddress));
                     continue;
                 }
 
