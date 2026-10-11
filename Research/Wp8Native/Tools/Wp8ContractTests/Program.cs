@@ -24,10 +24,13 @@ var suites = typeof(Harness).Assembly.GetTypes()
     .OrderBy(s => s.Name, StringComparer.Ordinal)
     .ToList();
 
-Harness h = new(image, sandbox);
+// A fresh emulator per suite: suites must not see each other's state. A shared one let one suite's
+// guest stop (StopReason is sticky) fail a later suite's "and the run carries on" check.
+int passed = 0, failed = 0;
 foreach (IContractSuite suite in suites)
 {
     Console.WriteLine($"== {suite.Name}");
+    Harness h = new(image, sandbox);
     try
     {
         suite.Run(h);
@@ -36,7 +39,10 @@ foreach (IContractSuite suite in suites)
     {
         h.Check($"{suite.Name} ran to completion", false, ex.GetType().Name + ": " + ex.Message);
     }
+
+    passed += h.Passed;
+    failed += h.Failed;
 }
 
-Console.WriteLine($"\n{h.Passed} passed, {h.Failed} failed ({suites.Count} suite(s))");
-return h.Failed == 0 ? 0 : 1;
+Console.WriteLine($"\n{passed} passed, {failed} failed ({suites.Count} suite(s))");
+return failed == 0 ? 0 : 1;
