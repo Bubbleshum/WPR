@@ -1644,7 +1644,7 @@ namespace WPR.Wp8Native
         /// <summary>IAT slots of iostream/locale variables, for StreamLibrary to fill.</summary>
         public List<(string Name, long Slot)> StreamDataImports { get; } = new();
 
-                /// <summary>Binds one image's IAT: package DLL exports where there are any, host-stub traps otherwise.</summary>
+        /// <summary>Binds one image's IAT: package DLL exports where there are any, host-stub traps otherwise.</summary>
         private void InstallImportTraps(PeImage image, long imageBase)
         {
             foreach (ImportedFunction import in image.Imports)
