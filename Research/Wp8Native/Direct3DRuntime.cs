@@ -1766,6 +1766,38 @@ namespace WPR.Wp8Native
             return CreateInterface(_factory, "IDXGIFactory2", 25, methods);
         }
 
+        /// <summary>
+        /// HRESULT CreateDXGIFactory1(REFIID riid, void** ppFactory) - and CreateDXGIFactory: the
+        /// one factory, as any of IDXGIFactory/1/2; E_NOINTERFACE (and NULL) for anything else.
+        /// </summary>
+        public void CreateDxgiFactory()
+        {
+            Guid iid = ReadGuid(Arg(0));
+            long outPointer = Arg(1);
+            if (outPointer == 0)
+            {
+                Return(unchecked((int)0x80004003)); // E_POINTER
+                return;
+            }
+
+            if (!KnownIids.TryGetValue(iid, out string? wanted) || wanted is not ("IDXGIFactory" or "IDXGIFactory1" or "IDXGIFactory2" or "IUnknown"))
+            {
+                Fail(outPointer, $"CreateDXGIFactory1({{{iid}}}) -> E_NOINTERFACE");
+                return;
+            }
+
+            bool existed = _factory is not null;
+            long pointer = FactoryPointer();
+            if (existed)
+            {
+                _factory!.RefCount++;
+            }
+
+            _emulator.WriteUInt32(outPointer, (uint)pointer);
+            Note($"CreateDXGIFactory1({wanted}) -> 0x{pointer:X8}");
+            Return(HResultOk);
+        }
+
         private void EnumAdapters()
         {
             // Enumeration ends by returning DXGI_ERROR_NOT_FOUND, so index zero is the only

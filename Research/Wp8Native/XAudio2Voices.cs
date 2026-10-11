@@ -536,8 +536,16 @@ namespace WPR.Wp8Native
         /// True if it has taken over the return path (it is calling into the game) and will run
         /// <paramref name="continueWith"/> itself; false if there was nothing to call.
         /// </returns>
+        /// <summary>
+        /// Raised at the top of every <see cref="Pump"/>, i.e. once per frame of the main loop: the
+        /// clock the other audio paths (WASAPI, the media engine) advance on. Handlers must not
+        /// call into the image.
+        /// </summary>
+        public event Action? FrameTick;
+
         public bool Pump(Action continueWith)
         {
+            FrameTick?.Invoke();
             // A real engine runs a processing pass every 10 ms and tells registered engine
             // callbacks either side of it; a game with its own mixer (Angry Birds) fills its
             // voice from OnProcessingPassStart. One pass a frame is enough while it keeps a

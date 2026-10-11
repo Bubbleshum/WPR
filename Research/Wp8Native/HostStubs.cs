@@ -406,6 +406,7 @@ namespace WPR.Wp8Native
             RegisterWinsock();
             new CrtStrings(emulator, _frame).RegisterInto(_handlers);   // MSVCR110 strings and conversions; replaces older entries
             new Win32Core(emulator, _frame, this).RegisterInto(_handlers);
+            RegisterMediaImports(imageDirectory);
             _winRt.RegisterEventSources(_handlers);
             // After the others: it replaces their single-threaded sleep and thread-id answers.
             Threads = new ThreadLibrary(emulator, _frame);
@@ -796,6 +797,13 @@ namespace WPR.Wp8Native
             // Imports by ordinal are only unique per DLL.
             if (function.StartsWith('#') && TryWinsockOrdinal(fullName))
             {
+                return;
+            }
+
+            // Ordinal handlers registered under their qualified "dll!#n" name (XAudio2_8's exports).
+            if (function.StartsWith('#') && _handlers.TryGetValue(fullName, out Action? byOrdinal))
+            {
+                byOrdinal();
                 return;
             }
 
