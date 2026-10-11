@@ -401,6 +401,7 @@ namespace WPR.Wp8Native
             RegisterStartupImports(imageDirectory);
             RegisterMsvcpCore();
             RegisterWinsock();
+            new CrtStrings(emulator, _frame).RegisterInto(_handlers);   // MSVCR110 strings and conversions; replaces older entries
             _winRt.RegisterEventSources(_handlers);
             // After the others: it replaces their single-threaded sleep and thread-id answers.
             Threads = new ThreadLibrary(emulator, _frame);
