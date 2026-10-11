@@ -244,6 +244,7 @@ namespace WPR.Wp8Native
             handlers["SetLastError"] = () => { _lastError = (int)_frame.Arg(0); _frame.Return(0); };
 
             RegisterMappingAndStat(handlers);
+            RegisterCrtStdio(handlers);
         }
 
         // ---------------------------------------------------------------------------

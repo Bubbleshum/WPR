@@ -363,6 +363,7 @@ namespace WPR.Wp8Native
 
             // The top of the 1b to-do list: what every title reaches before its first frame.
             RegisterStartupImports(imageDirectory);
+            RegisterCrtRuntime();   // MSVCR110's runtime proper: CrtRuntime.cs
             _winRt.RegisterEventSources(_handlers);
             // After the others: it replaces their single-threaded sleep and thread-id answers.
             Threads = new ThreadLibrary(emulator, _frame);
