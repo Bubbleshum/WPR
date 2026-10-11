@@ -369,6 +369,50 @@ namespace WPR.Wp8Native
             });
         }
 
+        // ---- for libraries whose handles ARE Win32 events (Winsock's WSAEVENT) ----
+        // A WSAEVENT is an ordinary event object: a game may wait on it with WaitForSingleObjectEx
+        // as well as WSAWaitForMultipleEvents, so it has to live in this table, not a second one.
+
+        /// <summary>Creates an event, as CreateEventW(NULL, manualReset, initiallySet, NULL).</summary>
+        public long CreateEvent(bool manualReset, bool initiallySet)
+        {
+            long handle = _nextHandle++;
+            _events[handle] = new Event { ManualReset = manualReset, Signalled = initiallySet };
+            return handle;
+        }
+
+        /// <summary>SetEvent; false if the handle is not an event.</summary>
+        public bool SetEvent(long handle)
+        {
+            if (!_events.TryGetValue(handle, out Event? e) || e.Kind != Kind.Event) return false;
+            e.Signalled = true;
+            return true;
+        }
+
+        /// <summary>ResetEvent; false if the handle is not an event.</summary>
+        public bool ResetEvent(long handle)
+        {
+            if (!_events.TryGetValue(handle, out Event? e) || e.Kind != Kind.Event) return false;
+            e.Signalled = false;
+            return true;
+        }
+
+        /// <summary>Closes a handle this library made; false if it is not one.</summary>
+        public bool CloseEvent(long handle) => _events.Remove(handle);
+
+        /// <summary>Whether a wait on the handle by the calling thread would succeed now; null if unknown.</summary>
+        public bool? CouldWait(long handle) =>
+            _events.TryGetValue(handle, out Event? e) ? CanTake(e, _emulator.CurrentThreadId) : null;
+
+        /// <summary>Completes a wait on the handle if it can be satisfied now (resetting an auto-reset event).</summary>
+        public bool TryWait(long handle)
+        {
+            if (!_events.TryGetValue(handle, out Event? e) || !CanTake(e, _emulator.CurrentThreadId)) return false;
+            Take(e, _emulator.CurrentThreadId);
+            _satisfied++;
+            return true;
+        }
+
         /// <summary>What happened at each ConcRT wait, capped.</summary>
         private readonly List<string> _concurrencyWaits = new();
 

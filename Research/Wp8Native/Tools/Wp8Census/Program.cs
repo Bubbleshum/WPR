@@ -77,7 +77,7 @@ foreach (string root in roots)
                     system++;
                     string key = $"{import.Dll}!{import.Name}";
                     (importTitles.TryGetValue(key, out var titles) ? titles : importTitles[key] = new()).Add(title);
-                    if (!stubs.IsImplemented(import.Name)) missing++;
+                    if (!stubs.IsImplemented(import.Dll, import.Name)) missing++;
                 }
 
                 // WinRT class names: UTF-16 literals in the image.
@@ -96,7 +96,7 @@ foreach (string root in roots)
     }
 }
 
-bool Implemented(string key) => stubs.IsImplemented(key[(key.IndexOf('!') + 1)..]);
+bool Implemented(string key) => stubs.IsImplemented(key[..key.IndexOf('!')], key[(key.IndexOf('!') + 1)..]);
 
 var sb = new StringBuilder();
 sb.AppendLine("# WP8 API census");

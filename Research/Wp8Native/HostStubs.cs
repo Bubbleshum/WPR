@@ -400,6 +400,7 @@ namespace WPR.Wp8Native
             // The top of the 1b to-do list: what every title reaches before its first frame.
             RegisterStartupImports(imageDirectory);
             RegisterMsvcpCore();
+            RegisterWinsock();
             _winRt.RegisterEventSources(_handlers);
             // After the others: it replaces their single-threaded sleep and thread-id answers.
             Threads = new ThreadLibrary(emulator, _frame);
@@ -785,7 +786,7 @@ namespace WPR.Wp8Native
             string function = split >= 0 ? fullName[(split + 1)..] : fullName;
 
             // Imports by ordinal are only unique per DLL.
-            if (function.StartsWith('#') && Extras.TryWinsock(fullName))
+            if (function.StartsWith('#') && TryWinsockOrdinal(fullName))
             {
                 return;
             }

@@ -1150,6 +1150,8 @@ namespace WPR.Wp8Native
                         // always runs from a return trap rather than inline in this stub.
                         // HTTP failures join the queue here, once they are due.
                         _emulator.Stubs.Http.QueueDue();
+                        // Socket events (WSAEventSelect) and overlapped completions, so a wait on a WSAEVENT sees them.
+                        _emulator.Stubs.Winsock.Pump();
                         if (_emulator.PendingDeferredCalls > 0)
                         {
                             long resumeAfterDrain = _emulator.ReturnAddress;

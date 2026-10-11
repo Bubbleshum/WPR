@@ -405,49 +405,11 @@ namespace WPR.Wp8Native
             handlers["?terminate@@YAXXZ"] = () => _emulator.Stop("the image called std::terminate()");
             handlers["_purecall"] = () => _emulator.Stop("the image called a pure virtual function");
 
-            // --- networking: offline ---
-            handlers["getaddrinfo"] = () =>
-            {
-                if (_frame.Arg(3) != 0)
-                {
-                    _emulator.WriteUInt32(_frame.Arg(3), 0);
-                }
-
-                _frame.Return(11001); // WSAHOST_NOT_FOUND
-            };
-            handlers["freeaddrinfo"] = () => _frame.Return(0);
+            // Networking (getaddrinfo and the rest of WS2_32) is WinsockLibrary.
             handlers["FormatMessageW"] = () => _frame.Return(0);
 
             // --- qsort ---
             handlers["qsort"] = Qsort;
-        }
-
-        /// <summary>
-        /// Winsock by ordinal - the import table names these by number only. Answered as a
-        /// machine whose network is down.
-        /// </summary>
-        public bool TryWinsock(string fullName)
-        {
-            if (!fullName.StartsWith("WS2_32", StringComparison.OrdinalIgnoreCase) &&
-                !fullName.StartsWith("ws2_32", StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            string ordinal = fullName[(fullName.IndexOf('!') + 1)..];
-            const uint socketError = 0xFFFFFFFF;
-            switch (ordinal)
-            {
-                case "#115": _frame.Return(0); break;            // WSAStartup
-                case "#116": _frame.Return(0); break;            // WSACleanup
-                case "#111": _frame.Return(10050); break;        // WSAGetLastError: WSAENETDOWN
-                case "#3": _frame.Return(0); break;              // closesocket
-                case "#21": _frame.Return(0); break;             // setsockopt
-                case "#10": _frame.Return(0); break;             // ioctlsocket
-                default: _frame.Return(socketError); break;      // socket, connect, send, recv, select...
-            }
-
-            return true;
         }
 
         private string Read(int argument) => _frame.ReadNarrowString(_frame.Arg(argument));

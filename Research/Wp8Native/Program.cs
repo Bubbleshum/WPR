@@ -183,7 +183,7 @@ if (int.TryParse(Environment.GetEnvironmentVariable("WPR_WATCHDOG"), out int wat
 // WPR_UNHANDLED=1: list every import this image declares that has no implementation, and stop.
 if (Environment.GetEnvironmentVariable("WPR_UNHANDLED") == "1")
 {
-    foreach (string name in image.Imports.Select(i => i.Name).Distinct().Where(n => !emulator.Stubs.IsImplemented(n)).Order())
+    foreach (string name in image.Imports.Where(i => !emulator.Stubs.IsImplemented(i.Dll, i.Name)).Select(i => i.Name).Distinct().Order())
     {
         Console.WriteLine($"UNHANDLED {name}");
     }
