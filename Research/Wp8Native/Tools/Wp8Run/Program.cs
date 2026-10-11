@@ -30,11 +30,22 @@ Console.WriteLine($"budget  {budget:N0}");
 
 var emulator = new ArmEmulator(PeImage.Load(exe), Path.GetDirectoryName(exe)!, collectBlockStats: false);
 int frames = 0;
-emulator.Direct3D.FrameBuilt += _ => frames++;
+var clock = new Stopwatch();
+TimeSpan? firstFrame = null;
+long firstFrameRetired = 0, firstFrameCalls = 0;
+emulator.Direct3D.FrameBuilt += _ =>
+{
+    if (frames++ == 0)
+    {
+        firstFrame = clock.Elapsed;
+        firstFrameRetired = emulator.Cpu.InstructionsRetired;
+        firstFrameCalls = emulator.CallOrderTotal;
+    }
+};
 Console.WriteLine($"cpu     {emulator.Cpu.Capabilities.Name}");
 Console.Out.Flush();
 
-var clock = Stopwatch.StartNew();
+clock.Start();
 string? fault;
 try
 {
@@ -50,6 +61,12 @@ Console.WriteLine($"outcome {fault ?? "(no fault)"}");
 Console.WriteLine($"stop    {emulator.StopReason ?? "(none)"}");
 Console.WriteLine($"retired {emulator.Cpu.InstructionsRetired:N0} in {clock.Elapsed.TotalSeconds:F1}s");
 Console.WriteLine($"frames  {frames}");
+double seconds = Math.Max(clock.Elapsed.TotalSeconds, 1e-9);
+Console.WriteLine($"rate    {emulator.Cpu.InstructionsRetired / seconds / 1e6:F1} M instructions/s, {emulator.CallOrderTotal / seconds:N0} host calls/s");
+Console.WriteLine(firstFrame is { } ff
+    ? $"first   frame after {ff.TotalSeconds:F3}s, {firstFrameRetired:N0} instructions, {firstFrameCalls:N0} host calls"
+    : "first   no frame presented");
+Console.WriteLine($"modules {string.Join("; ", emulator.Modules.Select(m => m.Name))}");
 const int Lr = 10, Pc = 11;   // Unicorn register ids; the Arm const class is internal
 Console.WriteLine($"pc=0x{emulator.ReadRegister(Pc):X8} lr=0x{emulator.ReadRegister(Lr):X8} " +
                   string.Join(" ", Enumerable.Range(0, 13).Select(r => $"r{r}=0x{emulator.ReadRegister(66 + r):X8}")));

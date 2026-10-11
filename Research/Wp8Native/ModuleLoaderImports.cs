@@ -84,14 +84,19 @@ namespace WPR.Wp8Native
                     ? $"#{procedure & 0xFFFF}"
                     : _frame.ReadNarrowString(procedure, 1024);
 
-                if (_emulator.ProcedureAddress(module, name, out int error) is { } address)
+                // Asynchronous only when the export is forwarded to a DLL that has to be loaded
+                // now: its DllMain runs before GetProcAddress returns.
+                _emulator.ProcedureAddressFromGuest(module, name, (address, error) =>
                 {
-                    Return(address);
-                    return;
-                }
+                    if (address is { } found)
+                    {
+                        Return(found);
+                        return;
+                    }
 
-                SetLoaderError(error);
-                Return(0);
+                    SetLoaderError(error);
+                    Return(0);
+                });
             };
 
             // HMODULE GetModuleHandleW(LPCWSTR): NULL is the process's own image; otherwise a

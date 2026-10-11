@@ -117,7 +117,9 @@ namespace WPR.Wp8Native
             _winRt = new WinRtRuntime(this, _strings);
 
             // Binding the main image's imports maps every package DLL it needs, recursively
-            // (ModuleLoader.cs); their DllMains run from StartWithModuleInitialisers.
+            // (ModuleLoader.cs); their DllMains run from StartWithModuleInitialisers. The main
+            // thread's TEB comes first: each module's static TLS is given to it as it is mapped.
+            SetUpMainThreadEnvironment();
             RegisterMainModule(imageDirectory);
             InstallImportTraps(_image, _image.ImageBase);
             _stubs = new HostStubs(this, _winRt, _strings, imageDirectory);
@@ -1261,10 +1263,9 @@ namespace WPR.Wp8Native
             // (c13, c0, 2). Unicorn 2.1.3 accepts UC_ARM_REG_C13_C0_2 but treats it as a
             // no-op and warns, so only the read-only sibling actually takes a value here.
             //
-            // KNOWN GAP: nothing has needed a real TEB yet - the startup path reaches the
-            // first WinRT activation without dereferencing it, and any stray access lands
-            // on a lazily mapped zero page. Once threads or SEH come into scope this has to
-            // be done properly through UC_ARM_REG_CP_REG, the generic coprocessor accessor.
+            // On dynarmic the TEB is real now, per guest thread, and TPIDRURW holds it
+            // (ModuleTls.cs). Unicorn still ignores that register; there a TEB read lands on
+            // the null page as it always did.
             _cpu.RegWrite(Arm.UC_ARM_REG_C13_C0_3, TebBase);
         }
 

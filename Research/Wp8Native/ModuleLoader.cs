@@ -66,6 +66,15 @@ namespace WPR.Wp8Native
         /// <summary>DllMain, or 0 when the image has no entry point.</summary>
         public long EntryPoint => Image.EntryPointRva == 0 ? 0 : ImageBase + Image.EntryPointRva;
 
+        /// <summary>Its static TLS (ModuleTls.cs), or null when it has no TLS directory.</summary>
+        public ModuleTls? Tls { get; internal set; }
+
+        /// <summary>TLS callbacks, in the order the directory lists them.</summary>
+        public IReadOnlyList<long> TlsCallbacks => Tls?.Callbacks ?? [];
+
+        /// <summary>A DllMain or a TLS callback to call when the loader notifies it.</summary>
+        public bool HasNotifications => EntryPoint != 0 || TlsCallbacks.Count > 0;
+
         public bool Contains(long address) => address >= ImageBase && address < ImageBase + MappedSize;
 
         public override string ToString() =>
@@ -114,6 +123,13 @@ namespace WPR.Wp8Native
 
         private readonly List<LoadedModule> _modules = new();
         private readonly List<LoadedModule> _pendingInitialisers = new();
+
+        /// <summary>Attached modules in the order their PROCESS_ATTACH completed: thread notifications walk it.</summary>
+        private readonly List<LoadedModule> _initialisationOrder = new();
+
+        /// <summary>Pages an unloaded module left mapped (no access) that a later load may take.</summary>
+        private readonly HashSet<long> _retiredPages = new();
+        private bool _mainImageInitialised;
         private readonly Dictionary<string, long> _systemModules = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, long> _procedureTraps = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<int, long> _threadStarts = new();
@@ -214,6 +230,9 @@ namespace WPR.Wp8Native
 
             _modules.Add(main);
             _bindingFor = main;
+
+            // The main image's TLS gets index 0, ahead of every DLL, as in load order on Windows.
+            AttachStaticTls(main);
         }
 
         /// <summary>
@@ -490,15 +509,15 @@ namespace WPR.Wp8Native
                 BinaryPrimitives.WriteUInt32LittleEndian(memory.AsSpan(peHeader + 24 + 28), (uint)imageBase);
             }
 
-            if (_cpu.IsMapped(imageBase))
+            if (!MapModuleRange(imageBase, size))
             {
-                // Not reached: ChooseModuleBase only returns unmapped ranges. Kept as a guard.
+                // Not reached: ChooseModuleBase only returns free ranges. Kept as a guard.
                 ModuleLog.Add($"{name}: 0x{imageBase:X8} is already mapped");
                 error = ErrorNotEnoughMemory;
                 return null;
             }
 
-            _cpu.MemMap(imageBase, size, Common.UC_PROT_ALL);
+            // The whole range is written, so a range an unloaded module left behind holds none of it.
             _cpu.MemWrite(imageBase, memory);
 
             LoadedModule module = new(name, InstallFolder + Path.GetRelativePath(_packageRoot, path), path, image, imageBase, isMain: false)
@@ -513,10 +532,8 @@ namespace WPR.Wp8Native
             Unwinder.AddImage(image, imageBase);
             ModuleLog.Add($"mapped {module}");
 
-            if (image.TlsDirectorySize != 0)
-            {
-                ModuleLog.Add($"{name}: has a TLS directory; static TLS for a loaded DLL is not set up, so its __declspec(thread) data reads as the template");
-            }
+            // Its _tls_index and a block for every live thread, before anything can run in it.
+            AttachStaticTls(module);
 
             LoadedModule? outer = _bindingFor;
             _bindingFor = module;
@@ -571,14 +588,57 @@ namespace WPR.Wp8Native
                 }
             }
 
-            // Unloaded modules stay mapped (inaccessible), and anything the run touched was
-            // mapped on demand: both show up here.
+            // Anything the run touched was mapped on demand and shows up here. A range an
+            // unloaded module gave back is mapped too, but reusable (see UnmapModule).
             for (long page = start; page < start + size; page += PageSize)
             {
-                if (_cpu.IsMapped(page))
+                if (_cpu.IsMapped(page) && !_retiredPages.Contains(page))
                 {
                     return false;
                 }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Makes [start, start+size) accessible for a module: pages an unloaded module gave back
+        /// are re-protected, the rest are mapped. False, touching nothing, if any page is in use.
+        /// </summary>
+        private bool MapModuleRange(long start, long size)
+        {
+            for (long page = start; page < start + size; page += PageSize)
+            {
+                if (_cpu.IsMapped(page) && !_retiredPages.Contains(page))
+                {
+                    return false;
+                }
+            }
+
+            long run = start;
+            while (run < start + size)
+            {
+                bool retired = _retiredPages.Contains(run);
+                long end = run;
+                while (end < start + size && _retiredPages.Contains(end) == retired)
+                {
+                    end += PageSize;
+                }
+
+                if (retired)
+                {
+                    _cpu.MemProtect(run, end - run, Common.UC_PROT_ALL);
+                    for (long page = run; page < end; page += PageSize)
+                    {
+                        _retiredPages.Remove(page);
+                    }
+                }
+                else
+                {
+                    _cpu.MemMap(run, end - run, Common.UC_PROT_ALL);
+                }
+
+                run = end;
             }
 
             return true;
@@ -746,20 +806,71 @@ namespace WPR.Wp8Native
         }
 
         // -----------------------------------------------------------------------------
-        // DllMain
+        // DllMain and TLS callbacks
         // -----------------------------------------------------------------------------
+
+        /// <summary>One loader notification: a TLS callback or the DllMain of a module.</summary>
+        private readonly record struct LoaderCall(LoadedModule Module, long Address, bool IsEntryPoint, bool LastForModule);
+
+        /// <summary>
+        /// For each module in turn: its TLS callbacks, then its DllMain when
+        /// <paramref name="includeEntry"/> allows (always, by default). The order LdrpCallInitRoutine
+        /// and LdrpCallTlsInitializers are used in, for every reason.
+        /// </summary>
+        private static List<LoaderCall> NotificationCalls(IEnumerable<LoadedModule> modules, Func<LoadedModule, bool>? includeEntry = null)
+        {
+            List<LoaderCall> calls = new();
+            foreach (LoadedModule module in modules)
+            {
+                int first = calls.Count;
+                foreach (long callback in module.TlsCallbacks)
+                {
+                    calls.Add(new LoaderCall(module, callback, IsEntryPoint: false, LastForModule: false));
+                }
+
+                if (module.EntryPoint != 0 && (includeEntry?.Invoke(module) ?? true))
+                {
+                    calls.Add(new LoaderCall(module, module.EntryPoint, IsEntryPoint: true, LastForModule: false));
+                }
+
+                if (calls.Count > first)
+                {
+                    calls[^1] = calls[^1] with { LastForModule = true };
+                }
+            }
+
+            return calls;
+        }
 
         /// <summary>
         /// Arranges for the DLLs loaded at start-up to get DllMain(DLL_PROCESS_ATTACH, static) -
-        /// dependencies before dependants - on the main thread, then for the CPU to continue at
+        /// dependencies before dependants, each one's TLS callbacks first - then the main image's
+        /// own TLS callbacks, on the main thread; then for the CPU to continue at
         /// <paramref name="start"/> with the registers exactly as the caller had set them.
         /// </summary>
         /// <returns>The address to start the CPU at: <paramref name="start"/> when there is nothing to run.</returns>
         public long StartWithModuleInitialisers(long start)
         {
             List<LoadedModule> modules = TakePendingInitialisers();
-            if (modules.Count == 0)
+            List<LoaderCall> calls = NotificationCalls(modules);
+
+            // The main image's TLS callbacks run after every start-up DLL and before its entry point
+            // (for a component, before the DllMain its host is about to call). Once.
+            LoadedModule? main = _modules.FirstOrDefault(m => m.IsMain);
+            bool mainNow = main is not null && !_mainImageInitialised && !LoaderDisabled;
+            if (mainNow)
             {
+                _mainImageInitialised = true;
+                calls.AddRange(main!.TlsCallbacks.Select(c => new LoaderCall(main, c, IsEntryPoint: false, LastForModule: false)));
+            }
+
+            if (calls.Count == 0)
+            {
+                if (mainNow)
+                {
+                    AddInitialised(main!);
+                }
+
                 return start;
             }
 
@@ -768,17 +879,31 @@ namespace WPR.Wp8Native
             // slot's own `bx r12` to ARM decoding.
             int[] ids = CoreRegisters.Where(r => r != Arm.UC_ARM_REG_CPSR).ToArray();
             long[] saved = ids.Select(_cpu.RegRead).ToArray();
-            CallEntryPoints(modules, 0, DllProcessAttach, staticLoad: true, after: (module, ok) =>
+            CallLoaderChain(calls, 0, DllProcessAttach, staticLoad: true, after: (module, ok) =>
             {
+                if (module.IsMain)
+                {
+                    return;   // its TLS callbacks: nothing to record
+                }
+
                 module.ProcessAttached = ok;
                 ModuleLog.Add($"DllMain({module.Name}, DLL_PROCESS_ATTACH) returned {(ok ? "TRUE" : "FALSE")}");
-                if (!ok)
+                if (ok)
+                {
+                    AddInitialised(module);
+                }
+                else
                 {
                     InitialisationFailures.Add(
                         $"{module.Name}: DllMain(DLL_PROCESS_ATTACH) returned FALSE; on a device the process would not start (STATUS_DLL_INIT_FAILED)");
                 }
             }, done: () =>
             {
+                if (mainNow)
+                {
+                    AddInitialised(main!);
+                }
+
                 for (int i = 0; i < ids.Length; i++)
                 {
                     _cpu.RegWrite(ids[i], saved[i]);
@@ -787,22 +912,34 @@ namespace WPR.Wp8Native
                 _cpu.RegWrite(Arm.UC_ARM_REG_R12, start);
             });
 
-            return modules[0].EntryPoint;
+            return calls[0].Address;
         }
 
-        /// <summary>The modules mapped since the last call that have a DllMain to run; the rest are marked attached.</summary>
+        private void AddInitialised(LoadedModule module)
+        {
+            if (!_initialisationOrder.Contains(module))
+            {
+                _initialisationOrder.Add(module);
+            }
+        }
+
+        /// <summary>
+        /// The modules mapped since the last call that have something to notify; the rest are
+        /// marked attached (and initialised) now.
+        /// </summary>
         private List<LoadedModule> TakePendingInitialisers()
         {
             List<LoadedModule> modules = new();
             foreach (LoadedModule module in _pendingInitialisers)
             {
-                if (module.EntryPoint == 0)
+                if (module.HasNotifications)
                 {
-                    module.ProcessAttached = true;
+                    modules.Add(module);
                 }
                 else
                 {
-                    modules.Add(module);
+                    module.ProcessAttached = true;
+                    AddInitialised(module);
                 }
             }
 
@@ -811,71 +948,142 @@ namespace WPR.Wp8Native
         }
 
         /// <summary>
-        /// Calls DllMain(hinst, reason, reserved) of each module in turn as guest calls, then
+        /// Calls each loader notification (hinst, reason, reserved) in turn as guest calls, then
         /// <paramref name="done"/> - which, like any return-trap continuation, must set r12.
-        /// Only legal before the CPU starts or inside a trap handler.
+        /// <paramref name="after"/> gets each module's DllMain result, or TRUE after the last TLS
+        /// callback of a module without one. Only legal before the CPU starts or inside a trap handler.
         /// </summary>
-        private void CallEntryPoints(
-            IReadOnlyList<LoadedModule> modules, int index, uint reason, bool staticLoad, Action<LoadedModule, bool>? after, Action done)
+        private void CallLoaderChain(
+            IReadOnlyList<LoaderCall> calls, int index, uint reason, bool staticLoad, Action<LoadedModule, bool>? after, Action done)
         {
-            while (index < modules.Count && modules[index].EntryPoint == 0)
-            {
-                index++;
-            }
-
-            if (index >= modules.Count)
+            if (index >= calls.Count)
             {
                 done();
                 return;
             }
 
-            LoadedModule module = modules[index];
+            LoaderCall call = calls[index];
+            LoadedModule module = call.Module;
 
             // lpReserved: non-NULL for a static load's PROCESS_ATTACH, NULL for everything else
-            // (FreeLibrary's PROCESS_DETACH included).
+            // (FreeLibrary's PROCESS_DETACH included). A TLS callback gets the same.
             long reserved = reason == DllProcessAttach && staticLoad ? 1 : 0;
-            CallEmulated($"{module.Name}!DllMain({reason})", module.EntryPoint, [module.ImageBase, reason, reserved], onReturn: () =>
+            string label = call.IsEntryPoint ? $"{module.Name}!DllMain({reason})" : $"{module.Name}!TlsCallback({reason})";
+            CallEmulated(label, call.Address, [module.ImageBase, reason, reserved], onReturn: () =>
             {
-                bool ok = (_cpu.RegRead(Arm.UC_ARM_REG_R0) & 0xFFFFFFFFL) != 0;
-                after?.Invoke(module, ok);
-                CallEntryPoints(modules, index + 1, reason, staticLoad, after, done);
+                if (call.IsEntryPoint)
+                {
+                    after?.Invoke(module, (_cpu.RegRead(Arm.UC_ARM_REG_R0) & 0xFFFFFFFFL) != 0);
+                }
+                else if (call.LastForModule)
+                {
+                    after?.Invoke(module, true);
+                }
+
+                CallLoaderChain(calls, index + 1, reason, staticLoad, after, done);
             }, recycle: true);
+        }
+
+        /// <summary>
+        /// Runs PROCESS_ATTACH (TLS callbacks, then DllMain) for what a runtime load just mapped -
+        /// everything in the pending list beyond <paramref name="earlier"/>, which is put back.
+        /// <paramref name="finished"/> gets TRUE, or FALSE once a refusing DllMain has been undone:
+        /// it and everything attached before it get PROCESS_DETACH and every module the load mapped
+        /// is unloaded. When nothing has to run, <paramref name="finished"/> is called before this
+        /// returns and r12 is untouched; otherwise the caller's return address is put back after it.
+        /// </summary>
+        private void InitialiseDynamicLoad(List<LoadedModule> earlier, Action<bool> finished)
+        {
+            List<LoadedModule> fresh = _pendingInitialisers.ToList();
+            List<LoadedModule> initialise = TakePendingInitialisers();
+            _pendingInitialisers.AddRange(earlier);
+            List<LoaderCall> calls = NotificationCalls(initialise);
+            if (calls.Count == 0)
+            {
+                finished(true);
+                return;
+            }
+
+            long returnTo = _cpu.RegRead(Arm.UC_ARM_REG_LR);
+            List<LoadedModule> attached = new();
+            LoadedModule? failed = null;
+            CallLoaderChain(calls, 0, DllProcessAttach, staticLoad: false, after: (m, ok) =>
+            {
+                ModuleLog.Add($"DllMain({m.Name}, DLL_PROCESS_ATTACH) returned {(ok ? "TRUE" : "FALSE")} (dynamic load)");
+                m.ProcessAttached = ok;
+                if (ok)
+                {
+                    attached.Add(m);
+                    AddInitialised(m);
+                }
+                else
+                {
+                    failed ??= m;
+                }
+            }, done: () =>
+            {
+                if (failed is null)
+                {
+                    finished(true);
+                    _cpu.RegWrite(Arm.UC_ARM_REG_R12, returnTo);
+                    return;
+                }
+
+                // A DllMain that refused: the loader calls it again with DLL_PROCESS_DETACH, undoes
+                // the load, and LoadLibrary returns NULL with ERROR_DLL_INIT_FAILED.
+                List<LoadedModule> detach = [failed, .. Enumerable.Reverse(attached)];
+                CallLoaderChain(NotificationCalls(detach), 0, DllProcessDetach, staticLoad: false, after: null, done: () =>
+                {
+                    foreach (LoadedModule m in fresh)
+                    {
+                        UnmapModule(m);
+                    }
+
+                    finished(false);
+                    _cpu.RegWrite(Arm.UC_ARM_REG_R12, returnTo);
+                });
+            });
         }
 
         // -----------------------------------------------------------------------------
         // Thread notifications
         // -----------------------------------------------------------------------------
 
-        /// <summary>Modules owed DLL_THREAD_ATTACH/DETACH: attached, with a DllMain, not opted out.</summary>
-        private List<LoadedModule> ThreadNotifiedModules()
+        /// <summary>
+        /// DLL_THREAD_ATTACH (or, <paramref name="detach"/>, DETACH) calls owed, in initialisation
+        /// order (reversed for detach): each attached module's TLS callbacks, then its DllMain unless
+        /// it opted out. The main image's DllMain is a DLL's only (a component); an exe's entry point
+        /// is not one, so an exe contributes its TLS callbacks alone.
+        /// </summary>
+        private List<LoaderCall> ThreadNotificationCalls(bool detach)
         {
             List<LoadedModule> modules = new();
-            foreach (LoadedModule module in _modules)
+            foreach (LoadedModule module in _initialisationOrder)
             {
-                if (module.Unloaded || module.EntryPoint == 0 || module.ThreadCallsDisabled || !module.Image.IsDll)
-                {
-                    continue;
-                }
-
                 // A component main image's DllMain is called by its host (XamlInterop) and has
                 // run by the time anything can start a thread.
-                if (module.ProcessAttached || module.IsMain)
+                if (!module.Unloaded && (module.ProcessAttached || module.IsMain))
                 {
                     modules.Add(module);
                 }
             }
 
-            return modules;
+            if (detach)
+            {
+                modules.Reverse();
+            }
+
+            return NotificationCalls(modules, includeEntry: m => m.Image.IsDll && !m.ThreadCallsDisabled);
         }
 
         /// <summary>
-        /// Where a new guest thread should start: <paramref name="entry"/> itself, or - when DLLs
-        /// want thread notifications - a trampoline that calls their DllMain(DLL_THREAD_ATTACH) on
-        /// the new thread first, and DllMain(DLL_THREAD_DETACH) when its routine returns.
+        /// Where a new guest thread should start: <paramref name="entry"/> itself, or - when modules
+        /// want thread notifications - a trampoline that makes their DLL_THREAD_ATTACH calls on the
+        /// new thread first, and the DLL_THREAD_DETACH ones when its routine returns.
         /// </summary>
         private long ThreadStartThroughLoader(int threadId, long entry)
         {
-            if (LoaderDisabled || ThreadNotifiedModules().Count == 0)
+            if (LoaderDisabled || ThreadNotificationCalls(detach: false).Count == 0)
             {
                 return entry;
             }
@@ -898,7 +1106,7 @@ namespace WPR.Wp8Native
             }
 
             long argument = _cpu.RegRead(Arm.UC_ARM_REG_R0);
-            CallEntryPoints(ThreadNotifiedModules(), 0, DllThreadAttach, staticLoad: false, after: null, done: () =>
+            CallLoaderChain(ThreadNotificationCalls(detach: false), 0, DllThreadAttach, staticLoad: false, after: null, done: () =>
             {
                 _cpu.RegWrite(Arm.UC_ARM_REG_R0, argument);
                 _cpu.RegWrite(Arm.UC_ARM_REG_LR, ThumbEntry(_threadDetachTrap));
@@ -909,9 +1117,7 @@ namespace WPR.Wp8Native
         private void OnThreadDetach()
         {
             long exitCode = _cpu.RegRead(Arm.UC_ARM_REG_R0);
-            List<LoadedModule> modules = ThreadNotifiedModules();
-            modules.Reverse();
-            CallEntryPoints(modules, 0, DllThreadDetach, staticLoad: false, after: null, done: () =>
+            CallLoaderChain(ThreadNotificationCalls(detach: true), 0, DllThreadDetach, staticLoad: false, after: null, done: () =>
             {
                 _cpu.RegWrite(Arm.UC_ARM_REG_R0, exitCode);
                 _cpu.RegWrite(Arm.UC_ARM_REG_R12, ThumbEntry(ThreadExitTrap()));
@@ -996,53 +1202,7 @@ namespace WPR.Wp8Native
                 module.ReferenceCount++;
             }
 
-            List<LoadedModule> fresh = _pendingInitialisers.ToList();
-            List<LoadedModule> initialise = TakePendingInitialisers();
-            _pendingInitialisers.AddRange(earlier);
-            if (initialise.Count == 0)
-            {
-                finish(module.ImageBase, 0);
-                return;
-            }
-
-            long returnTo = _cpu.RegRead(Arm.UC_ARM_REG_LR);
-            List<LoadedModule> attached = new();
-            LoadedModule? failed = null;
-            CallEntryPoints(initialise, 0, DllProcessAttach, staticLoad: false, after: (m, ok) =>
-            {
-                ModuleLog.Add($"DllMain({m.Name}, DLL_PROCESS_ATTACH) returned {(ok ? "TRUE" : "FALSE")} (dynamic load)");
-                m.ProcessAttached = ok;
-                if (ok)
-                {
-                    attached.Add(m);
-                }
-                else
-                {
-                    failed ??= m;
-                }
-            }, done: () =>
-            {
-                if (failed is null)
-                {
-                    finish(module.ImageBase, 0);
-                    _cpu.RegWrite(Arm.UC_ARM_REG_R12, returnTo);
-                    return;
-                }
-
-                // A DllMain that refused: the loader calls it again with DLL_PROCESS_DETACH, undoes
-                // the load, and LoadLibrary returns NULL with ERROR_DLL_INIT_FAILED.
-                List<LoadedModule> detach = [failed, .. Enumerable.Reverse(attached)];
-                CallEntryPoints(detach, 0, DllProcessDetach, staticLoad: false, after: null, done: () =>
-                {
-                    foreach (LoadedModule m in fresh)
-                    {
-                        UnmapModule(m);
-                    }
-
-                    finish(0, ErrorDllInitFailed);
-                    _cpu.RegWrite(Arm.UC_ARM_REG_R12, returnTo);
-                });
-            });
+            InitialiseDynamicLoad(earlier, ok => finish(ok ? module.ImageBase : 0, ok ? 0 : ErrorDllInitFailed));
         }
 
         /// <summary>
@@ -1116,7 +1276,7 @@ namespace WPR.Wp8Native
 
             long returnTo = _cpu.RegRead(Arm.UC_ARM_REG_LR);
             List<LoadedModule> detach = unload.Where(m => m.ProcessAttached).ToList();
-            CallEntryPoints(detach, 0, DllProcessDetach, staticLoad: false, after: (m, _) => m.ProcessAttached = false, done: () =>
+            CallLoaderChain(NotificationCalls(detach), 0, DllProcessDetach, staticLoad: false, after: (m, _) => m.ProcessAttached = false, done: () =>
             {
                 foreach (LoadedModule m in unload)
                 {
@@ -1150,9 +1310,11 @@ namespace WPR.Wp8Native
         }
 
         /// <summary>
-        /// Takes a module out of the address space. The range stays mapped but inaccessible - the
-        /// CPU interface cannot unmap - so a stale pointer into it faults rather than reading a
-        /// module that is gone, and a later load picks a different range.
+        /// Takes a module out of the address space. The CPU interface cannot unmap (and the
+        /// native shim is not rebuilt for it), so the range stays mapped with no access - a stale
+        /// pointer into it faults rather than reading a module that is gone - and is recorded as
+        /// reusable: the next module that wants that range gets it, re-protected and overwritten
+        /// whole, exactly as if it had been unmapped and mapped again.
         /// </summary>
         private void UnmapModule(LoadedModule module)
         {
@@ -1161,19 +1323,31 @@ namespace WPR.Wp8Native
                 return;
             }
 
+            DetachStaticTls(module);
             module.Unloaded = true;
             _modules.Remove(module);
             _pendingInitialisers.Remove(module);
+            _initialisationOrder.Remove(module);
+            foreach (LoadedModule other in _modules)
+            {
+                other.Dependencies.Remove(module);
+            }
+
             Unwinder.RemoveImage(module.ImageBase);
             try
             {
                 _cpu.MemProtect(module.ImageBase, module.MappedSize, 0);
+                for (long page = module.ImageBase; page < module.ImageBase + module.MappedSize; page += PageSize)
+                {
+                    _retiredPages.Add(page);
+                }
             }
             catch (CpuMemoryException)
             {
+                // Not mapped as a whole after all: leave it out of the reusable set.
             }
 
-            ModuleLog.Add($"unloaded {module.Name} from 0x{module.ImageBase:X8}");
+            ModuleLog.Add($"unloaded {module.Name} from 0x{module.ImageBase:X8}; its range is free for reuse");
         }
 
         /// <summary>
@@ -1254,11 +1428,63 @@ namespace WPR.Wp8Native
         {
             if (ModuleByHandle(handle) is { } module)
             {
-                module.ThreadCallsDisabled = true;
+                // A module with static TLS keeps its notifications: the loader still owes it its
+                // TLS callbacks per thread. Windows (LdrDisableThreadCalloutsForDll) succeeds and
+                // changes nothing for such a module.
+                if (module.Tls is null)
+                {
+                    module.ThreadCallsDisabled = true;
+                }
+
                 return true;
             }
 
             return SystemModuleNameOf(handle) is not null;
+        }
+
+        /// <summary>
+        /// GetProcAddress from guest code: <see cref="ProcedureAddress"/>, plus what Windows does
+        /// when the export is forwarded to a package DLL that is not loaded yet - the DLL is loaded
+        /// (holding a reference for the forwarding module) and its TLS callbacks and DllMain run
+        /// before the address is returned. A refusing DllMain undoes that load and the call fails
+        /// with ERROR_DLL_INIT_FAILED. <paramref name="finish"/> must only set r0 and the last error.
+        /// </summary>
+        public void ProcedureAddressFromGuest(long handle, string procedure, Action<long?, int> finish)
+        {
+            List<LoadedModule> earlier = _pendingInitialisers.ToList();
+            _pendingInitialisers.Clear();
+            bool outer = _loadingDynamically;
+            _loadingDynamically = true;
+            long? address;
+            int error;
+            try
+            {
+                address = ProcedureAddress(handle, procedure, out error);
+            }
+            finally
+            {
+                _loadingDynamically = outer;
+            }
+
+            if (_pendingInitialisers.Count == 0)
+            {
+                _pendingInitialisers.AddRange(earlier);
+                finish(address, error);
+                return;
+            }
+
+            InitialiseDynamicLoad(earlier, ok =>
+            {
+                if (ok)
+                {
+                    finish(address, error);
+                }
+                else
+                {
+                    UnresolvedProcedures.Add($"{ModuleByHandle(handle)?.Name ?? "?"}!{procedure}: the DLL it forwards to failed DllMain");
+                    finish(null, ErrorDllInitFailed);
+                }
+            });
         }
 
         /// <summary>

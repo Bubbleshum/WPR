@@ -154,7 +154,9 @@ public sealed class ModuleLoaderSuite : IContractSuite
         h.Check("...after which GetModuleHandleW no longer finds it and its code is not code", g.Call("GetModuleHandleW", g.Wide("IGPLib.dll")) == 0 && !e.IsExecutableCode(igpExport));
         h.Check("FreeLibrary of an unloaded handle fails", g.Call("FreeLibrary", igp) == 0 && g.LastError() == 126);
         long again = g.CallGuest("LoadPackagedLibrary", g.Wide("IGPLib.dll"), 0);
-        h.Check("it can be loaded again, at a fresh range", again != 0 && again != igp && NoOverlap(e.Modules), $"0x{again:X8}");
+        h.Check("it can be loaded again, into the range the unload gave back", again == igp && NoOverlap(e.Modules) && e.ModuleByHandle(again) is { Unloaded: false }, $"0x{again:X8}");
+        h.Check("...with its code there again (re-protected and rewritten, not the old protect-0 range)",
+            e.IsExecutableCode(again + e.ModuleByHandle(again)!.Image.Exports.Values.First()) && e.ReadUInt32(again) == 0x00905A4D);
         h.Check("DisableThreadLibraryCalls marks the module", g.Call("DisableThreadLibraryCalls", again) == 1 && e.ModuleByHandle(again)!.ThreadCallsDisabled);
     }
 
@@ -343,7 +345,7 @@ public sealed class ModuleLoaderSuite : IContractSuite
     }
 
     /// <summary>Calls import handlers on one emulator the way a trap does; runs any guest code they start.</summary>
-    private sealed class Guest
+    internal sealed class Guest
     {
         private readonly ArmEmulator _e;
         private readonly long _stack;
@@ -398,6 +400,20 @@ public sealed class ModuleLoaderSuite : IContractSuite
                     Console.WriteLine($"      guest fault during {function}: {fault}");
                     return -1;
                 }
+            }
+
+            return _e.ReadRegister(R0) & 0xFFFFFFFFL;
+        }
+
+        /// <summary>Calls guest code at <paramref name="function"/> with lr at the sentinel; r0, or -1 on a fault.</summary>
+        public long Invoke(long function, params long[] args)
+        {
+            Setup(args);
+            string? fault = RunUntilReturn(function);
+            if (fault is not null)
+            {
+                Console.WriteLine($"      guest fault calling 0x{function:X8}: {fault}");
+                return -1;
             }
 
             return _e.ReadRegister(R0) & 0xFFFFFFFFL;

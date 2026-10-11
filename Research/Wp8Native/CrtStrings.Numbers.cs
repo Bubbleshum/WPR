@@ -460,6 +460,37 @@ namespace WPR.Wp8Native
             return value;
         }
 
+        /// <summary>
+        /// The text a number parser will look at: read in growing steps and stopped at the first
+        /// character <paramref name="mayContinue"/> rejects, since no parse can go past one. The
+        /// parsers see exactly what reading up to <paramref name="max"/> would have shown them up to
+        /// that point, so their results are unchanged - but strtod(cursor) over a big buffer no
+        /// longer reads 64 KB per call (Angry Birds Seasons spent most of its frames in here) and
+        /// strtol no longer reads up to 64 MB.
+        /// </summary>
+        private string ReadNumberText(long source, bool wide, long max, Func<char, bool> mayContinue)
+        {
+            long length = Math.Min(64, max);
+            while (true)
+            {
+                string text = ReadText(source, wide, length);
+                if (text.Length < length || length >= max)
+                {
+                    return text;   // the terminator, the end of readable memory, or the cap
+                }
+
+                foreach (char c in text)
+                {
+                    if (!mayContinue(c))
+                    {
+                        return text;
+                    }
+                }
+
+                length = Math.Min(length * 16, max);
+            }
+        }
+
         /// <summary>A strtol-family handler: (text[, end][, base]), result in r0 or r0:r1.</summary>
         private Action IntegerParser(bool wide, int bits, bool isUnsigned, bool hasEnd, bool hasBase) => () =>
         {
@@ -480,7 +511,8 @@ namespace WPR.Wp8Native
             }
             else
             {
-                result = ParseInteger(ReadText(source, wide), radix, isUnsigned, bits, wide, out int consumed, out bool overflow);
+                string text = ReadNumberText(source, wide, CallFrame.SaneLengthLimit, c => IsSpace(c, wide) || c is '+' or '-' || DigitValue(c, wide) >= 0);
+                result = ParseInteger(text, radix, isUnsigned, bits, wide, out int consumed, out bool overflow);
                 if (overflow)
                 {
                     SetErrno(Erange);
@@ -515,7 +547,9 @@ namespace WPR.Wp8Native
                 return;
             }
 
-            double value = ParseDouble(ReadText(source, wide, 64 * 1024), wide, out int consumed, out bool range);
+            string text = ReadNumberText(source, wide, 64 * 1024,
+                c => IsSpace(c, wide) || char.IsAsciiDigit(c) || c is '+' or '-' or '.' or 'e' or 'E' or 'd' or 'D');
+            double value = ParseDouble(text, wide, out int consumed, out bool range);
             if (range)
             {
                 SetErrno(Erange);
