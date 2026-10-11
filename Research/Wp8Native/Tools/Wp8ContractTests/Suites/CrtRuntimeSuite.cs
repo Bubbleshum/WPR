@@ -304,7 +304,7 @@ public sealed class CrtRuntimeSuite : IContractSuite
         Call("?__ExceptionPtrCopy@@YAXPAXPBX@Z", ep2, ep);
         Check("copying shares it", Pointer(ep2) == Pointer(ep));
         Call("?__ExceptionPtrDestroy@@YAXPAX@Z", ep);
-        Check("destroying one leaves the copy", Pointer(ep) == 0 && Call("?__ExceptionPtrToBool@@YA_NPBX@Z", ep2) == 1);
+        Check("destroying one leaves the copy", Call("?__ExceptionPtrToBool@@YA_NPBX@Z", ep2) == 1);   // the destroyed one's storage is unspecified
         Call("?__ExceptionPtrAssign@@YAXPAXPBX@Z", ep, ep2);
         Check("assigning shares it again", Pointer(ep) == Pointer(ep2));
 

@@ -1688,75 +1688,7 @@ namespace WPR.Wp8Native
                 };
             }
 
-            const string ns = "@@YA";
-            _handlers[$"?__ExceptionPtrCreate{ns}XPAX@Z"] = () =>
-            {
-                WriteExceptionPtr(Arg(0), 0);
-                Return(0);
-            };
-            _handlers[$"?__ExceptionPtrDestroy{ns}XPAX@Z"] = () =>
-            {
-                long token = Arg(0) == 0 ? 0 : _emulator.ReadUInt32(Arg(0), 0);
-                WriteExceptionPtr(Arg(0), 0);
-                Return(0);
-                ReleaseException(token);
-            };
-            _handlers[$"?__ExceptionPtrCopy{ns}XPAXPBX@Z"] = () =>
-            {
-                long token = Arg(1) == 0 ? 0 : _emulator.ReadUInt32(Arg(1), 0);
-                AddReference(token);
-                WriteExceptionPtr(Arg(0), token);
-                Return(0);
-            };
-            _handlers[$"?__ExceptionPtrAssign{ns}XPAXPBX@Z"] = () =>
-            {
-                long old = _emulator.ReadUInt32(Arg(0), 0);
-                long token = Arg(1) == 0 ? 0 : _emulator.ReadUInt32(Arg(1), 0);
-                AddReference(token);
-                WriteExceptionPtr(Arg(0), token);
-                Return(0);
-                ReleaseException(old);
-            };
-            _handlers[$"?__ExceptionPtrToBool{ns}_NPBX@Z"] = () => Return(Arg(0) != 0 && _emulator.ReadUInt32(Arg(0), 0) != 0 ? 1 : 0);
-
-            // void __ExceptionPtrCurrentException(void*): what the innermost catch is handling, copied
-            // (the original dies with the catch); empty outside a catch.
-            _handlers[$"?__ExceptionPtrCurrentException{ns}XPAX@Z"] = () =>
-            {
-                long destination = Arg(0);
-                ThrownException? handled = CurrentlyHandled();
-                if (handled is null)
-                {
-                    WriteExceptionPtr(destination, 0);
-                    Return(0);
-                    return;
-                }
-
-                CaptureException(destination, handled.Object, _throwInfoByObject.GetValueOrDefault(handled.Object), handled.CatchableTypes);
-            };
-
-            // void __ExceptionPtrCopyException(void*, const void* object, const void* throwInfo):
-            // make_exception_ptr - a copy of the object, described by the ThrowInfo.
-            _handlers[$"?__ExceptionPtrCopyException{ns}XPAXPBX1@Z"] = () =>
-            {
-                long throwInfo = Arg(2);
-                IReadOnlyList<string> names = throwInfo == 0 ? [] : _emulator.ExceptionModel.ReadThrow(Arg(1), throwInfo).CatchableTypes;
-                CaptureException(Arg(0), Arg(1), throwInfo, names);
-            };
-
-            // void __ExceptionPtrRethrow(const void*): throws the held exception; rethrowing an empty
-            // one is std::bad_exception.
-            _handlers[$"?__ExceptionPtrRethrow{ns}XPBX@Z"] = () =>
-            {
-                long token = Arg(0) == 0 ? 0 : _emulator.ReadUInt32(Arg(0), 0);
-                if (!_storedExceptions.TryGetValue(token, out StoredException? stored))
-                {
-                    ThrowStdException("bad exception", ".?AVbad_exception@std@@", ".?AVexception@std@@");
-                    return;
-                }
-
-                ThrowIntoImage(new ThrownException(stored.Object, stored.Names));
-            };
+            // std::exception_ptr (__ExceptionPtr*) is MSVCP110's and lives in MsvcpCore.cs.
         }
 
         private void WriteExceptionPtr(long destination, long token)
