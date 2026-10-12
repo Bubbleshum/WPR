@@ -9,7 +9,7 @@
 > *today*, read [`Docs/ARCHITECTURE.md`](../Docs/ARCHITECTURE.md).
 >
 > **Section numbers are deliberately non-contiguous.** §1.3 and §3/§3.2 are cited
-> from source comments (`WPR.Backend.Direct3D11.csproj`, the three
+> from source comments (the deleted `WPR.Backend.Direct3D11.csproj` cited §1.3; the three
 > `WPR.Framework.*.csproj` identity projects, `ApplicationPatcher.cs`), so those
 > anchors survive even though their siblings went with the work that closed them.
 
@@ -36,19 +36,32 @@ one logging story.
 *(1.1, 1.2 and 1.4 described the 2026-08-05 starting state and were removed with
 the work that closed them.)*
 
-### 1.3 Two backends, not one
+### 1.3 One backend (was: two backends, not one)
 
-WPR has **two live rendering backends**, and this remains a design constraint
-rather than a historical note:
+**Since 2026-10-12 WPR has one rendering backend: FNA** (`WPR.Backend.FNA`, over
+FNA3D). Every in-process game draws through the XNA `GraphicsDevice`: XNA titles,
+mixed-mode Silverlight (the page rasterised into a `Texture2D`), and WP8 native titles
+(their Direct3D 11 frames replayed by `Wp8GpuReplay`). The pure Silverlight UI path on
+the desktop still draws with Avalonia, but Avalonia is the UI toolkit there, not a
+graphics backend behind a WPR seam.
 
-* **FNA** — the XNA game path (`Game`, `SpriteBatch`, `GraphicsDevice`).
-* **Vortice.Direct3D11 + Avalonia** — the Silverlight path, behind
-  `ISurfaceRendererBackend` / `IBackgroundRenderer`. It never touches FNA.
+`WPR.Backend.FNA` and `WPR.Audio.FAudio` (which must reference FNA for its P/Invokes)
+are the only `AllowedReferrers` in the fitness test. The success criterion "backend can
+be replaced without modifying Runtime or Frameworks" now means "the FNA adapter can be
+replaced": the seams in `WPR.Xna.Rhi` are the contract.
 
-Any abstraction that claims to make the backend swappable must sit above *both*.
-`WPR.Backend.FNA` and `WPR.Backend.Direct3D11` are the only two `AllowedReferrers`
-in the fitness test, and the success criterion "backend can be replaced without
-modifying Runtime or Frameworks" is only meaningful while that stays true.
+**History.** Until 2026-10-12 this section read "Two backends, not one" and was a live
+constraint: besides FNA there was **Vortice.Direct3D11 + Avalonia** for the Silverlight
+path, behind `ISurfaceRendererBackend` / `IBackgroundRenderer`, never touching FNA, and
+any abstraction claiming to make the backend swappable had to sit above both. By then
+that backend drew only a splash image and a test pattern behind
+`DrawingSurfaceBackgroundGrid` for titles WPR could not host; native
+`DrawingSurfaceBackgroundGrid` content had moved to the WP8 runtime's replay on the
+shared device. It was deleted with its seam and the `SilverlightBackend` registry
+(commit `7c857d75`, [`RUNTIME-CONVERGENCE.md`](RUNTIME-CONVERGENCE.md) item 2a).
+`IBackgroundRenderer` remains, implemented only by `BrandedSplashRenderer`, until
+Stage C of [`SILVERLIGHT-XNA-CONVERGENCE.md`](SILVERLIGHT-XNA-CONVERGENCE.md) removes
+the Avalonia renderer.
 
 ---
 
@@ -86,7 +99,6 @@ graph TD
     end
     subgraph Backends
         BFNA[WPR.Backend.FNA]
-        BD3D[WPR.Backend.Direct3D11]
     end
     subgraph AudioImpl["Audio implementations"]
         AFAU[WPR.Audio.FAudio]
@@ -94,7 +106,7 @@ graph TD
     end
     FNA[[FNA]]
 
-    DESK --> RUN & PWIN & BFNA & BD3D
+    DESK --> RUN & PWIN & BFNA
     ANDR --> RUN & PAND & BFNA
     RUN --> FXNA & FSL & FPH & FDEV & LOAD
     ENG --> GFX & AUD & SEN & NOT
@@ -525,9 +537,12 @@ Not started. Note the launcher heads were *named* `WPR.Platform.Windows` /
 `WPR.Platform.Android` on 2026-08-29 without the platform layer being extracted — see the
 naming conflict note under §2.
 
-* `WPR.Backend.FNA` / `WPR.Backend.Direct3D11` contain **only** interface
-  implementations — no Phone/Silverlight/Devices/app logic. Today `WPR.Backend.FNA` still
-  holds `ApplicationLaunch` (app logic) and `Compat/GamerServicesComponent`.
+* `WPR.Backend.FNA` contains **only** interface implementations — no
+  Phone/Silverlight/Devices/app logic. (`WPR.Backend.Direct3D11` was the other backend in
+  this bullet; it was deleted on 2026-10-12.) `ApplicationLaunch` moved out to
+  `WPR.Engine.GameLoop` on 2026-09-20; `WPR.Backend.FNA` still holds
+  `Compat/GraphicsDeviceManager` and `Compat/GamerServicesComponent`, which games bind by
+  that assembly identity.
 * **Audio is already done, and is the worked example.** The 2026-09-01 split pulled the
   three FAudio/FACT/Theorafile adapters out of `WPR.Backend.FNA` into `Src/Modules/Audio/`, so the
   host backend no longer carries a subsystem it merely happened to host. Do the same for
@@ -586,8 +601,9 @@ Locked and still binding:
 
 1. **Keep the WP7 assembly identity; don't use forwarder shims** (§3.2). Departures are
    allowed but must be recorded as such, with the cost named — as GamerServices was.
-2. **`WPR.Backend.Direct3D11` is a first-class peer backend** (§1.3). Abstractions sit
-   above both it and FNA.
+2. ~~**`WPR.Backend.Direct3D11` is a first-class peer backend** (§1.3). Abstractions sit
+   above both it and FNA.~~ **Retired 2026-10-12** with the backend itself; FNA is the
+   one backend (§1.3).
 3. **Achievements are a service behind `IAchievementStore`**, not a framework concern. The
    seam lives in `WPR.Framework.Xna` (its vocabulary is the game-facing `Achievement`
    type); `WPR.Database` implements it.

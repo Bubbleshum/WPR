@@ -13,11 +13,19 @@ front page.
 
 ## The short version
 
-WPR runs a Windows Phone game's **original assemblies**. It does not decompile,
-port or rewrite the game. At install time it rewrites the game's IL so that every
-call into a Windows Phone, Silverlight or XNA API is redirected to an in-tree
-reimplementation of that API, then hosts the result on .NET 8 + Avalonia (desktop
-UI) and SDL/FNA (game loop).
+WPR runs a Windows Phone game's **original binaries**. It does not decompile,
+port or rewrite the game's logic.
+
+- **Managed titles** (WP7/WP8 XNA and Silverlight): at install time WPR rewrites the
+  game's IL so that every call into a Windows Phone, Silverlight or XNA API is
+  redirected to an in-tree reimplementation of that API.
+- **WP8 native titles** (ARMv7 C++/CX against WinRT): nothing is rewritten. The ARM
+  code runs on a JIT (dynarmic) inside `WPR.Engine.Wp8Native`, and its imports (CRT,
+  Win32, WinRT, Direct3D 11, XAudio2) are answered by a host runtime.
+
+Either way the game runs in-process on .NET 10 as an XNA `Game` on SDL + FNA
+(FNA3D for graphics, FAudio for sound). The desktop launcher UI is Avalonia; the
+Android launcher is native Android views.
 
 ## The install and launch pipeline
 
@@ -32,9 +40,15 @@ UI) and SDL/FNA (game loop).
       ▼ (user clicks "Play")
       ├─ UnityPortLauncher.TryLaunchAsync        (wpr-port.json → spawn standalone port)
       ├─ GameMakerLauncher                       (Assets/game.win → GameMaker runner)
-      ├─ SilverlightLauncher.LaunchAsync         (Silverlight XAPs, in-process on Avalonia)
-      └─ XnaLauncher → ApplicationLaunch.Start   (XNA games, WPR.Backend.FNA host)
+      ├─ SilverlightLauncher.LaunchAsync         (pure Silverlight UI apps; desktop only, on Avalonia)
+      └─ XnaLauncher → ApplicationLaunch.Start   (everything else, in-process on WPR.Backend.FNA:
+                                                  XNA, mixed-mode Silverlight, WP8 native)
 ```
+
+WP8 native titles have no IL, so `ApplicationPatcher` never sees them: the
+installer extracts them, seeds a committed achievement catalogue if one exists, and
+records them as `ModernNative`. `RepatchAsync` and Android's launch-time repatch
+skip them.
 
 `ApplicationPatcher` is the heart of it. Three tables drive the rewrite:
 
@@ -47,7 +61,7 @@ UI) and SDL/FNA (game loop).
 `WprFrameworkXnaTypes` is tested **before** `Patches`, so a FullName present in
 both silently loses its `Patches` redirect.
 
-`ApplicationPatcher.Version` (currently **19**) is the staleness marker: bump it
+`ApplicationPatcher.Version` (currently **40**) is the staleness marker: bump it
 whenever a table changes, so the installer knows already-installed games carry
 outdated IL.
 
@@ -58,12 +72,69 @@ Four flavours, from [`ApplicationType.cs`](../Src/Core/WPR.Database/Models/Appli
 | Type | Status | Notes |
 | --- | --- | --- |
 | `XNA` | Working | The main path; hosted in-process on `WPR.Framework.Xna` + the FNA backend. |
-| `Silverlight` | Experimental | Hosted in-process through the in-tree `WPR.Framework.Silverlight` Avalonia re-implementation. |
+| `Silverlight` | Mixed-mode: working. Pure UI apps: experimental, desktop only | A Silverlight/XNA **mixed-mode** title (a page that drives XNA from a `GameTimer`) is detected by `MixedModeDetection` and hosted by `MixedModeGame` on the XNA path, on both heads. A pure Silverlight UI app runs only on the desktop, through the Avalonia re-implementation in `WPR.Framework.Silverlight`; `ApplicationLaunch` refuses it. |
+| `ModernNative` | Partial | WP8 native ARM titles, hosted in-process by `WPR.Engine.Wp8Native` on both heads. Covers `.exe` titles and **Direct3D/XAML** titles: XAPs whose manifest says `Silverlight` but whose game is a native ARM component DLL (`NativeXamlComponent` finds it, and the installer records the title as `ModernNative`). A guest that stops is reported to WPR Hub with the calls it was given stub answers for. |
 | `UnityPort` | Working (desktop) | Not hosted — WPR spawns an externally-rebuilt standalone port described by `wpr-port.json` in the install folder. Android would need a per-game AAR and isn't wired up. |
-| `ModernNative` | Not supported | C++/CX + WinRT apps ship as native PE binaries — out of scope. |
 
 GameMaker Studio exports are detected separately (by an `Assets/game.win` file)
 and run via `GameMakerLauncher` rather than a stored type.
+
+Unity WP8 titles (`UnityPlayer.dll`) are not hosted in-process: `NativeXamlComponent`
+skips them, and a spike on 2026-10-12 found the managed/native bridge too wide (see
+[`Plans/Unity_WP8_Feasibility.md`](../Plans/Unity_WP8_Feasibility.md) §11). They stay
+on the `UnityPort` path.
+
+## The four in-process runtimes
+
+Every in-process game is an XNA `Game` driven by `ApplicationLaunch` in
+`WPR.Engine.GameLoop`, except pure Silverlight. What differs is where the frame and
+the input come from.
+
+| Runtime | Draws through | Input |
+| --- | --- | --- |
+| XNA | `GraphicsDevice` → `IGraphicsBackend` → FNA3D | SDL → `IInputBackend` → `TouchPanel` |
+| Mixed-mode Silverlight | the game's own XNA drawing, plus the Silverlight page rasterised on the CPU by `SoftwareVisualRasteriser` into a `Texture2D` on the same device | `TouchPanel` → `MixedModeGame.PumpSilverlightTouch` → routed Silverlight events |
+| WP8 native | `Wp8GpuReplay` replays the guest's Direct3D 11 frame as draws on the same `GraphicsDevice` (`WPR_WP8_GPU=0` falls back to an older 2D draw list, as a diagnostic) | `TouchPanel` → `WinRt.InjectPointer` (CoreWindow pointer events); Back from `GamePad.Buttons.Back`; keys from `Keyboard.GetState()` edges |
+| Pure Silverlight (desktop only) | Avalonia `SilverlightRenderer`; a `DrawingSurfaceBackgroundGrid` shows `BrandedSplashRenderer` or a placeholder | Avalonia pointer events in `PhoneApplicationFrameView` |
+
+The first three share one window, one graphics device, the FNA3D driver choice and
+the `TouchPanel` input path, so keyboard→touch bindings, wheel scrolling and the
+driver picker apply to all of them. Pure Silverlight gets none of these and does not
+run on Android. Moving it onto `MixedModeGame` is Stage C of
+[`Plans/SILVERLIGHT-XNA-CONVERGENCE.md`](../Plans/SILVERLIGHT-XNA-CONVERGENCE.md).
+
+### WP8 native in more detail
+
+The runtime's sources live in `Research/Wp8Native/`, where they also build a
+standalone probe, and are compiled into `WPR.Engine.Wp8Native` with
+`WPR_NO_UNICORN` defined, so the CPU is always dynarmic (0BSD) through the `wprcpu`
+C shim: `Research/Wp8Native/wprcpu.dll` on Windows, `libwprcpu.so` under the Android
+head's `Libraries/<abi>/`. The main pieces:
+
+- **Module loader** (`PeImage`, `ModuleLoader`): maps the ARM PE image and its DLLs
+  and binds their imports to host handlers (`HostStubs` and the `*Library` classes).
+- **WinRT runtime** (`WinRtRuntime` and the `WinRt*` files): interface slot tables
+  are generated from Windows' WinRT metadata (`WinRtSystemInterfaces.g.cs`, written
+  by `Tools/WinRtSlotGen`), so an unimplemented member is reported by name.
+- **Direct3D 11 and XAudio2**: `Direct3DRuntime` answers the guest's D3D11 calls,
+  `FrameCapture` records each frame's resources and draws, and `Wp8GpuReplay`
+  replays the frame through FNA. XAudio2 source voices play as
+  `DynamicSoundEffectInstance`s (`Wp8NativeAudio`).
+- **XAML component shells** (`XamlInterop`, `XamlShells`): for Direct3D/XAML titles,
+  the managed page's part (sizes, orientation, the background content provider) is
+  played from a per-title description keyed by the component DLL. A title with no
+  description fails at launch with that reason.
+- **Display model** (`Wp8Display`): one screen model for every size question. The
+  default is WXGA (768x1280 physical, scale 160, 480x800 DIPs);
+  `WPR_WP8_RESOLUTION=wvga|wxga|720p` picks another.
+- **Platform services**: sensors (`Wp8NativeSensorHost`), Xbox Live achievements
+  (`Wp8NativeXboxHost`), vibration and URI launching (`Wp8HostServices`), lifecycle
+  events (`AppLifecycle`).
+
+An import with no handler is answered with 0 and recorded, and the list goes into
+the crash report if the guest stops. `WPR_WP8_TRAP_IMPORTS=1` stops at the first one
+instead, as a diagnostic. See
+[`Plans/RUNTIME-CONVERGENCE.md`](../Plans/RUNTIME-CONVERGENCE.md) Track 1.
 
 ## Project layout (`Src/`)
 
@@ -87,17 +158,28 @@ is what let those moves happen without touching a single `NewNamespace` string.
 | `Core/WPR.Framework.Devices.Sensors` | Accelerometer / Compass |
 | `Core/WPR.Framework.Devices.Location` | `System.Device.Location` |
 | `Engine/WPR.Engine` | Composition root for a platform: `PlatformDescriptor`, `IPlatformCapabilities`, `PlatformComposition.Apply` — heads declare capabilities, this turns them into registry writes |
-| `Engine/WPR.Engine.Audio` | The three runtime audio seams (`IAudioBackend`, `IXactBackend`, `IMediaBackend`), the `IAudioModule` plug and `AudioBackendRegistry` that composes them, plus the install-time `IAudioTranscoder` + `AudioTranscoderBackend` |
+| `Engine/WPR.Engine.Audio` | The three runtime audio seams (`IAudioBackend`, `IXactBackend`, `IMediaBackend`), the `IAudioModule` plug and `AudioBackendRegistry` that composes them, plus the install-time `IAudioTranscoder` + `AudioTranscoderBackend` and the `IAudioDecoder` / `IVideoDecoder` contracts |
 | `Engine/WPR.Engine.Sensors` | `IAccelerometerProvider` + `SensorBackend` (motion input, in neutral `System.Numerics` terms) |
 | `Engine/WPR.Engine.Notifications` | `INotificationManager` + `NotificationBackend` and the notification DTOs (replaces `WPR.Common.NativeUI`) |
-| `Engine/WPR.Engine.Graphics` | `GraphicsDriver` / `GraphicsDriverPreference` — the FNA3D driver choice a head declares |
-| `Engine/WPR.Engine.GameLoop` | `IGameHost`, so a backend can implement the host contract without referencing the composition root |
-| `Backends/WPR.Backend.FNA` | FNA backend — implements the `WPR.Xna.Rhi` seams and hosts the game loop (`ApplicationLaunch`, `FnaGameHost`) |
-| `Backends/FNA.Platform` | FNA fork (builds assembly `FNA`): native-backed runtime, window, SDL/FNA3D/FAudio/Theorafile bindings |
-| `Audio/WPR.Audio.FAudio` | Fills all three audio seams over FAudio/FACT, plus FAudio's `XNA_Song` and Theorafile video |
-| `Audio/WPR.Audio.AndroidMediaPlayer` | Android-only: the song half of `IMediaBackend` over platform `MediaPlayer`; forwards video to the module below it |
-| `Platforms/WPR.Platform.Windows` | Windows head (`net8.0-windows10.0.17763.0`): `Program`, `App`, `MainWindowDesktop`, the whole Avalonia UI (pages, view-models, views, brand theme `Themes/Brand.axaml`), the launchers (`SilverlightLauncher`, `XnaLauncher`, `UnityPortLauncher`), tilt input, toast notifications |
-| `Platforms/WPR.Platform.Android` | Android head (`net8.0-android34.0`): native `Activity` shell (`Native/*`), `GameActivity`, notifications |
+| `Engine/WPR.Engine.Graphics` | `GraphicsDriver` / `GraphicsDriverPreference` (the FNA3D driver choice a head declares), `GraphicsDriverProbe` (demotes Vulkan after a launch that never presented a frame) and the measured `GraphicsCapabilities` |
+| `Engine/WPR.Engine.GameLoop` | The launch sequence: `ApplicationLaunch` (picks XNA, mixed-mode or WP8 native and runs it), `IGameHost`, `IGameLaunchHooks`, `MixedModeGame` / `MixedModeDetection`, `GameLifecycleQuirks` |
+| `Engine/WPR.Engine.Input` | Keyboard emulation on the XNA side: the tilt components and `SyntheticTouchInputBackend`, which injects keyboard- and wheel-driven touch into `TouchPanel` |
+| `Engine/WPR.Engine.Wp8Native` | WP8 native ARM titles as an XNA `Game` (`Wp8NativeGame`): compiles in the `Research/Wp8Native` runtime and adds the GPU replay, audio, sensors, Xbox Live and launcher/vibration hosts (see above) |
+| `Engine/WPR.Engine.Online` | WPR Hub contracts and registry (`ILeaderboardService`, `ICrashReporter`, `OnlineBackend`, `PlaytimeTracker`); speaks strings and longs only |
+| `Engine/WPR.Engine.Content` | `ContentPaths`: how Windows-style paths in game file I/O are resolved on the running filesystem |
+| `Engine/WPR.Engine.Launchers` | `IUriLauncher` / `IShareSheet` + `LauncherBackend`, and `WebLinkPolicy` (only http/https leave the game) |
+| `Engine/WPR.Engine.Vibration` | `IVibrationProvider` + `VibrationBackend`, including the global on/off switch |
+| `Backends/WPR.Backend.FNA` | FNA adapter: implements the `WPR.Xna.Rhi` seams and `IGameHost` (`FnaGameHost`). The only graphics backend |
+| `Backends/FNA.Platform` | FNA fork (builds assembly `FNA`): SDL platform layer and the FNA3D/FAudio/Theorafile/SDL2 bindings. Defines no XNA API |
+| `Modules/Audio/WPR.Audio.FAudio` | Fills all three audio seams over FAudio/FACT, plus FAudio's `XNA_Song` and Theorafile video |
+| `Modules/Audio/WPR.Audio.AndroidMediaPlayer` | Android-only: the song half of `IMediaBackend` over platform `MediaPlayer`; forwards video to the module below it |
+| `Modules/Video/WPR.Video.MediaCodec` | Android-only `IVideoDecoder` over `MediaExtractor` + `MediaCodec`, reading the sidecars the installer writes beside each movie |
+| `Modules/Input/*` | `WPR.Input.Keyboard` (desktop tilt, Back and touch emulation) and `WPR.Input.AndroidSensor` (the device's accelerometer and gyroscope) |
+| `Modules/Notifications/*`, `Modules/Launchers/*`, `Modules/Vibration/*` | Per-platform implementations of the engine contracts above (Windows toast, Android channel, shell-execute, Android intents, Android vibrator) |
+| `Modules/Online/WPR.Online.Hub` | The WPR Hub client: leaderboards, crash reports, sign-in, presence, achievement and playtime sync, friends and messages. Queues to disk and flushes from the launcher |
+| `Core/WPR.Shell` | Launcher logic shared by both heads with no UI type in it: strings, achievement roll-ups, the accent palette, hub setup, the rating prompt, update checks |
+| `Platforms/WPR.Platform.Windows` | Windows head (`net10.0-windows10.0.17763.0`): `Program`, `App`, `MainWindowDesktop`, the whole Avalonia UI (pages, view-models, views, brand theme `Themes/Brand.axaml`), the launchers (`SilverlightLauncher`, `XnaLauncher`, `UnityPortLauncher`), `WindowsPlatform` |
+| `Platforms/WPR.Platform.Android` | Android head (`net10.0-android36.0`): native `Activity` shell (`Native/*`), `GameActivity`, `AndroidPlatform` |
 | `Tests/WPR.Tests` | Dependency-fitness test guarding the backend-isolation baseline |
 | `Core/WPR.SilverlightCompability.Tests` | Unit tests for the Silverlight/XAML re-implementation |
 | `JavaBindings/*` | Android bindings: SDL2 (`Org.Libsdl.App`), FFmpegKit |
@@ -140,13 +222,18 @@ and *Reinstall all library games*. See [BUILDING.md](BUILDING.md#run-configurati
 | Path | What |
 | --- | --- |
 | `%LocalAppData%\WPR\Database\` | `applications.db` + `achievements.db`, copied from the build output on first run |
-| `%LocalAppData%\WPR\AppData\<ProductId>\` | One installed game: its patched DLLs, a `<game>.dll.original` sibling kept for re-patching, and `wpr_game_debug.log` capturing that game's `Trace`/`Debug` output |
+| `%LocalAppData%\WPR\AppData\<ProductId>\` | One installed game: its patched DLLs (WP8 native titles are extracted unchanged), a `<game>.dll.original` sibling kept for re-patching, and, in a Debug build or a "play with logging" run, `wpr_game_debug.log` capturing that game's `Trace`/`Debug` output |
+| `%LocalAppData%\WPR\IsolatedStore\<ProductId>\AppFiles\` | The game's isolated storage (its saves), one store per game |
+| `%LocalAppData%\WPR\Logs\` | `wpr-<process>.log`: every `Log.*` and `Trace` line, Release builds included, capped at 4 MB |
 
-`wpr_game_debug.log` is the first place to look when a game crashes silently.
+`wpr_game_debug.log`, or the session log in a Release build, is the first place to
+look when a game crashes silently.
 
 ## Native dependencies
 
 The desktop runtime pulls in `FAudio.dll`, `FNA3D.dll`, `SDL2.dll`, `FNWP72.dll`
-and `ffmpeg.exe`, all shipped next to the executable and committed to the repo.
+and `ffmpeg.exe`, all shipped next to the executable and committed to the repo,
+plus `wprcpu.dll` (the dynarmic shim for WP8 native titles), committed under
+`Research/Wp8Native/` and copied to the output by `WPR.Engine.Wp8Native`.
 There are no submodules and no `git lfs` step — a plain `git clone` is a complete
 checkout.

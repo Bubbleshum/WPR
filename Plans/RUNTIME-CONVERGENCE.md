@@ -3,7 +3,7 @@
 **Status (2026-10-12):** Track 1 done (1a-1f; 1e's removal of `ConstructShapedObject` still waits on
 activation through generated class info). 2a, 2c, 3a, 3c, 3d, 3e done; Track 4 spike done (Spark2 go,
 Unity no-go). WP8 native now has one render path: every title replays on the GPU (the per-title allow-list is
-gone; `WPR_WP8_GPU=0` keeps the 2D draw list as a diagnostic). Open: 2b, 3b, Track 5.
+gone; `WPR_WP8_GPU=0` keeps the 2D draw list as a diagnostic). Track 5 done. Open: 2b, 3b.
 **Written against:** `f58fa86`.
 **Prompted by:** Angry Birds Go! (WP8 native) dying on its first frame with `null call to 0x00000000`,
 and the question of how much of WPR's runtime is per-game and how much could be shared.
@@ -426,6 +426,29 @@ more than the trap page holds. Unity stays on the port rail.
   backend; update it in the same change that deletes the D3D11 project.
 - After track 4, update `Unity_WP8_Feasibility.md` with the result either way.
 - Add this file to `Plans/README.md`.
+
+**Done 2026-10-12** (branch `track5-docs`, from `combine` at `208317a4`), checked against the code:
+
+- `Docs/ARCHITECTURE.md`: .NET 10 throughout (`net10.0-windows10.0.17763.0`,
+  `net10.0-android36.0`); `ModernNative` is "Partial" and covers `.exe` and Direct3D/XAML
+  component titles; a new section on the four in-process runtimes (how each draws and gets
+  input, matching "Where things stand" above) and on the WP8 native runtime's parts; project
+  table adds `WPR.Engine.Wp8Native`, `.GameLoop` (now the launch sequence), `.Input`,
+  `.Online`, `.Content`, `.Launchers`, `.Vibration`, `WPR.Online.Hub`, `WPR.Shell` and the
+  other modules, with paths moved to `Modules/`; no `WPR.Backend.Direct3D11` row;
+  `ApplicationPatcher.Version` 40; runtime data adds the per-game isolated store and the
+  session logs; `wprcpu.dll` under native dependencies. `Docs/README.md`'s one-line summary
+  of it mentions the runtimes.
+- `Plans/ARCHITECTURE-MIGRATION.md`: §1.3 is now "One backend", with the two-backend text kept
+  as history; standing decision 2, the Stage 7 bullet and the dependency graph no longer name
+  the D3D11 backend.
+- `Plans/README.md`: status for this plan, the census and its two TSVs, the Unity and Spark2
+  verdicts after track 4, and a note that the WP8-NATIVE docs are history.
+- `Plans/Unity_WP8_Feasibility.md`: the status line and the top note carry the §11 result,
+  and that AC Pirates runs to its first mission on desktop (after `d64e0a83`).
+
+Not changed: `CLAUDE.md`, and the `WPR.Engine.Wp8Native.csproj` comment that still says
+`Wp8NativeGame` draws the `FrameDrawList` (it replays on the GPU by default).
 
 ## 7. Risks
 

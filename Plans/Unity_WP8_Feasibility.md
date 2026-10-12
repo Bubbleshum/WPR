@@ -1,6 +1,8 @@
 # Unity Windows-Phone titles — Feasibility & the Port Rail
 
-**Status:** Scoping study + implemented launcher rail (no per-game port yet).
+**Status:** Scoping study + implemented launcher rail (no per-game port yet). Track 4 spike
+done 2026-10-12 (§11): Unity no-go in-process; Spark2 go, and Assassin's Creed Pirates now runs
+in-process to its first mission on desktop.
 **Verdict:** A Unity WP title **cannot be hosted in-process** by WPR — its engine is native ARM
 code we can't execute, same wall as AC Pirates' Spark2. **But**, unlike Spark2, a Unity title is
 fully *recoverable*: assets are open, scripts are managed, and Unity's own tooling rebuilds the
@@ -13,6 +15,12 @@ why, the port recipe, and the launcher rail that's now in the codebase.
 > the existing component-title host. Unity stays **no-go** in-process, because its managed/native
 > binding assumes one shared 32-bit address space, so the port rail below is still the path for
 > Unity.
+>
+> **Spark2 result, same day:** Assassin's Creed Pirates is hosted as a Direct3D/XAML component
+> title (`XamlShells` entry for `SparkApp.dll`, host objects in `SparkHostObjects.cs`) and runs to
+> its first mission on desktop. The last blocker was the GPU replay failing to compile skinned
+> vertex shaders while loading Devil's Rock (commit `d64e0a83`, merged into `combine` at
+> `208317a4`). Not yet run on Android.
 
 First worked example: **Twins Minigame** (`GAME TROOPERS`, product `19e9713c-…`), Unity `4.6.9f1`.
 
@@ -415,7 +423,9 @@ Next steps, in order:
      implemented: loudspeaker, Earpiece|Speakerphone available, `AudioEndpointChanged` raised
      through the deferred queue. Not yet reached in a 90 s run: the level load dies first in the
      GPU replay (`Could not compile input layout` on a BLENDINDICES skinned draw, then an access
-     violation in `FNA3D_ApplyVertexBufferBindings`).
+     violation in `FNA3D_ApplyVertexBufferBindings`). **Fixed 2026-10-12 (branch `acp-gpu`,
+     `d64e0a83`):** the replay now declares a relatively indexed constant run as its own array,
+     so skinned shaders compile and the game reaches its first mission on desktop.
 
 **To reproduce:**
 
