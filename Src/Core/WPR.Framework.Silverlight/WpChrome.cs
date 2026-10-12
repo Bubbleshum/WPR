@@ -88,9 +88,27 @@ namespace WPR.SilverlightCompability
 
         // ---- Classification ----
 
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, Kind> KindByType = new();
+
+        /// <summary>
+        /// Which WP7 control <paramref name="element"/> is, matching its type AND its base types —
+        /// games subclass the toolkit controls (Minesweeper's options page is built from
+        /// <c>Minesweeper.ToggleSwitch2</c>), and a name test on the concrete type alone drew those
+        /// as bare content in both renderers.
+        /// </summary>
         public static Kind Classify(UIElement element)
+            => KindByType.GetOrAdd(element.GetType(), static t =>
+            {
+                for (Type? type = t; type != null && type != typeof(object); type = type.BaseType)
+                {
+                    Kind k = ClassifyName(type.FullName ?? "");
+                    if (k != Kind.None) return k;
+                }
+                return Kind.None;
+            });
+
+        private static Kind ClassifyName(string typeName)
         {
-            string typeName = element.GetType().FullName ?? "";
             switch (typeName)
             {
                 case "Microsoft.Phone.Controls.Panorama": return Kind.Panorama;

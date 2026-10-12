@@ -70,8 +70,9 @@ namespace WPR.SilverlightCompability
             // height and the renderer's drawn chrome would overlap siblings.
             // Bake in the known minimums here so the override-free templated
             // types still measure correctly.
-            string typeName = GetType().FullName ?? "";
-            if (typeName == "Microsoft.Phone.Controls.ToggleSwitch")
+            // Classify, not a name test: a game may subclass the toolkit control
+            // (Minesweeper's options page is all Minesweeper.ToggleSwitch2).
+            if (WpChrome.Classify(this) == WpChrome.Kind.ToggleSwitch)
             {
                 // Header (24 DIP) + 4 DIP gap + 38 DIP track + 12 DIP bottom margin = 78 DIP.
                 // Width = track (95) + 12 DIP gap + state word (~60 DIP) = ~170 DIP.
