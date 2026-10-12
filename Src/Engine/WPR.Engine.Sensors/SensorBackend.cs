@@ -3,7 +3,7 @@ namespace WPR.Engine.Sensors
 {
     /// <summary>
     /// Backend registry for the WP7 sensors framework — the direct counterpart of
-    /// <c>WPR.SilverlightCompability.SilverlightBackend</c> and <c>WPR.Xna.Rhi.XnaBackend</c>,
+    /// <c>WPR.Xna.Rhi.XnaBackend</c>,
     /// and registered the same way: the launcher (the composition root) sets the platform
     /// implementation before any app is loaded, in <c>ServicesSetup.Start()</c>.
     ///

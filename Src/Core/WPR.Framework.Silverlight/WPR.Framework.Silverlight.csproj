@@ -74,8 +74,9 @@
 
   <!--
     No Vortice / Direct3D references live here any more. Stage 5e (2026-08-29) moved the three
-    D3D11 renderers into Src/Backends/WPR.Backend.Direct3D11 and left behind the
-    ISurfaceRendererBackend seam + the SilverlightBackend registry, which the launcher fills in.
+    D3D11 renderers into Src/Backends/WPR.Backend.Direct3D11 behind an ISurfaceRendererBackend
+    seam; on 2026-10-12 that backend, the seam and its SilverlightBackend registry were retired
+    altogether (Plans/RUNTIME-CONVERGENCE.md item 2a).
     The WPR_D3D11 define went with them — this project now compiles identically on all three TFMs.
     Re-adding a graphics package here would re-open the backend leak the fitness test guards.
   -->

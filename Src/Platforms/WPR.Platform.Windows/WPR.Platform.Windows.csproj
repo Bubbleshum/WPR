@@ -179,17 +179,16 @@
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Framework.Silverlight\WPR.Framework.Silverlight.csproj" />
     <!-- Input/: this head implements WPR.Engine.Sensors.IAccelerometerProvider from the keyboard
          emulator and registers it into WPR.Sensors.SensorBackend (which ships inside the sensors
-         framework, beside its consumer, exactly like SilverlightBackend). Both were reached
+         framework, beside its consumer). Both were reached
          transitively via WPR.Backend.FNA before; explicit now that the head is a first-class
          implementer rather than an accidental consumer. -->
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Framework.Devices.Sensors\WPR.Framework.Devices.Sensors.csproj" />
     <!-- FNA game-loop host driver (ApplicationLaunch + FnaGameHost/IGameHost), used by
          SilverlightLauncher / XnaLauncher. -->
     <ProjectReference Include="$(SolutionDir)\Backends\WPR.Backend.FNA\WPR.Backend.FNA.csproj" />
-    <!-- The two backends. Per the ADR the launcher is the composition root: it is the only
-         layer that knows which concrete backend to inject, which is what makes them swappable.
-         WPR.Backend.Direct3D11 is registered in ServicesSetup.Start(). -->
-    <ProjectReference Include="$(SolutionDir)\Backends\WPR.Backend.Direct3D11\WPR.Backend.Direct3D11.csproj" />
+    <!-- WPR.Backend.Direct3D11 (Vortice) was referenced here until 2026-10-12, when it was
+         retired: it only drew splash / test-pattern placeholders behind DrawingSurfaceBackgroundGrid
+         for titles WPR cannot host. See Plans/RUNTIME-CONVERGENCE.md item 2a. -->
     <ProjectReference Include="$(SolutionDir)\ThirdParty\Icons.Avalonia\src\Projektanker.Icons.Avalonia.FontAwesome\Projektanker.Icons.Avalonia.FontAwesome.csproj" />
     <ProjectReference Include="$(SolutionDir)\ThirdParty\Icons.Avalonia\src\Projektanker.Icons.Avalonia\Projektanker.Icons.Avalonia.csproj" />
     <ProjectReference Include="..\..\Core\WPR.Shell\WPR.Shell.csproj" />

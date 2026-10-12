@@ -11,8 +11,7 @@ namespace WPR.Xna.Rhi
 	/// (<c>GraphicsDevice</c>/<c>SpriteBatch</c>/<c>Texture2D</c>/<c>Effect</c>/buffers/states)
 	/// issues every GPU operation through this interface instead of calling native code, so the
 	/// XNA type system stays backend-agnostic. A rendering backend implements it:
-	/// <c>WPR.Backend.FNA.FnaGraphicsBackend</c> forwards to FNA3D; a future
-	/// <c>WPR.Backend.Direct3D11</c> would forward to Vortice.
+	/// <c>WPR.Backend.FNA.FnaGraphicsBackend</c> forwards to FNA3D, and is the only one.
 	///
 	/// <para><b>Shape:</b> this deliberately mirrors the FNA3D C API almost 1:1 — opaque
 	/// <see cref="IntPtr"/> handles (device / texture / buffer / effect / renderbuffer / query)
