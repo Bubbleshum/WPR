@@ -13,8 +13,9 @@
       * Windows: Research/Wp8Native/wprcpu.dll, committed (cross-compiled from WSL); copied to the
         output when present. Without it a native title fails at launch with DllNotFoundException.
 
-    Only Wp8NativeGame.cs lives here - the XNA side: it draws the runtime's FrameDrawList through
-    the framework's GraphicsDevice and feeds TouchPanel into the guest.
+    The XNA side lives here: Wp8NativeGame.cs replays the guest's Direct3D 11 frames on the
+    framework's GraphicsDevice with the game's own shaders (Wp8GpuReplay.cs; WPR_WP8_GPU=0 falls
+    back to the old FrameDrawList, as a diagnostic) and feeds TouchPanel into the guest.
   -->
 
   <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
