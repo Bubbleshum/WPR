@@ -24,14 +24,14 @@ namespace WPR.SilverlightCompability
 {
     /// <summary>
     /// A tasteful branded splash for games whose native engine WPR can't host (e.g. AC Pirates'
-    /// native ARM Spark2 engine). Instead of the bare D3D test pattern, it presents the app's own
+    /// native ARM Spark2 engine). Instead of a bare placeholder, it presents the app's own
     /// store artwork — its largest live tile / icon — centered on a dark gradient with a subtle
     /// animated "loading" indicator, so a launched-but-unrunnable title at least looks like a real
     /// game splash rather than an error.
     ///
     /// Pure Avalonia drawing (no D3D), so it works on every backend and captures cleanly. Wired in
-    /// via <see cref="DrawingSurfaceBackgroundGrid.LookupRenderer"/> as the fallback ahead of the
-    /// test pattern. Art + title are discovered from the install folder; nothing is app-specific.
+    /// via <see cref="DrawingSurfaceBackgroundGrid.LookupRenderer"/>, ahead of the status
+    /// placeholder. Art + title are discovered from the install folder; nothing is app-specific.
     /// </summary>
     public sealed class BrandedSplashRenderer : IBackgroundRenderer
     {

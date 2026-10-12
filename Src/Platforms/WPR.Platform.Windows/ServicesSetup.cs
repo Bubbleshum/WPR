@@ -1,6 +1,5 @@
 ﻿using Microsoft.Xna.Framework.GamerServices;
 using WPR.Platform.Windows.Input;
-using WPR.Backend.Direct3D11;
 using WPR.Engine;
 using WPR.SilverlightCompability;
 using System.Linq;
@@ -18,14 +17,6 @@ namespace WPR.Platform.Windows
             // launcher-lifetime, and XnaBackend.Clear() on teardown deliberately leaves them alone
             // (clearing would leave the SECOND game launched without achievements or tilt).
             PlatformComposition.Apply(new WindowsPlatform());
-
-            // Not a capability: this is the Silverlight framework's renderer, and the launcher is
-            // the only layer that knows a concrete backend exists (ADR §2) — the framework sees
-            // ISurfaceRendererBackend and nothing else, which is what keeps Vortice out of it.
-            // Registered eagerly because DrawingSurfaceBackgroundGrid is constructed by the XAML
-            // parser while a WP app loads, so the backend must already be in place. Idempotent
-            // (assignment, not accumulation), so reconstructing MainWindowDesktop does not leak.
-            SilverlightBackend.SurfaceRenderer = new Direct3D11SurfaceRendererBackend();
 
             Guide.ShowInputBoxFunc = async (title, description, defaultText) =>
             {

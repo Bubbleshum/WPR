@@ -3,7 +3,7 @@ namespace WPR.Engine.Audio
 {
     /// <summary>
     /// Backend registry for the install-time audio transcoder — the same shape as
-    /// <c>WPR.Engine.Sensors.SensorBackend</c>, <c>WPR.SilverlightCompability.SilverlightBackend</c> and
+    /// <c>WPR.Engine.Sensors.SensorBackend</c> and
     /// <c>WPR.Xna.Rhi.XnaBackend</c>: it sits beside its consumer
     /// (<see cref="AudioCompabilityConverter"/>) and the launcher — the composition root — installs
     /// the platform implementation in <c>ServicesSetup.Start()</c> before anything is installed or

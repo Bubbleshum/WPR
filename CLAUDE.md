@@ -86,8 +86,8 @@ Three things make this hard to recognise:
 - **A plain `dotnet build` never reproduces it.** No RID, no runtime pack, no failure — so the
   whole migration can look green and the release job still fail.
 - **The failing set is the tell**: all 21 projects that multi-target `net10.0;net10.0-android` fail
-  at once, while every single-TFM project (`WPR.Framework.Xna`, `FNA.Core`,
-  `WPR.Backend.Direct3D11`, the modules) restores fine. If a restore failure splits that way, this
+  at once, while every single-TFM project (`WPR.Framework.Xna`, `FNA.Core`, the modules)
+  restores fine. If a restore failure splits that way, this
   is it.
 - **It reads as a workload problem and is not one.** The android workload being present or absent
   changes nothing; the RID is what does it.
@@ -3384,9 +3384,9 @@ absence is *measured* rather than treated as "not present" — with no declarati
 the running filesystem, which is what keeps the bare game-host harness correct. See the patcher v23
 section for what it fixes.
 
-**Not everything is a capability.** `SilverlightBackend.SurfaceRenderer` stays a direct
-registration in the Windows head: it is a framework-internal renderer choice, not a fact about the
-device. The per-launch RHI seams are filled by `FnaGameHost`, not from here, because their lifetime
+**Not everything is a capability.** (`SilverlightBackend.SurfaceRenderer` was the example here: a
+direct registration in the Windows head, retired with `WPR.Backend.Direct3D11` on 2026-10-12.) The
+per-launch RHI seams are filled by `FnaGameHost`, not from here, because their lifetime
 is the game run rather than the process.
 
 
@@ -4689,13 +4689,14 @@ which upstream type the file shadows, and tooling can grep for it.
 
 Files at the project root are **not** type shims — they're WPR-internal
 runtime/helper code that doesn't shadow any upstream type:
-- Renderers (`SilverlightRenderer.cs`, `BrandedSplashRenderer.cs`, …). Note the **D3D11**
-  renderers are no longer here: Stage 5e (2026-08-29) moved `D3D11SurfaceRenderer`,
-  `D3D11ImageSplashRenderer` and `D3D11TestPatternRenderer` into
-  `Src/Backends/WPR.Backend.Direct3D11`, leaving the `ISurfaceRendererBackend` seam +
-  `SilverlightBackend` registry behind. **Do not add a graphics package reference to
-  `WPR.Framework.Silverlight`** — `BackendIsolationTests` fails if you do, and the fix is
-  to put the code in the backend instead.
+- Renderers (`SilverlightRenderer.cs`, `BrandedSplashRenderer.cs`, …). The **D3D11**
+  renderers are gone: Stage 5e (2026-08-29) moved them into `Src/Backends/WPR.Backend.Direct3D11`
+  behind an `ISurfaceRendererBackend` seam + `SilverlightBackend` registry, and on **2026-10-12**
+  that backend, seam and registry were retired (Plans/RUNTIME-CONVERGENCE.md 2a), because all
+  they drew was a splash image or test pattern for titles WPR cannot host.
+  `DrawingSurfaceBackgroundGrid` now shows `BrandedSplashRenderer` or the placeholder.
+  **Do not add a graphics package reference to `WPR.Framework.Silverlight`** —
+  `BackendIsolationTests` fails if you do.
 - Pointer-to-gesture bridge (`Gestures.cs`, `PanoramaState.cs`,
   `PanoramaStateTable.cs`, `PanoramaSelectedItemSync.cs`)
 - XAML helpers (`XamlTypeConverter.cs`, `MarkupExtensionParser.cs`)

@@ -5,9 +5,10 @@ using Avalonia.Threading;
 namespace WPR.SilverlightCompability
 {
     /// <summary>
-    /// Pluggable per-app D3D-background renderer. Implement this in a managed re-implementation
-    /// of an app's WinRT component, then register it via
-    /// <see cref="DrawingSurfaceBackgroundGrid.RegisterRenderer"/>.
+    /// Managed stand-in for the native D3D background an app's WinRT component would draw behind
+    /// a <see cref="DrawingSurfaceBackgroundGrid"/>. The only implementation left is
+    /// <see cref="BrandedSplashRenderer"/>; the D3D11 renderers and the per-app
+    /// <c>RegisterRenderer</c> table were retired on 2026-10-12.
     /// </summary>
     public interface IBackgroundRenderer
     {

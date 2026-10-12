@@ -41,7 +41,8 @@ namespace WPR.Tests
             new(StringComparer.OrdinalIgnoreCase)
             {
                 "WPR.Backend.FNA",
-                "WPR.Backend.Direct3D11",
+                // WPR.Backend.Direct3D11 was here (-> Vortice) until 2026-10-12, when it was
+                // retired (Plans/RUNTIME-CONVERGENCE.md item 2a). Nothing references Vortice now.
                 // The FAudio audio backend (Src/Audio/, split out of WPR.Backend.FNA on
                 // 2026-09-01). It must reference FNA for the same reason the graphics adapter
                 // does: the FAudio/FACT P/Invokes are compiled INTO FNA.dll, and FNA registers its
@@ -91,7 +92,8 @@ namespace WPR.Tests
                 // Removed 2026-08-29 (Stage 5e): the three D3D11 renderers moved into the new
                 // WPR.Backend.Direct3D11 — the second backend the ADR §1.3 called for — and the
                 // framework now sees only the ISurfaceRendererBackend seam, filled in by the
-                // launcher. This was the last non-spine leak in the baseline.
+                // launcher. This was the last non-spine leak in the baseline. (That backend and
+                // its seam were then retired outright on 2026-10-12.)
 
                 // WPR.Platform.Windows and WPR.Platform.Android were the last two entries, and
                 // both cleared on 2026-09-01 (Stage 5). Neither was ever a project reference —

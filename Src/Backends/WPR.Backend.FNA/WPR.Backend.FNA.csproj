@@ -3,7 +3,7 @@
   <!--
     WPR.Backend.FNA — the FNA rendering/host backend (Stage 4 / 5b, Plans/ARCHITECTURE-MIGRATION.md).
 
-    This is the ONLY layer (with WPR.Backend.Direct3D11) permitted to reference FNA — see the
+    This is the ONLY graphics layer permitted to reference FNA — see the
     fitness function's AllowedReferrers. It is the FNA ADAPTER and nothing more: the RHI seam
     implementations (FnaGraphicsBackend / FnaInputBackend / FnaStorageBackend / FnaPlatformBackend),
     the IGameHost implementation that composes them per launch (FnaGameHost), the SDL-level

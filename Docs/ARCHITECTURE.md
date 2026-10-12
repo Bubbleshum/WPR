@@ -93,7 +93,6 @@ is what let those moves happen without touching a single `NewNamespace` string.
 | `Engine/WPR.Engine.Graphics` | `GraphicsDriver` / `GraphicsDriverPreference` — the FNA3D driver choice a head declares |
 | `Engine/WPR.Engine.GameLoop` | `IGameHost`, so a backend can implement the host contract without referencing the composition root |
 | `Backends/WPR.Backend.FNA` | FNA backend — implements the `WPR.Xna.Rhi` seams and hosts the game loop (`ApplicationLaunch`, `FnaGameHost`) |
-| `Backends/WPR.Backend.Direct3D11` | Vortice/D3D11 backend for Silverlight `DrawingSurface` content, behind `ISurfaceRendererBackend` |
 | `Backends/FNA.Platform` | FNA fork (builds assembly `FNA`): native-backed runtime, window, SDL/FNA3D/FAudio/Theorafile bindings |
 | `Audio/WPR.Audio.FAudio` | Fills all three audio seams over FAudio/FACT, plus FAudio's `XNA_Song` and Theorafile video |
 | `Audio/WPR.Audio.AndroidMediaPlayer` | Android-only: the song half of `IMediaBackend` over platform `MediaPlayer`; forwards video to the module below it |

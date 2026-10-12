@@ -3,7 +3,6 @@
     "path": "WPR.sln",
     "projects": [
       "Backends\\FNA.Platform\\FNA.Core.csproj",
-      "Backends\\WPR.Backend.Direct3D11\\WPR.Backend.Direct3D11.csproj",
       "Backends\\WPR.Backend.FNA\\WPR.Backend.FNA.csproj",
       "Core\\WPR.Common\\WPR.Common.csproj",
       "Core\\WPR.Database\\WPR.Database.csproj",

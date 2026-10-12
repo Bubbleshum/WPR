@@ -250,7 +250,7 @@ puts two stack traces in every crash report. Release once, or guard on `CurrentC
 | XNA | `GraphicsDevice` → `IGraphicsBackend` → FNA3D | SDL → `IInputBackend` → `TouchPanel` |
 | mixed-mode Silverlight | `SoftwareVisualRasteriser` → `Texture2D` on the same device | `TouchPanel` → `MixedModeGame.PumpSilverlightTouch` → routed events |
 | WP8 native | `Wp8GpuReplay` replays the guest's D3D11 frame on the same device | `TouchPanel` → `WinRt.InjectPointer`; Back from `GamePad` |
-| pure Silverlight | Avalonia `SilverlightRenderer`, plus `WPR.Backend.Direct3D11` for `DrawingSurface` | Avalonia pointer events in `PhoneApplicationFrameView` |
+| pure Silverlight | Avalonia `SilverlightRenderer` (`DrawingSurface` gets `BrandedSplashRenderer` or a placeholder) | Avalonia pointer events in `PhoneApplicationFrameView` |
 
 Everything on the `TouchPanel` path already gets keyboard→touch bindings, wheel scrolling and the
 driver picker. Pure Silverlight gets none of them and does not run on Android.
@@ -270,6 +270,14 @@ backend now draws only `D3D11ImageSplashRenderer` and `D3D11TestPatternRenderer`
 **Proposal:** retire `WPR.Backend.Direct3D11` and redefine `IBackgroundRenderer` to render into a
 `Texture2D`, or drop it. Move the splash to `BrandedSplashRenderer` on the XNA device.
 `BackendIsolationTests.AllowedReferrers` loses one entry.
+
+**Done 2026-10-12** (branch `retire-d3d11-backend`): the project, the `ISurfaceRendererBackend`
+seam, the `SilverlightBackend` registry and the never-called `RegisterRenderer` table are deleted.
+`DrawingSurfaceBackgroundGrid.LookupRenderer` now tries `BrandedSplashRenderer` and otherwise
+returns null, so `SilverlightRenderer` paints its status placeholder. The app's own
+`SplashScreenImage*.jpg` is no longer drawn there (only the D3D11 path ever did). Nothing
+references Vortice any more. `IBackgroundRenderer` stays, still Avalonia-shaped, because
+`BrandedSplashRenderer` implements it; Stage C removes it with `SilverlightRenderer`.
 
 ### 2b. Run Stage C and Stage D of the convergence plan
 
