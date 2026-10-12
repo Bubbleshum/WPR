@@ -495,7 +495,20 @@ namespace WPR.SilverlightCompability
                 if (t > 0)
                 {
                     var pen = new global::Avalonia.Media.Pen(bb, t);
-                    ctx.DrawRectangle(null, pen, bounds);
+                    CornerRadius cr = border.CornerRadius;
+                    if (cr.TopLeft > 0 || cr.TopRight > 0 || cr.BottomLeft > 0 || cr.BottomRight > 0)
+                    {
+                        // Rounded like the fill, and inset by half the pen so the outline lies
+                        // inside the slot — what the CPU rasteriser draws.
+                        var inset = bounds.Deflate(t / 2);
+                        ctx.DrawRectangle(null, pen, new AvRoundedRect(inset,
+                            Math.Max(0, cr.TopLeft - t / 2), Math.Max(0, cr.TopRight - t / 2),
+                            Math.Max(0, cr.BottomRight - t / 2), Math.Max(0, cr.BottomLeft - t / 2)));
+                    }
+                    else
+                    {
+                        ctx.DrawRectangle(null, pen, bounds);
+                    }
                 }
             }
 
