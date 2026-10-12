@@ -16,7 +16,7 @@ namespace Wp8ContractTests.Suites;
 /// </summary>
 public sealed class PackagedLibrarySuite : IContractSuite
 {
-    private const ushort RootTag = 0x11, LuaTag = 0x21, DupRootTag = 0xD1, DupSubTag = 0xD2;
+    private const ushort RootTag = 0x11, LuaTag = 0x21, DupRootTag = 0xD1, DupSubTag = 0xD2, ComponentTag = 0xC1;
     private const uint Attach = 1, Detach = 0;
 
     private const string LuaPath = @"Spark2Projects\_Deep\_Deeper\LuaThing.dll";
@@ -75,6 +75,7 @@ public sealed class PackagedLibrarySuite : IContractSuite
         Write(package, "Dup.dll", Dll(DupRootTag, out _).Build());
         Write(package, @"Sub\Dup.dll", Dll(DupSubTag, out _).Build());
         Write(package, @"Spark2Projects\_Other\LuaOther.dll", Dll(0x22, out _).Build());
+        Write(package, "Component.dll", Dll(ComponentTag, out _).Build());
 
         // The Lua module: a subfolder DLL that statically imports a package-root DLL.
         SyntheticPe lua = Dll(LuaTag, out _);
@@ -103,8 +104,34 @@ public sealed class PackagedLibrarySuite : IContractSuite
         string exePath = Path.Combine(package, "Host.exe");
         File.WriteAllBytes(exePath, exe.Build());
 
+        // The package's own WinRT components, as AC Pirates' manifest registers them.
+        File.WriteAllText(Path.Combine(package, "WMAppManifest.xml"), """
+            <?xml version="1.0" encoding="utf-8"?>
+            <Deployment xmlns="http://schemas.microsoft.com/windowsphone/2012/deployment" AppPlatformVersion="8.0">
+              <App xmlns="" ProductID="{40ae56ef-6238-40e1-a2ad-62cac8b13d93}">
+                <ActivatableClasses>
+                  <InProcessServer>
+                    <Path>LuaMobileSDK.dll</Path>
+                    <ActivatableClass ActivatableClassId="LuaMobileSDK.LuaMobileSDKBridge" ThreadingModel="both" />
+                  </InProcessServer>
+                  <InProcessServer>
+                    <Path>Microsoft.Xbox.dll</Path>
+                    <ActivatableClass ActivatableClassId="Microsoft.Xbox.User" ThreadingModel="both" />
+                    <ActivatableClass ActivatableClassId="Microsoft.Xbox.XboxLIVEService" ThreadingModel="both" />
+                  </InProcessServer>
+                </ActivatableClasses>
+              </App>
+            </Deployment>
+            """);
+
         using ArmEmulator e = new(PeImage.Load(exePath), package, collectBlockStats: false);
         e.Cpu.MemMap(SyntheticPe.LogPage, 0x1000, 3);
+
+        IReadOnlyDictionary<string, string> classes = e.WinRt.PackageClasses;
+        h.Check("WMAppManifest's ActivatableClasses map each class to its package DLL",
+            classes.Count == 3 && classes["LuaMobileSDK.LuaMobileSDKBridge"] == "LuaMobileSDK.dll" && classes["Microsoft.Xbox.XboxLIVEService"] == "Microsoft.Xbox.dll",
+            string.Join(", ", classes.Select(p => $"{p.Key}={p.Value}")));
+        h.Check("...and a package with no manifest registers nothing", WinRtRuntime.ReadPackageClasses(Path.Combine(package, "Spark2Projects")).Count == 0);
         ModuleLoaderSuite.Guest g = new(e);
         e.Run(e.StartWithModuleInitialisers(g.Sentinel), 1_000_000);
 
@@ -229,6 +256,31 @@ public sealed class PackagedLibrarySuite : IContractSuite
             reloaded is { Unloaded: false } && Log(e).SequenceEqual([Entry(RootTag, Attach), Entry(LuaTag, Attach)])
             && g.Call("GetProcAddress", again, g.Narrow("luaopen_thing")) == reloaded.ImageBase + luaopen,
             Describe(Log(e)));
+
+        // ---- a host-driven load that goes on into the module (the XAML shell activating a package
+        // component): the completion's own call must run, not be overwritten by the loader putting
+        // the trapped caller's return address back ----
+        ClearLog(e);
+        bool calledInto = false;
+        long componentHandle = 0;
+        long hostTrap = ArmEmulator.ThumbEntry(e.RegisterVtableMethod("contract test: host load", () =>
+        {
+            long caller = e.ReturnAddress;
+            e.LoadLibraryFromGuest(@".\Component.dll", allowSystem: false, (handle, _) =>
+            {
+                componentHandle = handle;
+                long fn = e.ProcedureAddress(handle, "Fn", out _) ?? 0;
+                e.CallEmulated("Component!Fn", fn, [], onReturn: () =>
+                {
+                    calledInto = true;
+                    e.WriteRegister(Harness.R0 + 12, caller);   // r12: back to whoever called the trap
+                }, recycle: true);
+            });
+        }));
+        long hostResult = g.Invoke(hostTrap);
+        h.Check("a host-driven load runs the module's DllMain, then the call its completion makes",
+            hostResult != -1 && componentHandle != 0 && calledInto && Log(e).SequenceEqual([Entry(ComponentTag, Attach)]) && g.Returned,
+            $"handle 0x{componentHandle:X8} called {calledInto} {Describe(Log(e))}");
     }
 
     private static uint Entry(ushort tag, uint reason) => tag | (reason << 16);
