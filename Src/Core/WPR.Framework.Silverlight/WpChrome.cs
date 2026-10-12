@@ -508,6 +508,14 @@ namespace WPR.SilverlightCompability
         }
 
         /// <summary>
+        /// True when the control has no template of its own, i.e. it would look like the WP7
+        /// default and the synthesised chrome is right. A templated control is drawn as bare
+        /// content instead — WPR applies no templates, and a default-button frame around an image
+        /// button is further from the game's look than nothing.
+        /// </summary>
+        public static bool UsesDefaultChrome(Control control) => control.Template == null;
+
+        /// <summary>
         /// A button's border width: its own <c>BorderThickness</c> when it sets one, otherwise the
         /// theme's <c>PhoneBorderThickness</c> (3), which is what the WP7 button style binds.
         /// </summary>

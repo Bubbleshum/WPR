@@ -69,7 +69,7 @@ namespace WPR.SilverlightCompability
 
             // Button only, as in SilverlightRenderer: CheckBox and RadioButton are ToggleButtons and
             // have chrome of their own that neither renderer draws yet.
-            if (element is Button button)
+            if (element is Button button && WpChrome.UsesDefaultChrome(button))
             {
                 PaintButton(button, bounds, opacity, surface, depth, scaleX, scaleY, clip, drawClip);
                 return true;
@@ -579,6 +579,7 @@ namespace WPR.SilverlightCompability
             {
                 case Button button:
                     hash.Add(button.IsPressed);
+                    hash.Add(button.Template != null);
                     SignBrush(button.BorderBrush, ref hash);
                     hash.Add(button.BorderThickness.Left);
                     hash.Add(button.BorderThickness.Top);

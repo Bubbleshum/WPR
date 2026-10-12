@@ -171,7 +171,7 @@ namespace WPR.SilverlightCompability
                 // Button comes BEFORE the generic ContentControl case so its
                 // WP7 chrome (white border, padded interior, centered text)
                 // is applied instead of falling through to bare Content paint.
-                case Button btn:
+                case Button btn when WpChrome.UsesDefaultChrome(btn):
                     DrawButton(ctx, btn, bounds);
                     break;
 
