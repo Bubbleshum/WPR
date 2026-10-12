@@ -65,6 +65,8 @@ namespace WPR.Wp8Native
         }
 
         /// <summary>WPR_WP8_GPU_TRACE=N: log every command of the Nth replayed frame.</summary>
+        private int _failuresDescribed;
+
         private static readonly int TraceFrame = int.TryParse(Environment.GetEnvironmentVariable("WPR_WP8_GPU_TRACE"), out int n) ? n : -1;
 
         private int _frameIndex;
@@ -201,9 +203,10 @@ namespace WPR.Wp8Native
                 catch (Exception ex)
                 {
                     Trace($"EXCEPTION {ex.GetType().Name}: {ex.Message}");
-                    if (trace && command is GpuDraw failed)
+                    if ((trace || _failuresDescribed++ < 3) && command is GpuDraw failed)
                     {
-                        Trace($"   vs {failed.Vertex.Key:X8} streams={string.Join(",", failed.Geometry.Streams.Select(st => $"{st.Data?.Length ?? -1}/{st.Stride}/{(st.Buffer is null ? "null" : st.Buffer.Storage.ToString("X"))}"))} " +
+                        Action<string> sink = trace ? Trace : line => _log?.Invoke("[wpr-wp8-gpu] failed draw: " + line);
+                        sink($"   vs {failed.Vertex.Key:X8} streams={string.Join(",", failed.Geometry.Streams.Select(st => $"{st.Data?.Length ?? -1}/{st.Stride}/{(st.Buffer is null ? "null" : st.Buffer.Storage.ToString("X"))}"))} " +
                               $"layout={string.Join(",", failed.Geometry.Layout.Select(e => $"{e.Semantic}{e.Index}@{e.Slot}:{e.Offset}/{e.Format}"))} " +
                               $"inputs={(_shaders.GetValueOrDefault(failed.Vertex.Key) is { } fs ? string.Join(" ", fs.InputRegisters.Select(kv => $"{kv.Key.Semantic}{kv.Key.Index}=v{kv.Value}")) : "?")}");
                     }
