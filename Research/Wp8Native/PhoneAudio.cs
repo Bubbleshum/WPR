@@ -43,6 +43,17 @@ namespace WPR.Wp8Native
         /// <summary>The device period, 10 ms, in 100-ns units; the minimum is 3 ms.</summary>
         public const long DefaultPeriod = 100_000, MinimumPeriod = 30_000;
 
+        /// <summary>
+        /// The smallest endpoint buffer a stream gets, 50 ms, whatever it asked for. A phone woke an
+        /// event-driven stream every 10 ms; this host wakes it once per guest frame, 16.7 ms at best
+        /// and much longer while a game loads, so a stream sized to one 10 ms period cannot be kept
+        /// fed. Monopoly Millionaire asks for exactly that (measured: 60% of real time even with the
+        /// rest of this fixed). Shared mode may hand back a larger buffer than requested, and games
+        /// size their writes from GetBufferSize, so this is within the contract. 20 ms already kept
+        /// up at 60 fps; 50 ms also rides out slow frames.
+        /// </summary>
+        public const long MinimumBufferDuration = 500_000;
+
         public const string RenderId = @"\\?\SWD#MMDEVAPI#{0.0.0.00000000}.{6b4e04c0-6b2f-4fd3-9d32-2a26d1a2e4d1}#{e6327cad-dcec-4949-ae8a-991e976a79d2}";
         public const string CommunicationsRenderId = @"\\?\SWD#MMDEVAPI#{0.0.0.00000000}.{6b4e04c0-6b2f-4fd3-9d32-2a26d1a2e4d2}#{e6327cad-dcec-4949-ae8a-991e976a79d2}";
 
@@ -137,7 +148,15 @@ namespace WPR.Wp8Native
             public float[] ChannelVolumes = [];
             public uint Category;
 
-            public int Padding => Queued.Sum();
+            /// <summary>
+            /// What the game is told is still unplayed: the host's queue less one buffer of slack the
+            /// game cannot see. A phone drained the buffer on its own clock and woke the stream as it
+            /// went; here the wake arrives at frame granularity, up to a frame after the buffer
+            /// empties, and a game that refills only an empty buffer (Monopoly Millionaire) left that
+            /// gap every cycle - 85% of real time. With the slack it refills while the host still holds
+            /// a buffer, for up to one buffer of extra latency.
+            /// </summary>
+            public int Padding => Math.Max(0, Queued.Sum() - BufferFrames);
 
             public override IEnumerable<long> Destroy()
             {
@@ -438,7 +457,7 @@ namespace WPR.Wp8Native
             c.Rate = wf.SampleRate;
             c.Bits = wf.Bits;
             c.BlockAlign = wf.BlockAlign;
-            long hns = Math.Max(duration, DefaultPeriod);
+            long hns = Math.Max(duration, MinimumBufferDuration);
             c.BufferFrames = (int)Math.Ceiling(hns * (double)c.Rate / 10_000_000);
             c.Scratch = _com.Alloc((long)c.BufferFrames * c.BlockAlign);
             c.ChannelVolumes = Enumerable.Repeat(1f, c.Channels).ToArray();
