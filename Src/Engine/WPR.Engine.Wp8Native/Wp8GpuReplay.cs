@@ -496,7 +496,7 @@ namespace WPR.Wp8Native
 
         private static void SetConstants(Effect effect, Aon9Shader shader, IReadOnlyDictionary<int, byte[]> buffers)
         {
-            if (shader.ConstantRegisters == 0 || effect.Parameters[shader.ConstantName] is not { } parameter)
+            if (shader.ConstantRegisters == 0 || shader.ConstantArrays.Count == 0)
             {
                 return;
             }
@@ -526,7 +526,17 @@ namespace WPR.Wp8Native
                 }
             }
 
-            parameter.SetValue(registers);
+            if (shader.ConstantArrays.Count == 1)
+            {
+                effect.Parameters[shader.ConstantArrays[0].Name]?.SetValue(registers);
+                return;
+            }
+
+            // Split round a relatively indexed run (Aon9Shader.ConstantArraysFor): one parameter each.
+            foreach (Aon9ConstantArray array in shader.ConstantArrays)
+            {
+                effect.Parameters[array.Name]?.SetValue(registers.AsSpan(array.Start, array.Count).ToArray());
+            }
         }
 
         // ------------------------------------------------------------------------------

@@ -736,7 +736,7 @@ void emit_HLSL_uniform(Context *ctx, RegisterType regtype, int regnum,
             index = (regnum - arraybase) + var->emit_position;
         } // else
 
-        output_line(ctx, "#define %s %s[%d];", varname, name, index);
+        output_line(ctx, "#define %s %s[%d]", varname, name, index);  // WPR: no ";" - it broke every direct read of a register inside a relatively indexed array
         push_output(ctx, &ctx->mainline);
         ctx->indent++;
         output_line(ctx, "#undef %s", varname);  // !!! FIXME: gross.

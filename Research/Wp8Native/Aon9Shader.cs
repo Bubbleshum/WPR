@@ -10,6 +10,9 @@ namespace WPR.Wp8Native
     /// <param name="Target">First Direct3D 9 constant register (cN) they land in.</param>
     public readonly record struct Aon9ConstantMap(int Buffer, int Start, int Count, int Target);
 
+    /// <summary>A float4 array in the injected constant table (c<c>Start</c> on, <c>Count</c> registers) and its effect parameter's name.</summary>
+    public readonly record struct Aon9ConstantArray(string Name, int Start, int Count);
+
     /// <summary>A Direct3D 9 sampler register fed by a Direct3D 11 sampler and shader resource slot.</summary>
     public readonly record struct Aon9SamplerMap(int Register, int Sampler, int Texture);
 
@@ -60,6 +63,13 @@ namespace WPR.Wp8Native
         /// exactly one vertex element, or Direct3D 11 refuses the layout.
         /// </summary>
         public IReadOnlyDictionary<int, (int Usage, int Index)> DeclaredInputs { get; init; } = new Dictionary<int, (int, int)>();
+
+        /// <summary>
+        /// How the constant registers are declared to MojoShader: one float4 array <c>vs_c</c>/<c>ps_c</c>
+        /// over all of them, unless the program addresses constants relatively (see
+        /// <see cref="ConstantArraysFor"/>). Each array is an effect parameter of its own.
+        /// </summary>
+        public IReadOnlyList<Aon9ConstantArray> ConstantArrays { get; init; } = [];
 
         /// <summary>The effect parameter holding this shader's constants.</summary>
         public string ConstantName => IsPixel ? "ps_c" : "vs_c";
@@ -112,6 +122,7 @@ namespace WPR.Wp8Native
 
                 byte[] code = aon9.AsSpan(codeOffset, codeSize).ToArray();
                 int droppedOutputs = isPixel ? DropExtraColourOutputs(code) : 0;
+                List<Aon9ConstantArray> arrays = ConstantArraysFor(code, isPixel, registers, maps);
                 Dictionary<(string, int), int> inputs = chunks.TryGetValue("ISGN", out ReadOnlyMemory<byte> isgn)
                     ? InputSignature(isgn.Span)
                     : [];
@@ -119,8 +130,9 @@ namespace WPR.Wp8Native
                 return new Aon9Shader
                 {
                     IsPixel = isPixel,
-                    Bytecode = WithConstantTable(code, isPixel, registers, samplers),
+                    Bytecode = WithConstantTable(code, isPixel, arrays, samplers),
                     ConstantRegisters = registers,
+                    ConstantArrays = arrays,
                     ConstantMaps = maps,
                     Samplers = samplers,
                     InputRegisters = inputs,
@@ -246,6 +258,140 @@ namespace WPR.Wp8Native
             return declared;
         }
 
+        /// <summary>
+        /// The constant arrays the table declares. Normally one, over every register. A program
+        /// that indexes constants through a0 (skinning: <c>c33[a0.x]</c>) gets an array of its own
+        /// from the lowest indexed register to the end of the constant-buffer map holding it, and
+        /// the registers either side as separate arrays.
+        /// </summary>
+        /// <remarks>
+        /// MojoShader treats a CTAB array that is indexed relatively as one array, and every
+        /// register inside it that is also read directly is emitted, for HLSL, as
+        /// <c>#define vs_cN vs_uniforms_vec4[i];</c> - with a stray semicolon
+        /// (mojoshader_profile_hlsl.c, emit_HLSL_uniform), so the first direct read is a syntax
+        /// error. FNA3D's Direct3D 11 driver does not check the compile, builds the input layout
+        /// from the error blob it has just released, and the process dies: Assassin's Creed
+        /// Pirates' skinned characters took it down loading "Devil's Rock". With one array over
+        /// every register, every direct read in every skinned shader was inside the indexed array.
+        /// Registers outside an indexed array are emitted as plain uniforms, which is correct.
+        /// GLSL and SPIR-V have no such semicolon; the split changes nothing there.
+        /// </remarks>
+        internal static List<Aon9ConstantArray> ConstantArraysFor(byte[] code, bool isPixel, int registers, IReadOnlyList<Aon9ConstantMap> maps)
+        {
+            string name = isPixel ? "ps_c" : "vs_c";
+            if (registers <= 0)
+            {
+                return [];
+            }
+
+            var indexed = new List<(int Start, int End)>();
+            foreach (int based in RelativeConstantBases(code).Where(b => b < registers))
+            {
+                (int start, int end) = (based, registers);
+                foreach (Aon9ConstantMap map in maps)
+                {
+                    if (based >= map.Target && based < map.Target + map.Count)
+                    {
+                        // From the indexed register, not the map's start: one constant buffer often
+                        // holds the whole set, and the registers read directly sit below the palette.
+                        end = Math.Min(registers, map.Target + map.Count);
+                        break;
+                    }
+                }
+
+                indexed.Add((start, end));
+            }
+
+            if (indexed.Count == 0)
+            {
+                return [new Aon9ConstantArray(name, 0, registers)];
+            }
+
+            // Merge overlapping runs, then cut [0, registers) at their edges.
+            indexed.Sort();
+            var merged = new List<(int Start, int End)>();
+            foreach (var run in indexed)
+            {
+                if (merged.Count > 0 && run.Start < merged[^1].End)
+                {
+                    merged[^1] = (merged[^1].Start, Math.Max(merged[^1].End, run.End));
+                }
+                else
+                {
+                    merged.Add(run);
+                }
+            }
+
+            var arrays = new List<Aon9ConstantArray>();
+            void Add(int start, int end)
+            {
+                if (end > start)
+                {
+                    arrays.Add(new Aon9ConstantArray(arrays.Count == 0 ? name : $"{name}{arrays.Count}", start, end - start));
+                }
+            }
+
+            int at = 0;
+            foreach (var (start, end) in merged)
+            {
+                Add(at, start);
+                Add(start, end);
+                at = end;
+            }
+
+            Add(at, registers);
+            return arrays;
+        }
+
+        /// <summary>
+        /// Constant registers a vs_2_x/ps_2_x program reads relatively: a source parameter of type
+        /// CONST (2) with D3DSHADER_ADDRMODE_RELATIVE (bit 13) set.
+        /// </summary>
+        internal static SortedSet<int> RelativeConstantBases(byte[] code)
+        {
+            SortedSet<int> bases = [];
+            if (code.Length < 4 || ((U32(code, 0) >> 8) & 0xFF) < 2)
+            {
+                return bases;
+            }
+
+            int at = 4;
+            while (at + 4 <= code.Length)
+            {
+                uint token = U32(code, at);
+                if (token == 0x0000FFFF)
+                {
+                    break;
+                }
+
+                uint opcode = token & 0xFFFF;
+                if (opcode == 0xFFFE)
+                {
+                    at += 4 + (int)(((token >> 16) & 0x7FFF) * 4);
+                    continue;
+                }
+
+                int length = (int)((token >> 24) & 0xF);
+                // dcl (31), def (81), defi (48) and defb (47) carry no source registers.
+                if (opcode is not (31 or 81 or 48 or 47))
+                {
+                    for (int i = 1; i <= length && at + (i * 4) + 4 <= code.Length; i++)
+                    {
+                        uint parameter = U32(code, at + (i * 4));
+                        int type = (int)(((parameter >> 28) & 0x7) | ((parameter >> 8) & 0x18));
+                        if (type == 2 && (parameter & (1u << 13)) != 0)
+                        {
+                            bases.Add((int)(parameter & 0x7FF));
+                        }
+                    }
+                }
+
+                at += 4 + (length * 4);
+            }
+
+            return bases;
+        }
+
         private static uint U32(ReadOnlySpan<byte> data, int at) => BinaryPrimitives.ReadUInt32LittleEndian(data[at..]);
 
         private static int U16(ReadOnlySpan<byte> data, int at) => BinaryPrimitives.ReadUInt16LittleEndian(data[at..]);
@@ -292,13 +438,13 @@ namespace WPR.Wp8Native
         /// Inserts a CTAB comment after the version token: <c>vs_c</c>/<c>ps_c</c> as float4[registers]
         /// at c0, and a sampler2D <c>sN</c> per sampler register.
         /// </summary>
-        private static byte[] WithConstantTable(byte[] code, bool isPixel, int registers, IReadOnlyList<Aon9SamplerMap> samplers)
+        private static byte[] WithConstantTable(byte[] code, bool isPixel, IReadOnlyList<Aon9ConstantArray> arrays, IReadOnlyList<Aon9SamplerMap> samplers)
         {
             uint version = U32(code, 0);
             List<(string Name, int Set, int Index, int Count, bool Sampler, int Elements)> constants = [];
-            if (registers > 0)
+            foreach (Aon9ConstantArray array in arrays)
             {
-                constants.Add((isPixel ? "ps_c" : "vs_c", 2, 0, registers, false, registers));
+                constants.Add((array.Name, 2, array.Start, array.Count, false, array.Count));
             }
 
             foreach (Aon9SamplerMap sampler in samplers.DistinctBy(s => s.Register))
@@ -415,12 +561,12 @@ namespace WPR.Wp8Native
             List<(int Type, int Value)> parameters = [];
             foreach (Aon9Shader shader in new[] { vertex, pixel })
             {
-                if (shader.ConstantRegisters > 0)
+                foreach (Aon9ConstantArray array in shader.ConstantArrays)
                 {
-                    int name = Str(shader.ConstantName);
+                    int name = Str(array.Name);
                     // type FLOAT, class VECTOR, name, semantic, elements, columns, rows
-                    int type = Blob(3, 1, (uint)name, 0, (uint)shader.ConstantRegisters, 4, 1);
-                    int value = Blob(new uint[shader.ConstantRegisters * 4]);
+                    int type = Blob(3, 1, (uint)name, 0, (uint)array.Count, 4, 1);
+                    int value = Blob(new uint[array.Count * 4]);
                     parameters.Add((type, value));
                 }
             }
