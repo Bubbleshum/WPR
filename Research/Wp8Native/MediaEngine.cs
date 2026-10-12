@@ -669,6 +669,7 @@ namespace WPR.Wp8Native
 
         private void FailLoad(Engine e, string url, long hr)
         {
+            System.Diagnostics.Trace.WriteLine($"[wpr-wp8] media engine: source {url} failed 0x{hr & 0xFFFFFFFF:X8} -> MF_MEDIA_ENGINE_ERR_SRC_NOT_SUPPORTED");
             StopVoice(e);
             e.Source = url;
             e.Wave = null;

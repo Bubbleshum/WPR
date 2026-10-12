@@ -431,6 +431,8 @@ namespace WPR.Wp8Native
                 Return(_iob);
             };
             Files.RegisterInto(_handlers);
+            Files.IsStandardOutput = stream => _iob != 0 && stream >= _iob + 0x20 && stream < _iob + 0x60;
+            Files.StandardOutputText = Extras.TraceStandardOutput;
             _sync = new SyncLibrary(emulator, _frame);
             _sync.RegisterInto(_handlers);
             RegisterPushNotifications();

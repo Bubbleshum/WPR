@@ -1177,6 +1177,7 @@ namespace WPR.Wp8Native
             OpenFile? file = Find(_frame.Arg(1));
             if (file is null)
             {
+                TraceIfStandardOutput(_frame.Arg(1), () => ((char)(byte)c).ToString());
                 CrtReturnError(CrtEof, CrtEbadf);
                 return;
             }

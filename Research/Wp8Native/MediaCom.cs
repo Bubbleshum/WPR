@@ -114,6 +114,7 @@ namespace WPR.Wp8Native
         {
             if (!_unimplemented.Contains(what, StringComparer.Ordinal))
             {
+                System.Diagnostics.Trace.WriteLine("[wpr-wp8] media: " + what);
                 _unimplemented.Add(what);
             }
         }

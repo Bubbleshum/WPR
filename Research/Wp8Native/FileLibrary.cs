@@ -51,6 +51,26 @@ namespace WPR.Wp8Native
         private int _nextDescriptor = 3;   // 0-2 are stdin/stdout/stderr
         private long _nextHandle = FirstHandle;
 
+        /// <summary>
+        /// The CRT's stdout/stderr FILE*, which this library does not own: text written to one is
+        /// shown to <see cref="StandardOutputText"/> (the session log) and otherwise fails as
+        /// before - an app has no console. Lua's <c>print</c> is fputs(stdout).
+        /// </summary>
+        public Func<long, bool>? IsStandardOutput { get; set; }
+
+        public Action<string>? StandardOutputText { get; set; }
+
+        private bool TraceIfStandardOutput(long pointer, Func<string> text)
+        {
+            if (pointer == 0 || IsStandardOutput?.Invoke(pointer) != true)
+            {
+                return false;
+            }
+
+            StandardOutputText?.Invoke(text());
+            return true;
+        }
+
         /// <summary>The last-error value, per guest thread as GetLastError's contract requires.</summary>
         private readonly Dictionary<int, int> _lastErrors = new();
 
@@ -464,6 +484,11 @@ namespace WPR.Wp8Native
 
             if (file is null || total <= 0 || total > CallFrame.SaneLengthLimit)
             {
+                if (file is null && total is > 0 and <= 65536)
+                {
+                    TraceIfStandardOutput(_frame.Arg(3), () => Encoding.Latin1.GetString(_emulator.ReadMemory(_frame.Arg(0), (int)total)));
+                }
+
                 _frame.Return(0);
                 return;
             }
@@ -480,6 +505,7 @@ namespace WPR.Wp8Native
             OpenFile? file = Find(pointer);
             if (file is null)
             {
+                TraceIfStandardOutput(pointer, () => text);
                 _frame.Return(-1);
                 return;
             }
