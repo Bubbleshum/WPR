@@ -502,6 +502,68 @@ so it returns early below 23 and the switch keeps the platform's own colours.
 No `ApplicationPatcher.Version` bump and no reinstall — no patcher table changed and no IL is
 rewritten. Games pick this up on next launch.
 
+### Songs stream on FAudio again, on both heads; WP7 movies play (2026-10-12)
+
+**Songs.** `WPR.Audio.FAudio.StreamingSongPlayer` replaced FAudio's native `XNA_Song`, whose single
+one-second buffer (queue depth one, refilled from `OnBufferEnd`) clicked once a second on phones and
+made `XNA_GetSongEnded` answer "ended" in the gap between buffers. A decode thread (NVorbis, MIT,
+managed) keeps six 125 ms buffers queued on an FAudio voice, found by polling `GetState`, so no
+native-to-managed callback is involved. Android no longer registers `AndroidMediaPlayerModule` (kept
+as an unregistered fallback). Measured on Pixel_Dev: 0 AudioFlinger underruns on both tracks over a
+minute of Mirror's Edge; desktop 0 underruns.
+
+Three things are load-bearing:
+
+- **Songs keep their own FAudio engine.** Sharing the sound-effect engine would put music under its
+  mastering voice, and that voice's volume is `SoundEffect.MasterVolume`.
+- **So the platform does not pause it.** SDL's OpenSL ES driver pauses only one output device; the
+  song track stayed Active on the home screen. `AudioBackendRegistry.SuspendForBackground` /
+  `RestoreFromForeground` (called from `GameActivity.OnPause`/`OnResume`) reach any backend that
+  implements `IBackgroundAwareAudio`. A song started while suspended is created but not started.
+- **The Android 1024-frame quantum** (`FAUDIO_1024_QUANTUM`) is on the song engine too; `XNA_SongInit`
+  never asked for it.
+
+Log: `[wpr-song] playing <file>: <rate> Hz xN, <len> s` and, at stop, `underruns=N`.
+
+**Video.** 87 `.wmv` and 41 `.mp4` across ~55 library titles used to be skipped as if finished.
+Seam: `WPR.Engine.Audio.IVideoDecoder` / `VideoDecoderBackend`, declared by `caps.VideoDecoder(...)`.
+`WPR.Xna.Media.WprMoviePlayer` is the shared player (wall clock, newest due RGBA frame, sound through
+a `DynamicSoundEffectInstance`).
+
+| head | decoder | how |
+| --- | --- | --- |
+| Windows | `FFmpegVideoDecoder` | two ffmpeg.exe pipes per movie (RGBA frames, s16le), straight from the original WMV/MP4 |
+| Android | `WPR.Video.MediaCodec` | MediaExtractor + MediaCodec (YUV_420_888 to RGBA) over `<movie>.wpr.mp4`, NVorbis over `<movie>.wpr.ogg` |
+
+Android needs sidecars because MediaCodec has no WMV. They are written at install and at **repatch**
+(`VideoCompabilityConverter`, never fatal) by the `:transcode` process
+(`FFmpegKitAudioTranscoder.TranscodeVideoAsync`: MP4 video stream copied, anything else to MPEG-4
+Part 2, the only video encoder this ffmpeg-kit build has; sound to Vorbis). **Games installed before
+this need a re-patch** to get their cutscenes on Android. An MP4 without sidecars is tried as is.
+
+- **`MediaPlayerLauncher`**: `LauncherMovieOverlay`, an `IHostOverlay` that `Game.Tick` runs in place
+  of the game's Update/Draw (WP7's system player took the screen the same way). Landscape movies are
+  turned a quarter on a portrait backbuffer, Back always leaves, a tap skips only when `Controls`
+  allows Skip or Stop. Completion runs the existing reactivation. The game's MediaPlayer song is
+  paused for the movie. Teardown clears the overlay with `completed: false`, before audio teardown.
+- **`MediaElement`**: painted by `SoftwareVisualRasteriser` (its signature hashes `FrameVersion`).
+  **`Play()` raises nothing synchronously**: Sid Meier's Pirates! sets the flag its
+  `CurrentStateChanged` handler needs only after calling `Play()`, so a synchronous `Opening` left its
+  black cover over the whole film. The element **measures from the video's natural size and re-lays
+  itself out** in its last slot when that size arrives, because the mixed-mode host runs layout only
+  on navigation (Pirates puts the movie at `VerticalAlignment="Top"`, height 0 otherwise).
+- Without a decoder, or with an unplayable file, both fall back to the old instant "ended".
+
+Verified: desktop NFS Undercover (`MediaPlayerLauncher`, via the harness's `movie` verb) and Pirates!
+(`MediaElement`, 640x480, subtitles and Skip button over it); Android Pixel_Dev, Cut the Rope's intro
+through MediaCodec after a UI re-patch wrote its sidecars, played to its end. Not run: S24, Mali.
+Two things seen on the way and not caused by this: Pirates! NREs in its own game thread
+(`ISEUpdateCommandBuffer.Update`) right after the opening movie on the old build too; and the
+harness's synthetic tap reports `Released` for more than one frame, so Cut the Rope's "any touch skips"
+skips its intro in the harness (a real tap on Android does not).
+
+No `ApplicationPatcher.Version` bump: Android sidecars come from a re-patch, which runs regardless.
+
 ### WP7 launchers leave the game through `IUriLauncher` (2026-09-24)
 
 `Microsoft.Phone.Tasks.WebBrowserTask.Show()` was an empty method, so every link a WP7 title opened

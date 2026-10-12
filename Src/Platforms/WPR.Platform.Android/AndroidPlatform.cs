@@ -106,6 +106,12 @@ namespace WPR.Platform.Android
             // MediaPlayer needed hand-written hooks for. The module is kept, unregistered, as a
             // fallback: re-adding caps.Audio(new AndroidMediaPlayerModule()) restores it.
 
+            // Games' movies (MediaPlayerLauncher, MediaElement). MediaCodec has no WMV, so this reads
+            // the MP4 + Ogg sidecars the installer writes beside each movie through the :transcode
+            // process (FFmpegKitAudioTranscoder.TranscodeVideoAsync); a repatch writes them for a game
+            // installed before they existed.
+            caps.VideoDecoder(new WPR.Video.MediaCodec.MediaCodecVideoDecoder());
+
             if (_context != null)
             {
                 // Install-time transcoding of .wma soundtracks. NOT FFmpegKitAudioTranscoder

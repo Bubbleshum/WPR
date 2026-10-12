@@ -27,7 +27,7 @@ namespace WPR.Platform.Android.Audio
     /// completes the pending request as a failure rather than hanging the install, and the next
     /// call simply binds again — which starts a fresh process.</para>
     /// </summary>
-    public sealed class RemoteAudioTranscoder : IAudioTranscoder
+    public sealed class RemoteAudioTranscoder : IAudioTranscoder, IVideoSidecarTranscoder
     {
         /// <summary>
         /// Ceiling on a single file. Generous: this covers ffmpeg decoding a long track on a slow
@@ -99,6 +99,47 @@ namespace WPR.Platform.Android.Audio
             try
             {
                 reply = await SendAsync(TranscodeService.MsgTranscode, request, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (System.OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                return AudioTranscodeResult.Failed($"{ex.GetType().Name}: {ex.Message}");
+            }
+
+            if (reply == null)
+            {
+                return AudioTranscodeResult.Failed("Transcode service returned no reply.");
+            }
+
+            return reply.GetBoolean(TranscodeService.KeyOk)
+                ? AudioTranscodeResult.Succeeded()
+                : AudioTranscodeResult.Failed(
+                    reply.GetString(TranscodeService.KeyError) ?? "(no error text)");
+        }
+
+        /// <summary>Forwards a movie to <see cref="TranscodeService"/>; see
+        /// <see cref="FFmpegKitAudioTranscoder.TranscodeVideoAsync"/> for what it writes.</summary>
+        public async Task<AudioTranscodeResult> TranscodeVideoAsync(
+            string inputPath,
+            string videoOutput,
+            string audioOutput,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            Bundle request = new Bundle();
+            request.PutString(TranscodeService.KeyInput, inputPath);
+            request.PutString(TranscodeService.KeyOutput, videoOutput);
+            request.PutString(TranscodeService.KeyAudioOutput, audioOutput);
+
+            Bundle? reply;
+            try
+            {
+                reply = await SendAsync(TranscodeService.MsgTranscodeVideo, request, cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (System.OperationCanceledException)

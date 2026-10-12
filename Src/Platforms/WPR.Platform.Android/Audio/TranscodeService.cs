@@ -48,6 +48,12 @@ namespace WPR.Platform.Android.Audio
         /// <see cref="KeyOk"/> and, on failure, <see cref="KeyError"/>.</summary>
         public const int MsgTranscode = 2;
 
+        /// <summary>Write a movie's sidecars: <see cref="KeyInput"/> to <see cref="KeyOutput"/>
+        /// (picture) and <see cref="KeyAudioOutput"/> (sound). Reply as for <see cref="MsgTranscode"/>.</summary>
+        public const int MsgTranscodeVideo = 3;
+
+        public const string KeyAudioOutput = "aout";
+
         public const string KeyInput = "in";
         public const string KeyOutput = "out";
         public const string KeyOk = "ok";
@@ -172,6 +178,29 @@ namespace WPR.Platform.Android.Audio
                                 reply.PutString(KeyError, result.Error ?? "(no error text)");
                             }
                             break;
+
+                        case MsgTranscodeVideo:
+                        {
+                            string? movie = data?.GetString(KeyInput);
+                            string? videoOut = data?.GetString(KeyOutput);
+                            string? audioOut = data?.GetString(KeyAudioOutput);
+                            if (string.IsNullOrEmpty(movie) || string.IsNullOrEmpty(videoOut) || string.IsNullOrEmpty(audioOut))
+                            {
+                                reply.PutBoolean(KeyOk, false);
+                                reply.PutString(KeyError, "TranscodeService: missing movie paths.");
+                                break;
+                            }
+
+                            AudioTranscodeResult movieResult = _transcoder
+                                .TranscodeVideoAsync(movie!, videoOut!, audioOut!, System.Threading.CancellationToken.None)
+                                .GetAwaiter().GetResult();
+                            reply.PutBoolean(KeyOk, movieResult.Success);
+                            if (!movieResult.Success)
+                            {
+                                reply.PutString(KeyError, movieResult.Error ?? "(no error text)");
+                            }
+                            break;
+                        }
 
                         default:
                             reply.PutBoolean(KeyOk, false);

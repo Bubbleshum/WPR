@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Video.MediaCodec - Android's IVideoDecoder: the platform's MediaExtractor + MediaCodec for
+    the picture, NVorbis for the sound.
+
+    MediaCodec has no WMV/VC-1 decoder, and most WP7 movies are WMV, so it reads the sidecars the
+    installer writes beside each movie (WPR.Engine.Audio.VideoSidecars: an MP4 the platform
+    decodes, an Ogg Vorbis track). Those are made in the :transcode process by ffmpeg-kit, which
+    cannot run in the game process; see IVideoSidecarTranscoder.
+
+    Android-only, so the TFM is singular <TargetFramework> and the project is listed in
+    WPR.Android.slnf only, like WPR.Audio.AndroidMediaPlayer.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <AssemblyName>WPR.Video.MediaCodec</AssemblyName>
+    <RootNamespace>WPR.Video.MediaCodec</RootNamespace>
+    <Nullable>enable</Nullable>
+    <!-- YUV planes are read through their direct buffer addresses. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The contract (IVideoDecoder) and the sidecar names. Nothing else: the head declares this
+         through caps.VideoDecoder(...). -->
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Audio\WPR.Engine.Audio.csproj" />
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Common\WPR.Common.csproj" />
+    <PackageReference Include="NVorbis" Version="0.10.5" />
+  </ItemGroup>
+
+</Project>

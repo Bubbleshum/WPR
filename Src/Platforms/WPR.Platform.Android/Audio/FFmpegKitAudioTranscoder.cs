@@ -29,7 +29,7 @@ namespace WPR.Platform.Android.Audio
     /// <c>--enable-libvorbis</c> (the encoder) and <c>libavcodec.so</c> exports the <c>wmav1</c> /
     /// <c>wmav2</c> / <c>wmapro</c> decoders.</para>
     /// </summary>
-    public sealed class FFmpegKitAudioTranscoder : IAudioTranscoder
+    public sealed class FFmpegKitAudioTranscoder : IAudioTranscoder, IVideoSidecarTranscoder
     {
         public string Name => "FFmpegKit";
 
@@ -116,6 +116,64 @@ namespace WPR.Platform.Android.Audio
                     return Evaluate(session, outputPath);
                 },
                 cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Rewrites a WP7 movie into what Android plays: the picture as MP4 for MediaCodec, the
+        /// sound as Ogg Vorbis for NVorbis. An MP4 source keeps its video stream as is (WP7's MP4s
+        /// are H.264 or MPEG-4, both MediaCodec-mandated); anything else, WMV in practice, is
+        /// re-encoded to MPEG-4 Part 2 — the only video encoder this audio build of ffmpeg-kit
+        /// carries, and a decoder every Android device must have. The sound is optional: a silent
+        /// movie succeeds with no audio file.
+        /// </summary>
+        public async Task<AudioTranscodeResult> TranscodeVideoAsync(
+            string inputPath,
+            string videoOutput,
+            string audioOutput,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            string ext = Path.GetExtension(inputPath);
+            bool copyable = ext.Equals(".mp4", StringComparison.OrdinalIgnoreCase)
+                            || ext.Equals(".m4v", StringComparison.OrdinalIgnoreCase)
+                            || ext.Equals(".3gp", StringComparison.OrdinalIgnoreCase);
+
+            AudioTranscodeResult video = AudioTranscodeResult.Failed("not attempted");
+            if (copyable)
+            {
+                video = await RunOnOwnThreadAsync(() => Evaluate(FFmpegKit.ExecuteWithArguments(new[]
+                {
+                    "-y", "-hide_banner", "-loglevel", "error", "-i", inputPath,
+                    "-map", "0:v:0", "-an", "-c:v", "copy", "-f", "mp4", videoOutput,
+                }), videoOutput), cancellationToken).ConfigureAwait(false);
+            }
+            if (!video.Success)
+            {
+                video = await RunOnOwnThreadAsync(() => Evaluate(FFmpegKit.ExecuteWithArguments(new[]
+                {
+                    "-y", "-hide_banner", "-loglevel", "error", "-i", inputPath,
+                    "-map", "0:v:0", "-an",
+                    // Even dimensions: a 4:2:0 encoder cannot take odd ones.
+                    "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+                    "-c:v", "mpeg4", "-q:v", "4", "-f", "mp4", videoOutput,
+                }), videoOutput), cancellationToken).ConfigureAwait(false);
+            }
+            if (!video.Success)
+            {
+                return video;
+            }
+
+            AudioTranscodeResult audio = await RunOnOwnThreadAsync(() => Evaluate(FFmpegKit.ExecuteWithArguments(new[]
+            {
+                "-y", "-hide_banner", "-loglevel", "error", "-i", inputPath,
+                "-map", "0:a:0", "-vn", "-ac", "2", "-c:a", "libvorbis", "-q:a", "4", audioOutput,
+            }), audioOutput), cancellationToken).ConfigureAwait(false);
+            if (!audio.Success)
+            {
+                // No audio stream, most likely. The picture alone is still worth playing.
+                try { if (File.Exists(audioOutput)) File.Delete(audioOutput); } catch (IOException) { }
+            }
+            return AudioTranscodeResult.Succeeded();
         }
 
         /// <summary>
