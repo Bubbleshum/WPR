@@ -58,52 +58,19 @@ namespace WPR.SilverlightCompability
 
             Render(ctx, page, pageBounds);
 
-            // Deferred popup pass — paint each open popup's Child at the full
-            // page bounds.
-            foreach (Popup pop in CollectOpenPopups(page))
+            // Deferred popup pass: every open popup, in the order they opened, placed where
+            // PopupLayer says — the same answer HitTester and the CPU rasteriser use. Each child
+            // keeps the full page size as its slot, as it always has here: Minesweeper's splash
+            // overlay depends on it.
+            foreach (PopupLayer.Entry entry in PopupLayer.Collect(page, includeDetached: true))
             {
-                if (pop.Child is UIElement child)
+                if (entry.Popup.Child is UIElement child)
                 {
                     var with = new global::Avalonia.Rect(
-                        pageBounds.X + pop.HorizontalOffset,
-                        pageBounds.Y + pop.VerticalOffset,
+                        pageBounds.X + entry.Origin.X,
+                        pageBounds.Y + entry.Origin.Y,
                         pageBounds.Width, pageBounds.Height);
                     Render(ctx, child, with);
-                }
-            }
-        }
-
-        private static System.Collections.Generic.IEnumerable<Popup> CollectOpenPopups(UIElement root)
-        {
-            // BFS the logical tree. Stick to the same hosts FrameworkElement uses
-            // for Loaded-event tree walks (Panel.Children / ContentControl.Content /
-            // Border.Child / Popup.Child). Anything else (custom controls without
-            // exposed children) is invisible to us anyway.
-            // We use IsEffectivelyOpen (not IsOpen) so the minimum-display-time
-            // floor in Popup is honoured — a popup whose IsOpen just flipped to
-            // false but hasn't been visible long enough still paints.
-            var q = new System.Collections.Generic.Queue<UIElement>();
-            q.Enqueue(root);
-            while (q.Count > 0)
-            {
-                UIElement el = q.Dequeue();
-                if (el is Popup p && p.IsEffectivelyOpen) yield return p;
-                switch (el)
-                {
-                    case Panel panel:
-                        foreach (UIElement c in panel.Children) q.Enqueue(c);
-                        break;
-                    case ContentControl cc:
-                        if (cc.Content is UIElement ccChild) q.Enqueue(ccChild);
-                        if (cc.Presenter != null && !ReferenceEquals(cc.Presenter, cc.Content))
-                            q.Enqueue(cc.Presenter);
-                        break;
-                    case Border b:
-                        if (b.Child != null) q.Enqueue(b.Child);
-                        break;
-                    case Popup pop:
-                        if (pop.Child != null) q.Enqueue(pop.Child);
-                        break;
                 }
             }
         }
@@ -171,7 +138,7 @@ namespace WPR.SilverlightCompability
 
                 case Popup _:
                     // Popups float above the visual tree — handled in a deferred
-                    // pass at page-level bounds (see RenderPage / CollectOpenPopups).
+                    // pass at page-level bounds (see RenderPage / PopupLayer).
                     // Painting inline here would render at the parent's tiny
                     // layout slot (typically 0 px tall) and either be invisible
                     // or clipped against the parent.

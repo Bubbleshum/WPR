@@ -13,34 +13,31 @@ namespace WPR.SilverlightCompability
         /// <param name="y">Y in <paramref name="root"/>'s parent coordinate space.</param>
         public static IReadOnlyList<UIElement> HitTest(UIElement root, double x, double y)
         {
-            // Open popups are rendered above the visual tree at page-level bounds
-            // (see SilverlightRenderer.RenderPage). Hit-test them first — if a
-            // popup's child claims the hit, the chain is rooted there and the
-            // tap never reaches elements behind. Even when nothing inside the
-            // popup has a GestureListener, the popup blocks the tap: we return
-            // the popup chain and the FrameView's "no handler in chain" branch
-            // silently discards the tap. That matches Silverlight semantics —
-            // an open splash overlay must not let clicks fall through.
-            foreach (Popup pop in CollectOpenPopups(root))
+            // Open popups are drawn above the whole tree (see PopupLayer), so they are hit-tested
+            // first, TOPMOST first — the reverse of the order they are drawn in, which is the
+            // order they opened. If a popup's child claims the hit, the chain is rooted there and
+            // the tap never reaches anything behind. Even when nothing inside the popup has a
+            // handler the popup still takes the hit and the tap is discarded, which is
+            // Silverlight's behaviour: an open splash overlay or dialog must not let taps through.
+            // Popups that belong to no tree are included: they are on screen over whatever this
+            // tree is, so a tap on one must reach it.
+            List<PopupLayer.Entry> popups = PopupLayer.Collect(root, includeDetached: true);
+            for (int i = popups.Count - 1; i >= 0; i--)
             {
+                Popup pop = popups[i].Popup;
                 if (!pop.IsHitTestVisible) continue;
                 if (pop.Child is not UIElement popChild) continue;
                 var popChain = new List<UIElement>();
-                // Popup's Child is arranged in the popup's own (0,0)-based space,
-                // and rendered at page-level bounds — so the incoming page-space
-                // (x,y) is exactly the coordinate to walk into the child.
-                Recurse(popChild, x, y, popChain);
+                // The child is arranged in the popup's own (0,0)-based space; the layer places
+                // that origin, so the descent coordinate is relative to it.
+                Recurse(popChild, x - popups[i].Origin.X, y - popups[i].Origin.Y, popChain);
                 if (popChain.Count > 0)
                 {
                     // Already leaf-first: Recurse adds descendants before their parent.
                     return popChain;
                 }
-                // The popup's Child covers the full page (480×800 logical), so
-                // if Recurse returned no chain it means the Child's ArrangedRect
-                // is degenerate — fall through to the page hit-test. (If the
-                // popup ever sized down to less-than-full-page we'd need to
-                // still block the tap *only* over the popup's visible area;
-                // for the splash-overlay case Child always fills the screen.)
+                // Nothing in the popup paints at this point: the tap falls through to whatever
+                // is below, as it does in Silverlight.
             }
 
             var chain = new List<UIElement>();
@@ -52,44 +49,6 @@ namespace WPR.SilverlightCompability
             // Recurse added each element on the way DOWN; changing that made this a double flip,
             // and a root-first chain means the frame is consulted before the button inside it.
             return chain;
-        }
-
-        private static IEnumerable<Popup> CollectOpenPopups(UIElement root)
-        {
-            // Same BFS shape as SilverlightRenderer.CollectOpenPopups so the
-            // two passes agree about which popups are "live". Use
-            // IsEffectivelyOpen so the minimum-display-time floor applies to
-            // hit-testing too — while the splash is visually held, taps under
-            // it must still be blocked.
-            var q = new Queue<UIElement>();
-            q.Enqueue(root);
-            while (q.Count > 0)
-            {
-                UIElement el = q.Dequeue();
-                if (el is Popup p && p.IsEffectivelyOpen) yield return p;
-                switch (el)
-                {
-                    case Panel panel:
-                        foreach (UIElement c in panel.Children) q.Enqueue(c);
-                        break;
-                    case ContentControl cc:
-                        if (cc.Content is UIElement ccChild) q.Enqueue(ccChild);
-                        if (cc.Presenter != null && !object.ReferenceEquals(cc.Presenter, cc.Content))
-                            q.Enqueue(cc.Presenter);
-                        break;
-                    case Border b:
-                        if (b.Child != null) q.Enqueue(b.Child);
-                        break;
-                    case Popup pop:
-                        if (pop.Child != null) q.Enqueue(pop.Child);
-                        break;
-                    // Same omission as Recurse had: a Frame is not a ContentControl, so a popup
-                    // anywhere inside the hosted page was never found and could not block a tap.
-                    case Frame f:
-                        if (f.Content is UIElement framed) q.Enqueue(framed);
-                        break;
-                }
-            }
         }
 
         private static void Recurse(UIElement el, double x, double y, List<UIElement> chain)

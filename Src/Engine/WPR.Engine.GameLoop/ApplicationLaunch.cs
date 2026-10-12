@@ -1641,6 +1641,12 @@ namespace WPR
             try { WPR.SilverlightCompability.SilverlightImageDecoder.ResetForNewLaunch(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"SilverlightImageDecoder reset threw: {ex.Message}"); }
 
+            // The open-popup registry holds every popup a game left open — strongly, since an
+            // open popup is on screen. Without this the next title would composite the last
+            // one's dialog over its first page, and pin its load context.
+            try { WPR.SilverlightCompability.Popup.ResetForNewLaunch(); }
+            catch (Exception ex) { Log.Warn(LogCategory.AppList, $"Popup reset threw: {ex.Message}"); }
+
             // Rasterised glyphs and the parsed font. Memory rather than correctness — the cache is
             // keyed on glyph and size, not on anything belonging to a game — but it is the largest
             // thing the text path holds, and the desktop head runs two games in one process.

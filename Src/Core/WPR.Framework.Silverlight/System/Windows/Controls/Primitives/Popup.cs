@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Threading;
 
 namespace WPR.SilverlightCompability
 {
@@ -136,6 +138,116 @@ namespace WPR.SilverlightCompability
             }
         }
 
+        // ---------------------------------------------------------------------------------
+        // Open-popup registry
+        // ---------------------------------------------------------------------------------
+
+        private static readonly object OpenLock = new object();
+        private static readonly List<Popup> Open = new List<Popup>();
+        private static long _nextOpenSequence;
+
+        /// <summary>
+        /// When this popup most recently opened, as a process-wide sequence number. Popups are
+        /// drawn — and hit-tested in reverse — in this order, which is Silverlight's: the popup
+        /// opened last is on top, wherever in the tree it is declared.
+        /// </summary>
+        internal long OpenSequence { get; private set; }
+
+        /// <summary>
+        /// Every popup that is open or still inside its <see cref="MinimumDisplayDuration"/>
+        /// floor, in the order they opened.
+        /// </summary>
+        /// <remarks>
+        /// <para><b>This is the only way to find a popup that is in no visual tree</b>, and that
+        /// is the common case rather than an edge one: WP7 code routinely writes
+        /// <c>new Popup { Child = dialog, IsOpen = true }</c> without ever adding it anywhere,
+        /// and the toolkit's <c>ContextMenu</c> and <c>CustomMessageBox</c> are built exactly that
+        /// way. A tree walk alone never sees them.</para>
+        /// <para>Strong references, because an open popup is on screen and Silverlight holds it
+        /// for exactly as long. <see cref="ResetForNewLaunch"/> empties it between games.</para>
+        /// </remarks>
+        internal static List<Popup> OpenInOrder()
+        {
+            lock (OpenLock)
+            {
+                // Prune anything whose floor has run out since it closed; the timer that would
+                // have done it may not have fired yet, or (Avalonia gone) may never.
+                Open.RemoveAll(static p => !p.IsEffectivelyOpen);
+                return new List<Popup>(Open);
+            }
+        }
+
+        private static void Remember(Popup p)
+        {
+            lock (OpenLock)
+            {
+                p.OpenSequence = ++_nextOpenSequence;
+                Open.Remove(p);
+                Open.Add(p);
+            }
+        }
+
+        private static void Forget(Popup p)
+        {
+            lock (OpenLock)
+            {
+                if (!p.IsEffectivelyOpen) Open.Remove(p);
+            }
+        }
+
+        /// <summary>Drops every open popup. Called between game launches.</summary>
+        public static void ResetForNewLaunch()
+        {
+            lock (OpenLock)
+            {
+                Open.Clear();
+                _nextOpenSequence = 0;
+            }
+        }
+
+        /// <summary>
+        /// Lays out <see cref="Child"/> against <paramref name="available"/> when it has not been
+        /// laid out — a popup created in code and opened without ever being in a tree, or one
+        /// whose child was set after the page's layout pass. Touches only the child, never the
+        /// popup's own slot, which belongs to its parent's layout.
+        /// </summary>
+        internal void EnsureChildLaidOut(Size available)
+        {
+            if (Child is not UIElement c) return;
+            Rect r = c.ArrangedRect;
+            if (c.IsMeasureValid && c.IsArrangeValid && r.Width > 0 && r.Height > 0) return;
+
+            c.Measure(available);
+            Size ds = c.DesiredSize;
+            double w = (ds.Width  > 0 && !double.IsInfinity(ds.Width))  ? ds.Width  : available.Width;
+            double h = (ds.Height > 0 && !double.IsInfinity(ds.Height)) ? ds.Height : available.Height;
+            c.Arrange(new Rect(0, 0, w, h));
+        }
+
+        /// <summary>
+        /// Runs <paramref name="action"/> on the thread that owns the visual tree: the
+        /// synchronisation context captured when the popup closed if there was one (Avalonia's UI
+        /// thread), otherwise the game thread of the mixed-mode host. Neither path names Avalonia,
+        /// so this assembly's popup no longer needs it to close.
+        /// </summary>
+        private static void PostToTreeThread(SynchronizationContext? context, Action action)
+        {
+            void Safe()
+            {
+                try { action(); } catch { /* a repaint nudge is never worth a crash */ }
+            }
+
+            if (context != null)
+            {
+                try { context.Post(static s => ((Action)s!)(), (Action)Safe); return; }
+                catch { /* context gone (window closed); fall through */ }
+            }
+
+            // Runs inline when no game loop is registered — the honest fallback, see
+            // XnaBackend.PostToGameThread.
+            global::WPR.Xna.Rhi.XnaBackend.PostToGameThread(Safe);
+        }
+
         private static void OnIsOpenChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
             if (d is not Popup p) return;
@@ -145,6 +257,7 @@ namespace WPR.SilverlightCompability
             if (now)
             {
                 p._shownAtTicks = DateTime.UtcNow.Ticks;
+                Remember(p);
                 p.InvalidateMeasure();
                 try { p.Opened?.Invoke(p, EventArgs.Empty); } catch { }
                 return;
@@ -163,6 +276,7 @@ namespace WPR.SilverlightCompability
             if (elapsed >= floor)
             {
                 p._shownAtTicks = 0;
+                Forget(p);
                 p.InvalidateMeasure();
                 try { p.Closed?.Invoke(p, EventArgs.Empty); } catch { }
                 return;
@@ -182,19 +296,18 @@ namespace WPR.SilverlightCompability
             p._pendingRepaintScheduled = true;
 
             TimeSpan delay = floor - elapsed;
+            // Captured HERE, on the thread that closed the popup — the Avalonia UI thread in the
+            // desktop Silverlight host, the game thread in the mixed-mode one — because the
+            // continuation below runs on the thread pool, and the visual tree is not thread-safe.
+            SynchronizationContext? closer = SynchronizationContext.Current;
             _ = System.Threading.Tasks.Task.Delay(delay).ContinueWith(_ =>
-            {
-                p._pendingRepaintScheduled = false;
-                p._shownAtTicks = 0;
-                try
+                PostToTreeThread(closer, () =>
                 {
-                    global::Avalonia.Threading.Dispatcher.UIThread.Post(() => p.InvalidateMeasure());
-                }
-                catch
-                {
+                    p._pendingRepaintScheduled = false;
+                    p._shownAtTicks = 0;
+                    Forget(p);
                     p.InvalidateMeasure();
-                }
-            });
+                }));
 
             try { p.Closed?.Invoke(p, EventArgs.Empty); } catch { }
         }
