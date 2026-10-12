@@ -146,7 +146,9 @@ namespace WPR.Wp8Native
                 Log($"loading {_executable}");
                 PeImage image = PeImage.Load(_executable);
                 _emulator = new ArmEmulator(image, Path.GetDirectoryName(_executable)!, collectBlockStats: false);
-                _emulator.RecordCallSites = false;   // the sampler's report is the probe's, not ours
+                // The sampler's report is the probe's; WPR_WP8_CALLSITES=1 (diagnostic only) keeps it
+                // and logs the hottest call sites when the guest stops - where a load or a loop is.
+                _emulator.RecordCallSites = Environment.GetEnvironmentVariable("WPR_WP8_CALLSITES") == "1";
                 _emulator.Direct3D.FrameBuilt += OnFrameBuilt;
                 if (UseGpu)
                 {
@@ -219,6 +221,30 @@ namespace WPR.Wp8Native
             Log($"guest stopped after {_presented:N0} frame(s): {Outcome}");
             LogSummary();
             LogPostMortem();
+            if (_emulator is { RecordCallSites: true } sampled)
+            {
+                try
+                {
+                    foreach (string line in sampled.Samples.Report(sampled.Unwinder, take: 20))
+                    {
+                        Log("   site: " + line);
+                    }
+
+                    foreach (string line in sampled.DescribeThreads())
+                    {
+                        Log("   site thread: " + line);
+                    }
+
+                    foreach (string line in sampled.DeferredLog.TakeLast(30))
+                    {
+                        Log("   site deferred: " + line);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log($"   site report failed: {ex.Message}");
+                }
+            }
 
             if (failed)
             {

@@ -1920,9 +1920,64 @@ namespace WPR.Wp8Native
                     // fifth argument, on the stack. Assassin's Creed Pirates (Spark2) queues its
                     // loading work this way (WorkItemOptions.TimeSliced); answered by default,
                     // the work never ran and the first frame never came.
-                    [InspectableSlots + 2] = ("RunAsync+options", () => RunWorkItem(Arg(1), Arg(4))),
+                    [InspectableSlots + 2] = ("RunAsync+options", () => RunWorkItemOnThread(Arg(1), Arg(4))),
                 });
         }
+
+        /// <summary>
+        /// RunAsync with <c>WorkItemOptions</c>: the work item gets a guest thread of its own - a
+        /// pool thread - rather than a place in the deferred queue.
+        /// </summary>
+        /// <remarks>
+        /// The deferred queue runs an item to completion on top of whoever yielded. That cannot
+        /// hold an item that loops: Spark2 (Assassin's Creed Pirates) starts five job-system
+        /// workers this way, each waiting on an event for work. Run from yields, each one nested
+        /// on the last, the fifth waited for ever, and the main thread - spinning in Connect for
+        /// the loading those workers were meant to do - never got the CPU back. On a phone they
+        /// are pool threads, so here they are guest threads.
+        /// </remarks>
+        private void RunWorkItemOnThread(long handler, long outAction)
+        {
+            if (handler == 0)
+            {
+                Return(HResultNoInterface);
+                return;
+            }
+
+            long action = CreateAsyncAction();
+            long invoke = _emulator.ReadUInt32(_emulator.ReadUInt32(handler) + (SlotHandlerInvoke * 4));
+
+            // The gate tail-calls IWorkItemHandler::Invoke(handler, action) with lr still at the
+            // thread-exit trap, so Invoke's return ends the thread.
+            long block = _emulator.AllocateHeap(12);
+            _emulator.WriteUInt32(block, (uint)invoke);
+            _emulator.WriteUInt32(block + 4, (uint)handler);
+            _emulator.WriteUInt32(block + 8, (uint)action);
+            if (_workItemGate == 0)
+            {
+                _workItemGate = _emulator.RegisterVtableMethod("IWorkItemHandler::Invoke (pool thread)", () =>
+                {
+                    long start = Arg(0);
+                    _emulator.WriteRegister(Arm.UC_ARM_REG_R1, _emulator.ReadUInt32(start + 8));
+                    Return(_emulator.ReadUInt32(start + 4));
+                    _emulator.ContinueAt(_emulator.ReadUInt32(start));
+                });
+            }
+
+            _emulator.CreateGuestThread("thread pool", ArmEmulator.ThumbEntry(_workItemGate), block);
+
+            if (outAction != 0)
+            {
+                _emulator.WriteUInt32(outAction, (uint)action);
+            }
+
+            if (!KeepAlive(handler))
+            {
+                Return(HResultOk);
+            }
+        }
+
+        private long _workItemGate;
 
         /// <summary>
         /// Queues a work item and returns at once, as the real RunAsync does.

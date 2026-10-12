@@ -8,10 +8,8 @@ namespace WPR.Wp8Native
         /// interfaces, which the engine then calls back into.
         /// </summary>
         /// <remarks>
-        /// SEAM. The real Spark2 objects (<c>SparkApp.CSharpFunctions</c>,
-        /// <c>LuaMobileSDK.ICallback</c>) are written in <c>SparkHostObjects.cs</c>; once that is
-        /// merged, the cases below become one-line calls to it. Until then every interface gets
-        /// <see cref="DefaultAnsweringObject"/>.
+        /// The Spark2 objects (<c>SparkApp.CSharpFunctions</c>, <c>LuaMobileSDK.ICallback</c>) are
+        /// <c>SparkHostObjects.cs</c>; any other interface gets <see cref="DefaultAnsweringObject"/>.
         /// </remarks>
         private long HostObjectFor(string interfaceName)
         {
@@ -22,8 +20,8 @@ namespace WPR.Wp8Native
 
             long created = interfaceName switch
             {
-                // "SparkApp.CSharpFunctions" => CreateCSharpFunctions(...),
-                // "LuaMobileSDK.ICallback" => CreateLuaCallback(...),
+                "SparkApp.CSharpFunctions" => CreateCSharpFunctions(),
+                "LuaMobileSDK.ICallback" => CreateLuaMobileCallback(),
                 _ => DefaultAnsweringObject(interfaceName),
             };
 
