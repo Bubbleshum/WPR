@@ -360,6 +360,10 @@ namespace WPR.Wp8Native
                 {
                     Warn($"shader {shader.Key}", $"shader 0x{shader.Key:X8} unusable: {error}");
                 }
+                else if (parsed.DroppedColourOutputs > 0)
+                {
+                    Warn($"mrt {shader.Key}", $"shader 0x{shader.Key:X8} writes extra render targets; {parsed.DroppedColourOutputs} write(s) to oC1-oC3 dropped (one target is bound)");
+                }
 
                 _shaders[shader.Key] = parsed;
             }

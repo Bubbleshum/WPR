@@ -56,6 +56,9 @@ namespace WPR.Wp8Native
         /// <summary>The effect parameter holding this shader's constants.</summary>
         public string ConstantName => IsPixel ? "ps_c" : "vs_c";
 
+        /// <summary>Instructions writing oC1-oC3 that were turned into no-ops (see <see cref="DropExtraColourOutputs"/>).</summary>
+        public int DroppedColourOutputs { get; init; }
+
         public static Aon9Shader? Parse(byte[] dxbc, out string? error)
         {
             error = null;
@@ -100,6 +103,7 @@ namespace WPR.Wp8Native
                 }
 
                 byte[] code = aon9.AsSpan(codeOffset, codeSize).ToArray();
+                int droppedOutputs = isPixel ? DropExtraColourOutputs(code) : 0;
                 Dictionary<(string, int), int> inputs = chunks.TryGetValue("ISGN", out ReadOnlyMemory<byte> isgn)
                     ? InputSignature(isgn.Span)
                     : [];
@@ -112,6 +116,7 @@ namespace WPR.Wp8Native
                     ConstantMaps = maps,
                     Samplers = samplers,
                     InputRegisters = inputs,
+                    DroppedColourOutputs = droppedOutputs,
                 };
             }
             catch (Exception ex)
@@ -119,6 +124,71 @@ namespace WPR.Wp8Native
                 error = $"{ex.GetType().Name}: {ex.Message}";
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Turns every instruction that writes a colour output other than oC0 into no-ops, in place,
+        /// and returns how many there were.
+        /// </summary>
+        /// <remarks>
+        /// <para>The replay binds one render target, and Direct3D discards a write to a target that
+        /// is not bound, so dropping these changes no pixel. Leaving them in does: MojoShader
+        /// translates oCn to <c>gl_FragData[n]</c>, which OpenGL ES rejects unless
+        /// GL_EXT_draw_buffers is present. The compile error comes back through FNA3D's log
+        /// callback as a managed throw across native frames, which the process cannot survive -
+        /// Assassin's Creed Pirates died that way on the emulator's GLES 3.1 the moment it applied
+        /// such a shader. Vulkan and desktop D3D11 accepted it, so only the OpenGL path saw it.</para>
+        /// <para>Direct3D 9 token stream, version 2 and up: an instruction token holds the opcode in
+        /// bits 0-15 and the count of tokens that follow in bits 24-27. A comment is 0xFFFE with its
+        /// length in bits 16-30, and 0x0000FFFF ends the program. A register parameter's type is
+        /// bits 28-30 plus bits 11-12 shifted up by 3 (COLOROUT is 8) and its number bits 0-10.
+        /// The destination is the first parameter, except for <c>dcl</c> (31), whose first is the
+        /// usage token. A no-op is the token 0, so each token of the instruction becomes one.</para>
+        /// </remarks>
+        private static int DropExtraColourOutputs(byte[] code)
+        {
+            uint version = U32(code, 0);
+            if (((version >> 8) & 0xFF) < 2)
+            {
+                return 0;   // ps_1_x carries no instruction lengths; feature level 9 is ps_2_0 and up
+            }
+
+            const int ColourOut = 8;
+            int dropped = 0;
+            int at = 4;
+            while (at + 4 <= code.Length)
+            {
+                uint token = U32(code, at);
+                if (token == 0x0000FFFF)
+                {
+                    break;
+                }
+
+                uint opcode = token & 0xFFFF;
+                if (opcode == 0xFFFE)
+                {
+                    at += 4 + (int)(((token >> 16) & 0x7FFF) * 4);
+                    continue;
+                }
+
+                int length = (int)((token >> 24) & 0xF);
+                int destination = at + 4 + (opcode == 31 ? 4 : 0);
+                if (length > 0 && destination + 4 <= at + 4 + (length * 4) && destination + 4 <= code.Length)
+                {
+                    uint parameter = U32(code, destination);
+                    int type = (int)(((parameter >> 28) & 0x7) | ((parameter >> 8) & 0x18));
+                    int number = (int)(parameter & 0x7FF);
+                    if (type == ColourOut && number > 0)
+                    {
+                        Array.Clear(code, at, 4 + (length * 4));
+                        dropped++;
+                    }
+                }
+
+                at += 4 + (length * 4);
+            }
+
+            return dropped;
         }
 
         private static uint U32(ReadOnlySpan<byte> data, int at) => BinaryPrimitives.ReadUInt32LittleEndian(data[at..]);
