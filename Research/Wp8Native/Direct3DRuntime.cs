@@ -359,6 +359,9 @@ namespace WPR.Wp8Native
             [new Guid("aba496dd-b617-4cb8-a866-bc44d7eb1fa2")] = "IDXGISurface2",
             [new Guid("aec22fb8-76f3-4639-9be0-28eb43a67a2e")] = "IDXGIObject",
             [new Guid("3d3e0379-f9de-4d58-bb6c-18d62992f1a6")] = "IDXGIDeviceSubObject",
+            [new Guid("9d8e1289-d7b3-465f-8126-250e349af85d")] = "IDXGIKeyedMutex",
+            [new Guid("035f3ab4-482e-4e50-b41f-8a7f8bd8960b")] = "IDXGIResource",
+            [new Guid("30961379-4609-4a41-998e-54fe567ee0c1")] = "IDXGIResource1",
         };
 
         /// <summary>
@@ -385,6 +388,7 @@ namespace WPR.Wp8Native
             ["ID3D11Resource"] = "ID3D11Texture2D",
             ["IDXGISurface"] = "ID3D11Texture2D",
             ["IDXGISurface2"] = "ID3D11Texture2D",
+            ["IDXGIResource"] = "IDXGIResource1",
             ["IDXGIObject"] = "IUnknown",
             ["IDXGIDeviceSubObject"] = "IUnknown",
         };
@@ -477,6 +481,10 @@ namespace WPR.Wp8Native
                     => CreateInterface(owner, wanted, ResourceSlots, ResourceMethods()),
                 "IDXGISwapChain1" when owner.Name == "SwapChain"
                     => CreateSwapChainInterface(owner),
+                "IDXGIResource1" when owner.Name.StartsWith("Texture", StringComparison.Ordinal)
+                    => CreateDxgiResource(owner),
+                "IDXGIKeyedMutex" when owner.Name == "Texture2D_BackBuffer" || _keyedMutexOwners.Contains(owner)
+                    => CreateKeyedMutex(owner),
                 _ => 0,
             };
         }
@@ -588,6 +596,8 @@ namespace WPR.Wp8Native
             [3] = ("CreateBuffer", MakeResource("Buffer", outIndex: 3)),
             [4] = ("CreateTexture1D", MakeResource("Texture1D", outIndex: 3)),
             [5] = ("CreateTexture2D", MakeResource("Texture2D", outIndex: 3)),
+            [28] = ("OpenSharedResource", OpenSharedResource),
+            [48] = ("OpenSharedResource1", OpenSharedResource),
             [6] = ("CreateTexture3D", MakeResource("Texture3D", outIndex: 3)),
             [7] = ("CreateShaderResourceView", () =>
             {
@@ -744,6 +754,12 @@ namespace WPR.Wp8Native
             if (kind == "Texture2D")
             {
                 DescribeTexture(resource, Arg(1), Arg(2));
+
+                // D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX: the texture carries an IDXGIKeyedMutex.
+                if (Arg(1) != 0 && (_emulator.ReadUInt32(Arg(1) + 40, 0) & 0x100) != 0)
+                {
+                    _keyedMutexOwners.Add(created);
+                }
             }
             else if (kind == "Buffer")
             {
@@ -2244,6 +2260,111 @@ namespace WPR.Wp8Native
                   $"{LastClearColour[2]:0.00},{LastClearColour[3]:0.00})";
             return $"{clear}, {DrawCalls} draw(s), {RenderTargetsBound} render target(s) bound";
         }
+
+        /// <summary>
+        /// IDXGIKeyedMutex on the surface the host draws into: IUnknown, IDXGIObject (3-6),
+        /// GetDevice (7), AcquireSync(key, ms) (8), ReleaseSync(key) (9).
+        /// </summary>
+        /// <remarks>
+        /// The DrawingSurface host's render target is a surface shared with the compositor, and
+        /// such a surface carries a keyed mutex. Spark2's renderer (Assassin's Creed Pirates)
+        /// takes the target's resource, asks it for one and calls AcquireSync(0, INFINITE)
+        /// without checking - refused, it called through null. A texture the game creates with
+        /// D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX has one too (Spark2 renders into such a texture
+        /// on a device of its own); any other answers E_NOINTERFACE, as a non-shared one does.
+        /// One CPU: the key is always free, so both calls succeed at once.
+        /// </remarks>
+        private readonly HashSet<ComObject> _keyedMutexOwners = new();
+
+        /// <summary>Shared handles handed out by IDXGIResource, to the object they open.</summary>
+        private readonly Dictionary<long, ComObject> _sharedHandles = new();
+        private long _nextSharedHandle = 0x0D000004;
+
+        /// <summary>
+        /// IDXGIResource1 on a texture: IUnknown, IDXGIObject (3-6), GetDevice (7), GetSharedHandle (8),
+        /// GetUsage (9), Set/GetEvictionPriority (10-11), CreateSubresourceSurface (12),
+        /// CreateSharedHandle (13).
+        /// </summary>
+        /// <remarks>
+        /// A shared handle names the texture to another device, which opens it with
+        /// ID3D11Device::OpenSharedResource(1). Spark2 renders into a keyed-mutex texture on a
+        /// device of its own and shares it with the host's device to draw in Draw. There is one
+        /// GPU model here, so opening a handle answers the same object.
+        /// </remarks>
+        private long CreateDxgiResource(ComObject owner)
+        {
+            long Share()
+            {
+                long handle = _sharedHandles.FirstOrDefault(e => e.Value == owner).Key;
+                if (handle == 0)
+                {
+                    handle = _nextSharedHandle;
+                    _nextSharedHandle += 4;
+                    _sharedHandles[handle] = owner;
+                }
+
+                return handle;
+            }
+
+            return CreateInterface(owner, "IDXGIResource1", 14, new Dictionary<int, (string, Action)>
+            {
+                [8] = ("GetSharedHandle", () =>
+                {
+                    if (Arg(1) != 0)
+                    {
+                        _emulator.WriteUInt32(Arg(1), (uint)Share());
+                    }
+
+                    Return(HResultOk);
+                }),
+                [9] = ("GetUsage", () =>
+                {
+                    if (Arg(1) != 0)
+                    {
+                        _emulator.WriteUInt32(Arg(1), 0x20); // DXGI_USAGE_RENDER_TARGET_OUTPUT
+                    }
+
+                    Return(HResultOk);
+                }),
+                // CreateSharedHandle(attributes, access, name, HANDLE*): the out pointer is the fifth argument.
+                [13] = ("CreateSharedHandle", () =>
+                {
+                    if (Arg(4) != 0)
+                    {
+                        _emulator.WriteUInt32(Arg(4), (uint)Share());
+                    }
+
+                    Return(HResultOk);
+                }),
+            });
+        }
+
+        /// <summary>ID3D11Device::OpenSharedResource(handle, riid, out) and OpenSharedResource1: the shared object, by IID.</summary>
+        private void OpenSharedResource()
+        {
+            long outPointer = Arg(3);
+            long pointer = 0;
+            if (!_sharedHandles.TryGetValue(Arg(1), out ComObject? owner) ||
+                !KnownIids.TryGetValue(ReadGuid(Arg(2)), out string? wanted) ||
+                (pointer = ResolveInterface(owner, wanted)) == 0)
+            {
+                Fail(outPointer, $"OpenSharedResource(0x{Arg(1):X8}, {{{ReadGuid(Arg(2))}}}) -> E_INVALIDARG");
+                Return(unchecked((int)0x80070057));
+                return;
+            }
+
+            Note($"OpenSharedResource(0x{Arg(1):X8}) -> {owner.Name} as {wanted} 0x{pointer:X8}");
+            _emulator.WriteUInt32(outPointer, (uint)pointer);
+            owner.RefCount++;
+            Return(HResultOk);
+        }
+
+        private long CreateKeyedMutex(ComObject owner) => CreateInterface(owner, "IDXGIKeyedMutex", 10,
+            new Dictionary<int, (string, Action)>
+            {
+                [8] = ("AcquireSync", () => Return(HResultOk)),
+                [9] = ("ReleaseSync", () => Return(HResultOk)),
+            });
 
         private long BackBufferPointer()
         {

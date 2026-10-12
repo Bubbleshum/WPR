@@ -235,6 +235,11 @@ namespace WPR.Wp8Native
                         Log($"   site module: 0x{module.ImageBase:X8}-0x{module.ImageBase + module.MappedSize:X8} {module.GuestPath}");
                     }
 
+                    foreach (string line in sampled.Direct3D.Log.TakeLast(25).Concat(sampled.Direct3D.Unimplemented).Concat(sampled.Direct3D.UnknownIids))
+                    {
+                        Log("   site d3d: " + line);
+                    }
+
                     foreach (string line in sampled.DescribeThreads())
                     {
                         Log("   site thread: " + line);
