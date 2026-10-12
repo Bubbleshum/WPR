@@ -106,6 +106,42 @@ namespace WPR.Wp8Native
                     BeforeQuit: [],
                     QuitWhen: false),
             },
+
+            // Assassin's Creed Pirates (Ubisoft, Spark2 engine). SparkApplicationXaml.MainPage builds
+            // the bridge in a field initialiser - new SparkAppBridge(new CSharpClass()), i.e.
+            // __ISparkAppBridgeFactory.CreateInstance - and App.Application_Launching is empty.
+            // DrawingSurfaceBackground_Loaded sets the sizes from Host.Content (portrait 480x800 at
+            // scale 100 on WVGA), builds a LuaMobileSDKBridge (another component, Flurry
+            // analytics; not activated here), opens a Facebook deep link only when launched from
+            // one, hands over the content provider and itself as the manipulation handler, then
+            // SetDeviceData(Environment.OSVersion, DeviceName, DeviceHardwareVersion,
+            // DeviceManufacturer). The page is SupportedOrientations="Landscape", so it is laid out
+            // landscape and OrientationChanged(LandscapeLeft) reaches OnOrientationChanged.
+            ["SparkApp.dll"] = new XamlShell(
+                "SparkApp.dll",
+                "SparkApp.SparkAppBridge",
+                Launch: [],
+                Loaded:
+                [
+                    new("set_WindowBounds", Wvga),
+                    new("set_NativeResolution", Wvga),
+                    new("set_RenderResolution", Wvga),
+                    new("CreateContentProvider"),
+                    new("SetManipulationHost", XamlShell.ManipulationHost),
+                    new("SetDeviceData", "8.0.10521.0", "RM-821_eu_euro1_276", "1.0.0.0", "NOKIA"),
+                    new("OnOrientationChanged", "LandscapeLeft"),
+                ])
+            {
+                InstanceFrom = "CreateInstance",
+                InstanceArguments = [new XamlHostObject("SparkApp.CSharpFunctions")],
+                // OnBackKeyPress: m_sparkApp.OnBackButtonPressed(); e.Cancel = true - the game always
+                // keeps the press (a void method answers 0, never the "close" answer).
+                BackKey = new XamlBackKey(
+                    "OnBackButtonPressed",
+                    Otherwise: [],
+                    BeforeQuit: [],
+                    QuitWhen: true),
+            },
         };
 
         public static XamlShell? ForComponent(string componentDll) => Known.GetValueOrDefault(Path.GetFileName(componentDll));

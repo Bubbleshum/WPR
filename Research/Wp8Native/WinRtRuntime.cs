@@ -1915,6 +1915,12 @@ namespace WPR.Wp8Native
 
                     // RunAsync(handler, priority, out action)
                     [InspectableSlots + 1] = ("RunAsync+priority", () => RunWorkItem(Arg(1), Arg(3))),
+
+                    // RunAsync(handler, priority, options, out action): the out pointer is the
+                    // fifth argument, on the stack. Assassin's Creed Pirates (Spark2) queues its
+                    // loading work this way (WorkItemOptions.TimeSliced); answered by default,
+                    // the work never ran and the first frame never came.
+                    [InspectableSlots + 2] = ("RunAsync+options", () => RunWorkItem(Arg(1), Arg(4))),
                 });
         }
 

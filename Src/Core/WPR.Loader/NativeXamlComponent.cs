@@ -40,7 +40,11 @@ namespace WPR
 
             // A title may register several native components - Modern Combat 4 lists Gameloft's
             // promotions library (IGPLib.dll) and a push-notification one ahead of its game. The
-            // game is the one that draws: the first that imports d3d11.dll, else the first found.
+            // game is the one that draws: the first that imports d3d11.dll, or whose metadata
+            // declares CreateContentProvider (the page hands that to DrawingSurfaceBackgroundGrid),
+            // else the first found. Assassin's Creed Pirates needs the second test: its SparkApp.dll
+            // imports no d3d11 (its renderer is a Lua*.dll loaded at run time from Spark2Projects),
+            // and the Moga controller library it registers first is native ARM too.
             string? first = null;
             foreach (XmlNode node in paths)
             {
@@ -54,6 +58,7 @@ namespace WPR
                     ?? archive.Entries.FirstOrDefault(e => e.FullName.Equals(path, StringComparison.OrdinalIgnoreCase));
                 if (entry != null && IsNativeArm(entry, out bool draws))
                 {
+                    draws |= DeclaresContentProvider(archive, entry.FullName);
                     if (draws)
                     {
                         return entry.FullName;
@@ -64,6 +69,32 @@ namespace WPR
             }
 
             return first;
+        }
+
+        private static readonly byte[] CreateContentProviderName = System.Text.Encoding.ASCII.GetBytes("CreateContentProvider");
+
+        /// <summary>Whether the component's own .winmd (same name beside it) names CreateContentProvider.</summary>
+        private static bool DeclaresContentProvider(ZipArchive archive, string dllPath)
+        {
+            string winmdPath = Path.ChangeExtension(dllPath, ".winmd");
+            ZipArchiveEntry? winmd = archive.GetEntry(winmdPath)
+                ?? archive.Entries.FirstOrDefault(e => e.FullName.Equals(winmdPath, StringComparison.OrdinalIgnoreCase));
+            if (winmd == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                using Stream stream = winmd.Open();
+                using MemoryStream copy = new();
+                stream.CopyTo(copy);
+                return copy.GetBuffer().AsSpan(0, (int)copy.Length).IndexOf(CreateContentProviderName) >= 0;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
 
         private static readonly byte[] D3D11Import = System.Text.Encoding.ASCII.GetBytes("d3d11.dll");

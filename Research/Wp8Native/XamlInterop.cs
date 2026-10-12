@@ -21,6 +21,13 @@ namespace WPR.Wp8Native
     public sealed record XamlCallback(object? Returns = null, params XamlShellStep[] Then);
 
     /// <summary>
+    /// A managed object the page passes to the component that implements one of the component's
+    /// own interfaces - Spark2's <c>CSharpFunctions</c>, the C# half the engine calls back into.
+    /// The host supplies it (<c>WinRtRuntime.HostObjectFor</c>).
+    /// </summary>
+    public sealed record XamlHostObject(string InterfaceName);
+
+    /// <summary>
     /// What a WP8 Direct3D/XAML title's managed page does with its native component - the C#
     /// half of the game, written out as data so the host can play it.
     /// </summary>
@@ -52,6 +59,14 @@ namespace WPR.Wp8Native
         /// place of activating one. Null activates.
         /// </summary>
         public string? InstanceFrom { get; init; }
+
+        /// <summary>
+        /// The arguments <see cref="InstanceFrom"/> is called with. A class built through its
+        /// activation factory's <c>CreateInstance(...)</c> (an <c>[Activatable(typeof(IFactory))]</c>
+        /// runtime class, e.g. Spark2's <c>SparkAppBridge(CSharpFunctions^)</c>) names
+        /// <c>CreateInstance</c> there and passes its constructor's arguments here.
+        /// </summary>
+        public object?[] InstanceArguments { get; init; } = [];
 
         /// <summary>The page's back-key handler; null when it has none, so a press closes the app.</summary>
         public XamlBackKey? BackKey { get; init; }
@@ -131,7 +146,7 @@ namespace WPR.Wp8Native
                     _factory = factory;
                     if (shell.InstanceFrom is { } instanceFrom)
                     {
-                        InvokeMember(instanceFrom, [], instance =>
+                        InvokeMember(instanceFrom, shell.InstanceArguments, instance =>
                         {
                             _instance = instance;
                             Log($"{instanceFrom}() = instance 0x{_instance:X8}");
@@ -316,6 +331,7 @@ namespace WPR.Wp8Native
                         XamlShell.ManipulationHost => ManipulationHostObject(),
                         XamlShell.Callback => CallbackDelegate(type, new XamlCallback()),
                         XamlCallback callback => CallbackDelegate(type, callback),
+                        XamlHostObject hosted => HostObjectFor(hosted.InterfaceName),
                         int n => n,
                         uint n => n,
                         long n => n,

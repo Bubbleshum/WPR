@@ -81,6 +81,26 @@ namespace WPR.Wp8Native
         /// <summary>Builds the object a data import names (<see cref="IsDataImport"/>); 0 if it is not one.</summary>
         public long BuildDataImport(string name)
         {
+            // One variable per name, as one MSVCP110 export is one object: two modules importing
+            // ctype<char>::id must see the same id, or a facet one registers the other never finds.
+            if (_dataImports.TryGetValue(name, out long built))
+            {
+                return built;
+            }
+
+            built = BuildDataImportOnce(name);
+            if (built != 0)
+            {
+                _dataImports[name] = built;
+            }
+
+            return built;
+        }
+
+        private readonly Dictionary<string, long> _dataImports = new(StringComparer.Ordinal);
+
+        private long BuildDataImportOnce(string name)
+        {
             foreach (string standard in StandardNames)
             {
                 if (name.StartsWith($"?{standard}@std@@3", StringComparison.Ordinal))

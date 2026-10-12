@@ -153,6 +153,7 @@ namespace WPR.Wp8Native
                 StreamPut = (sb, chars, done) => PutChars(_narrow, sb, chars, 0, done),
             };
             FillDataImports();
+            _emulator.StreamDataImportBuilder = BuildDataImport;
         }
 
         /// <summary>The locale and facet side of MSVCP110.</summary>

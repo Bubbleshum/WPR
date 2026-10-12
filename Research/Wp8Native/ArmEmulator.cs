@@ -1697,6 +1697,9 @@ namespace WPR.Wp8Native
         /// <summary>IAT slots of iostream/locale variables, for StreamLibrary to fill.</summary>
         public List<(string Name, long Slot)> StreamDataImports { get; } = new();
 
+        /// <summary>Set once the iostream/locale host exists: builds one of its variables for a late-bound import.</summary>
+        public Func<string, long>? StreamDataImportBuilder { get; set; }
+
         /// <summary>Binds one image's IAT: package DLL exports where there are any, host-stub traps otherwise.</summary>
         private void InstallImportTraps(PeImage image, long imageBase)
         {
@@ -1735,8 +1738,20 @@ namespace WPR.Wp8Native
                 // host exists, before any guest code runs (StreamLibrary.FillDataImports).
                 if (StreamLibrary.IsDataImport(import.Name))
                 {
-                    _cpu.MemWrite(slotAddress, new byte[4]);
-                    StreamDataImports.Add((import.Name, slotAddress));
+                    // A module loaded at run time (LoadPackagedLibrary - Spark2's Lua*.dll plug-ins)
+                    // is bound after that fill has happened, so it is filled here instead. Left at
+                    // zero, its first use_facet asked locale::id::operator size_t of a null id.
+                    long value = StreamDataImportBuilder?.Invoke(import.Name) ?? 0;
+                    _cpu.MemWrite(slotAddress, BitConverter.GetBytes((uint)value));
+                    if (StreamDataImportBuilder is null)
+                    {
+                        StreamDataImports.Add((import.Name, slotAddress));
+                    }
+                    else
+                    {
+                        DataImportCells.Add($"{import.Name} -> {(value == 0 ? "NULL (not built)" : $"0x{value:X8}")} (late)");
+                    }
+
                     continue;
                 }
 

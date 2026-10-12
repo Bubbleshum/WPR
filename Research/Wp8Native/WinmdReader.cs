@@ -147,7 +147,14 @@ namespace WPR.Wp8Native
                 foreach (CustomAttributeHandle ah in type.GetCustomAttributes())
                 {
                     CustomAttribute attribute = md.GetCustomAttribute(ah);
-                    if (AttributeName(md, attribute) == "Windows.Foundation.Metadata.StaticAttribute" &&
+                    // [Static(typeof(IStatics))] and [Activatable(typeof(IFactory))] both name an
+                    // interface the activation factory implements; a factory's CreateInstance is
+                    // reached the same way a static method is. (The plain [Activatable(version)]
+                    // form names none: its blob is the prolog, a UInt32 and no named arguments.)
+                    string? attributeName = AttributeName(md, attribute);
+                    if ((attributeName == "Windows.Foundation.Metadata.StaticAttribute" ||
+                         (attributeName == "Windows.Foundation.Metadata.ActivatableAttribute" &&
+                          md.GetBlobReader(attribute.Value).Length > 8)) &&
                         StaticInterfaceName(md, attribute) is { } staticName)
                     {
                         (_staticInterfaces.TryGetValue(name, out var list) ? list : _staticInterfaces[name] = []).Add(staticName);
