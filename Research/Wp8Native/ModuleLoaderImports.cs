@@ -24,7 +24,9 @@ namespace WPR.Wp8Native
             // leaving the package is ERROR_INVALID_PARAMETER; a name without an extension gets
             // ".dll"; NULL and ERROR_MOD_NOT_FOUND when the package has no such file; NULL and
             // ERROR_DLL_INIT_FAILED when its DllMain refuses. Loading an already-loaded module
-            // returns the same handle and adds a reference.
+            // returns the same handle and adds a reference. A path may go into subfolders, with
+            // either separator, any case, and "." segments (Spark2's Lua modules); a bare name is
+            // looked for among loaded modules, then in the package root only.
             _handlers["LoadPackagedLibrary"] = () =>
             {
                 long namePointer = Arg(0);
@@ -195,16 +197,7 @@ namespace WPR.Wp8Native
         }
 
         /// <summary>LoadPackagedLibrary takes only a path inside the package: no drive, no root, no "..".</summary>
-        private static bool IsPackageRelative(string path)
-        {
-            string normalised = path.Replace('/', '\\');
-            if (normalised.Length == 0 || normalised.StartsWith('\\') || (normalised.Length > 1 && normalised[1] == ':'))
-            {
-                return false;
-            }
-
-            return !normalised.Split('\\').Any(segment => segment == "..");
-        }
+        private static bool IsPackageRelative(string path) => ArmEmulator.IsInsidePackage(path);
 
         private void ReturnModuleHandle(string? name)
         {

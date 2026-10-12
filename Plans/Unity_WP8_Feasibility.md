@@ -377,6 +377,22 @@ Next steps, in order:
    `CSharpFunctions` has 15 methods, mostly "no microphone", the media player state, and the popup.
 3. Check the run-time `LoadPackagedLibrary` of `Spark2Projects\**\Lua*.dll`, which loads from
    subfolders. Then check Bink (`bink2winphone_arm.dll`) and OpenAL (`wrap_oal.dll`).
+   **Done 2026-10-12 (branch `spark2-loader`).** `Lua.dll`'s `package.loadlib` converts each
+   `package.cpath` candidate with `mbstowcs_s` and calls `LoadPackagedLibrary(path, 0)` verbatim,
+   then `GetProcAddress(lib, "luaopen_x")`. SparkApp prepends `<projects dir>\?.dll` and
+   `<projects dir>\__Spark2Lib\?.dll` to the default `.\?.dll;!\?.dll;!\loadall.dll`, and
+   `SparkSystem::GetWorkingDirectoryPath` answers "" on WP8, so the paths are package-relative.
+   All 24 ARM Lua modules plus `bink2winphone_arm.dll` map, bind and return TRUE from DllMain
+   (`Wp8ModuleProbe --load`), every import implemented or bound, all 26 `luaopen_*` resolved,
+   nothing trapped under `WPR_WP8_TRAP_IMPORTS=1`. **`wrap_oal.dll`, `OpenAL32.dll` and
+   `_Bink\binkw32.dll` are x86 (machine 0x14C) desktop leftovers**: nothing ARM imports them and
+   they fail with ERROR_BAD_EXE_FORMAT, as on a device. Spark2's sound is
+   `LuaGeeaSoundEngine.dll` over XAudio2_8 (X3DAudio ordinals 5/6 included). Two loader fixes:
+   `.` / empty path segments were not folded (`.\x.dll` failed), and a path was matched to a
+   loaded module by base name, which would have handed `Spark2Projects\_MobileSDK\LuaMobileSDK.dll`
+   the root `LuaMobileSDK.dll` WinRT component (or the reverse). Whoever activates
+   `LuaMobileSDK.LuaMobileSDKBridge` must load the ROOT file by path for the same reason.
+   Contract suite: `PackagedLibrarySuite`.
 
 **To reproduce:**
 

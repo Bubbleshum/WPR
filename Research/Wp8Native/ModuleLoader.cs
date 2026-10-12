@@ -1148,7 +1148,16 @@ namespace WPR.Wp8Native
         {
             string name = NormaliseModuleName(relativePath);
 
-            if (_modules.FirstOrDefault(m => !m.Unloaded && string.Equals(m.Name, name, StringComparison.OrdinalIgnoreCase)) is { } loaded)
+            // A bare name is looked up among the loaded modules by base name first, as Windows
+            // does. A path names one file: it is resolved, and only a module loaded from that very
+            // file is the same module - Spark2 ships Spark2Projects\_MobileSDK\LuaMobileSDK.dll
+            // beside an unrelated LuaMobileSDK.dll in the package root.
+            bool hasPath = HasPathSeparator(relativePath);
+            string? path = hasPath ? ResolvePackagePath(relativePath, name) : null;
+            LoadedModule? loaded = hasPath
+                ? path is null ? null : LoadedFromFile(path)
+                : _modules.FirstOrDefault(m => !m.Unloaded && string.Equals(m.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (loaded is not null)
             {
                 if (!loaded.Pinned)
                 {
@@ -1159,7 +1168,10 @@ namespace WPR.Wp8Native
                 return;
             }
 
-            string? path = ResolvePackagePath(relativePath, name);
+            if (!hasPath)
+            {
+                path = ResolvePackagePath(relativePath, name);
+            }
             if (path is null || IsSystemDll(name))
             {
                 if (allowSystem && _systemModules.ContainsKey(name))
@@ -1205,14 +1217,51 @@ namespace WPR.Wp8Native
             InitialiseDynamicLoad(earlier, ok => finish(ok ? module.ImageBase : 0, ok ? 0 : ErrorDllInitFailed));
         }
 
+        private static bool HasPathSeparator(string path) => path.IndexOfAny(['\\', '/']) >= 0;
+
         /// <summary>
-        /// A path the guest named, inside the package root: case-insensitive per segment, ".dll"
-        /// appended to a bare name. Null when there is no such file.
+        /// What LoadPackagedLibrary accepts: a relative path that stays inside the package - not
+        /// empty, no drive ("C:x" included), no root or UNC prefix, no ".." segment. Either
+        /// separator; MSDN asks for backslashes, but Windows' path normalisation takes both.
+        /// </summary>
+        internal static bool IsInsidePackage(string path)
+        {
+            string normalised = path.Replace('/', '\\');
+            if (normalised.Length == 0 || normalised.StartsWith('\\') || (normalised.Length > 1 && normalised[1] == ':'))
+            {
+                return false;
+            }
+
+            return !normalised.Split('\\').Any(segment => segment == "..");
+        }
+
+        /// <summary>The live module mapped from <paramref name="hostPath"/>, compared as a full path ignoring case.</summary>
+        private LoadedModule? LoadedFromFile(string hostPath)
+        {
+            string wanted = Path.GetFullPath(hostPath);
+            return _modules.FirstOrDefault(m => !m.Unloaded && m.HostPath is { } own &&
+                string.Equals(Path.GetFullPath(own), wanted, StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// A path the guest named, inside the package root: either separator, empty and "."
+        /// segments dropped (".\x.dll", "a\\b"), case-insensitive per segment, ".dll" appended to a
+        /// final segment without an extension. A bare name is looked for in the package root only,
+        /// which is where the loader searches; a path is taken from the root down. Null when there
+        /// is no such file (a folder is not one).
         /// </summary>
         private string? ResolvePackagePath(string relativePath, string normalisedName)
         {
-            string[] segments = relativePath.Replace('/', '\\').Split('\\', StringSplitOptions.RemoveEmptyEntries);
-            if (segments.Length <= 1)
+            string[] segments = relativePath.Replace('/', '\\')
+                .Split('\\', StringSplitOptions.RemoveEmptyEntries)
+                .Where(s => s != ".")
+                .ToArray();
+            if (segments.Length == 0)
+            {
+                return null;
+            }
+
+            if (segments.Length == 1)
             {
                 return PackageDlls().GetValueOrDefault(normalisedName);
             }
@@ -1362,6 +1411,23 @@ namespace WPR.Wp8Native
             }
 
             string file = NormaliseModuleName(name);
+
+            // A path inside the package (relative, or under the install folder) names one file:
+            // only the module mapped from it matches, not another of the same base name.
+            string relative = name.Replace('/', '\\');
+            int install = relative.IndexOf(InstallFolder, StringComparison.OrdinalIgnoreCase);
+            if (install >= 0)
+            {
+                relative = relative[(install + InstallFolder.Length)..];
+            }
+
+            if (HasPathSeparator(relative) && IsInsidePackage(relative))
+            {
+                return ResolvePackagePath(relative, file) is { } path && LoadedFromFile(path) is { } fromFile
+                    ? fromFile.ImageBase
+                    : 0;
+            }
+
             if (_modules.FirstOrDefault(m => !m.Unloaded && string.Equals(m.Name, file, StringComparison.OrdinalIgnoreCase)) is { } module)
             {
                 return module.ImageBase;
