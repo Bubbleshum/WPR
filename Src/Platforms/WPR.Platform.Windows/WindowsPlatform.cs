@@ -61,12 +61,16 @@ namespace WPR.Platform.Windows
             // FFMpegCore over the ffmpeg.exe this head ships beside the executable. WP7 XNA titles
             // ship .wma soundtracks and the song backend decodes Ogg Vorbis only, so the installer
             // transcodes. No Audio(...) module: FAudio, which the game host installs as the base,
-            // is correct on desktop — its once-per-second song stutter only bites on a phone.
+            // plays songs and effects on both heads.
             .AudioTranscoder(new Audio.FFMpegCoreAudioTranscoder())
 
             // The same ffmpeg.exe decodes, at run time, the compressed audio a WP8 native title
             // hands its media engine (MP3 in every title that uses it). Video is not decoded.
             .AudioDecoder(new Audio.FFmpegAudioDecoder())
+
+            // ...and plays games' movies (WMV/MP4) for MediaPlayerLauncher and MediaElement,
+            // straight from the install folder: ffmpeg reads WP7's WMV/VC-1 itself.
+            .VideoDecoder(new Audio.FFmpegVideoDecoder())
 
             // Links a game opens (WebBrowserTask) go to the default browser via the shell.
             // Deliberately no ShareSheet yet: the Windows share UI is WinRT DataTransferManager

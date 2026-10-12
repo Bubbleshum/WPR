@@ -161,6 +161,16 @@ namespace WPR.SilverlightCompability
                     ReportOnce("Popup", "not composited into the overlay");
                     break;
 
+                case MediaElement media:
+                    // A playing movie: its newest frame, fitted like an Image. Nothing while no
+                    // movie is open, which is also what the element showed before it played.
+                    if (media.FramePixels != null)
+                    {
+                        Rect dest = FitTo(bounds, media.FrameWidth, media.FrameHeight, media.Stretch, AlignmentX.Center, AlignmentY.Center);
+                        surface.Blit(media.FramePixels, media.FrameWidth, media.FrameHeight, dest, drawClip, opacity);
+                    }
+                    break;
+
                 case Image image:
                     PaintImage(surface, image, bounds, opacity, drawClip);
                     break;
@@ -1075,6 +1085,12 @@ namespace WPR.SilverlightCompability
                     hash.Add(border.BorderThickness.Right);
                     hash.Add(border.BorderThickness.Bottom);
                     Sign(border.Child, ref hash, depth + 1);
+                    break;
+
+                // Every new movie frame must repaint the page; nothing else about the element moves.
+                case MediaElement media:
+                    hash.Add(media.FrameVersion);
+                    hash.Add((int)media.Stretch);
                     break;
 
                 case Image image:

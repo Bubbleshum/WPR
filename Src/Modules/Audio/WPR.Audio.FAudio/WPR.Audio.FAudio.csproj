@@ -51,6 +51,8 @@
     <ProjectReference Include="$(SolutionDir)Backends\FNA.Platform\FNA.Core.csproj" />
     <!-- AudioModule base + the registry this module plugs into. -->
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Audio\WPR.Engine.Audio.csproj" />
+    <!-- Song decode (StreamingSongPlayer). Managed, MIT-licensed, the same on both heads. -->
+    <PackageReference Include="NVorbis" Version="0.10.5" />
   </ItemGroup>
 
 </Project>

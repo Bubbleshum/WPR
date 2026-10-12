@@ -72,6 +72,39 @@ namespace WPR.Engine.Audio
 				"AudioBackendRegistry.SetBase(...) and Compose() before the XNA runtime plays a " +
 				"Song or opens a Video.");
 
+		/// <summary>
+		/// The host app went to the background (Android <c>OnPause</c>). Silences whatever the
+		/// composed backends play on their own: the song player in particular, whose output device
+		/// SDL does NOT pause — SDL's OpenSL ES driver tracks a single output device, and songs
+		/// have a second one so that <c>SoundEffect.MasterVolume</c> (the sound-effect mastering
+		/// voice) does not scale the music. Measured on an API 36 emulator: the song track stayed
+		/// Active with frames advancing on the home screen. Never throws.
+		/// </summary>
+		public static void SuspendForBackground()
+		{
+			foreach (object? backend in new object?[] { _media, _xact, _sound })
+			{
+				if (backend is IBackgroundAwareAudio aware)
+				{
+					try { aware.SuspendForBackground(); }
+					catch (Exception ex) { WPR.Common.Log.Warn(WPR.Common.LogCategory.AppList, "[wpr-audio] background suspend threw: " + ex.Message); }
+				}
+			}
+		}
+
+		/// <summary>Undoes <see cref="SuspendForBackground"/>. Never throws.</summary>
+		public static void RestoreFromForeground()
+		{
+			foreach (object? backend in new object?[] { _media, _xact, _sound })
+			{
+				if (backend is IBackgroundAwareAudio aware)
+				{
+					try { aware.RestoreFromForeground(); }
+					catch (Exception ex) { WPR.Common.Log.Warn(WPR.Common.LogCategory.AppList, "[wpr-audio] foreground restore threw: " + ex.Message); }
+				}
+			}
+		}
+
 		private static readonly object _gate = new object();
 		private static readonly List<IAudioModule> _modules = new List<IAudioModule>();
 		private static IAudioModule? _base;
@@ -231,5 +264,18 @@ namespace WPR.Engine.Audio
 				WPR.Common.LogCategory.AppList,
 				"Audio module '" + module.Name + "' failed in " + what +
 				"; falling back to the module below it. " + ex);
+	}
+
+	/// <summary>
+	/// Optional on an audio backend: it plays on a device or player the platform will not pause
+	/// for it, so the host must tell it when the app leaves and returns to the foreground. A
+	/// suspended backend must not START anything either (a game reacting to its own
+	/// <c>Deactivated</c> may stop and replay a track in the window around the pause), and a
+	/// restore resumes only what the suspend itself silenced.
+	/// </summary>
+	public interface IBackgroundAwareAudio
+	{
+		void SuspendForBackground();
+		void RestoreFromForeground();
 	}
 }

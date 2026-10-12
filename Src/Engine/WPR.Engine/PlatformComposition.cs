@@ -76,6 +76,7 @@ namespace WPR.Engine
             private readonly List<IAudioModule> _audio = new List<IAudioModule>();
             private IAudioTranscoder? _transcoder;
             private IAudioDecoder? _decoder;
+            private IVideoDecoder? _videoDecoder;
             private WPR.Xna.Achievements.IAchievementStore? _achievements;
             private INotificationManager? _notifications;
             private IKeyboardEmulationHost? _tilt;
@@ -132,6 +133,12 @@ namespace WPR.Engine
             public IPlatformCapabilities AudioDecoder(IAudioDecoder decoder)
             {
                 _decoder = decoder ?? throw new ArgumentNullException(nameof(decoder));
+                return this;
+            }
+
+            public IPlatformCapabilities VideoDecoder(IVideoDecoder decoder)
+            {
+                _videoDecoder = decoder ?? throw new ArgumentNullException(nameof(decoder));
                 return this;
             }
 
@@ -192,6 +199,7 @@ namespace WPR.Engine
 
                 if (_transcoder != null) AudioTranscoderBackend.SetTranscoder(_transcoder);
                 if (_decoder != null) AudioDecoderBackend.SetDecoder(_decoder);
+                if (_videoDecoder != null) VideoDecoderBackend.SetDecoder(_videoDecoder);
                 if (_achievements != null) XnaBackend.SetAchievements(_achievements);
                 if (_notifications != null) NotificationBackend.SetManager(_notifications);
                 if (_tilt != null) XnaBackend.SetKeyboardEmulation(_tilt);
@@ -211,6 +219,7 @@ namespace WPR.Engine
                 parts.Add("audio=[" + string.Join(", ", _audio.ConvertAll(m => m.Name)) + "]");
                 parts.Add("transcoder=" + Name(_transcoder));
                 parts.Add("decoder=" + Name(_decoder));
+                parts.Add("video=" + Name(_videoDecoder));
                 parts.Add("achievements=" + Name(_achievements));
                 parts.Add("notifications=" + Name(_notifications));
                 parts.Add("tilt=" + Name(_tilt));
