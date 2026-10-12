@@ -32,6 +32,7 @@
       "JavaBindings\\com.arthenica.smartexception\\com.arthenica.smartexception.csproj",
       "JavaBindings\\Org.Libsdl.App\\Org.Libsdl.App.csproj",
       "Modules\\Audio\\WPR.Audio.AndroidMediaPlayer\\WPR.Audio.AndroidMediaPlayer.csproj",
+      "Modules\\Audio\\WPR.Audio.MediaCodec\\WPR.Audio.MediaCodec.csproj",
       "Modules\\Video\\WPR.Video.MediaCodec\\WPR.Video.MediaCodec.csproj",
       "Modules\\Audio\\WPR.Audio.FAudio\\WPR.Audio.FAudio.csproj",
       "Modules\\Input\\WPR.Input.AndroidSensor\\WPR.Input.AndroidSensor.csproj",

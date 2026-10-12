@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Audio.MediaCodec - Android's IAudioDecoder: the platform's MediaExtractor + MediaCodec
+    decoding compressed audio (MP3, AAC, Vorbis, FLAC, AMR...) to 16-bit PCM in the game process.
+
+    The desktop's decoder is ffmpeg.exe; ffmpeg-kit cannot run in the game process on Android (it
+    leaves the process unable to finish a stop-the-world - see TranscodeService), so this one uses
+    the codecs every Android device already has.
+
+    Android-only, so the TFM is singular <TargetFramework> and the project is listed in
+    WPR.Android.slnf only, like WPR.Video.MediaCodec.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <AssemblyName>WPR.Audio.MediaCodec</AssemblyName>
+    <RootNamespace>WPR.Audio.MediaCodec</RootNamespace>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The contract (IAudioDecoder). Nothing else: the head declares this through caps.AudioDecoder(...). -->
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Audio\WPR.Engine.Audio.csproj" />
+  </ItemGroup>
+
+</Project>
