@@ -59,5 +59,15 @@ namespace WPR.SilverlightCompability.Tests
             Assert.Equal(TextAlignment.Center, tb.TextAlignment);
             Assert.Equal(TextWrapping.Wrap, tb.TextWrapping);
         }
+
+        [Fact]
+        public void Text_StoredAsNonString_ReadsThroughToString()
+        {
+            // A binding may store its source value unconverted (Minesweeper binds a TimeSpan);
+            // reading Text must not throw from every paint of the page.
+            var tb = new TextBlock();
+            tb.SetValue(TextBlock.TextProperty, System.TimeSpan.FromSeconds(75));
+            Assert.Equal("00:01:15", tb.Text);
+        }
     }
 }

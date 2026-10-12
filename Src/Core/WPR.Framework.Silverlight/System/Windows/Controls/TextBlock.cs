@@ -34,7 +34,15 @@ namespace WPR.SilverlightCompability
 
         public string Text
         {
-            get => (string)GetValue(TextProperty)!;
+            // A binding can store its source value unconverted — Minesweeper binds a TimeSpan here —
+            // and Silverlight shows such a value through ToString, as a binding to a string
+            // property converts. A hard cast threw from every paint of the page instead.
+            get => GetValue(TextProperty) switch
+            {
+                string s => s,
+                null => null!,
+                object o => System.Convert.ToString(o, System.Globalization.CultureInfo.CurrentCulture)!,
+            };
             set => SetValue(TextProperty, value);
         }
 
