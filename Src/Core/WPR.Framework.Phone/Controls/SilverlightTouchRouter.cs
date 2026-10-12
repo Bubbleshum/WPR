@@ -42,6 +42,10 @@ namespace Microsoft.Phone.Controls
         /// <summary>The one coasting after a flick — ticked by the host until it settles.</summary>
         private static ScrollViewer? _coasting;
 
+        // The button drawn in its pressed state while the finger is down on it; cleared on release
+        // or as soon as the interaction becomes a drag, which is when WP7 un-presses it too.
+        private static ButtonBase? _pressed;
+
         /// <summary>Forgets any in-flight interaction. Called at teardown.</summary>
         public static void ResetForNewLaunch()
         {
@@ -163,6 +167,20 @@ namespace Microsoft.Phone.Controls
             {
                 if (element.RaiseMouseLeftButtonDown(position)) break;
             }
+
+            SetPressed(null);
+            foreach (UIElement element in chain)
+            {
+                if (element is ButtonBase button) { SetPressed(button); break; }
+            }
+        }
+
+        private static void SetPressed(ButtonBase? button)
+        {
+            if (ReferenceEquals(_pressed, button)) return;
+            try { _pressed?.SetPressedByHost(false); } catch (Exception) { }
+            _pressed = button;
+            try { _pressed?.SetPressedByHost(true); } catch (Exception) { }
         }
 
         /// <summary>The finger moved. Promotes the interaction to a drag once it passes the slop.</summary>
@@ -180,6 +198,7 @@ namespace Microsoft.Phone.Controls
                  Math.Abs(totalY) > PointerInteraction.TapSlop))
             {
                 interaction.IsDragging = true;
+                SetPressed(null);
             }
 
             // The content follows the finger, so the viewport moves the OTHER way — drag down and
@@ -204,6 +223,7 @@ namespace Microsoft.Phone.Controls
         {
             PointerInteraction? interaction = _interaction;
             _interaction = null;
+            SetPressed(null);
             if (interaction == null) return;
 
             var position = new Point(x, y);

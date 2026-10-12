@@ -38,7 +38,7 @@ namespace WPR.SilverlightCompability
     /// <c>SilverlightRenderer.OffsetTo</c> uses. The tree must have been laid out first;
     /// <c>MixedModeGame</c> runs one pass after navigation.</para>
     /// </remarks>
-    internal static class SoftwareVisualRasteriser
+    internal static partial class SoftwareVisualRasteriser
     {
         /// <summary>Guards against a tree that contains a cycle; nothing legitimate is this deep.</summary>
         private const int MaxDepth = 64;
@@ -130,6 +130,11 @@ namespace WPR.SilverlightCompability
             // Everything this element draws is clipped to its own slot AND to whatever an
             // ancestor imposed — a ScrollViewer viewport, in practice.
             Rect drawClip = Intersect(bounds, clip);
+
+            // WP7 control chrome (Panorama, Pivot, ToggleSwitch, Button...) — see
+            // SoftwareVisualRasteriser.Controls.cs.
+            if (TryPaintChrome(element, bounds, opacity, surface, depth, scaleX, scaleY, clip, drawClip))
+                return;
 
             switch (element)
             {
@@ -703,7 +708,7 @@ namespace WPR.SilverlightCompability
                 return;
             }
 
-            uint colour = ResolveTextColour(text.Foreground, opacity);
+            uint colour = ResolveTextColour(EffectiveForeground(text), opacity);
             if (colour == 0) return;
 
             double layoutWidth = text.TextWrapping == TextWrapping.Wrap
@@ -1069,6 +1074,8 @@ namespace WPR.SilverlightCompability
                 hash.Add((int)fe.Visibility);
                 SignBrush(fe.Background, ref hash);
             }
+
+            SignChrome(element, ref hash);
 
             switch (element)
             {
