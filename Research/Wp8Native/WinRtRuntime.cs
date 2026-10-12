@@ -1764,14 +1764,19 @@ namespace WPR.Wp8Native
                     int captured = slot;
                     slots[slot] = ($"slot{captured} (empty list)", () =>
                     {
-                        // (arg, T** out) or (T** out): fill whichever is the stack out-parameter.
-                        if (ArmEmulator.IsStackAddress(Arg(2)))
-                        {
-                            WriteOut(2, EmptyVectorView());
-                        }
-                        else if (ArmEmulator.IsStackAddress(Arg(1)))
+                        // (T** out) or (CameraSensorLocation, T** out): fill whichever is the
+                        // out-parameter. r1 first: in the two-argument form it holds the enum,
+                        // which is never a stack address, while in the one-argument form r2 is
+                        // whatever the caller left there - MONOPOLY Millionaire leaves a stack
+                        // address, and testing r2 first wrote the list there and left the real
+                        // out-parameter null (get_AvailableSensorLocations, slot 7).
+                        if (ArmEmulator.IsStackAddress(Arg(1)))
                         {
                             WriteOut(1, EmptyVectorView());
+                        }
+                        else if (ArmEmulator.IsStackAddress(Arg(2)))
+                        {
+                            WriteOut(2, EmptyVectorView());
                         }
 
                         Return(HResultOk);

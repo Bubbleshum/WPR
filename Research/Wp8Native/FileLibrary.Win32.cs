@@ -383,7 +383,10 @@ namespace WPR.Wp8Native
 
         private static bool ParentExists(string host)
         {
-            string? parent = Path.GetDirectoryName(host);
+            // "Local/State/" names the folder State, whose parent is Local: Win32 accepts a
+            // trailing separator on a directory name, and GetDirectoryName would otherwise
+            // answer State itself. Amazing Alex creates every folder that way.
+            string? parent = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(host));
             return parent is null || Directory.Exists(parent);
         }
 
@@ -395,20 +398,23 @@ namespace WPR.Wp8Native
         private void CreateDirectoryContract(string path)
         {
             string host = Resolve(path, out bool writable);
-            if (Directory.Exists(host) || File.Exists(host))
+            if (Directory.Exists(host) || File.Exists(Path.TrimEndingDirectorySeparator(host)))
             {
+                Log.Add($"CreateDirectory(\"{path}\") -> already exists");
                 FailBool(ErrorAlreadyExists);
                 return;
             }
 
             if (!writable)
             {
+                Log.Add($"CreateDirectory(\"{path}\") -> access denied");
                 FailBool(ErrorAccessDenied);
                 return;
             }
 
             if (!ParentExists(host))
             {
+                Log.Add($"CreateDirectory(\"{path}\") -> path not found");
                 FailBool(ErrorPathNotFound);
                 return;
             }

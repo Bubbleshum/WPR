@@ -44,7 +44,8 @@ namespace WPR.Wp8Native
     ///               8 put_ReportInterval(UINT32)         9 get_ReportInterval(UINT32*)
     ///              10 add_ReadingChanged(handler, token*) 11 remove_ReadingChanged(token)
     ///              12 add_Shaken  13 remove_Shaken        (accelerometer only)
-    /// IxxxReading   6 get_Timestamp(DateTime*)  7-9 get_X/Y/Z(DOUBLE*)
+    /// IxxxReading   6 get_Timestamp(DateTime*)  7-9 get_{Axis}X/Y/Z(DOUBLE*), Axis being
+    ///               AngularVelocity (gyrometer) or Acceleration (accelerometer)
     /// IxxxReadingChangedEventArgs  6 get_Reading(IxxxReading**)
     /// </code>
     /// <para><c>ReadingChanged</c> is raised from the frame loop, at most once a frame and no faster
@@ -78,6 +79,30 @@ namespace WPR.Wp8Native
                 host => host.Accelerometer,
                 scale: 1.0,
                 hasShaken: true));
+
+            // Sensors no host offers: GetDefault answers nullptr, "this device has none". All
+            // four were optional on WP8 (the magnetometer they need was missing from the cheaper
+            // Lumias), so games were written to handle it. Answered by the signature default they
+            // got a placeholder object instead, which MONOPOLY Millionaire then called through.
+            foreach (string absent in new[] { "Compass", "Inclinometer", "OrientationSensor", "LightSensor" })
+            {
+                _factories["Windows.Devices.Sensors." + absent] = CreateDiscoveryObject(
+                    $"I{absent}Statics",
+                    slotCount: InspectableSlots + 1,
+                    known: new Dictionary<int, (string, Action)>
+                    {
+                        [InspectableSlots + 0] = ("GetDefault", () =>
+                        {
+                            if (Arg(1) != 0)
+                            {
+                                _emulator.WriteUInt32(Arg(1), 0);
+                            }
+
+                            SensorLog.Add($"{absent}.GetDefault: none on this device");
+                            Return(HResultOk);
+                        }),
+                    });
+            }
 
             void Register(WinRtSensor sensor)
             {
@@ -132,13 +157,13 @@ namespace WPR.Wp8Native
 
                         Return(HResultOk);
                     }),
-                    [InspectableSlots + 1] = ("get_X", () =>
+                    [InspectableSlots + 1] = ($"get_{sensor.Axis}X", () =>
                     {
                         sensor.ValuesRead++;
                         WriteDoubleOut(sensor.Value.X * sensor.Scale);
                     }),
-                    [InspectableSlots + 2] = ("get_Y", () => WriteDoubleOut(sensor.Value.Y * sensor.Scale)),
-                    [InspectableSlots + 3] = ("get_Z", () => WriteDoubleOut(sensor.Value.Z * sensor.Scale)),
+                    [InspectableSlots + 2] = ($"get_{sensor.Axis}Y", () => WriteDoubleOut(sensor.Value.Y * sensor.Scale)),
+                    [InspectableSlots + 3] = ($"get_{sensor.Axis}Z", () => WriteDoubleOut(sensor.Value.Z * sensor.Scale)),
                 });
             sensor.Args = CreateDiscoveryObject(
                 $"I{sensor.Name}ReadingChangedEventArgs",
@@ -382,6 +407,9 @@ namespace WPR.Wp8Native
             public Func<ISensorHost, IHostSensor?> Pick { get; } = pick;
 
             public double Scale { get; } = scale;
+
+            /// <summary>The reading's property prefix in metadata: get_AngularVelocityX, get_AccelerationX.</summary>
+            public string Axis { get; } = name == "Gyrometer" ? "AngularVelocity" : "Acceleration";
 
             public bool HasShaken { get; } = hasShaken;
 

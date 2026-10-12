@@ -395,26 +395,18 @@ namespace WPR.Wp8Native
         }
 
         /// <summary>
-        /// Titles whose 3D scenes the 2D draw list cannot show, so they replay on the GPU with
-        /// their own shaders by default. A list of names on purpose: the GPU path has only been
-        /// verified title by title, and the titles that already work in 2D stay there.
+        /// Every title replays its frames on the GPU with its own shaders. One path for 2D and 3D
+        /// alike: a 2D game is just draws with a flat projection, so nothing per title decides it.
+        /// WPR_WP8_GPU=0 falls back to the older 2D draw list, as a diagnostic only.
         /// </summary>
-        private static readonly HashSet<string> GpuTitles = new(StringComparer.OrdinalIgnoreCase)
-        {
-            "0cb4e588-5759-4150-bef0-6866345fa26b",   // Modern Combat 4: Zero Hour
-        };
-
-        /// <summary>
-        /// Replay frames on the GPU with the game's shaders instead of the 2D draw list: on for
-        /// <see cref="GpuTitles"/>, and WPR_WP8_GPU=1 / =0 forces it either way.
-        /// </summary>
-        /// <remarks>Decided per launch, when the game is constructed: one desktop process runs many games.</remarks>
-        private readonly bool UseGpu = Environment.GetEnvironmentVariable("WPR_WP8_GPU") switch
-        {
-            "1" => true,
-            "0" => false,
-            _ => WPR.Common.WprHostEnvironment.CurrentProductId is { } id && GpuTitles.Contains(id.Trim('{', '}')),
-        };
+        /// <remarks>
+        /// Measured 2026-10-12 over the ten installed titles, 30 s each from clean saves: the
+        /// seven Angry Birds titles and Amazing Alex draw the same frames on both paths, and
+        /// Modern Combat 4 and MONOPOLY Millionaire draw correctly only on this one (the draw
+        /// list showed MC4 as flat silhouettes and Monopoly as black). Zero skipped draws on any
+        /// title. It replaced a per-title allow-list.
+        /// </remarks>
+        private readonly bool UseGpu = Environment.GetEnvironmentVariable("WPR_WP8_GPU") != "0";
 
         private GpuFrame? _latestGpu;
         private Wp8GpuReplay? _replay;

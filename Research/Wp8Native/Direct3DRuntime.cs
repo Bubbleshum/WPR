@@ -341,6 +341,8 @@ namespace WPR.Wp8Native
             [new Guid("77db970f-6276-48ba-ba28-070143b4392c")] = "IDXGIDevice1",
             [new Guid("05008617-fbfd-4051-a790-144884b4f6a9")] = "IDXGIDevice2",
             [new Guid("2411e7e1-12ac-4ccf-bd14-9798e8534dc9")] = "IDXGIAdapter",
+            [new Guid("ae02eedb-c735-4690-8d52-5a8dc20213aa")] = "IDXGIOutput",
+            [new Guid("00cddea8-939b-4b83-a340-a685226666cc")] = "IDXGIOutput1",
             [new Guid("29038f61-3839-4626-91fd-086879011a05")] = "IDXGIAdapter1",
             [new Guid("7b7166ec-21c7-44ae-b21a-c9ae321ae369")] = "IDXGIFactory",
             [new Guid("770aae78-f26f-4dba-a829-253c83d1b387")] = "IDXGIFactory1",
@@ -376,6 +378,7 @@ namespace WPR.Wp8Native
             ["IDXGIDevice"] = "IDXGIDevice2",
             ["IDXGIDevice1"] = "IDXGIDevice2",
             ["IDXGIAdapter1"] = "IDXGIAdapter",
+            ["IDXGIOutput"] = "IDXGIOutput1",
             ["IDXGIFactory"] = "IDXGIFactory2",
             ["IDXGIFactory1"] = "IDXGIFactory2",
             ["IDXGISwapChain"] = "IDXGISwapChain1",
@@ -1720,7 +1723,7 @@ namespace WPR.Wp8Native
             Dictionary<int, (string, Action)> methods = new()
             {
                 [SlotGetParent] = ("GetParent", () => ReturnParent(FactoryPointer(), "factory")),
-                [DxgiObjectSlots + 0] = ("EnumOutputs", () => Return(DxgiNotFound)),
+                [DxgiObjectSlots + 0] = ("EnumOutputs", EnumOutputs),
                 [DxgiObjectSlots + 1] = ("GetDesc", () =>
                 {
                     // DXGI_ADAPTER_DESC opens with WCHAR Description[128].
@@ -1735,6 +1738,155 @@ namespace WPR.Wp8Native
             };
 
             return CreateInterface(_adapter, "IDXGIAdapter", 12, methods);
+        }
+
+        private ComObject? _output;
+
+        /// <summary>
+        /// HRESULT IDXGIAdapter::EnumOutputs(UINT index, IDXGIOutput** ppOutput): the phone's one
+        /// display at index 0, AddRef'd; DXGI_ERROR_NOT_FOUND with the pointer nulled past it.
+        /// </summary>
+        /// <remarks>
+        /// Answering NOT_FOUND for index 0 too - what this did before - says the adapter drives
+        /// no display, which a phone's never does. Halo: Spartan Assault asks for output 0 and
+        /// calls GetDisplayModeList on it without checking, so it called through a null pointer.
+        /// </remarks>
+        private void EnumOutputs()
+        {
+            long outPointer = Arg(2);
+            if (outPointer == 0)
+            {
+                Return(unchecked((int)0x887A0001)); // DXGI_ERROR_INVALID_CALL
+                return;
+            }
+
+            if (Arg(1) != 0)
+            {
+                Write(outPointer, 0);
+                Return(DxgiNotFound);
+                return;
+            }
+
+            bool existed = _output is not null;
+            long pointer = OutputPointer();
+            if (existed)
+            {
+                _output!.RefCount++;
+            }
+
+            Write(outPointer, (uint)pointer);
+            Note($"IDXGIAdapter::EnumOutputs(0) -> 0x{pointer:X8}");
+            Return(HResultOk);
+        }
+
+        /// <summary>The display's one mode: the screen at 60 Hz.</summary>
+        /// <remarks>DXGI_MODE_DESC: Width, Height, RefreshRate {Numerator, Denominator}, Format,
+        /// ScanlineOrdering, Scaling - seven words.</remarks>
+        private void WriteModeDesc(long desc, uint format)
+        {
+            _emulator.WriteUInt32(desc + 0, BackBufferWidth);
+            _emulator.WriteUInt32(desc + 4, BackBufferHeight);
+            _emulator.WriteUInt32(desc + 8, 60);
+            _emulator.WriteUInt32(desc + 12, 1);
+            _emulator.WriteUInt32(desc + 16, format);
+            _emulator.WriteUInt32(desc + 20, 1);   // DXGI_MODE_SCANLINE_ORDER_PROGRESSIVE
+            _emulator.WriteUInt32(desc + 24, 0);   // DXGI_MODE_SCALING_UNSPECIFIED
+        }
+
+        /// <summary>The formats a phone's display scans out: R8G8B8A8_UNORM(_SRGB), B8G8R8A8_UNORM(_SRGB).</summary>
+        private static bool IsDisplayFormat(uint format) => format is 28 or 29 or 87 or 91;
+
+        private long OutputPointer()
+        {
+            if (_output is not null)
+            {
+                return _output.Interfaces["IDXGIOutput1"];
+            }
+
+            _output = NewObject("Output");
+
+            // IDXGIOutput: GetDesc 7, GetDisplayModeList 8, FindClosestMatchingMode 9,
+            // WaitForVBlank 10, TakeOwnership 11, ReleaseOwnership 12, GetGammaControlCapabilities 13,
+            // SetGammaControl 14, GetGammaControl 15, SetDisplaySurface 16, GetDisplaySurfaceData 17,
+            // GetFrameStatistics 18. IDXGIOutput1: GetDisplayModeList1 19, FindClosestMatchingMode1 20,
+            // GetDisplaySurfaceData1 21, DuplicateOutput 22.
+            Dictionary<int, (string, Action)> methods = new()
+            {
+                [SlotGetParent] = ("GetParent", () => ReturnParent(AdapterPointer(), "adapter")),
+                [DxgiObjectSlots + 0] = ("GetDesc", () =>
+                {
+                    // DXGI_OUTPUT_DESC: WCHAR DeviceName[32], RECT DesktopCoordinates,
+                    // BOOL AttachedToDesktop, DXGI_MODE_ROTATION Rotation, HMONITOR Monitor.
+                    long desc = Arg(1);
+                    if (desc == 0)
+                    {
+                        Return(unchecked((int)0x80070057)); // E_INVALIDARG
+                        return;
+                    }
+
+                    byte[] bytes = new byte[92];
+                    System.Text.Encoding.Unicode.GetBytes(@"\\.\DISPLAY1").CopyTo(bytes, 0);
+                    BitConverter.GetBytes(BackBufferWidth).CopyTo(bytes, 64 + 8);
+                    BitConverter.GetBytes(BackBufferHeight).CopyTo(bytes, 64 + 12);
+                    BitConverter.GetBytes(1).CopyTo(bytes, 80);        // attached
+                    BitConverter.GetBytes(1).CopyTo(bytes, 84);        // DXGI_MODE_ROTATION_IDENTITY
+                    BitConverter.GetBytes(0x10001).CopyTo(bytes, 88);  // a non-null HMONITOR
+                    _emulator.WriteMemory(desc, bytes);
+                    Return(HResultOk);
+                }),
+                [DxgiObjectSlots + 1] = ("GetDisplayModeList", () => GetDisplayModeList(Arg(1), Arg(3), Arg(4))),
+                [DxgiObjectSlots + 2] = ("FindClosestMatchingMode", () =>
+                {
+                    // (const DXGI_MODE_DESC* toMatch, DXGI_MODE_DESC* closest, IUnknown* device)
+                    if (Arg(2) == 0 || Arg(1) == 0)
+                    {
+                        Return(unchecked((int)0x887A0001));
+                        return;
+                    }
+
+                    uint format = _emulator.ReadUInt32(Arg(1) + 16, 0);
+                    WriteModeDesc(Arg(2), IsDisplayFormat(format) ? format : 87);
+                    Return(HResultOk);
+                }),
+                [DxgiObjectSlots + 3] = ("WaitForVBlank", () => Return(HResultOk)),
+                [DxgiObjectSlots + 4] = ("TakeOwnership", () => Return(HResultOk)),
+                [DxgiObjectSlots + 5] = ("ReleaseOwnership", () => Return(HResultOk)),
+                [DxgiObjectSlots + 12] = ("GetDisplayModeList1", () => GetDisplayModeList(Arg(1), Arg(3), Arg(4))),
+            };
+
+            return CreateInterface(_output, "IDXGIOutput1", 23, methods);
+        }
+
+        /// <summary>
+        /// HRESULT GetDisplayModeList(DXGI_FORMAT, UINT flags, UINT* pNumModes, DXGI_MODE_DESC* pDesc):
+        /// one mode for a display format and none for any other; with pDesc null, just the count;
+        /// with too small a buffer, DXGI_ERROR_MORE_DATA after filling what fits.
+        /// </summary>
+        private void GetDisplayModeList(long format, long count, long descs)
+        {
+            if (count == 0)
+            {
+                Return(unchecked((int)0x887A0001)); // DXGI_ERROR_INVALID_CALL
+                return;
+            }
+
+            uint available = IsDisplayFormat((uint)format) ? 1u : 0u;
+            if (descs == 0)
+            {
+                _emulator.WriteUInt32(count, available);
+                Return(HResultOk);
+                return;
+            }
+
+            uint room = _emulator.ReadUInt32(count, 0);
+            uint written = Math.Min(room, available);
+            if (written > 0)
+            {
+                WriteModeDesc(descs, (uint)format);
+            }
+
+            _emulator.WriteUInt32(count, written);
+            Return(room < available ? unchecked((int)0x887A0003) : HResultOk); // DXGI_ERROR_MORE_DATA
         }
 
         private long FactoryPointer()

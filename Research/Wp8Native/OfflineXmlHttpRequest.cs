@@ -20,8 +20,16 @@ namespace WPR.Wp8Native
     /// The error is delivered from the deferred-call queue, i.e. on a later pass of the frame
     /// loop and never from inside <c>Send</c> - msxml6 calls back on its own thread, after
     /// <c>Send</c> has returned, and a game that is still inside <c>Send</c> when its callback
-    /// runs sees half-built state. The callback is not AddRef'd: the game keeps it alive while
-    /// it waits, which is the only time it is called.
+    /// runs sees half-built state.
+    /// </para>
+    /// <para>
+    /// <c>Open</c> AddRefs the callback and the reference is released after the final
+    /// notification (<c>OnError</c> here), as msxml6 does: the request owns its callback until it
+    /// has told it how the request ended. Games rely on that. Angry Birds Rio's HTTP client
+    /// (PPL over WRL) drops its own reference straight after <c>Send</c>; without the request's
+    /// reference the callback - and the task_completion_event it owns - was freed while the
+    /// failure was still pending, and <c>OnError</c> then completed a freed event whose memory
+    /// the game had since handed to its Direct3D context, which it then deleted.
     /// </para>
     /// <para>
     /// Rovio's cloud services (cloud/mist/smoke/account.rovio.com) are what these requests are
@@ -298,7 +306,8 @@ namespace WPR.Wp8Native
                         }
                     }
 
-                    _emulator.ContinueAt(back);
+                    // OnError is the final notification: the request lets go of the callback.
+                    CallCallbackMethod(callback, 2, () => _emulator.ContinueAt(back));
                 }, recycle: true);
             });
 
@@ -347,8 +356,47 @@ namespace WPR.Wp8Native
 
             request.Method = _emulator.ReadUtf16String(Arg(1), 16);
             request.Url = _emulator.ReadUtf16String(Arg(2), 1024);
-            request.Callback = Arg(3);
+            long previous = request.Callback;
+            long callback = Arg(3);
+            request.Callback = callback;
             Return(HResultOk);
+
+            // The request holds the callback until its final notification. A re-Open replaces
+            // the callback; the old one's reference goes with it.
+            long back = _emulator.ReturnAddress;
+            CallCallbackMethod(callback, 1, () =>
+            {
+                if (previous != 0 && !_pending.Any(p => p.Callback == previous))
+                {
+                    CallCallbackMethod(previous, 2, () => Finish(back));
+                    return;
+                }
+
+                Finish(back);
+            });
+
+            void Finish(long to)
+            {
+                Return(HResultOk);
+                _emulator.ContinueAt(to);
+            }
+        }
+
+        /// <summary>
+        /// Calls IUnknown slot <paramref name="slot"/> (1 AddRef, 2 Release) of a guest callback,
+        /// then <paramref name="then"/>; straight to <paramref name="then"/> if the slot is not code.
+        /// </summary>
+        private void CallCallbackMethod(long callback, int slot, Action then)
+        {
+            long method = callback == 0 ? 0 : _emulator.ReadUInt32(_emulator.ReadUInt32(callback, 0) + (uint)(slot * 4), 0);
+            if (!_emulator.IsExecutableCode(method))
+            {
+                then();
+                return;
+            }
+
+            _emulator.CallEmulated(slot == 1 ? "IXMLHTTPRequest2Callback::AddRef" : "IXMLHTTPRequest2Callback::Release",
+                method, [callback], then, recycle: true);
         }
 
         // Send(ISequentialStream* body, ULONGLONG length).
