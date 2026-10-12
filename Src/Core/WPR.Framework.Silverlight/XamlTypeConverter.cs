@@ -114,6 +114,30 @@ namespace WPR.SilverlightCompability
             if (targetType == typeof(Brush) || typeof(Brush).IsAssignableFrom(targetType))
                 return new SolidColorBrush(ParseColor(s));
 
+            // Path.Data="F1 M 0,0 L ..." and the rest of the path mini-language. Only Geometry and
+            // PathGeometry targets accept it; an EllipseGeometry-typed property cannot be a path.
+            if (targetType == typeof(Geometry) || targetType == typeof(PathGeometry))
+                return PathMarkupParser.Parse(s);
+            if (targetType == typeof(PathFigureCollection))
+                return PathMarkupParser.Parse(s).Figures;
+            if (targetType == typeof(PointCollection))
+            {
+                var points = new PointCollection();
+                string[] nums = SplitNumeric(s);
+                for (int i = 0; i + 1 < nums.Length; i += 2)
+                    points.Add(new Point(
+                        double.Parse(nums[i], CultureInfo.InvariantCulture),
+                        double.Parse(nums[i + 1], CultureInfo.InvariantCulture)));
+                return points;
+            }
+            if (targetType == typeof(DoubleCollection))
+            {
+                var doubles = new DoubleCollection();
+                foreach (string n in SplitNumeric(s))
+                    doubles.Add(double.Parse(n, CultureInfo.InvariantCulture));
+                return doubles;
+            }
+
             // Image.Source="foo.png" — wrap the raw path; Image.GetAvaloniaBitmap
             // resolves it lazily via File.Exists when first rendered. Anything
             // deriving from ImageSource (BitmapImage, BitmapSource, WriteableBitmap)

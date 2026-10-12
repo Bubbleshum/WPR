@@ -304,7 +304,15 @@ namespace WPR
         // loader draws into render targets under ResourceManager.DrawLocker, which Main.Draw also
         // takes. Off OpenGL the shim is a plain Monitor.Enter. Not identity-binding; a v39 install
         // still launches, so --repatch-installed is enough and Android repatches on next launch.
-        public static int Version => 40;
+        // Bumped to 41: the Silverlight shapes and geometry types (Ellipse, Line, Polyline,
+        // Polygon, Path, PathGeometry and its figures/segments, EllipseGeometry, LineGeometry,
+        // GeometryGroup, PointCollection, DoubleCollection, FillRule, SweepDirection, PenLineJoin,
+        // PenLineCap) now have shims and rescope entries. Before this their typerefs kept WP7's
+        // System.Windows scope, so a page whose generated InitializeComponent names an x:Name'd
+        // Path failed to compile as a whole. Flowerz (981750c8-24cc-df11-9eae-00237de2db9e) is the
+        // measured case: 51 named Paths. Not identity-binding; --repatch-installed is enough and
+        // Android repatches on next launch.
+        public static int Version => 41;
 
         private AssemblyNameReference FnaBackendRef;
         private AssemblyNameReference FNARef;
@@ -1415,6 +1423,34 @@ namespace WPR
                 // Bulk: media — misc
                 { "System.Windows.Media.Geometry", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
                 { "System.Windows.Media.RectangleGeometry", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                // Shapes and geometry (v41): real shims now, painted by SoftwareVisualRasteriser.
+                { "System.Windows.Shapes.Ellipse", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Shapes.Line", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Shapes.Polyline", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Shapes.Polygon", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Shapes.Path", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.PathGeometry", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.PathFigure", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.PathFigureCollection", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.PathSegment", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.PathSegmentCollection", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.LineSegment", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.BezierSegment", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.QuadraticBezierSegment", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.ArcSegment", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.PolyLineSegment", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.PolyBezierSegment", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.PolyQuadraticBezierSegment", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.EllipseGeometry", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.LineGeometry", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.GeometryGroup", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.GeometryCollection", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.PointCollection", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.DoubleCollection", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.FillRule", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.SweepDirection", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.PenLineJoin", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.PenLineCap", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
                 { "System.Windows.Media.GradientBrush", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
                 { "System.Windows.Media.TileBrush", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
                 { "System.Windows.Media.AlignmentX", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },

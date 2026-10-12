@@ -301,7 +301,7 @@ namespace WPR.SilverlightCompability
                         bool isMatch =
                             keyPath.Equals(normalized, StringComparison.OrdinalIgnoreCase) ||
                             keyPath.EndsWith(suffix, StringComparison.OrdinalIgnoreCase) ||
-                            keyPath.Equals(Path.GetFileName(normalized), StringComparison.OrdinalIgnoreCase);
+                            keyPath.Equals(System.IO.Path.GetFileName(normalized), StringComparison.OrdinalIgnoreCase);
                         if (!isMatch) continue;
 
                         // Read the inner blob using the typed accessor — gives us the raw stream/bytes

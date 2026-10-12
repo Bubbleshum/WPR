@@ -4688,6 +4688,56 @@ titles** — no shapes, popups, brushes or missing fonts reported on the screens
 
 Shim behaviour, so no patcher bump and no reinstall.
 
+### The rasteriser draws real shapes (2026-10-12, patcher v41)
+
+`Ellipse`, `Line`, `Polyline`, `Polygon` and `Path` used to be drawn as their bounding boxes —
+and only `Rectangle`/`Shape` existed as types at all, so a `Path` in game IL was a
+`TypeLoadException`. All five now exist, with the whole geometry family (`PathGeometry` +
+figures/segments incl. arcs, `EllipseGeometry`, `RectangleGeometry` with radii, `LineGeometry`,
+`GeometryGroup`), the path mini-language (`PathMarkupParser`, through `XamlTypeConverter`), and
+`Points`/`StrokeDashArray` strings. Painting is `SoftwareVisualRasteriser.Shapes.cs` +
+`.Geometry.cs`; the main file only dispatches.
+
+How it works, so nobody re-derives it:
+
+- **Flatten in LAYOUT space, after `Stretch`, then stroke, then map to device.** The pen is not
+  stretched (Silverlight's rule), but an ancestor's non-uniform scale does stretch it, and stroking
+  before the device map gets both right. Curves are transformed before flattening, at 0.15 device
+  px, so zooming never shows facets.
+- **One coverage rasteriser** (`RasteriseCoverage`): 16 sub-scanlines per row, exact horizontal
+  span coverage, fill rule evaluated per sub-scanline — so EvenOdd is exact. A stroke is a union of
+  pieces (segment quads, joins, caps) each normalised to positive winding and filled Nonzero; skip
+  the normalisation and overlapping pieces of opposite winding cancel into holes.
+- **Shapes are clipped to the ancestor clip, not their slot**: a `Stretch="None"` path draws at its
+  own coordinates, routinely outside the box layout gave it. `UniformToFill` is the exception.
+- **A plain rectangle keeps the old exact pixel path** (no radius, no dash, Stretch None/Fill), so
+  WP7 chrome is not softened. Measured: Carcassonne's menu and Galactic Reign's first screen are
+  byte-identical before and after, and the composite/no-composite answers did not move.
+- **Non-solid brushes** are painted by `FillBrush` into a scratch buffer the size of the coverage
+  mask, so gradients and image brushes work in shapes for free.
+- `Signature` hashes the geometry point by point, stroke style and dashes included.
+
+**`Path` is now a type in `WPR.SilverlightCompability`, which shadows `System.IO.Path`** for any
+code in that namespace (namespace members beat usings) and makes a bare `Path` ambiguous in files
+that import both. Write `System.IO.Path` inside the shim assembly; elsewhere add
+`using Path = System.IO.Path;` (done in `SilverlightAppHost` and `ApplicationLaunch`).
+
+Verified by `scratchpad/rastshapes` (scenes rendered through the rasteriser and through an
+independent SkiaSharp reference that re-parses the path strings itself: under 1% of pixels differ by
+more than 48/255, all at anti-aliased edges and dash phase) and `ShapeRasterTests` (coverage, both
+fill rules, area of an ellipse/arc/ring, stroke width, caps, joins, stretch, signature). Flowerz's
+own `LevelAnimation`/`Explosion` controls (150 Paths, rotated petals with 50% shadows) render
+correctly through `scratchpad/slpage`, which boots a pure-Silverlight title from a repatched SCRATCH
+COPY of its install. Its `GameBoard` page still cannot be built (`MouseButtonEventHandler` is not
+shimmed) and images need a graphics device the probe does not have — separate Stage C gaps.
+
+Not done: the Avalonia `SilverlightRenderer` still draws non-rectangle shapes as boxes (it goes in
+Stage D); `StrokeDashArray` phase restarts per figure; miters past the limit are bevelled rather
+than clipped.
+
+**Patcher table change (v41)**: the shape/geometry types gained rescope entries. Not
+identity-binding — `--repatch-installed` on the desktop, automatic on Android.
+
 ### When I touch a shim type
 
 Two distinct rebuild paths depending on what changed:

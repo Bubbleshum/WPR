@@ -6,6 +6,8 @@ using System.Xml;
 using WPR.SilverlightCompability;
 using Microsoft.Phone.Controls;
 using SLApplication = WPR.WindowsCompability.Application;
+// WPR.SilverlightCompability defines the Silverlight shape Path, which would make a bare Path ambiguous.
+using Path = System.IO.Path;
 
 namespace WPR
 {
