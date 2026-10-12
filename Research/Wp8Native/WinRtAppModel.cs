@@ -34,6 +34,7 @@ namespace WPR.Wp8Native
                 RegisterLauncher();
                 RegisterTimers();
                 RegisterVibration();
+                RegisterAudioRouting();
                 RegisterNetwork();
                 RegisterGlobalization();
             }
@@ -356,6 +357,110 @@ namespace WPR.Wp8Native
                     null);
                 _factoryObjects["Windows.Phone.Devices.Notification.VibrationDevice"] = factory;
                 _rt._factories["Windows.Phone.Devices.Notification.VibrationDevice"] = factory.Primary;
+            }
+
+            // -----------------------------------------------------------------------------------
+            // AudioRoutingManager (Windows.Phone.Media.Devices). Not in the generated metadata;
+            // the layout is WP8's own (windows.phone.media.devices.h), members in declaration order
+            // from slot 6. The statics IID is confirmed by Spark2's LuaDevice.dll, which builds it on
+            // the stack before GetActivationFactoryByPCWSTR. The phone answers as a handset with
+            // its loudspeaker and earpiece and nothing plugged in or paired.
+            // -----------------------------------------------------------------------------------
+
+            /// <summary>AudioRoutingEndpoint: Default, Earpiece, Speakerphone, Bluetooth, WiredHeadset, WiredHeadsetSpeakerOnly, BluetoothWithNoiseAndEchoCancellation.</summary>
+            internal const int AudioEndpointDefault = 0, AudioEndpointEarpiece = 1, AudioEndpointSpeakerphone = 2;
+
+            /// <summary>AvailableAudioRoutingEndpoints flags: None 0, Earpiece 1, Speakerphone 2, Bluetooth 4.</summary>
+            internal const uint AvailableEarpieceAndSpeakerphone = 1 | 2;
+
+            internal static readonly Guid IidAudioRoutingManager = new("79340d20-71cc-4526-9f29-fc8d2486418b");
+            internal static readonly Guid IidAudioRoutingManagerStatics = new("977fb2a4-5590-4a6f-adde-6a3d0ad58250");
+
+            private int _audioEndpoint = AudioEndpointSpeakerphone;
+            private readonly List<long> _audioEndpointHandlers = new();
+
+            private void RegisterAudioRouting()
+            {
+                const string name = "Windows.Phone.Media.Devices.AudioRoutingManager";
+                InterfaceDef manager = Manual(
+                    "Windows.Phone.Media.Devices.IAudioRoutingManager",
+                    IidAudioRoutingManager,
+                    [
+                        "GetAudioEndpoint() : Int32",
+                        "SetAudioEndpoint(Int32) : Void",
+                        "add_AudioEndpointChanged(Object) : Int64",
+                        "remove_AudioEndpointChanged(Int64) : Void",
+                        "get_AvailableAudioEndpoints() : UInt32",
+                    ]);
+                InterfaceDef statics = Manual(
+                    "Windows.Phone.Media.Devices.IAudioRoutingManagerStatics",
+                    IidAudioRoutingManagerStatics,
+                    ["GetDefault() : Object"]);
+
+                long instance = 0;
+                ComClass cls = Class(
+                    name,
+                    [
+                        I(
+                            manager,
+                            ("GetAudioEndpoint", c => c.RetI32(_audioEndpoint)),
+                            ("SetAudioEndpoint", c =>
+                            {
+                                // Only an endpoint the phone has: nothing is paired or plugged in.
+                                int wanted = (int)c.P(0);
+                                if (wanted is not (AudioEndpointDefault or AudioEndpointEarpiece or AudioEndpointSpeakerphone))
+                                {
+                                    Note($"AudioRoutingManager.SetAudioEndpoint({wanted}): not available on this phone");
+                                    c.Fail(E_INVALIDARG);
+                                    return;
+                                }
+
+                                // Default routes media to the loudspeaker, as a phone with nothing attached does.
+                                int routed = wanted == AudioEndpointDefault ? AudioEndpointSpeakerphone : wanted;
+                                bool changed = routed != _audioEndpoint;
+                                _audioEndpoint = routed;
+                                c.Ok();
+                                if (changed)
+                                {
+                                    // The change is reported later, from the system, never on the caller's stack.
+                                    foreach (long handler in _audioEndpointHandlers.Where(h => h != 0 && _rt.LooksLikeDelegate(h)))
+                                    {
+                                        long invoke = _e.ReadUInt32(_e.ReadUInt32(handler) + (SlotHandlerInvoke * 4));
+                                        _e.QueueDeferredCall("AudioRoutingManager.AudioEndpointChanged", invoke, handler, c.Self.Primary, 0);
+                                    }
+                                }
+                            }),
+                            ("add_AudioEndpointChanged", c =>
+                            {
+                                long handler = c.P(0);
+                                if (handler == 0)
+                                {
+                                    c.Fail(E_INVALIDARG);
+                                    return;
+                                }
+
+                                _audioEndpointHandlers.Add(handler);
+                                _rt.KeepAlive(handler);
+                                c.RetI64(_audioEndpointHandlers.Count);
+                            }),
+                            ("remove_AudioEndpointChanged", c =>
+                            {
+                                long token = c.P64(0);
+                                if (token >= 1 && token <= _audioEndpointHandlers.Count)
+                                {
+                                    _audioEndpointHandlers[(int)token - 1] = 0;
+                                }
+
+                                c.Ok();
+                            }),
+                            ("get_AvailableAudioEndpoints", c => c.RetU32(AvailableEarpieceAndSpeakerphone))),
+                    ]);
+
+                ComObject factory = New(
+                    Class(name + " (factory)", [I(statics, ("GetDefault", c => c.RetObj(instance != 0 ? instance : instance = New(cls, null).Primary)))]),
+                    null);
+                _factoryObjects[name] = factory;
+                _rt._factories[name] = factory.Primary;
             }
 
             // -----------------------------------------------------------------------------------

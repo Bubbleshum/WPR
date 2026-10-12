@@ -1024,8 +1024,7 @@ namespace WPR.Wp8Native
             {
                 if (failed is null)
                 {
-                    finished(true);
-                    _cpu.RegWrite(Arm.UC_ARM_REG_R12, returnTo);
+                    FinishThenReturn(() => finished(true), returnTo);
                     return;
                 }
 
@@ -1039,10 +1038,26 @@ namespace WPR.Wp8Native
                         UnmapModule(m);
                     }
 
-                    finished(false);
-                    _cpu.RegWrite(Arm.UC_ARM_REG_R12, returnTo);
+                    FinishThenReturn(() => finished(false), returnTo);
                 });
             });
+        }
+
+        /// <summary>
+        /// Runs a dynamic load's completion, then puts the caller's return address back - unless
+        /// the completion itself continued into emulated code (<see cref="CallEmulated(string,long,ReadOnlySpan{long},Action)"/>
+        /// points r12 at the callee). A guest import (LoadPackagedLibrary) only sets r0 and wants
+        /// its caller back; a host-driven load (the XAML shell activating a package component) goes
+        /// on to call the module, and restoring r12 over that call would jump into a spent trap.
+        /// </summary>
+        private void FinishThenReturn(Action finish, long returnTo)
+        {
+            long before = _cpu.RegRead(Arm.UC_ARM_REG_R12);
+            finish();
+            if (_cpu.RegRead(Arm.UC_ARM_REG_R12) == before)
+            {
+                _cpu.RegWrite(Arm.UC_ARM_REG_R12, returnTo);
+            }
         }
 
         // -----------------------------------------------------------------------------

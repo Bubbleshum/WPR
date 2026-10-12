@@ -10,7 +10,16 @@ namespace WPR.Wp8Native
     /// float, int, bool, string, <see cref="SizeF"/>, or one of the tokens
     /// <see cref="XamlShell.ManipulationHost"/> / <see cref="XamlShell.Callback"/>.
     /// </param>
-    public sealed record XamlShellStep(string Method, params object?[] Arguments);
+    public sealed record XamlShellStep(string Method, params object?[] Arguments)
+    {
+        /// <summary>
+        /// Another runtime class the package registers (WMAppManifest.xml's ActivatableClasses), when
+        /// the call is not on the shell's own class - e.g. Spark2's <c>LuaMobileSDK.LuaMobileSDKBridge</c>.
+        /// Its DLL is loaded and activated on first use; a factory method (<c>CreateInstance</c>)
+        /// makes the instance its later instance calls go to. Null: the shell's class.
+        /// </summary>
+        public string? Class { get; init; }
+    }
 
     /// <summary>
     /// A C# handler the page subscribes to one of the component's events, as data: what it answers
@@ -221,7 +230,7 @@ namespace WPR.Wp8Native
             }
 
             XamlShellStep step = steps[index];
-            InvokeMember(step.Method, step.Arguments, result =>
+            InvokeMember(step.Method, step.Arguments, step.Class, result =>
             {
                 if (step.Method == "CreateContentProvider")
                 {
@@ -238,8 +247,16 @@ namespace WPR.Wp8Native
             "Windows.Phone.Input.Interop.IDrawingSurfaceManipulationHandler",
             [new WinmdReader.MethodLayout("SetManipulationHost", WinmdReader.InspectableSlots, ["Windows.Phone.Input.Interop.DrawingSurfaceManipulationHost"], "Void")]);
 
-        private void InvokeMember(string method, object?[] arguments, Action<long> then)
+        private void InvokeMember(string method, object?[] arguments, Action<long> then) => InvokeMember(method, arguments, null, then);
+
+        private void InvokeMember(string method, object?[] arguments, string? onClass, Action<long> then)
         {
+            if (onClass is not null && onClass != _shell!.ClassId)
+            {
+                InvokePackageMember(onClass, method, arguments, then);
+                return;
+            }
+
             string className = _shell!.ClassId;
             var found = _metadata!.FindMethod(className, method);
             if (found is null && method == "SetManipulationHost")
@@ -275,27 +292,131 @@ namespace WPR.Wp8Native
                     return;
                 }
 
-                List<long> core = [];
-                List<uint> vfp = [];
-                for (int i = 0; i < target.ParameterTypes.Count; i++)
+                CallMember(layout, target, pointer, method, arguments, then);
+            });
+        }
+
+        /// <summary>Marshals <paramref name="arguments"/> by the member's metadata and calls its slot on <paramref name="pointer"/>.</summary>
+        private void CallMember(WinmdReader.InterfaceLayout layout, WinmdReader.MethodLayout target, long pointer, string method, object?[] arguments, Action<long> then)
+        {
+            List<long> core = [];
+            List<uint> vfp = [];
+            for (int i = 0; i < target.ParameterTypes.Count; i++)
+            {
+                object? value = i < arguments.Length ? arguments[i] : null;
+                Marshal(target.ParameterTypes[i], value, core, vfp);
+            }
+
+            bool hasResult = target.ReturnType != "Void";
+            long outSlot = _scratch + 32;
+            if (hasResult)
+            {
+                _emulator.WriteUInt64(outSlot, 0);
+                core.Add(outSlot);
+            }
+
+            CallSlot($"{layout.FullName.Split('.')[^1]}::{method}", pointer, target.Slot, core, vfp, hr =>
+            {
+                long result = hasResult ? _emulator.ReadUInt32(outSlot) : 0;
+                Log($"{method}({Describe(arguments)}) = 0x{hr:X8}{(hasResult ? $" -> 0x{result:X8}" : "")}");
+                then(result);
+            });
+        }
+
+        /// <summary>A package runtime class the page uses besides its own: its factory, the instance it made, and the interfaces asked for.</summary>
+        private sealed class PackageObject(long factory)
+        {
+            public long Factory { get; } = factory;
+
+            public long Instance { get; set; }
+
+            public Dictionary<string, long> Interfaces { get; } = new(StringComparer.Ordinal);
+        }
+
+        private readonly Dictionary<string, PackageObject> _packageObjects = new(StringComparer.Ordinal);
+
+        /// <summary>The instance a package class's factory member made for the page; 0 when none.</summary>
+        public long PackageInstance(string className) => _packageObjects.TryGetValue(className, out PackageObject? obj) ? obj.Instance : 0;
+
+        /// <summary>
+        /// A member of another runtime class the package registers, as the page calls it: the class's
+        /// DLL activated on first use (<see cref="ActivatePackageFactory"/>), a static or factory
+        /// member through the factory's interface for it, an instance member through the instance a
+        /// factory member made. Anything unavailable is logged and skipped, as for the shell's class.
+        /// </summary>
+        private void InvokePackageMember(string className, string method, object?[] arguments, Action<long> then)
+        {
+            ActivatePackageFactory(className, factory =>
+            {
+                if (factory == 0)
                 {
-                    object? value = i < arguments.Length ? arguments[i] : null;
-                    Marshal(target.ParameterTypes[i], value, core, vfp);
+                    Log($"{className}.{method}: no activation factory; skipped");
+                    then(0);
+                    return;
                 }
 
-                bool hasResult = target.ReturnType != "Void";
-                long outSlot = _scratch + 32;
-                if (hasResult)
+                if (!_packageObjects.TryGetValue(className, out PackageObject? obj))
                 {
-                    _emulator.WriteUInt64(outSlot, 0);
-                    core.Add(outSlot);
+                    _packageObjects[className] = obj = new PackageObject(factory);
                 }
 
-                CallSlot($"{layout.FullName.Split('.')[^1]}::{method}", pointer, target.Slot, core, vfp, hr =>
+                bool isStatic = false;
+                var found = _metadata!.FindMethod(className, method);
+                if (found is null && _metadata.FindStaticMethod(className, method) is { } staticMethod)
                 {
-                    long result = hasResult ? _emulator.ReadUInt32(outSlot) : 0;
-                    Log($"{method}({Describe(arguments)}) = 0x{hr:X8}{(hasResult ? $" -> 0x{result:X8}" : "")}");
-                    then(result);
+                    found = staticMethod;
+                    isStatic = true;
+                }
+
+                if (found is null)
+                {
+                    Log($"{className}.{method}: not in the package metadata; skipped");
+                    then(0);
+                    return;
+                }
+
+                (WinmdReader.InterfaceLayout layout, WinmdReader.MethodLayout target) = found.Value;
+                long owner = isStatic ? obj.Factory : obj.Instance;
+                if (owner == 0 || layout.Iid is not { } iid)
+                {
+                    Log($"{className}.{method}: {(owner == 0 ? "no instance yet" : $"{layout.FullName} has no IID")}; skipped");
+                    then(0);
+                    return;
+                }
+
+                string key = (isStatic ? "static " : "") + layout.FullName;
+                void Invoke(long pointer)
+                {
+                    if (pointer == 0)
+                    {
+                        Log($"{className}.{method}: {layout.FullName} not available; skipped");
+                        then(0);
+                        return;
+                    }
+
+                    CallMember(layout, target, pointer, method, arguments, result =>
+                    {
+                        // A factory member (CreateInstance(...)) made the object later calls go to.
+                        if (isStatic && obj.Instance == 0 && result != 0 && (target.ReturnType == className || method == "CreateInstance"))
+                        {
+                            obj.Instance = result;
+                            Log($"{className}: instance 0x{result:X8}");
+                        }
+
+                        then(result);
+                    });
+                }
+
+                if (obj.Interfaces.TryGetValue(key, out long cached))
+                {
+                    Invoke(cached);
+                    return;
+                }
+
+                QueryInterface(owner, iid, pointer =>
+                {
+                    obj.Interfaces[key] = pointer;
+                    Invoke(pointer);
                 });
             });
         }
@@ -851,7 +972,9 @@ namespace WPR.Wp8Native
             string wanted = Arg(1) == 0 ? string.Empty : _strings.ReadText(Arg(1));
             long outFactory = Arg(2);
             long callerReturn = _emulator.ReturnAddress;
-            List<long> entries = CreatorEntries();
+            LoadedModule? owner = _emulator.ModuleAt(Arg(0)) ?? _emulator.ModuleAt(callerReturn & ~1L);
+            List<long> entries = CreatorEntries(owner);
+            List<string> seen = [];
 
             void Finish(long hr)
             {
@@ -863,7 +986,7 @@ namespace WPR.Wp8Native
             {
                 if (index >= entries.Count)
                 {
-                    Log($"GetActivationFactory({wanted}): not in the module's {entries.Count} creator(s)");
+                    Log($"GetActivationFactory({wanted}): not in {owner?.Name ?? "the component"}'s {entries.Count} creator(s) [{string.Join(", ", seen)}]");
                     Finish(ClassNotAvailable);
                     return;
                 }
@@ -881,6 +1004,7 @@ namespace WPR.Wp8Native
                     string name = namePointer == 0 ? string.Empty : _emulator.ReadUtf16String(namePointer);
                     if (!string.Equals(name, wanted, StringComparison.Ordinal))
                     {
+                        seen.Add(name);
                         Try(index + 1);
                         return;
                     }
@@ -901,17 +1025,26 @@ namespace WPR.Wp8Native
             Try(0);
         }
 
-        private List<long> CreatorEntries()
+        /// <summary>
+        /// The creator map of the module whose DllGetActivationFactory forwarded here: the one that
+        /// holds the <c>ModuleBase*</c> it passed (its WRL module object), else the one the call
+        /// returns into (the forward is usually a tail call, so that is often the host's trap). A
+        /// package can hold several C++/CX components (Spark2's SparkApp.dll and LuaMobileSDK.dll),
+        /// and each answers only for its own classes. Falls back to the shell's component.
+        /// </summary>
+        private List<long> CreatorEntries(LoadedModule? module)
         {
             List<long> entries = [];
-            if (_componentImage is not { } image)
+            PeImage? image = module?.Image ?? _componentImage;
+            if (image is null)
             {
                 return entries;
             }
 
+            long imageBase = module?.ImageBase ?? image.ImageBase;
             foreach (PeSection section in image.Sections.Where(s => s.Name.StartsWith("minATL", StringComparison.Ordinal)))
             {
-                long start = image.ImageBase + section.VirtualAddress;
+                long start = imageBase + section.VirtualAddress;
                 for (long at = start; at < start + section.VirtualSize; at += 4)
                 {
                     long entry = _emulator.ReadUInt32(at, 0);

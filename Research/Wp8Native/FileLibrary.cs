@@ -48,6 +48,9 @@ namespace WPR.Wp8Native
 
         private readonly Dictionary<long, OpenFile> _byPointer = new();
         private readonly Dictionary<int, OpenFile> _byDescriptor = new();
+
+        /// <summary>Handles _get_osfhandle minted for descriptors that had none, by descriptor; closed with it.</summary>
+        private readonly Dictionary<int, long> _descriptorHandles = new();
         private int _nextDescriptor = 3;   // 0-2 are stdin/stdout/stderr
         private long _nextHandle = FirstHandle;
 
@@ -435,6 +438,11 @@ namespace WPR.Wp8Native
             if (!_byDescriptor.Remove(descriptor, out OpenFile? file))
             {
                 return false;
+            }
+
+            if (_descriptorHandles.Remove(descriptor, out long handle))
+            {
+                _byPointer.Remove(handle);
             }
 
             file.Stream.Dispose();
