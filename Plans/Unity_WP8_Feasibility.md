@@ -8,6 +8,12 @@ game for desktop and Android. So the supported path is a **one-time per-game reb
 AssetRipper) into standalone binaries that WPR **launches** rather than hosts. This doc records
 why, the port recipe, and the launcher rail that's now in the codebase.
 
+> **Update 2026-10-12 (track 4 spike, §11):** the "can't execute ARM" premise is obsolete. Dynarmic
+> maps `UnityPlayer.dll` and `SparkApp.dll`, and both DllMains run. Spark2 is now a **go** through
+> the existing component-title host. Unity stays **no-go** in-process, because its managed/native
+> binding assumes one shared 32-bit address space, so the port rail below is still the path for
+> Unity.
+
 First worked example: **Twins Minigame** (`GAME TROOPERS`, product `19e9713c-…`), Unity `4.6.9f1`.
 
 ---
@@ -248,3 +254,138 @@ no-op / forced-value above. Nothing else in the 279 scripts touches platform nat
 
 3. (Optional, later) Bridge achievements back to WPR via the `GameNetworkPlaceholder` hooks — see §7 /
    the `Placeholder` backend. Not needed for a playable build.
+
+---
+
+## 11. Track 4 spike: Unity and Spark2 on the ARM CPU (2026-10-12)
+
+`Plans/RUNTIME-CONVERGENCE.md` §5 asked whether dynarmic (`WPR.Engine.Wp8Native`) reopens §2's
+"ARM code cannot run" verdict. It set three questions, to be answered in order. Nothing was built;
+the two probe tools were throwaway and lived in the gitignored `scratchpad/track4/`.
+
+**Verdict: Spark2 (AC Pirates) GO. Unity NO-GO for an in-process bridge, so the port rail (§4-§6)
+stays the supported path.** Question 1 is a yes for both engines. Unity fails on the size and memory
+model of questions 2 and 3, not on the CPU.
+
+Measured, extracted from the library XAPs: Twins Minigame (Unity 4.6), Bad Piggies (4.6), Temple
+Run 2 (4.3) and Assassin's Creed Pirates (Spark2).
+
+### Q1: does the loader map the native engine and run its DllMain? Yes, for all four
+
+The probe built an `ArmEmulator` over the component DLL, then called `WinRt.StartComponent` with an
+empty `XamlShell`. That runs the real host path: package DLLs' DllMains, the component's DllMain,
+then `DllGetActivationFactory`. Each was run with and without `WPR_WP8_TRAP_IMPORTS=1`.
+
+| component | package DLLs mapped | DllMain | activation factory | instructions |
+| --- | --- | --- | --- | --- |
+| Twins `UnityPlayer.dll` (8.3 MB) | none (system imports only) | TRUE | `UnityPlayer.UnityApp` S_OK | 1.28 M |
+| Bad Piggies `UnityPlayer.dll` | none | TRUE | S_OK | 1.28 M |
+| Temple Run 2 `UnityPlayer.dll` | none | TRUE | S_OK | 1.28 M |
+| AC Pirates `SparkApp.dll` | 8: Lua, LuaBindTools2 (+Helpers), SparkSystem, OMath, SparkUtils, SparkResourceManager, SparkRemote. 13,904 relocations, every DllMain TRUE | TRUE | `SparkApp.SparkAppBridge` S_OK | 12 k |
+
+- **No unimplemented import was hit, and nothing trapped.** That matches the census, which shows
+  0 unimplemented imports for every Unity title and for AC Pirates.
+- **`ActivateInstance` fails on both factories, and that is expected.** `UnityApp` is static-only:
+  its methods are on `__IUnityAppStatics`, reached by QI on the factory (XamlInterop's
+  `_staticInterfaces`). `SparkAppBridge` is built through `__ISparkAppBridgeFactory.CreateInstance`.
+- **Not exercised:** Spark2 loading its 25 Lua modules under `Spark2Projects\` at run time with
+  `LoadPackagedLibrary`, and anything after activation.
+
+### Q2: the managed->native surface
+
+Counted with Cecil. The pass looked for every call, callvirt, newobj, ldftn or ldsfld from a package
+managed assembly into a type that a package `.winmd` defines, and separately for Unity's own engine
+binding.
+
+**The shell is small in both engines:**
+
+| title | shell assembly -> native winmd |
+| --- | --- |
+| Twins | `Twins.dll`: 16 `UnityApp` statics plus `new UnityPlayer.Action`. The statics are SetBridge, GetBackgroundContentProvider, GetManipulationHandler, Set{Native,Render}Resolution, SetOrientation, SetLoadedCallback, Obscure/UnObscure, Deactivate, BackButtonPressed, Quit and three location calls. Its other 23 members are Microsoft.Xbox. |
+| Bad Piggies | the same 16 `UnityApp` statics, plus `BeginInvoke` |
+| AC Pirates | `SparkApplicationXaml.dll`, **13 members at 13 sites**: the `SparkAppBridge` ctor, CreateContentProvider, Native/RenderResolution, WindowBounds, SetDeviceData, OnOrientationChanged, OnBackButtonPressed, OnObscured/OnUnObscured, the `LuaMobileSDKBridge` ctor and `SocialConnection_OpenUrl` |
+
+**Unity's real managed->native surface is its engine binding, not the shell.** `UnityEngine.dll`
+reaches the player through function-pointer tables that native fills in at start-up. It does **not**
+use CppInvoke: `CppInvokeAttribute` is defined in Twins' UnityEngine.dll and applied to nothing.
+
+| layout | managed -> native |
+| --- | --- |
+| Unity 4.5/4.6 (Twins, Bad Piggies) | `UnityEngine.Internal.$FuncPtrs` holds **2,917 / 2,908** native function pointers. Native fills them through `$FuncPtrs::$Invoke0` -> `Initialize(IntPtr)`. They are called through `$Calli::InvokeN`: **179 distinct calli signatures**, one call site per function. |
+| Unity 4.3 (Temple Run 2) | `UnityEngineProxy.InternalCalls` has **2,726** entry points. Each is `Marshal.GetDelegateForFunctionPointer` over a native table (`funcPointers` + offset). |
+
+In Twins, **749 of the 2,917 callers hand native an address of managed memory**: a pinned local, or
+an address followed by `conv.i`, as in `Transform.INTERNAL_get_position(ref Vector3)`. 172 pass
+strings, and 189 pass or return arrays. The address heuristic is an upper bound.
+
+### Q3: the native->managed surface
+
+| | Twins | Bad Piggies | Temple Run 2 | AC Pirates |
+| --- | --- | --- | --- | --- |
+| Managed classes implementing package-winmd interfaces (native calls their vtables) | 14 `WinRTBridge.*` classes (IBridge, IMarshalling 37, IWP8Utility 15, IGCHandles, IScriptingPinnedArray, …), **134 methods** | 14, **129 methods** | 19, **174 methods** | 2: `CSharpFunctions` (15: microphone, MediaPlayer, NavigateToUrl, ShowPopup, IsInternetAvailable) and `LuaMobileSDK.ICallback` (7). **22 methods** |
+| `$Invoke` thunks, `int64 $InvokeN(int64 gcHandle, int64* args)`, given to native by `ldftn` from `$UnityTypeNNN` constructors | **9,146**: UnityEngine 6,129, UnityEngine.UI 1,170, Assembly-CSharp 1,120, DOTween 691, other 36 | **13,925** | none; 4.3 uses reflection-driven `IMethodTools` (15 methods) instead | none |
+| Winmd delegates constructed in managed code | `UnityPlayer.Action` (the loaded callback) | the same | none | none |
+
+`WinRTBridge.TypeInformationGatherer` also writes managed method pointers into
+`BridgeInterface.DotNetMethod.methodPtr` and `DotNetField.getter/setterMethodPtr`, for native to
+call.
+
+### Why Unity is NO-GO
+
+The counts alone are not the blocker. 179 calli shapes and one thunk signature are mechanical for a
+Cecil pass. Three things are.
+
+1. **Unity WP8 assumes managed and native share one 32-bit address space.** The calli stubs pass
+   managed addresses as `conv.i; conv.i4`, which truncates them to 32 bits. That is already wrong
+   on any 64-bit host, before an emulator is involved, and under dynarmic the guest cannot see host
+   memory at all. So these all need copy-in/copy-out:
+   - the ~750 address-passing sites;
+   - the string and array sites;
+   - `IScriptingPinnedArray.get_Ptr`, through which native reads and writes managed array storage
+     directly.
+
+   That copying needs per-site knowledge of sizes. It breaks outright wherever native holds a
+   pointer across calls.
+2. **The thunks read guest memory from managed code.** Every `$Invoke` reads its arguments through
+   `int64* args`, which points into guest memory. `IArmCpu` only offers `MemRead`/`MemWrite`
+   copies, with no host view of guest memory. So either `wprcpu` exports one (a native change), or
+   9-14 k thunk bodies get rewritten.
+3. **The trap-slot budget is nearly gone.** Each managed function native can call needs its own
+   guest address. Bad Piggies publishes 13,925. The trap page has 16,384 slots, and return traps
+   and import thunks draw on the same page.
+
+**Threading and per-frame cost add to that.** Unity runs its own worker threads (loading, audio),
+and its whole frame loop runs over the bridge, so 3 k entry points pay the per-call cost every
+frame. Altogether this is weeks of work. For any title that matters, §4's rebuild gives a better
+result: native speed and a modern Android build. **Revisit only if** a shared-memory guest heap
+(managed buffers allocated inside guest space) gets built for some other reason.
+
+### Why Spark2 is GO
+
+**Spark2 has the same shape as the component titles WPR already hosts (Alex, MC4).** It is a C++/CX
+`SparkAppBridge` with a content provider, 13 shell calls, and one managed callback interface of 15
+methods.
+
+**Running the game's own native code also removes the blocker in §3.** The `.spd` decryption that
+killed the Spark2 study happens inside that code, so WPR never has to reimplement it.
+
+Next steps, in order:
+
+1. Add a `XamlShells` entry for `SparkApp.dll`, plus `CreateInstance` activation through
+   `__ISparkAppBridgeFactory`. Today the shell only knows `ActivateInstance` and `InstanceFrom`.
+2. Add host COM objects for `SparkApp.CSharpFunctions` and `LuaMobileSDK.ICallback`.
+   `CSharpFunctions` has 15 methods, mostly "no microphone", the media player state, and the popup.
+3. Check the run-time `LoadPackagedLibrary` of `Spark2Projects\**\Lua*.dll`, which loads from
+   subfolders. Then check Bink (`bink2winphone_arm.dll`) and OpenAL (`wrap_oal.dll`).
+
+**To reproduce:**
+
+1. Extract each XAP's `*.dll` and `*.winmd`.
+2. **Q1:** build an `ArmEmulator` over the component and call
+   `WinRt.StartComponent(image, WinmdReader.Load(winmds), new XamlShell(dll, classId, [], []))`.
+   `ComponentLog` holds the lines quoted above.
+3. **Q2/Q3:** run a Cecil pass over the package that collects:
+   - member references whose scope is a package `.winmd`;
+   - implementations of winmd interfaces;
+   - `UnityEngine.Internal.$FuncPtrs` and `$Calli`;
+   - `int64 $Invoke*(int64, int64*)` methods and their `ldftn` registrations.
