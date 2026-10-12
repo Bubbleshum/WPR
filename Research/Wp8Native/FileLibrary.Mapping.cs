@@ -59,6 +59,11 @@ namespace WPR.Wp8Native
             // file is one object reachable by its handle, so it is that handle; ReadFile and
             // friends accept it. stdin/stdout/stderr have no stream in an app (-2, as the CRT
             // answers for a GUI process); anything else is -1 with EBADF. 0 was neither.
+            // A descriptor from _open/_wopen/_sopen_s has no handle of its own yet: it gets one
+            // here, owned by the descriptor (the CRT's handle belongs to the fd, and _close closes
+            // it), so FlushFileBuffers(_get_osfhandle(fd)) - SQLite's xSync in Spark2's mobile
+            // SDK - reaches the file. Answering -1 for those failed every journal sync, so every
+            // write transaction rolled back and no table could be created.
             handlers["_get_osfhandle"] = () =>
             {
                 int descriptor = _frame.SignedArg(0);
@@ -72,6 +77,16 @@ namespace WPR.Wp8Native
                     _byPointer.FirstOrDefault(p => ReferenceEquals(p.Value, file)) is { Value: not null } entry)
                 {
                     _frame.Return(entry.Key);
+                    return;
+                }
+
+                if (file is not null)
+                {
+                    long handle = _nextHandle;
+                    _nextHandle += 4;
+                    _byPointer[handle] = file;
+                    _descriptorHandles[descriptor] = handle;
+                    _frame.Return(handle);
                     return;
                 }
 

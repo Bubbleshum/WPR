@@ -350,10 +350,10 @@ public sealed class ModuleLoaderSuite : IContractSuite
         private readonly ArmEmulator _e;
         private readonly long _stack;
 
-        public Guest(ArmEmulator e)
+        public Guest(ArmEmulator e, int stackSize = 0x1000)
         {
             _e = e;
-            _stack = e.AllocateHeap(0x1000) + 0x800;
+            _stack = e.AllocateHeap(stackSize) + stackSize - 0x800;
 
             // Where a guest call made from a handler comes back to: a trap slot that stops the CPU.
             // (A stop-at address would do, but the JIT engine has no code hooks.)
@@ -423,6 +423,7 @@ public sealed class ModuleLoaderSuite : IContractSuite
         {
             int[] registers = [R0, R1, R2, R3];
             for (int i = 0; i < args.Length && i < 4; i++) _e.WriteRegister(registers[i], args[i]);
+            for (int i = 4; i < args.Length; i++) _e.WriteUInt32(_stack + ((i - 4) * 4), (uint)args[i]);
             _e.WriteRegister(SP, _stack);
 
             // What EnterTrap does before a handler: lr is the caller, r12 defaults to it.

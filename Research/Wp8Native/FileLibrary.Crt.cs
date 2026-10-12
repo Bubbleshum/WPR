@@ -844,6 +844,12 @@ namespace WPR.Wp8Native
             if (_byDescriptor.TryGetValue(descriptor, out OpenFile? held) && ReferenceEquals(held, file))
             {
                 _byDescriptor.Remove(descriptor);
+
+                // The OS handle _get_osfhandle handed out for this descriptor goes with it.
+                if (_descriptorHandles.Remove(descriptor, out long handle))
+                {
+                    _byPointer.Remove(handle);
+                }
             }
 
             if (StillReferenced(file))

@@ -434,6 +434,20 @@ public sealed class CrtRuntimeSuite : IContractSuite
         Check("_dup2 onto a chosen number", Call("_dup2", fd2, 50) == 0 && Call("_close", 50) == 0);
         Check("_close", Call("_close", fd2) == 0);
         Check("the data is all there", File.ReadAllText(Sandbox("lo.bin")) == "hello!");
+
+        // _get_osfhandle on a descriptor from _open: a real handle the Win32 file API accepts, owned
+        // by the descriptor (SQLite's xSync in Spark2's mobile SDK is FlushFileBuffers(_get_osfhandle(fd))).
+        long sfd = Call("_open", Narrow(Local + "os.bin"), oCreat | oRdWr | oBinary, sRead | sWrite);
+        long osHandle = Call("_get_osfhandle", sfd);
+        Check("_get_osfhandle of an _open descriptor is a handle, not -1", osHandle is not 0 and not 0xFFFFFFFF, $"0x{osHandle:X}");
+        Check("...the same handle every time", Call("_get_osfhandle", sfd) == osHandle);
+        Check("...FlushFileBuffers accepts it", Call("_write", sfd, Narrow("abc"), 3) == 3 && Call("FlushFileBuffers", osHandle) == 1);
+        long written = h.Buffer(4);
+        Check("...WriteFile through it lands in the same file at the shared position",
+            Call("WriteFile", osHandle, Narrow("d"), 1, written, 0) == 1 && Call("_close", sfd) == 0 && File.ReadAllText(Sandbox("os.bin")) == "abcd");
+        Check("...and _close closes it: FlushFileBuffers is then ERROR_INVALID_HANDLE",
+            Call("FlushFileBuffers", osHandle) == 0 && Call("GetLastError") == 6);
+        Check("_get_osfhandle of a closed descriptor is -1", Call("_get_osfhandle", sfd) == 0xFFFFFFFF);
         Check("_open with O_EXCL on an existing file is EEXIST", Call("_open", Narrow(Local + "lo.bin"), oCreat | oExcl | oRdWr, sRead | sWrite) == Eof && Errno() == 17);
         Check("_open without O_CREAT on a missing file is ENOENT", Call("_open", Narrow(Local + "none.bin"), oRdWr, 0) == Eof && Errno() == 2);
         Check("_close of a descriptor that is not open is an invalid parameter", Terminates(() => r = Call("_close", 999)) && r == Eof);
