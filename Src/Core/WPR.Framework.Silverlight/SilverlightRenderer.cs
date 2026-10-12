@@ -88,38 +88,29 @@ namespace WPR.SilverlightCompability
             // ControlTemplate we don't apply, so their children stay parked at
             // (0,0,0,0) and visually collapse. Intercept those before the generic
             // Panel/ContentControl cases and lay them out ourselves.
-            string typeName = element.GetType().FullName ?? "";
-            if (typeName == "Microsoft.Phone.Controls.Panorama" ||
-                typeName == "Microsoft.Phone.Controls.Pivot")
+            switch (WpChrome.Classify(element))
             {
-                DrawPanoramaLike(ctx, element, bounds);
-                return;
-            }
-            if (typeName == "Microsoft.Phone.Controls.PanoramaItem" ||
-                typeName == "Microsoft.Phone.Controls.PivotItem")
-            {
-                DrawPanoramaItemLike(ctx, element, bounds);
-                return;
-            }
-            // The third name is our own shim's: patched game IL binds
-            // WPR.SilverlightCompability.ProgressBar, so matching only the WP7 name would have
-            // stopped recognising it the moment the type actually existed.
-            if (typeName == "Microsoft.Phone.Controls.PerformanceProgressBar" ||
-                typeName == "System.Windows.Controls.ProgressBar" ||
-                typeName == "WPR.SilverlightCompability.ProgressBar")
-            {
-                DrawProgressBar(ctx, element, bounds);
-                return;
-            }
-            // The toolkit's ToggleSwitch is a heavily-templated Control that
-            // shows a Header above a sliding On/Off track. We don't apply its
-            // template, so without intercepting it here we'd see only the
-            // toolkit's default Content ("Off") as bare text. Render it
-            // ourselves: header + chunky WP7-style track + thumb + state text.
-            if (typeName == "Microsoft.Phone.Controls.ToggleSwitch")
-            {
-                DrawToggleSwitch(ctx, element, bounds);
-                return;
+                case WpChrome.Kind.Panorama:
+                    DrawPanoramaLike(ctx, element, bounds, isPivot: false);
+                    return;
+                case WpChrome.Kind.Pivot:
+                    DrawPanoramaLike(ctx, element, bounds, isPivot: true);
+                    return;
+                case WpChrome.Kind.PanoramaItem:
+                    DrawPanoramaItemLike(ctx, element, bounds, isPivotItem: false);
+                    return;
+                case WpChrome.Kind.PivotItem:
+                    DrawPanoramaItemLike(ctx, element, bounds, isPivotItem: true);
+                    return;
+                case WpChrome.Kind.ProgressBar:
+                    DrawProgressBar(ctx, element, bounds);
+                    return;
+                // The toolkit's ToggleSwitch is a heavily-templated Control that shows a Header
+                // above a sliding On/Off track. We don't apply its template, so without this we'd
+                // see only its default Content ("Off") as bare text.
+                case WpChrome.Kind.ToggleSwitch:
+                    DrawToggleSwitch(ctx, element, bounds);
+                    return;
             }
 
             switch (element)
@@ -147,7 +138,7 @@ namespace WPR.SilverlightCompability
                 // Button comes BEFORE the generic ContentControl case so its
                 // WP7 chrome (white border, padded interior, centered text)
                 // is applied instead of falling through to bare Content paint.
-                case Button btn:
+                case Button btn when WpChrome.UsesDefaultChrome(btn):
                     DrawButton(ctx, btn, bounds);
                     break;
 
@@ -217,449 +208,203 @@ namespace WPR.SilverlightCompability
         }
 
         /// <summary>
-        /// Renders a Panorama or Pivot. Real WP7 shows ONE item fitting full-width
-        /// at a time with a peek of the next item (12-24px), big title overhead,
-        /// parallax — and swipes horizontally to change pages. We approximate:
-        ///  - The Panorama's <see cref="PanoramaState.CurrentIndex"/> picks which
-        ///    item is current. Pointer pipeline mutates it on flick.
-        ///  - Title is rendered once at the top, scrolled horizontally by index
-        ///    so it gets a small parallax-style offset.
-        ///  - Current item gets bounds.Width; neighbours peek 24px in/out.
-        ///  - <see cref="PanoramaState.DragOffset"/> shifts the whole strip while
-        ///    the user is mid-drag so the swipe feels live.
+        /// Renders a Panorama or Pivot. Layout, state and parallax come from
+        /// <see cref="WpChrome.ArrangePanorama"/>, which the CPU rasteriser uses too:
+        ///  - <see cref="PanoramaState.CurrentIndex"/> picks the current item; the pointer
+        ///    pipeline mutates it on flick, and <see cref="PanoramaState.DragOffset"/> shifts the
+        ///    strip mid-drag.
+        ///  - A panorama's title scrolls at half the items' speed (parallax) and its neighbours
+        ///    peek in; a pivot has a small title and a strip of item headers instead.
         /// </summary>
-        private static void DrawPanoramaLike(DrawingContext ctx, UIElement element, global::Avalonia.Rect bounds)
+        private static void DrawPanoramaLike(DrawingContext ctx, UIElement element, global::Avalonia.Rect bounds, bool isPivot)
         {
-            // Background priority:
-            //   1. Panel's own Background brush IF effectively visible (alpha > 0).
-            //      WP toolkit Panorama style sets Background="Transparent" so the
-            //      underlying Bing app shows through; treat that the same as null
-            //      and fall through to the Bing path. A non-zero-alpha brush
-            //      (game's own colour or image) wins outright.
-            //   2. Bing daily wallpaper (real WP7 panorama games show this through
-            //      the underlying Bing search app), if we've fetched it.
-            //   3. Subtle dark grey so the panorama visually separates from the
-            //      (typically black) PhoneApplicationPage backdrop.
-            if (element is Panel basePanel)
+            // Background priority: the control's own brush if it paints anything; for a
+            // panorama, the Bing daily wallpaper real WP7 panorama apps showed through; then a
+            // dark grey that separates it from the black page.
+            if (element is FrameworkElement basePanel && !WpChrome.IsEffectivelyTransparent(basePanel.Background))
             {
                 AvBrush? bg = ConvertBrush(basePanel.Background);
-                bool bgIsVisible = bg != null && !IsEffectivelyTransparent(basePanel.Background);
-                if (bgIsVisible)
+                if (bg != null) ctx.FillRectangle(bg, bounds);
+            }
+            else if (!isPivot)
+            {
+                var bingBmp = BingWallpaper.Bitmap;
+                if (bingBmp != null)
                 {
-                    ctx.FillRectangle(bg!, bounds);
+                    var src = new global::Avalonia.Rect(0, 0, bingBmp.Size.Width, bingBmp.Size.Height);
+                    var dst = UniformFit(src.Width, src.Height, bounds, fillFully: true);
+                    using (ctx.PushClip(bounds))
+                        ctx.DrawImage(bingBmp, src, dst);
                 }
                 else
                 {
-                    var bingBmp = BingWallpaper.Bitmap;
-                    if (bingBmp != null)
-                    {
-                        // UniformToFill: cover the bounds, cropping overflow on the
-                        // long axis. Matches how the real WP shell paints the
-                        // wallpaper edge-to-edge across the phone screen.
-                        var src = new global::Avalonia.Rect(0, 0, bingBmp.Size.Width, bingBmp.Size.Height);
-                        var dst = UniformFit(src.Width, src.Height, bounds, fillFully: true);
-                        ctx.DrawImage(bingBmp, src, dst);
-                    }
-                    else
-                    {
-                        ctx.FillRectangle(
-                            new global::Avalonia.Media.SolidColorBrush(
-                                global::Avalonia.Media.Color.FromRgb(0x1F, 0x1F, 0x1F)),
-                            bounds);
-                    }
+                    ctx.FillRectangle(ToAvBrush(WpChrome.PanoramaFallback), bounds);
                 }
             }
 
-            // Title (string|object) — via reflection so SLC doesn't need to reference Microsoft.Phone.
-            object? titleObj = TryReadProperty(element, "Title");
-            string? title = titleObj?.ToString();
+            WpChrome.PanoramaLayout? layout = WpChrome.ArrangePanorama(
+                element, bounds.Width, bounds.Height, isPivot, AvTextHeight);
+            if (layout == null) return;
 
-            if (element is not Panel panel) return;
-            int n = panel.Children.Count;
-            if (n == 0) return;
-
-            // Resolve per-Panorama state.
-            var state = PanoramaStateTable.GetOrCreate(element);
-            if (state.CurrentIndex >= n) state.CurrentIndex = n - 1;
-            if (state.CurrentIndex < 0)  state.CurrentIndex = 0;
-
-            // Keep the toolkit's Panorama.SelectedItem in sync with the index we
-            // actually display. User code (Minesweeper.MainPage.m and friends)
-            // gates per-page actions on `panorama.SelectedItem == thisItem`.
-            if (element is DependencyObject panoDO)
-                PanoramaSelectedItemSync.Set(panoDO, panel.Children[state.CurrentIndex]);
-
-            const double itemGap = 24;
-            double itemWidth = bounds.Width;
-            // Parallax: title slides left at half the items' speed.
-            double dragOffset = state.DragOffset;
-            double itemsScroll = state.CurrentIndex * (itemWidth + itemGap) - dragOffset;
-            double titleScroll = itemsScroll * 0.5;
-
-            double titleHeight = 0;
-            if (!string.IsNullOrWhiteSpace(title))
+            var fg = ToAvBrush(WpChrome.Foreground);
+            using (ctx.PushClip(bounds))
             {
-                var titleBrush = new global::Avalonia.Media.SolidColorBrush(global::Avalonia.Media.Colors.White);
-                var typeface = new AvTypeface("Segoe WP Light", default, global::Avalonia.Media.FontWeight.Light);
-                var ft = new AvFormattedText(title!, CultureInfo.CurrentUICulture,
-                    AvFlowDirection.LeftToRight, typeface, 72.0, titleBrush);
-                ctx.DrawText(ft, new global::Avalonia.Point(bounds.X + 12 - titleScroll, bounds.Y));
-                titleHeight = ft.Height + 12;
-            }
+                if (layout.Title != null)
+                {
+                    DrawChromeText(ctx, layout.Title, layout.TitleFontSize, fg,
+                        bounds.X + layout.TitleX, bounds.Y + layout.TitleY, light: !isPivot);
+                }
 
-            var contentBounds = new global::Avalonia.Rect(
-                bounds.X, bounds.Y + titleHeight,
-                bounds.Width, Math.Max(0, bounds.Height - titleHeight));
+                if (layout.Headers.Count > 0)
+                {
+                    var subtle = ToAvBrush(WpChrome.Subtle);
+                    foreach ((string text, double x, bool current) in layout.Headers)
+                    {
+                        DrawChromeText(ctx, text, layout.HeaderFontSize, current ? fg : subtle,
+                            bounds.X + x, bounds.Y + layout.HeaderY, light: true);
+                    }
+                }
 
-            // Draw all items at their horizontal slot — most clip off-screen; the
-            // current one occupies (0..itemWidth). Children of off-screen items
-            // can be visible at the edges (24px peek) which is fine.
-            //
-            // CRITICAL: ArrangedRect must be RELATIVE to the parent (the Panorama),
-            // not absolute. The HitTester and the renderer's OffsetTo cascade both
-            // expect relative coords. We pass absolute coords to Render via the
-            // bounds parameter (it always carries the absolute draw-target rect),
-            // but store relative coords on ArrangedRect for layout/hit-test correctness.
-            double parentY = bounds.Y;     // panorama bounds.Y (absolute)
-            double parentX = bounds.X;
-            for (int i = 0; i < n; i++)
-            {
-                UIElement child = panel.Children[i];
-                if (child is FrameworkElement fec && fec.Visibility == Visibility.Collapsed) continue;
-
-                // Absolute x for the item this frame:
-                double slotAbsX = parentX + i * (itemWidth + itemGap) - itemsScroll;
-                double slotAbsY = contentBounds.Y;
-                // Skip items entirely off-screen.
-                if (slotAbsX + itemWidth < bounds.X - 100) continue;
-                if (slotAbsX > bounds.Right + 100) continue;
-
-                // Relative offset within the Panorama's frame:
-                double relX = slotAbsX - parentX;
-                double relY = slotAbsY - parentY;
-
-                child.Measure(new Size(itemWidth, contentBounds.Height));
-                child.Arrange(new Rect(relX, relY, itemWidth, contentBounds.Height));
-                Render(ctx, child, new global::Avalonia.Rect(slotAbsX, slotAbsY, itemWidth, contentBounds.Height));
+                // ArrangedRect is RELATIVE to the parent (the hit tester and OffsetTo expect
+                // that); Render gets the absolute draw rect.
+                foreach (WpChrome.Slot slot in layout.Slots)
+                    Render(ctx, slot.Child, OffsetTo(slot.Rect, bounds));
             }
         }
 
-        /// <summary>
-        /// Paints a WP toolkit-style indeterminate progress bar: 5 small dots
-        /// sliding left → right across the slot in a continuous loop, each one
-        /// offset slightly behind the previous to give the classic "chase"
-        /// effect. The Determinate case (IsIndeterminate=false with a numeric
-        /// Value) isn't reached on the Minesweeper splash but is supported as a
-        /// solid fill proportional to <c>Value/Maximum</c>.
-        ///
-        /// Animation phase comes from <see cref="Environment.TickCount"/> — the
-        /// FrameView's DispatcherTimer drives ~30Hz InvalidateVisual calls while
-        /// a popup is effectively open, so this method is re-entered with a new
-        /// phase each tick and the dots actually move.
-        /// </summary>
+        /// <summary>Paints the WP toolkit progress bar: the five chasing dots when
+        /// indeterminate, a 4px accent bar proportional to Value otherwise. Geometry and the
+        /// animation clock come from <see cref="WpChrome"/>; the Avalonia view's timer
+        /// re-enters this at ~30Hz while it is visible so the dots move.</summary>
         private static void DrawProgressBar(DrawingContext ctx, UIElement element, global::Avalonia.Rect bounds)
         {
-            bool isIndeterminate = TryReadProperty(element, "IsIndeterminate") is bool ind && ind;
+            AvBrush dotBrush = ToAvBrush(WpChrome.ProgressColor(element));
+            double centerY = bounds.Y + bounds.Height / 2;
 
-            // Use the WP7 accent brush for dots — falls back to a neutral white
-            // if the theme dictionary doesn't have one (shouldn't happen, but
-            // be defensive).
-            AvBrush dotBrush =
-                ResolveResourceBrush("PhoneAccentBrush")
-                ?? new global::Avalonia.Media.SolidColorBrush(global::Avalonia.Media.Colors.White);
-
-            if (!isIndeterminate)
+            if (!WpChrome.IsIndeterminate(element))
             {
-                // Determinate mode: solid bar proportional to Value/Maximum.
-                double value = TryReadDouble(element, "Value", 0);
-                double maximum = TryReadDouble(element, "Maximum", 100);
-                double minimum = TryReadDouble(element, "Minimum", 0);
-                double range = Math.Max(1e-6, maximum - minimum);
-                double frac = Math.Max(0, Math.Min(1, (value - minimum) / range));
+                double frac = WpChrome.ProgressFraction(element);
                 if (frac > 0)
                 {
-                    var fillBounds = new global::Avalonia.Rect(
-                        bounds.X, bounds.Y + bounds.Height / 2 - 2,
-                        bounds.Width * frac, 4);
-                    ctx.FillRectangle(dotBrush, fillBounds);
+                    ctx.FillRectangle(dotBrush, new global::Avalonia.Rect(
+                        bounds.X, centerY - WpChrome.ProgressBarThickness / 2,
+                        bounds.Width * frac, WpChrome.ProgressBarThickness));
                 }
                 return;
             }
 
-            // Indeterminate: animate 5 dots looping left → right.
-            const int dotCount = 5;
-            const double dotDiameter = 4.0;
-            const double dotSpacing = 14.0;
-            const double periodMs = 2200.0;
-            const double staggerMs = 110.0;
-
-            double centerY = bounds.Y + bounds.Height / 2;
-            double trackLeft = bounds.X - dotDiameter; // start fully off-screen left
-            double trackRight = bounds.Right + dotCount * dotSpacing;
-            double trackWidth = trackRight - trackLeft;
-            long now = Environment.TickCount;
-
-            for (int i = 0; i < dotCount; i++)
-            {
-                double t = ((now - i * staggerMs) % periodMs + periodMs) % periodMs / periodMs;
-                // Ease-in-out cubic so the dot pauses slightly at each end —
-                // approximates the WP7 toolkit's curve.
-                double eased = t < 0.5
-                    ? 4 * t * t * t
-                    : 1 - Math.Pow(-2 * t + 2, 3) / 2;
-                double x = trackLeft + eased * trackWidth;
-                // Skip dots that have wrapped past the visible bounds.
-                if (x < bounds.X - dotDiameter || x > bounds.Right) continue;
-                var rect = new global::Avalonia.Rect(x, centerY - dotDiameter / 2,
-                                                      dotDiameter, dotDiameter);
-                ctx.DrawRectangle(dotBrush, null, rect);
-            }
+            double d = WpChrome.ProgressDotDiameter;
+            foreach (double x in WpChrome.ProgressDots(bounds.Width, WpChrome.ProgressClock()))
+                ctx.FillRectangle(dotBrush, new global::Avalonia.Rect(bounds.X + x, centerY - d / 2, d, d));
         }
 
         /// <summary>
-        /// Paint a WP7-style button: a 3-DIP solid foreground outline around
-        /// the content, optional Background fill, and the Content (text or
-        /// nested element) centered inside the padded interior. The toolkit's
-        /// real default Style sets BorderBrush=PhoneForegroundBrush (white),
-        /// BorderThickness=3, Padding=10,3,10,5, Background=Transparent —
-        /// without applying that Style ourselves the button collapses to bare
-        /// text, which is what the user sees in HelpOptionsPage today.
+        /// Paint a WP7 button: optional Background, a foreground outline (3px, or the button's
+        /// own BorderThickness/BorderBrush), the Content centred in a padded interior, and when
+        /// pressed a foreground fill with the content drawn in the background colour.
         /// </summary>
         private static void DrawButton(DrawingContext ctx, Button btn, global::Avalonia.Rect bounds)
         {
-            // Padded inner box where the Content paints; keep the border outside.
-            const double pad = 10;
-            const double minHeight = 72; // WP7 minimum tap-target for buttons.
-            // Background — Transparent by default (no paint), but if user set
-            // an explicit colour honour it inside the border.
-            AvBrush? bgBrush = ConvertBrush(btn.Background);
-            if (bgBrush != null && !IsEffectivelyTransparent(btn.Background))
-                ctx.FillRectangle(bgBrush, bounds);
+            bool pressed = WpChrome.IsPressed(btn);
+            if (pressed)
+            {
+                ctx.FillRectangle(ToAvBrush(WpChrome.Foreground), bounds);
+            }
+            else if (!WpChrome.IsEffectivelyTransparent(btn.Background))
+            {
+                AvBrush? bgBrush = ConvertBrush(btn.Background);
+                if (bgBrush != null) ctx.FillRectangle(bgBrush, bounds);
+            }
 
-            // Border. ContentControl-based Button has no BorderBrush DP in our
-            // shim (Control adds it, but Button branches off via ContentControl
-            // for compat with both the System.Windows.Controls.Button and the
-            // toolkit's PhoneApplicationFrame template). Hard-code WP7's
-            // default: PhoneForegroundBrush, 3 DIP.
-            AvBrush borderBrush = ResolveResourceBrush("PhoneForegroundBrush")
-                ?? new global::Avalonia.Media.SolidColorBrush(global::Avalonia.Media.Colors.White);
-            var pen = new global::Avalonia.Media.Pen(borderBrush, 3.0);
-            ctx.DrawRectangle(null, pen, bounds);
+            AvBrush borderBrush = ConvertBrush(btn.BorderBrush) ?? ToAvBrush(WpChrome.Foreground);
+            double t = WpChrome.ButtonBorderWidth(btn);
+            // Inset by half the pen so the stroke lies inside the slot, as the CPU path's does.
+            var strokeRect = new global::Avalonia.Rect(
+                bounds.X + t / 2, bounds.Y + t / 2,
+                Math.Max(0, bounds.Width - t), Math.Max(0, bounds.Height - t));
+            ctx.DrawRectangle(null, new global::Avalonia.Media.Pen(borderBrush, t), strokeRect);
 
-            // Render Content. The Button shim wraps a non-UIElement Content in
-            // a TextBlock, so we walk the Presenter. ContentControl's measure
-            // didn't account for our injected padding, so re-arrange the
-            // presenter inside the padded interior centered both axes.
-            UIElement? p = btn.Presenter;
-            if (p == null) return;
+            Rect? presRel = WpChrome.ArrangeButtonPresenter(btn, bounds.Width, bounds.Height);
+            if (presRel == null || btn.Presenter == null) return;
 
-            var innerBounds = new global::Avalonia.Rect(
-                bounds.X + pad,
-                bounds.Y + pad,
-                Math.Max(0, bounds.Width - pad * 2),
-                Math.Max(0, Math.Max(bounds.Height, minHeight) - pad * 2));
-
-            // Center the presenter's natural size inside innerBounds. Measure
-            // it against the available width to honour wrapping if the user
-            // configured a TextWrapping="Wrap" on a TextBlock content.
-            p.Measure(new Size(innerBounds.Width, double.PositiveInfinity));
-            var ds = p.DesiredSize;
-            double w = Math.Min(ds.Width, innerBounds.Width);
-            double h = Math.Min(ds.Height, innerBounds.Height);
-            double cx = innerBounds.X + (innerBounds.Width - w) / 2;
-            double cy = innerBounds.Y + (innerBounds.Height - h) / 2;
-            var presBounds = new global::Avalonia.Rect(cx, cy, w, h);
-            // Sync ArrangedRect so child Render reads correct coords.
-            p.Arrange(new Rect(presBounds.X - bounds.X, presBounds.Y - bounds.Y, w, h));
-            Render(ctx, p, presBounds);
+            Color? saved = _pressedContentForeground;
+            _pressedContentForeground = pressed ? WpChrome.Background : saved;
+            try { Render(ctx, btn.Presenter, OffsetTo(presRel.Value, bounds)); }
+            finally { _pressedContentForeground = saved; }
         }
 
+        [ThreadStatic]
+        private static Color? _pressedContentForeground;
+
         /// <summary>
-        /// Paint a WP7-style ToggleSwitch: header text above a chunky On/Off
-        /// pill, with the state word ("On"/"Off") to the right. The toolkit
-        /// type is heavily templated; we never apply the template, so without
-        /// this path the user just sees the toolkit's default Content text
-        /// (typically "Off") with no chrome and no header.
-        ///
-        /// Reflection-driven so we don't have to take a reference on
-        /// Microsoft.Phone.Controls.Toolkit.dll — we read Header, IsChecked,
-        /// and SwitchForeground from whatever object the renderer is handed.
+        /// Paint a WP7 ToggleSwitch: header text above a chunky On/Off track, thumb, and the
+        /// state word to the right. Geometry from <see cref="WpChrome.LayoutToggleSwitch"/>.
         /// </summary>
         private static void DrawToggleSwitch(DrawingContext ctx, UIElement element, global::Avalonia.Rect bounds)
         {
-            object? headerObj = TryReadProperty(element, "Header");
-            object? checkedObj = TryReadProperty(element, "IsChecked");
-            bool isOn = checkedObj is bool b ? b : false;
+            WpChrome.ToggleLayout l = WpChrome.LayoutToggleSwitch(element, AvTextHeight);
+            AvBrush fg = ToAvBrush(WpChrome.Foreground);
 
-            // Accent for the "on" state — falls back to white if the theme
-            // dictionary isn't seeded (e.g., very early in launch).
-            AvBrush accent = ResolveResourceBrush("PhoneAccentBrush")
-                ?? new global::Avalonia.Media.SolidColorBrush(global::Avalonia.Media.Color.FromRgb(0x1B, 0xA1, 0xE2));
-            // SwitchForeground (the thumb) — defaults to white in WP7 default theme.
-            AvBrush thumbBrush = ResolveResourceBrush("PhoneForegroundBrush")
-                ?? new global::Avalonia.Media.SolidColorBrush(global::Avalonia.Media.Colors.White);
-            AvBrush textBrush = new global::Avalonia.Media.SolidColorBrush(global::Avalonia.Media.Colors.White);
+            if (l.Header != null)
+                DrawChromeText(ctx, l.Header, WpChrome.ToggleHeaderFontSize, fg, bounds.X, bounds.Y + l.HeaderY, light: false);
 
-            // 1) Header text at top-left, semi-light 22pt.
-            double y = bounds.Y + 4;
-            string? header = headerObj?.ToString();
-            if (!string.IsNullOrWhiteSpace(header))
+            var track = OffsetTo(l.Track, bounds);
+            if (l.IsOn)
             {
-                var headerFont = new AvTypeface("Segoe WP", default, global::Avalonia.Media.FontWeight.Normal);
-                var headerText = new AvFormattedText(header!, CultureInfo.CurrentUICulture,
-                    AvFlowDirection.LeftToRight, headerFont, 22.0, textBrush);
-                ctx.DrawText(headerText, new global::Avalonia.Point(bounds.X, y));
-                y += headerText.Height + 6;
-            }
-
-            // 2) Track + thumb.
-            const double trackWidth = 95;
-            const double trackHeight = 38;
-            const double thumbInset = 4;
-            double trackX = bounds.X;
-            double trackY = y;
-            var trackRect = new global::Avalonia.Rect(trackX, trackY, trackWidth, trackHeight);
-
-            // When On, fill the track with accent; when Off, just outline.
-            if (isOn)
-            {
-                ctx.FillRectangle(accent, trackRect);
+                ctx.FillRectangle(ToAvBrush(WpChrome.Accent), track);
             }
             else
             {
-                var trackPen = new global::Avalonia.Media.Pen(textBrush, 2);
-                ctx.DrawRectangle(null, trackPen, trackRect);
+                double s = WpChrome.ToggleTrackStrokeOff;
+                var inset = new global::Avalonia.Rect(track.X + s / 2, track.Y + s / 2, track.Width - s, track.Height - s);
+                ctx.DrawRectangle(null, new global::Avalonia.Media.Pen(fg, s), inset);
             }
 
-            // Thumb: small rectangle inside, right side when on, left when off.
-            double thumbWidth = (trackWidth - thumbInset * 3) / 2; // half-track minus padding
-            double thumbX = isOn
-                ? trackX + trackWidth - thumbInset - thumbWidth
-                : trackX + thumbInset;
-            var thumbRect = new global::Avalonia.Rect(
-                thumbX,
-                trackY + thumbInset,
-                thumbWidth,
-                trackHeight - thumbInset * 2);
-            ctx.FillRectangle(thumbBrush, thumbRect);
-
-            // 3) State word ("On" / "Off") to the right of the track.
-            string stateWord = isOn ? "On" : "Off";
-            var stateFont = new AvTypeface("Segoe WP", default, global::Avalonia.Media.FontWeight.Normal);
-            var stateText = new AvFormattedText(stateWord, CultureInfo.CurrentUICulture,
-                AvFlowDirection.LeftToRight, stateFont, 24.0, textBrush);
-            double stateX = trackX + trackWidth + 12;
-            double stateY = trackY + (trackHeight - stateText.Height) / 2;
-            ctx.DrawText(stateText, new global::Avalonia.Point(stateX, stateY));
-        }
-
-        /// <summary>Best-effort read of a numeric DP value, returning <paramref name="fallback"/>
-        /// on any conversion failure. Used by <see cref="DrawProgressBar"/> for
-        /// Value/Minimum/Maximum on the rare determinate-mode bar.</summary>
-        private static double TryReadDouble(object element, string propName, double fallback)
-        {
-            object? v = TryReadProperty(element, propName);
-            if (v == null) return fallback;
-            try { return Convert.ToDouble(v, CultureInfo.InvariantCulture); }
-            catch { return fallback; }
-        }
-
-        /// <summary>Resolve a theme brush by key from <c>Application.Current.Resources</c>
-        /// via the SLC ⇄ WC bridge. Returns the Avalonia <see cref="AvBrush"/> form
-        /// (converted by <see cref="ConvertBrush"/>) or null if unset/unsupported.</summary>
-        private static AvBrush? ResolveResourceBrush(string key)
-        {
-            var lookup = XamlReader.ApplicationResourceLookup;
-            if (lookup == null) return null;
-            object? v = lookup(key);
-            return v is Brush b ? ConvertBrush(b) : null;
+            ctx.FillRectangle(fg, OffsetTo(l.Thumb, bounds));
+            DrawChromeText(ctx, l.StateText, WpChrome.ToggleStateFontSize, fg,
+                bounds.X + l.StateX, bounds.Y + l.StateY, light: false);
         }
 
         /// <summary>
-        /// Renders a PanoramaItem or PivotItem: a Header (smaller white) above the
-        /// Content. PanoramaItem post-patch is a ContentControl, so Content is its
-        /// single child.
+        /// Renders a PanoramaItem or PivotItem: a header (a pivot draws its items' headers
+        /// itself) above the content, which is shown through a scrolled, clipped viewport —
+        /// real WP7 wraps it in a ScrollViewer through the toolkit template.
         /// </summary>
-        private static void DrawPanoramaItemLike(DrawingContext ctx, UIElement element, global::Avalonia.Rect bounds)
+        private static void DrawPanoramaItemLike(DrawingContext ctx, UIElement element, global::Avalonia.Rect bounds, bool isPivotItem)
         {
-            // Header.
-            object? headerObj = TryReadProperty(element, "Header");
-            string? header = headerObj?.ToString();
-            double headerHeight = 0;
-            if (!string.IsNullOrWhiteSpace(header))
+            WpChrome.PanoramaItemLayout l = WpChrome.ArrangePanoramaItem(
+                element, bounds.Width, bounds.Height, isPivotItem, AvTextHeight);
+
+            if (l.Header != null)
             {
-                var brush = new global::Avalonia.Media.SolidColorBrush(global::Avalonia.Media.Colors.White);
-                var typeface = new AvTypeface("Segoe WP Light", default, global::Avalonia.Media.FontWeight.Light);
-                var ft = new AvFormattedText(header!, CultureInfo.CurrentUICulture,
-                    AvFlowDirection.LeftToRight, typeface, 56.0, brush);
-                ctx.DrawText(ft, new global::Avalonia.Point(bounds.X + 12, bounds.Y));
-                headerHeight = ft.Height + 8;
+                DrawChromeText(ctx, l.Header, l.HeaderFontSize, ToAvBrush(WpChrome.Foreground),
+                    bounds.X + l.HeaderX, bounds.Y + l.HeaderY, light: true);
             }
 
-            var contentBounds = new global::Avalonia.Rect(
-                bounds.X + 12, bounds.Y + headerHeight,
-                Math.Max(0, bounds.Width - 24), Math.Max(0, bounds.Height - headerHeight));
+            if (l.Presenter == null) return;
 
-            // Render Content. PanoramaItem post-patch derives from ContentControl,
-            // so we read the Presenter (or Content if presenter not built).
-            // Same relative-vs-absolute split as DrawPanoramaLike: ArrangedRect
-            // is the presenter's relative position WITHIN the PanoramaItem; the
-            // Render bounds carry the absolute draw rect.
-            //
-            // Real WP7 wraps panorama-item content in a ScrollViewer via the
-            // toolkit template — we don't apply templates so the content
-            // visibly overflows. Apply our own vertical scroll offset (set by
-            // the pointer pipeline on vertical drag) and clip to the item's
-            // content bounds so overflow doesn't bleed past.
-            if (element is ContentControl cc)
-            {
-                UIElement? presenter = cc.Presenter;
-                if (presenter != null)
-                {
-                    double relX = contentBounds.X - bounds.X;
-                    double relY = contentBounds.Y - bounds.Y;
-
-                    // Measure with unbounded height so the content's natural
-                    // size — which can exceed contentBounds.Height — is known.
-                    // Without this, the presenter measures clamped to the
-                    // viewport and we'd think we have nothing to scroll.
-                    presenter.Measure(new Size(contentBounds.Width, double.PositiveInfinity));
-                    double contentH = Math.Max(contentBounds.Height, presenter.DesiredSize.Height);
-                    presenter.Arrange(new Rect(relX, relY, contentBounds.Width, contentH));
-
-                    var scroll = PanoramaItemScrollTable.GetOrCreate(element);
-                    double maxScroll = Math.Max(0, contentH - contentBounds.Height);
-                    if (scroll.ScrollY < 0) scroll.ScrollY = 0;
-                    if (scroll.ScrollY > maxScroll) scroll.ScrollY = maxScroll;
-
-                    // Clip rendering to the visible content bounds so off-screen
-                    // children don't paint over neighbouring panorama items or
-                    // the page background. Then translate up by ScrollY so the
-                    // viewport shows further-down content.
-                    using var clip = ctx.PushClip(contentBounds);
-                    using var transform = ctx.PushTransform(
-                        global::Avalonia.Matrix.CreateTranslation(0, -scroll.ScrollY));
-                    Render(ctx, presenter, contentBounds);
-                }
-            }
+            var viewport = OffsetTo(l.Viewport, bounds);
+            using var clip = ctx.PushClip(viewport);
+            var scrolled = new global::Avalonia.Rect(bounds.X, bounds.Y - l.ScrollY, bounds.Width, bounds.Height);
+            Render(ctx, l.Presenter, OffsetTo(l.Presenter.ArrangedRect, scrolled));
         }
 
-        private static object? TryReadProperty(object obj, string name)
+        private static readonly Func<string, double, double> AvTextHeight = (text, size) =>
+            new AvFormattedText(text, CultureInfo.CurrentUICulture, AvFlowDirection.LeftToRight,
+                new AvTypeface("Segoe WP Light", default, global::Avalonia.Media.FontWeight.Light),
+                size, null).Height;
+
+        private static void DrawChromeText(DrawingContext ctx, string text, double size, AvBrush brush, double x, double y, bool light)
         {
-            try
-            {
-                var p = obj.GetType().GetProperty(name,
-                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-                object? v = p?.GetValue(obj);
-                // Filter out Binding objects sitting in the property because we
-                // couldn't resolve the binding's Source/DataContext at parse time.
-                // .ToString()'ing them prints "WPR.SilverlightCompability.Binding"
-                // which is worse than nothing.
-                if (v is Binding) return null;
-                return v;
-            }
-            catch { return null; }
+            var typeface = light
+                ? new AvTypeface("Segoe WP Light", default, global::Avalonia.Media.FontWeight.Light)
+                : new AvTypeface("Segoe WP", default, global::Avalonia.Media.FontWeight.Normal);
+            var ft = new AvFormattedText(text, CultureInfo.CurrentUICulture, AvFlowDirection.LeftToRight, typeface, size, brush);
+            ctx.DrawText(ft, new global::Avalonia.Point(x, y));
         }
+
+        private static AvBrush ToAvBrush(Color c)
+            => new global::Avalonia.Media.SolidColorBrush(global::Avalonia.Media.Color.FromArgb(c.A, c.R, c.G, c.B));
 
         private static void DrawRectangle(DrawingContext ctx, Rectangle rect, global::Avalonia.Rect bounds)
         {
@@ -717,7 +462,20 @@ namespace WPR.SilverlightCompability
                 if (t > 0)
                 {
                     var pen = new global::Avalonia.Media.Pen(bb, t);
-                    ctx.DrawRectangle(null, pen, bounds);
+                    CornerRadius cr = border.CornerRadius;
+                    if (cr.TopLeft > 0 || cr.TopRight > 0 || cr.BottomLeft > 0 || cr.BottomRight > 0)
+                    {
+                        // Rounded like the fill, and inset by half the pen so the outline lies
+                        // inside the slot — what the CPU rasteriser draws.
+                        var inset = bounds.Deflate(t / 2);
+                        ctx.DrawRectangle(null, pen, new AvRoundedRect(inset,
+                            Math.Max(0, cr.TopLeft - t / 2), Math.Max(0, cr.TopRight - t / 2),
+                            Math.Max(0, cr.BottomRight - t / 2), Math.Max(0, cr.BottomLeft - t / 2)));
+                    }
+                    else
+                    {
+                        ctx.DrawRectangle(null, pen, bounds);
+                    }
                 }
             }
 
@@ -830,6 +588,8 @@ namespace WPR.SilverlightCompability
             // walk up to find the nearest FrameworkElement with a Foreground set. Final
             // fallback is white (WP7 default theme).
             Brush? effectiveFg = tb.Foreground;
+            if (effectiveFg == null && _pressedContentForeground is Color pressedFg)
+                effectiveFg = new SolidColorBrush(pressedFg);
             for (var fe = tb.Parent as FrameworkElement; fe != null && effectiveFg == null; fe = fe.Parent as FrameworkElement)
                 effectiveFg = fe.Foreground;
             AvBrush foreground = ConvertBrush(effectiveFg)

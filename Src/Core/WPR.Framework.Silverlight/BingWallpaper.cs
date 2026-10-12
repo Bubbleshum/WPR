@@ -39,6 +39,23 @@ namespace WPR.SilverlightCompability
             }
         }
 
+        private static volatile string? _cachedFile;
+
+        /// <summary>
+        /// The downloaded wallpaper's file, once it is on disk; null until then. Triggers the same
+        /// background fetch as <see cref="Bitmap"/>. This is what the CPU rasteriser reads: it
+        /// decodes the file itself, so it never touches the Avalonia bitmap (which cannot exist
+        /// on a head that does not initialise Avalonia).
+        /// </summary>
+        public static string? CachedFilePath
+        {
+            get
+            {
+                EnsureFetchStarted();
+                return _cachedFile;
+            }
+        }
+
         /// <summary>Fired (on the thread-pool thread that completed the fetch) when
         /// <see cref="Bitmap"/> first becomes available. Renderer subscribes so it
         /// can request a repaint when the wallpaper lands.</summary>
@@ -94,8 +111,16 @@ namespace WPR.SilverlightCompability
                 // Bitmap construction must happen where the GPU resources can be
                 // touched safely. For non-UI loading we read into a memory stream
                 // and let the Bitmap copy out; works on any thread.
-                using var fs = File.OpenRead(cachedFile);
-                _cached = new Avalonia.Media.Imaging.Bitmap(fs);
+                _cachedFile = cachedFile;
+                try
+                {
+                    using var fs = File.OpenRead(cachedFile);
+                    _cached = new Avalonia.Media.Imaging.Bitmap(fs);
+                }
+                catch
+                {
+                    // No Avalonia platform (the XNA-hosted path): the file is still usable.
+                }
                 try { Ready?.Invoke(); }
                 catch { /* don't propagate UI repaint exceptions out of the fetcher */ }
             }

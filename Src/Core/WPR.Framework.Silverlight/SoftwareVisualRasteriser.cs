@@ -133,6 +133,11 @@ namespace WPR.SilverlightCompability
             // ancestor imposed — a ScrollViewer viewport, in practice.
             Rect drawClip = Intersect(bounds, clip);
 
+            // WP7 control chrome (Panorama, Pivot, ToggleSwitch, Button...) — see
+            // SoftwareVisualRasteriser.Controls.cs.
+            if (TryPaintChrome(element, bounds, opacity, surface, depth, scaleX, scaleY, clip, drawClip))
+                return;
+
             switch (element)
             {
                 case Rectangle rect:
@@ -704,7 +709,7 @@ namespace WPR.SilverlightCompability
                 return;
             }
 
-            uint colour = ResolveTextColour(text.Foreground, opacity);
+            uint colour = ResolveTextColour(EffectiveForeground(text), opacity);
             if (colour == 0) return;
 
             double layoutWidth = text.TextWrapping == TextWrapping.Wrap
@@ -1071,6 +1076,8 @@ namespace WPR.SilverlightCompability
                 hash.Add((int)fe.Visibility);
                 SignBrush(fe.Background, ref hash);
             }
+
+            SignChrome(element, ref hash);
 
             switch (element)
             {

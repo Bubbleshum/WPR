@@ -49,6 +49,17 @@ namespace WPR.SilverlightCompability
         }
 
         /// <summary>
+        /// Set by the host's touch router while a finger is down on this button, so the renderers
+        /// can draw WP7's pressed state (foreground fill, content in the background colour).
+        /// Silverlight sets it from inside the control; WPR runs no control logic, so the router
+        /// is the only thing that knows.
+        /// </summary>
+        internal void SetPressedByHost(bool pressed)
+        {
+            if (IsPressed != pressed) IsPressed = pressed;
+        }
+
+        /// <summary>
         /// The command invoked on click — the MVVM alternative to a <see cref="Click"/> handler.
         /// </summary>
         /// <remarks>

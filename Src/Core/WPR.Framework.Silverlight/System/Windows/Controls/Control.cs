@@ -39,6 +39,21 @@ namespace WPR.SilverlightCompability
             DependencyProperty.Register(nameof(IsEnabled), typeof(bool), typeof(Control),
                 new PropertyMetadata((object)true));
 
+        // The control's template. WPR never applies it (see ControlTemplate), but the renderers
+        // need to know one was given: a Button with its own template looks nothing like the
+        // default WP7 button chrome they synthesise, so drawing that chrome over it boxes every
+        // image button in a white frame (Galactic Reign's and Carcassonne's menus). Set by
+        // Template="{StaticResource …}" and by a Style's <Setter Property="Template">.
+        public static readonly DependencyProperty TemplateProperty =
+            DependencyProperty.Register(nameof(Template), typeof(ControlTemplate), typeof(Control),
+                new PropertyMetadata((object?)null));
+
+        public ControlTemplate? Template
+        {
+            get => (ControlTemplate?)GetValue(TemplateProperty);
+            set => SetValue(TemplateProperty, value);
+        }
+
         // Background is inherited from FrameworkElement — no shadow here.
 
         public Brush? BorderBrush
