@@ -253,6 +253,7 @@ namespace WPR.Wp8Native
         public void RunOtherThreads(Action continueWith)
         {
             GuestThread me = CurrentThread;
+            _workersSince = System.Diagnostics.Stopwatch.GetTimestamp();
             if (PickNext(me) is not { } next)
             {
                 continueWith();
@@ -283,8 +284,51 @@ namespace WPR.Wp8Native
             thread.Vfp = vfp;
         }
 
+        /// <summary>When the main loop last handed the CPU to the other threads (Stopwatch ticks).</summary>
+        private long _workersSince;
+
+        /// <summary>
+        /// How long, per frame, worker threads may keep the CPU among themselves before the main
+        /// thread gets it back (see <see cref="PickNext"/>).
+        /// </summary>
+        private static readonly long WorkerBudget = System.Diagnostics.Stopwatch.Frequency * 4 / 1000;
+
+        /// <summary>
+        /// Whether a thread is blocked on a real synchronisation object, as opposed to a yield or a
+        /// time slice, which leave it runnable for ever and say nothing about work waiting for it.
+        /// </summary>
+        private static bool WokenByWait(GuestThread t) =>
+            t.Why is { } why && why != "time slice" && !why.Contains("yield", StringComparison.Ordinal);
+
         private GuestThread? PickNext(GuestThread except)
         {
+            // A worker that blocks hands the CPU to another worker whose wait it may just have
+            // satisfied, before the main thread, while this frame's worker budget lasts. On a phone
+            // threads run at once, so a pipeline of workers that ping-pong through events finishes
+            // its round trips in microseconds. Here plain round robin often picked the main thread
+            // next, which then ran a whole game frame before the other worker got its turn: one
+            // round trip per frame. EA's audio in Monopoly Millionaire is exactly that pipeline
+            // (mixer thread posts a decode job, a worker runs it and releases the mixer), and it
+            // produced 70% of real time - slowed, stuttering music. Yielding threads are not
+            // preferred, so a worker spinning on Sleep cannot keep the main thread waiting.
+            if (except.Id != 1 && System.Diagnostics.Stopwatch.GetTimestamp() - _workersSince < WorkerBudget)
+            {
+                for (int n = 0; n < _threads.Count; n++)
+                {
+                    GuestThread candidate = _threads[(_roundRobin + n) % _threads.Count];
+                    if (candidate == except || candidate.Id == 1 || candidate.Finished || candidate.Registers is null)
+                    {
+                        continue;
+                    }
+
+                    if (candidate.Ready is not null && WokenByWait(candidate) && candidate.Ready())
+                    {
+                        _roundRobin = (_threads.IndexOf(candidate) + 1) % _threads.Count;
+                        return candidate;
+                    }
+                }
+            }
+
             for (int n = 0; n < _threads.Count; n++)
             {
                 GuestThread candidate = _threads[(_roundRobin + n) % _threads.Count];
