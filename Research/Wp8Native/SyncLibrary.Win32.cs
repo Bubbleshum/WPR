@@ -164,7 +164,7 @@ namespace WPR.Wp8Native
             handlers["InitializeCriticalSection"] = () => { InitialiseSection(_frame.Arg(0), 0); _frame.Return(0); };
             handlers["EnterCriticalSection"] = () => { long section = _frame.Arg(0); _frame.Return(0); EnterSection(section); };
             handlers["TryEnterCriticalSection"] = () => _frame.Return(TryEnterSection(_frame.Arg(0)) ? 1 : 0);
-            handlers["LeaveCriticalSection"] = () => { LeaveSection(_frame.Arg(0), all: false); _frame.Return(0); };
+            handlers["LeaveCriticalSection"] = () => { LeaveSection(_frame.Arg(0), all: false); _frame.Return(0); _emulator.TimeSlice(); };
             handlers["DeleteCriticalSection"] = () =>
             {
                 _hostSections.Remove(_frame.Arg(0));

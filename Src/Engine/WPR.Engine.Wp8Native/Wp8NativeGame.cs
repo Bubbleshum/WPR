@@ -230,6 +230,11 @@ namespace WPR.Wp8Native
                         Log("   site: " + line);
                     }
 
+                    foreach (LoadedModule module in sampled.Modules)
+                    {
+                        Log($"   site module: 0x{module.ImageBase:X8}-0x{module.ImageBase + module.MappedSize:X8} {module.GuestPath}");
+                    }
+
                     foreach (string line in sampled.DescribeThreads())
                     {
                         Log("   site thread: " + line);

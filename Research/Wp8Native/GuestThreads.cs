@@ -320,8 +320,39 @@ namespace WPR.Wp8Native
             return line + $" switches={ThreadSwitches}";
         }
 
+        /// <summary>Instructions a thread may run without blocking before <see cref="TimeSlice"/> hands the CPU on.</summary>
+        private const long SliceInstructions = 50_000_000;
+
+        private long _sliceStart;
+
+        /// <summary>
+        /// A preemption point: when the calling thread has held the CPU for a whole slice and
+        /// another thread can run, the caller (inside an import, its return value already set)
+        /// gives way. True if it switched.
+        /// </summary>
+        /// <remarks>
+        /// Threads otherwise run until they block, and a thread that polls instead of blocking
+        /// starves the rest for ever. Spark2's main thread does that inside Connect: it polls the
+        /// resource manager, under a critical section, for loads its five job workers were meant
+        /// to make - and never once blocked, so they never ran. A phone preempts; called from the
+        /// unlock of a critical section, which is where a real scheduler's switch is least
+        /// surprising to the code.
+        /// </remarks>
+        public bool TimeSlice()
+        {
+            long now = _cpu.InstructionsRetired;
+            if (now - _sliceStart < SliceInstructions)
+            {
+                return false;
+            }
+
+            _sliceStart = now;
+            return _threads.Count > 1 && BlockCurrentThread(() => true, why: "time slice");
+        }
+
         private void SwitchTo(GuestThread thread)
         {
+            _sliceStart = _cpu.InstructionsRetired;
             if (HostStubs.CountCalls)
             {
                 long now = _cpu.InstructionsRetired;
