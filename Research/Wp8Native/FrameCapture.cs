@@ -783,15 +783,12 @@
 
                     if (c0 > c1 || hasAlphaBlock)
                     {
-                        for (int i = 0; i < 3; i++)
-                        {
-                            red[2] = ((2 * red[0]) + red[1]) / 3;
-                            green[2] = ((2 * green[0]) + green[1]) / 3;
-                            blue[2] = ((2 * blue[0]) + blue[1]) / 3;
-                            red[3] = (red[0] + (2 * red[1])) / 3;
-                            green[3] = (green[0] + (2 * green[1])) / 3;
-                            blue[3] = (blue[0] + (2 * blue[1])) / 3;
-                        }
+                        red[2] = ((2 * red[0]) + red[1]) / 3;
+                        green[2] = ((2 * green[0]) + green[1]) / 3;
+                        blue[2] = ((2 * blue[0]) + blue[1]) / 3;
+                        red[3] = (red[0] + (2 * red[1])) / 3;
+                        green[3] = (green[0] + (2 * green[1])) / 3;
+                        blue[3] = (blue[0] + (2 * blue[1])) / 3;
                     }
                     else
                     {

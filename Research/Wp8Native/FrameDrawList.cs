@@ -37,8 +37,12 @@ namespace WPR.Wp8Native
         public readonly record struct Batch(TextureImage? Texture, int FirstVertex, int VertexCount, bool Wrap = false);
     }
 
-    /// <summary>A texture decoded to tightly packed RGBA8, top row first.</summary>
-    public sealed record TextureImage(long Key, int Version, int Width, int Height, byte[] Rgba);
+    /// <summary>
+    /// A texture's pixels: tightly packed RGBA8, top row first - or, for a block-compressed
+    /// texture headed for the GPU, its blocks as shipped (<see cref="Blocks"/>, tightly packed,
+    /// <see cref="BlockFormat"/> 1/2/3 for BC1/BC2/BC3) with <see cref="Rgba"/> empty.
+    /// </summary>
+    public sealed record TextureImage(long Key, int Version, int Width, int Height, byte[] Rgba, byte[]? Blocks = null, int BlockFormat = 0);
 
     public sealed partial class FrameCapture
     {
@@ -180,6 +184,68 @@ namespace WPR.Wp8Native
 
             var image = new TextureImage(texture.Storage, texture.Version, width, height, rgba);
             RgbaCache[texture.Storage] = image;
+            return image;
+        }
+
+        private static readonly Dictionary<long, TextureImage> BlockCache = new();
+
+        /// <summary>
+        /// A texture as the GPU path wants it: a block-compressed one keeps its blocks, so the host
+        /// stores it compressed when the device can sample BC1-BC3 and decompresses it through the
+        /// XNA layer's one decoder (TextureFormatShim/DxtUtil) when it cannot; anything else is
+        /// <see cref="DecodeRgba"/>.
+        /// </summary>
+        /// <remarks>
+        /// Before this, every WP8 texture was expanded to RGBA on the CPU here, desktop included,
+        /// though D3D11 samples BC natively: four times the upload and the memory, and a second
+        /// BC decoder beside the XNA one. <see cref="DecodeBlocks"/> stays for the probe's software
+        /// rasteriser and the WPR_WP8_GPU=0 draw list, which have no device to hand the blocks to.
+        /// </remarks>
+        internal static TextureImage? TextureForGpu(ArmEmulator emulator, Resource? texture)
+        {
+            if (texture is null || texture.BlockBytes == 0)
+            {
+                return DecodeRgba(emulator, texture);
+            }
+
+            if (!texture.HasContent || texture.Storage == 0 || texture.PixelWidth <= 0 || texture.PixelHeight <= 0)
+            {
+                return null;
+            }
+
+            if (BlockCache.TryGetValue(texture.Storage, out TextureImage? cached) && cached.Version == texture.Version &&
+                cached.Width == texture.PixelWidth && cached.Height == texture.PixelHeight)
+            {
+                return cached;
+            }
+
+            int across = Math.Max(1, (texture.PixelWidth + 3) / 4);
+            int down = Math.Max(1, (texture.PixelHeight + 3) / 4);
+            int tight = across * texture.BlockBytes;
+            byte[] blocks = new byte[tight * down];
+            try
+            {
+                // RowPitch is the game's own and may pad a row of blocks; the host wants them packed.
+                for (int row = 0; row < down; row++)
+                {
+                    byte[] line = emulator.ReadMemory(texture.Storage + ((long)row * texture.RowPitch), tight);
+                    Buffer.BlockCopy(line, 0, blocks, row * tight, tight);
+                }
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+
+            int format = texture.Format switch
+            {
+                70 or 71 or 72 => 1,    // BC1
+                73 or 74 or 75 => 2,    // BC2
+                _ => 3,                 // BC3 (76, 77, 78)
+            };
+
+            var image = new TextureImage(texture.Storage, texture.Version, texture.PixelWidth, texture.PixelHeight, [], blocks, format);
+            BlockCache[texture.Storage] = image;
             return image;
         }
     }

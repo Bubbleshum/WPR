@@ -246,7 +246,7 @@ namespace WPR.Wp8Native
                 {
                     textures[i] = _renderTargetKeys.Contains(resource.Storage)
                         ? new GpuTexture(null, new GpuTarget(resource.Storage, resource.PixelWidth, resource.PixelHeight))
-                        : new GpuTexture(FrameCapture.DecodeRgba(_emulator, resource), null);
+                        : new GpuTexture(FrameCapture.TextureForGpu(_emulator, resource), null);
                 }
 
                 if (_psSamplers[i] != 0 && _gpuStateDescs.TryGetValue(_psSamplers[i], out byte[]? sampler))

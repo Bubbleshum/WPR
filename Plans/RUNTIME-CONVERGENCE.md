@@ -1,6 +1,9 @@
 # Runtime convergence: one stub policy, one renderer, one input path
 
-**Status (2026-10-10):** Proposed. Nothing here is started.
+**Status (2026-10-12):** Track 1 done (1a-1f; 1e's removal of `ConstructShapedObject` still waits on
+activation through generated class info). 2c, 3a, 3c, 3d, 3e done; 2a in progress; Track 4 spike done (Spark2 go,
+Unity no-go). WP8 native now has one render path: every title replays on the GPU (the per-title allow-list is
+gone; `WPR_WP8_GPU=0` keeps the 2D draw list as a diagnostic). Open: 2b, 3b, Track 5.
 **Written against:** `f58fa86`.
 **Prompted by:** Angry Birds Go! (WP8 native) dying on its first frame with `null call to 0x00000000`,
 and the question of how much of WPR's runtime is per-game and how much could be shared.
@@ -317,6 +320,14 @@ Change the replay to create textures in their shipped format and pass the blocks
 **Check:** a 3D WP8 title's draw count and screen hash unchanged on desktop, and on an Adreno or
 Mali device; `WPR_FORCE_NO_DXT=1` on desktop reproduces the phone path.
 
+**Done 2026-10-12.** `FrameCapture.TextureForGpu` hands the replay BC1-BC3 textures as packed blocks and
+`Wp8GpuReplay` creates them as `Dxt1`/`Dxt3`/`Dxt5`, so `TextureFormatShim` keeps them compressed on desktop and
+decompresses through `DxtUtil` where the device has no BC. `DecodeBlocks` was **not** deleted: the Research
+sources also build the standalone probe, which has no XNA reference, and its software rasteriser plus the
+`WPR_WP8_GPU=0` draw list still need a CPU decoder (its triple-computed palette was fixed). The stats line now
+reads `textures=N (bc=M)`. Measured over the ten in-scope titles, normal and `WPR_FORCE_NO_DXT=1`: same frames as
+before, no skipped draws; Stella's 14 textures and 5 of MC4's 8 are BC. Not yet run on a phone.
+
 ### 3b. Android audio through the registry
 
 `AudioTrackOutput` exists because FAudio ran dry with small double-buffered chunks on phones. It
@@ -388,6 +399,13 @@ in order, and stops at the first "no":
 
 **Output:** a go / no-go section appended to `Unity_WP8_Feasibility.md`, with the counts. Do not
 build the bridge as part of the spike.
+
+**Done 2026-10-12** (`Unity_WP8_Feasibility.md` §11). Spark2 (AC Pirates): **go** - `SparkApp.dll` and its 8
+package DLLs map, every DllMain returns TRUE and the `SparkAppBridge` factory activates; the shell surface is 13
+members one way and 22 the other, the same shape as Alex and MC4. Unity: **no-go** for an in-process bridge -
+`UnityPlayer.dll` maps and activates, but `UnityEngine.dll` calls ~2,900 native function pointers that assume a
+shared 32-bit address space (about 750 pass managed memory), and native calls back through 9-14k published thunks,
+more than the trap page holds. Unity stays on the port rail.
 
 ## 6. Track 5: docs
 

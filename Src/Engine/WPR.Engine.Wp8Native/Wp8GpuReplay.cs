@@ -55,7 +55,7 @@ namespace WPR.Wp8Native
         {
             string text = $"replay {_replayTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, _framesReplayed):0.0}ms/frame " +
                 $"{_commands / Math.Max(1, _framesReplayed)} cmd/frame effects={_effects.Count} targets={_targets.Count} " +
-                $"textures={_textures.Count} vbs={_vertexBuffers.Count} blends={_blends.Count} depths={_depths.Count} " +
+                $"textures={_textures.Count} (bc={_textures.Count(t => t.Value.Texture.Format is SurfaceFormat.Dxt1 or SurfaceFormat.Dxt3 or SurfaceFormat.Dxt5)}) vbs={_vertexBuffers.Count} blends={_blends.Count} depths={_depths.Count} " +
                 $"rasters={_rasters.Count} samplers={_samplers.Count} streams: kept={_uploaded.Count(u => u.Value.Buffer is not null)} reused={StreamsReused} uploaded={StreamsUploaded} " +
                 $"managed={GC.GetTotalMemory(false) / (1024 * 1024)}MB gc={GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}";
             _replayTicks = 0;
@@ -817,21 +817,33 @@ namespace WPR.Wp8Native
                 return null;
             }
 
+            // A block-compressed texture is created in its shipped format and handed its blocks:
+            // TextureFormatShim keeps it compressed where the device samples BC (desktop D3D11) and
+            // decompresses it through DxtUtil where it does not (Adreno, Mali) - the same rule, and
+            // the same decoder, as an XNA title's DXT content.
+            SurfaceFormat format = image.BlockFormat switch
+            {
+                1 => SurfaceFormat.Dxt1,
+                2 => SurfaceFormat.Dxt3,
+                3 => SurfaceFormat.Dxt5,
+                _ => SurfaceFormat.Color,
+            };
+
             if (_textures.TryGetValue(image.Key, out var known) && known.Version == image.Version &&
-                known.Texture.Width == image.Width && known.Texture.Height == image.Height)
+                known.Texture.Width == image.Width && known.Texture.Height == image.Height && known.Texture.Format == format)
             {
                 return known.Texture;
             }
 
-            Texture2D created = known.Texture is { } reuse && reuse.Width == image.Width && reuse.Height == image.Height
+            Texture2D created = known.Texture is { } reuse && reuse.Width == image.Width && reuse.Height == image.Height && reuse.Format == format
                 ? reuse
-                : new Texture2D(_device, image.Width, image.Height, false, SurfaceFormat.Color);
+                : new Texture2D(_device, image.Width, image.Height, false, format);
             if (!ReferenceEquals(created, known.Texture))
             {
                 known.Texture?.Dispose();
             }
 
-            created.SetData(image.Rgba);
+            created.SetData(image.Blocks ?? image.Rgba);
             _textures[image.Key] = (image.Version, created);
             return created;
         }
