@@ -161,7 +161,7 @@ namespace WPR.SilverlightCompability
         {
             foreach (string rel in ArtCandidates)
             {
-                string p = Path.Combine(installFolder, rel.Replace('/', Path.DirectorySeparatorChar));
+                string p = System.IO.Path.Combine(installFolder, rel.Replace('/', System.IO.Path.DirectorySeparatorChar));
                 if (File.Exists(p)) return p;
             }
             return null;
@@ -172,7 +172,7 @@ namespace WPR.SilverlightCompability
         {
             try
             {
-                string manifest = Path.Combine(installFolder, "WMAppManifest.xml");
+                string manifest = System.IO.Path.Combine(installFolder, "WMAppManifest.xml");
                 if (!File.Exists(manifest)) return null;
                 var doc = XDocument.Load(manifest);
                 foreach (var el in doc.Descendants())

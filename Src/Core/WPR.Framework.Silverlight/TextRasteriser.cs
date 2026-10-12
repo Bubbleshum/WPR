@@ -83,11 +83,11 @@ namespace WPR.SilverlightCompability
             string? windir = Environment.GetEnvironmentVariable("WINDIR");
             if (!string.IsNullOrEmpty(windir))
             {
-                string fonts = Path.Combine(windir!, "Fonts");
-                yield return Path.Combine(fonts, "segoeui.ttf");
-                yield return Path.Combine(fonts, "tahoma.ttf");
-                yield return Path.Combine(fonts, "arial.ttf");
-                yield return Path.Combine(fonts, "verdana.ttf");
+                string fonts = System.IO.Path.Combine(windir!, "Fonts");
+                yield return System.IO.Path.Combine(fonts, "segoeui.ttf");
+                yield return System.IO.Path.Combine(fonts, "tahoma.ttf");
+                yield return System.IO.Path.Combine(fonts, "arial.ttf");
+                yield return System.IO.Path.Combine(fonts, "verdana.ttf");
             }
 
             // Android. Roboto is the system UI face; the Droid names are the older equivalents and

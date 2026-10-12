@@ -218,9 +218,9 @@ namespace WPR.SilverlightCompability
                 try
                 {
                     string relative = path.TrimStart('/', '\\')
-                        .Replace('\\', Path.DirectorySeparatorChar)
-                        .Replace('/', Path.DirectorySeparatorChar);
-                    string full = Path.Combine(install!, relative);
+                        .Replace('\\', System.IO.Path.DirectorySeparatorChar)
+                        .Replace('/', System.IO.Path.DirectorySeparatorChar);
+                    string full = System.IO.Path.Combine(install!, relative);
                     if (File.Exists(full)) return File.OpenRead(full);
                 }
                 catch (Exception) { /* as above */ }

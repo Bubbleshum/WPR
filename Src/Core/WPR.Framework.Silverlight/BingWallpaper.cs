@@ -58,13 +58,13 @@ namespace WPR.SilverlightCompability
         {
             try
             {
-                string cacheDir = Path.Combine(
+                string cacheDir = System.IO.Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     "WPR", "BingWallpaper");
                 Directory.CreateDirectory(cacheDir);
 
                 string today = DateTime.UtcNow.ToString("yyyy-MM-dd");
-                string cachedFile = Path.Combine(cacheDir, today + ".jpg");
+                string cachedFile = System.IO.Path.Combine(cacheDir, today + ".jpg");
 
                 if (!File.Exists(cachedFile))
                 {

@@ -19,6 +19,8 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+// WPR.SilverlightCompability defines the Silverlight shape Path, which would make a bare Path ambiguous.
+using Path = System.IO.Path;
 
 namespace WPR
 {

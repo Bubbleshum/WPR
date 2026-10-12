@@ -18,7 +18,8 @@ namespace WPR.SilverlightCompability
     ///
     /// <para><b>What it draws, and what it does not.</b> Backgrounds (any
     /// <see cref="FrameworkElement"/>), <see cref="Border"/> chrome, <see cref="Shape"/> fills and
-    /// strokes, <see cref="Image"/> and <see cref="TextBlock"/>, with <see cref="SolidColorBrush"/>
+    /// strokes (real anti-aliased geometry — see SoftwareVisualRasteriser.Shapes.cs),
+    /// <see cref="Image"/> and <see cref="TextBlock"/>, with <see cref="SolidColorBrush"/>
     /// and <see cref="ImageBrush"/>. Text goes through <see cref="TextRasteriser"/>, which
     /// rasterises glyph outlines from a system font. <c>RenderTransform</c> and
     /// <see cref="Viewbox"/> scaling are applied for the axis-aligned part — translate and
@@ -38,7 +39,7 @@ namespace WPR.SilverlightCompability
     /// <c>SilverlightRenderer.OffsetTo</c> uses. The tree must have been laid out first;
     /// <c>MixedModeGame</c> runs one pass after navigation.</para>
     /// </remarks>
-    internal static class SoftwareVisualRasteriser
+    internal static partial class SoftwareVisualRasteriser
     {
         /// <summary>Guards against a tree that contains a cycle; nothing legitimate is this deep.</summary>
         private const int MaxDepth = 64;
@@ -133,17 +134,10 @@ namespace WPR.SilverlightCompability
 
             switch (element)
             {
-                case Rectangle rect:
-                    FillBrush(surface, rect.Fill, bounds, drawClip, opacity);
-                    StrokeEdges(surface, rect.Stroke, bounds, rect.StrokeThickness, opacity, drawClip);
-                    break;
-
                 case Shape shape:
-                    // Every other shape is approximated by its bounding box. Wrong for an ellipse
-                    // or a path, but a filled box in roughly the right place beats nothing at all,
-                    // and WP7 chrome is overwhelmingly rectangles.
-                    ReportOnce("shape:" + shape.GetType().Name, "drawn as its bounding rectangle");
-                    FillBrush(surface, shape.Fill, bounds, drawClip, opacity);
+                    // Real geometry; see SoftwareVisualRasteriser.Shapes.cs. Passed the ANCESTOR
+                    // clip, not drawClip: a shape may legitimately draw outside its own slot.
+                    PaintShape(surface, shape, bounds, clip, opacity, scaleX, scaleY);
                     break;
 
                 case Border border:
@@ -1073,9 +1067,7 @@ namespace WPR.SilverlightCompability
             switch (element)
             {
                 case Shape shape:
-                    SignBrush(shape.Fill, ref hash);
-                    SignBrush(shape.Stroke, ref hash);
-                    hash.Add(shape.StrokeThickness);
+                    SignShape(shape, ref hash);
                     break;
 
                 case Border border:

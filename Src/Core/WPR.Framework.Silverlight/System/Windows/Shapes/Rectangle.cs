@@ -1,19 +1,12 @@
-﻿// Minimal shims for the System.Windows.Shapes namespace.
-//
-// Real Silverlight defines a Shape base with rich path / geometry support; here
-// we only need the type tokens to resolve (so user IL referencing
-// System.Windows.Shapes.Rectangle / Shape JITs) and the Fill / Stroke / etc.
-// setters to round-trip. The renderer doesn't currently paint primitive shapes.
-
-using System;
+﻿using System;
 
 namespace WPR.SilverlightCompability
 {
     /// <summary>
-    /// Shim for <c>System.Windows.Shapes.Rectangle</c>. UserRank uses it as a
-    /// colored badge — code paints the shape via <see cref="Shape.Fill"/> /
-    /// <see cref="UIElement.OpacityMask"/>. Renderer doesn't paint shapes yet;
-    /// the type exists so JIT'd code that references it loads cleanly.
+    /// Shim for <c>System.Windows.Shapes.Rectangle</c>. Fills its slot, inset by half the
+    /// stroke; <see cref="RadiusX"/>/<see cref="RadiusY"/> round the corners (clamped to half a
+    /// side). Painted by <c>SoftwareVisualRasteriser</c>: a square-cornered one on the exact
+    /// pixel path it always had, a rounded one through the anti-aliased shape path.
     /// </summary>
     public class Rectangle : Shape
     {
