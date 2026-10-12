@@ -284,6 +284,14 @@ that plan says.
 Raise them from `Keyboard.GetState()` edges in `Wp8NativeGame`, alongside the existing pointer
 injection. Low priority: few WP8 titles used a keyboard. Easier after 1d names the slots.
 
+**Done 2026-10-12** (`Research/Wp8Native/Keyboard.cs`): `add_`/`remove_` for `KeyDown`, `KeyUp`
+and `CharacterReceived` keep every handler with a distinct token, AddRef on add and Release on
+remove; events go out at the next `ProcessEvents` or XAML frame with a `KeyEventArgs`
+(`VirtualKey`, `KeyStatus`, `Handled`). `GetKeyState`/`GetAsyncKeyState` answer real state.
+`Wp8NativeGame.PumpKeyboard` injects `Keyboard.GetState()` edges (the Back-bound key excluded) and
+`TextInputEXT` characters. Contract tests: `Suites/KeyboardSuite.cs`. Not modelled: `KeyDown`
+auto-repeat.
+
 ### Not merged, on purpose
 
 - `Research/Wp8Native/Direct3DRuntime.cs` translates guest D3D11 into XNA draws. It is a

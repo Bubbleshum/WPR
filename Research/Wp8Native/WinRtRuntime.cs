@@ -70,6 +70,14 @@ namespace WPR.Wp8Native
                 ("Windows.UI.Core.ICoreWindow", "add_VisibilityChanged", SlotAddVisibilityChanged),
                 ("Windows.UI.Core.ICoreWindow", "remove_VisibilityChanged", SlotRemoveVisibilityChanged),
                 ("Windows.UI.Core.ICoreWindow", "get_Visible", SlotWindowVisible),
+                ("Windows.UI.Core.ICoreWindow", "GetAsyncKeyState", SlotGetAsyncKeyState),
+                ("Windows.UI.Core.ICoreWindow", "GetKeyState", SlotGetKeyState),
+                ("Windows.UI.Core.ICoreWindow", "add_CharacterReceived", SlotAddCharacterReceived),
+                ("Windows.UI.Core.ICoreWindow", "remove_CharacterReceived", SlotRemoveCharacterReceived),
+                ("Windows.UI.Core.ICoreWindow", "add_KeyDown", SlotAddKeyDown),
+                ("Windows.UI.Core.ICoreWindow", "remove_KeyDown", SlotRemoveKeyDown),
+                ("Windows.UI.Core.ICoreWindow", "add_KeyUp", SlotAddKeyUp),
+                ("Windows.UI.Core.ICoreWindow", "remove_KeyUp", SlotRemoveKeyUp),
                 ("Windows.ApplicationModel.Core.ICoreApplication", "Run", SlotCoreApplicationRun),
                 ("Windows.ApplicationModel.Core.IFrameworkViewSource", "CreateView", SlotCreateView),
                 ("Windows.Storage.IApplicationDataStatics", "get_Current", SlotApplicationDataCurrent),
@@ -341,20 +349,6 @@ namespace WPR.Wp8Native
             Return(HResultOk);
         };
 
-        /// <summary>
-        /// GetKeyState / GetAsyncKeyState, which take the key in r1 and return the state
-        /// through r2. CoreVirtualKeyStates.None is zero, which is the honest answer: this
-        /// has no keyboard.
-        /// </summary>
-        private Action KeyState() => () =>
-        {
-            if (ArmEmulator.IsStackAddress(Arg(2)))
-            {
-                _emulator.WriteUInt32(Arg(2), 0);
-            }
-
-            Return(HResultOk);
-        };
         private readonly List<string> _lifecycle = new();
 
         /// <summary>Each view lifecycle step and the HRESULT it returned.</summary>
@@ -681,6 +675,19 @@ namespace WPR.Wp8Native
 
             // Sensor readings next, once a frame; pointer input follows on the same turn.
             if (DeliverSensors(() =>
+                {
+                    if (!DeliverInput(continueWith, sender))
+                    {
+                        continueWith();
+                    }
+                }))
+            {
+                return true;
+            }
+
+            // Key events next, all of this turn's at once; pointer input follows on the same turn.
+            // Always to the CoreWindow, whoever the pointer events' sender is.
+            if (DeliverKeys(() =>
                 {
                     if (!DeliverInput(continueWith, sender))
                     {
@@ -1288,8 +1295,17 @@ namespace WPR.Wp8Native
                     [SlotAddVisibilityChanged] = ("add_VisibilityChanged", AddLifecycleWindowHandler(SlotAddVisibilityChanged)),
                     [SlotRemoveVisibilityChanged] = ("remove_VisibilityChanged", RemoveLifecycleWindowHandler(SlotAddVisibilityChanged)),
                     [InspectableSlots + 12] = ("Activate", () => Return(HResultOk)),
-                    [InspectableSlots + 14] = ("GetAsyncKeyState", KeyState()),
-                    [InspectableSlots + 15] = ("GetKeyState", KeyState()),
+                    [SlotGetAsyncKeyState] = ("GetAsyncKeyState", KeyState(async: true)),
+                    [SlotGetKeyState] = ("GetKeyState", KeyState(async: false)),
+
+                    // The keyboard (Keyboard.cs). The discovery default kept one handler per event
+                    // with a zero token and never raised it; these keep every handler and raise.
+                    [SlotAddKeyDown] = ("add_KeyDown", AddKeyHandler(SlotAddKeyDown)),
+                    [SlotRemoveKeyDown] = ("remove_KeyDown", RemoveKeyHandler(SlotAddKeyDown)),
+                    [SlotAddKeyUp] = ("add_KeyUp", AddKeyHandler(SlotAddKeyUp)),
+                    [SlotRemoveKeyUp] = ("remove_KeyUp", RemoveKeyHandler(SlotAddKeyUp)),
+                    [SlotAddCharacterReceived] = ("add_CharacterReceived", AddKeyHandler(SlotAddCharacterReceived)),
+                    [SlotRemoveCharacterReceived] = ("remove_CharacterReceived", RemoveKeyHandler(SlotAddCharacterReceived)),
                 });
 
             // ICoreApplicationView slot 6 is get_CoreWindow by the documented member

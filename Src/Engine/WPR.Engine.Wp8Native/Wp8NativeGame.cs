@@ -115,6 +115,11 @@ namespace WPR.Wp8Native
             _white.SetData(new[] { Color.White });
 
             _audio = IHostAudio.Create(_log);
+
+            // A static event: removed again in Dispose, or the next title launched in this process
+            // would still be feeding this one's (disposed) guest.
+            TextInputEXT.TextInput += OnTextInput;
+
             _guest = new Thread(RunGuest, GuestStackBytes)
             {
                 Name = "WP8 guest (dynarmic)",
@@ -482,6 +487,7 @@ namespace WPR.Wp8Native
 
             PumpTouch();
             PumpBack();
+            PumpKeyboard();
             _audio?.Pump();
 
             // One guest frame per tick, never banked beyond two.
@@ -573,6 +579,98 @@ namespace WPR.Wp8Native
             }
 
             _backWasDown = down;
+        }
+
+        /// <summary>Virtual keys down at the last <see cref="PumpKeyboard"/>, and whether each was an extended (right-hand) key.</summary>
+        private Dictionary<uint, bool> _keysDown = new();
+
+        /// <summary>
+        /// The keyboard, as <c>CoreWindow.KeyDown</c>/<c>KeyUp</c>: the edges of
+        /// <see cref="Keyboard.GetState()"/> between frames, mapped to <c>Windows.System.VirtualKey</c>
+        /// (Research/Wp8Native/Keyboard.cs raises them). On the desktop that is the PC keyboard; on
+        /// Android only a physical one, since no keyboard-emulation host is registered there.
+        /// </summary>
+        /// <remarks>
+        /// The key bound as the Back button is left out: it already reaches the game as
+        /// <c>HardwareButtons.BackPressed</c> through <see cref="PumpBack"/>, and a phone never had a
+        /// key that was both. Polled once a frame, so a tap shorter than a frame is lost - the same
+        /// limit every XNA title has with <c>Keyboard.GetState</c>.
+        /// </remarks>
+        private void PumpKeyboard()
+        {
+            if (_emulator is not { } emulator)
+            {
+                return;
+            }
+
+            var now = new Dictionary<uint, bool>();
+            foreach (Keys key in Keyboard.GetState().GetPressedKeys())
+            {
+                if (WPR.Xna.Rhi.XnaBackend.KeyboardEmulation?.IsBackKey(key) == true)
+                {
+                    continue;
+                }
+
+                uint virtualKey = ToVirtualKey(key, out bool extended);
+                if (virtualKey != 0)
+                {
+                    now[virtualKey] = now.GetValueOrDefault(virtualKey) || extended;
+                }
+            }
+
+            foreach ((uint virtualKey, bool extended) in _keysDown)
+            {
+                if (!now.ContainsKey(virtualKey))
+                {
+                    emulator.WinRt.InjectKey(virtualKey, down: false, extended);
+                }
+            }
+
+            foreach ((uint virtualKey, bool extended) in now)
+            {
+                if (!_keysDown.ContainsKey(virtualKey))
+                {
+                    emulator.WinRt.InjectKey(virtualKey, down: true, extended);
+                }
+            }
+
+            _keysDown = now;
+        }
+
+        /// <summary>
+        /// The <c>Windows.System.VirtualKey</c> for an XNA key, or 0 for none. Both are the Win32 VK
+        /// codes, so most keys map to themselves; the exceptions are the modifiers, which CoreWindow
+        /// reports as the generic Shift/Control/Menu with the right-hand ones marked extended, and
+        /// the Xbox chat-pad keys, which no WP8 device had.
+        /// </summary>
+        internal static uint ToVirtualKey(Keys key, out bool extended)
+        {
+            extended = key is Keys.RightControl or Keys.RightAlt;
+            return key switch
+            {
+                Keys.None or Keys.ChatPadGreen or Keys.ChatPadOrange => 0,
+                Keys.LeftShift or Keys.RightShift => 0x10,
+                Keys.LeftControl or Keys.RightControl => 0x11,
+                Keys.LeftAlt or Keys.RightAlt => 0x12,
+                _ => (uint)key,
+            };
+        }
+
+        /// <summary>
+        /// Typed text, as <c>CoreWindow.CharacterReceived</c>. Taken from <see cref="TextInputEXT"/>
+        /// rather than worked out from key codes, so it follows the keyboard layout and repeats while
+        /// a key is held, as Windows' own character messages do.
+        /// </summary>
+        private void OnTextInput(char character)
+        {
+            // FNA reports Home, End and Delete as control characters 2, 3 and 127 for its own text
+            // boxes; Windows sends no character for those keys.
+            if (character is (char)2 or (char)3 or (char)127)
+            {
+                return;
+            }
+
+            _emulator?.WinRt.InjectCharacter(character);
         }
 
         protected override void Draw(GameTime gameTime)
@@ -877,6 +975,7 @@ namespace WPR.Wp8Native
             if (disposing)
             {
                 _closing = true;
+                TextInputEXT.TextInput -= OnTextInput;
                 try { _emulator?.Stop("host disposed"); } catch { }
                 WakeGuest();
 
@@ -898,6 +997,17 @@ namespace WPR.Wp8Native
                             foreach (string line in stopping.WinRt.SensorLog.Skip(_sensorLogged))
                             {
                                 Log("sensors: " + line);
+                            }
+
+                            // Whether the title subscribed to the keyboard at all, and what reached it.
+                            foreach (string line in stopping.WinRt.KeyboardLog)
+                            {
+                                Log("keyboard: " + line);
+                            }
+
+                            if (stopping.WinRt.KeyEventsDelivered > 0)
+                            {
+                                Log($"keyboard: {stopping.WinRt.KeyEventsDelivered} key event(s) delivered");
                             }
                         }
                     }
