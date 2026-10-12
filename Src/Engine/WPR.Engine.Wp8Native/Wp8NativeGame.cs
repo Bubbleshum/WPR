@@ -144,6 +144,7 @@ namespace WPR.Wp8Native
             try
             {
                 Log($"loading {_executable}");
+                Log($"screen {Wp8Display.Describe()}");
                 PeImage image = PeImage.Load(_executable);
                 _emulator = new ArmEmulator(image, Path.GetDirectoryName(_executable)!, collectBlockStats: false);
                 // The sampler's report is the probe's; WPR_WP8_CALLSITES=1 (diagnostic only) keeps it
@@ -455,6 +456,7 @@ namespace WPR.Wp8Native
         private void OnGpuFrameBuilt(GpuFrame frame)
         {
             _presented++;
+            LogScreenQueries();
             lock (_gate)
             {
                 _latestGpu = frame;
@@ -464,6 +466,22 @@ namespace WPR.Wp8Native
             {
                 _tick.Wait(250);
             }
+        }
+
+        /// <summary>
+        /// Once, a few seconds in: what the title asked about the screen and what swap chain it made,
+        /// on the guest thread (both logs are the emulator's).
+        /// </summary>
+        private void LogScreenQueries()
+        {
+            if (_presented != 240 || _emulator is not { } emulator)
+            {
+                return;
+            }
+
+            var (bounds, dpi, scale) = emulator.WinRt.ScreenQueries;
+            string swapChain = emulator.Direct3D.Log.FirstOrDefault(l => l.StartsWith("CreateSwapChain", StringComparison.Ordinal)) ?? "no swap chain";
+            Log($"screen queries: bounds={bounds} logicalDpi={dpi} resolutionScale={scale}; {swapChain}");
         }
 
         /// <summary>" (ClassName)" from an object's MSVC RTTI - vtable[-1] is the complete object locator - or "".</summary>
@@ -544,8 +562,9 @@ namespace WPR.Wp8Native
                 return;
             }
 
-            // TouchPanel positions are in display space, which is the backbuffer - the 800x480
-            // the guest composes in - so they go across unscaled. Every finger is its own pointer,
+            // TouchPanel positions are in display space, which is the backbuffer - the landscape
+            // raster the guest composes in (1280x768 on WXGA) - so they go across unscaled, and
+            // WinRtRuntime turns them into the portrait DIPs a PointerPoint carries. Every finger is its own pointer,
             // told apart by PointerId: Modern Combat 4 moves with one thumb and aims with the other.
             TouchCollection touches = TouchPanel.GetState();
             HashSet<int>? seen = null;

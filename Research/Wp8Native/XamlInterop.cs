@@ -51,8 +51,11 @@ namespace WPR.Wp8Native
         /// <summary>A delegate the page would have subscribed (a C# callback); answered by a no-op.</summary>
         public const string Callback = "$callback";
 
-        /// <summary>The render target the grid asks for: WVGA, portrait, as the device reports it.</summary>
-        public SizeF RenderTarget { get; init; } = new(480, 800);
+        /// <summary>
+        /// The render target the grid asks for: portrait, in physical pixels, as the device reports
+        /// it (768x1280 on WXGA, <see cref="Wp8Display"/>).
+        /// </summary>
+        public SizeF RenderTarget { get; init; } = new(Wp8Display.PhysicalWidth, Wp8Display.PhysicalHeight);
 
         /// <summary>
         /// A static method that hands back the instance (a singleton's <c>GetInstance</c>), used in

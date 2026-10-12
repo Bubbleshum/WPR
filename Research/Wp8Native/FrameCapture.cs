@@ -32,28 +32,12 @@
         /// <c>WPR_SCREEN=WxH</c> overrides it, which is how the right value was found: the
         /// image's own vertices are texel-exact at exactly one size.
         /// </para>
+        /// <para>Derived from <see cref="Wp8Display"/>: the physical screen turned landscape, so
+        /// 1280x768 on the default WXGA device.</para>
         /// </remarks>
-        public static int Width { get; private set; } = 800;
+        public static int Width => Wp8Display.CompositionWidth;
 
-        public static int Height { get; private set; } = 480;
-
-        static FrameCapture()
-        {
-            string? size = Environment.GetEnvironmentVariable("WPR_SCREEN");
-            if (size is null)
-            {
-                return;
-            }
-
-            string[] parts = size.Split('x', 'X');
-            if (parts.Length == 2 &&
-                int.TryParse(parts[0], out int width) && int.TryParse(parts[1], out int height) &&
-                width > 0 && height > 0 && width <= 4096 && height <= 4096)
-            {
-                Width = width;
-                Height = height;
-            }
-        }
+        public static int Height => Wp8Display.CompositionHeight;
 
         /// <summary>A Direct3D resource, with the bytes actually in it.</summary>
         public sealed class Resource

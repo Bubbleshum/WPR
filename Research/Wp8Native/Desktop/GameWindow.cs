@@ -60,10 +60,10 @@ namespace WPR.Wp8Native.Desktop
             BackColor = Color.Black;
             StartPosition = FormStartPosition.CenterScreen;
 
-            // The image composes in landscape at the raster size; open at 1.5x so it is
-            // legible on a modern display, and let the frame stretch with the window after.
-            ClientSize = new Size(FrameCapture.Width * 3 / 2, FrameCapture.Height * 3 / 2);
-            MinimumSize = new Size(FrameCapture.Width / 2, FrameCapture.Height / 2);
+            // The image composes in landscape at the raster size (1280x768 on WXGA); open 1200
+            // wide so it is legible on a modern display, and let the frame stretch after.
+            ClientSize = new Size(1200, 1200 * FrameCapture.Height / Math.Max(1, FrameCapture.Width));
+            MinimumSize = new Size(400, 400 * FrameCapture.Height / Math.Max(1, FrameCapture.Width));
 
             _status = new System.Windows.Forms.Timer { Interval = 500 };
             _status.Tick += (_, _) => UpdateTitle();

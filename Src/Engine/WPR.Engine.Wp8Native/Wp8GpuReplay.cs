@@ -9,11 +9,11 @@ namespace WPR.Wp8Native
     /// Replays a <see cref="GpuFrame"/> on the host GPU with the game's own shaders: the 3D path.
     /// </summary>
     /// <remarks>
-    /// <para>The game renders into what it believes is a 480x800 portrait back buffer, so that is
-    /// exactly what it gets - a render target of that size, with depth - and its viewports and
+    /// <para>The game renders into what it believes is a portrait back buffer (768x1280 on the
+    /// default WXGA device, <see cref="Wp8Display"/>), so that is exactly what it gets - a render target of that size, with depth - and its viewports and
     /// coordinates stay its own. The finished target is then turned a quarter onto the landscape
     /// window, the same way the 2D path and the pointer mapping turn (landscape (x, y) shows
-    /// portrait (480 - y, x)).</para>
+    /// portrait (width - y, x)) and scaled to fit the host back buffer.</para>
     /// <para>Shaders go through <see cref="Aon9Shader"/>: the Direct3D 9 program every 9_x shader
     /// carries, compiled by FNA3D's MojoShader, inside an effect whose only states are the two
     /// shaders. Constant buffers are copied into the effect's <c>vs_c</c>/<c>ps_c</c> arrays by
