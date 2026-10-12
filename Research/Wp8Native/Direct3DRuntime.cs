@@ -907,6 +907,63 @@ namespace WPR.Wp8Native
             }
         }
 
+        /// <summary>
+        /// UpdateSubresource with a D3D11_BOX (left, top, front, right, bottom, back, in texels):
+        /// the source rows land inside that rectangle of level 0, not at its origin. A texture
+        /// atlas filled piece by piece is written this way.
+        /// </summary>
+        private void CopyBox(FrameCapture.Resource resource, long source, int sourcePitch, long box)
+        {
+            if (source == 0 || resource.Storage == 0 || resource.Rows <= 0)
+            {
+                return;
+            }
+
+            int left = (int)_emulator.ReadUInt32(box + 0, 0), top = (int)_emulator.ReadUInt32(box + 4, 0);
+            int right = (int)_emulator.ReadUInt32(box + 12, 0), bottom = (int)_emulator.ReadUInt32(box + 16, 0);
+            int unitBytes, x0, y0, x1, y1;
+            if (resource.BlockBytes > 0)
+            {
+                // In 4x4 blocks, which is also what the source pitch counts rows of.
+                unitBytes = resource.BlockBytes;
+                (x0, y0, x1, y1) = (left / 4, top / 4, (right + 3) / 4, (bottom + 3) / 4);
+            }
+            else
+            {
+                unitBytes = Math.Max(1, resource.PixelBytes);
+                (x0, y0, x1, y1) = (left, top, right, bottom);
+            }
+
+            int units = resource.RowPitch / unitBytes;
+            x0 = Math.Clamp(x0, 0, units);
+            x1 = Math.Clamp(x1, x0, units);
+            y0 = Math.Clamp(y0, 0, resource.Rows);
+            y1 = Math.Clamp(y1, y0, resource.Rows);
+            int bytes = (x1 - x0) * unitBytes;
+            if (bytes <= 0 || y1 <= y0)
+            {
+                return;
+            }
+
+            int pitch = sourcePitch > 0 ? sourcePitch : bytes;
+            try
+            {
+                for (int y = y0; y < y1; y++)
+                {
+                    _emulator.WriteMemory(
+                        resource.Storage + ((long)y * resource.RowPitch) + ((long)x0 * unitBytes),
+                        _emulator.ReadMemory(source + ((long)(y - y0) * pitch), bytes));
+                }
+
+                resource.HasContent = true;
+                resource.Version++;
+            }
+            catch (Exception)
+            {
+                // Ran off the end of the source; keep what landed.
+            }
+        }
+
         /// <summary>A Create* method producing a view, which has GetResource and GetDesc.</summary>
         private Action MakeView(string kind, int outIndex)
             => Creator(kind, outIndex, $"ID3D11{kind}", ViewSlots, ViewMethods());
@@ -1262,11 +1319,42 @@ namespace WPR.Wp8Native
             {
                 // (pDstResource, DstSubresource, pDstBox, pSrcData, SrcRowPitch, SrcDepthPitch)
                 FrameCapture.Resource? destination = ResourceAt(Arg(1));
+                long box = Arg(3);
                 if (destination is not null && Arg(4) != 0)
                 {
-                    if (destination.Rows > 0)
+                    if (destination.Rows > 0 && Arg(2) != 0)
+                    {
+                        // A mip level below the top (or another array slice). Only level 0 is
+                        // kept; written there, every smaller level landed on the top-left of the
+                        // full-size picture - Assassin's Creed Pirates' logo came out as a trail
+                        // of shrinking copies of itself, and its loading screen's atlas showed
+                        // pieces of other art round the edges.
+                    }
+                    else if (destination.Rows > 0 && box != 0)
+                    {
+                        CopyBox(destination, Arg(4), (int)Arg(5), box);
+                    }
+                    else if (destination.Rows > 0)
                     {
                         CopyRows(destination, Arg(4), (int)Arg(5));
+                    }
+                    else if (box != 0 && destination.Storage != 0)
+                    {
+                        // A buffer: the box's left and right are byte offsets.
+                        int left = (int)_emulator.ReadUInt32(box + 0, 0), right = (int)_emulator.ReadUInt32(box + 12, 0);
+                        if (left >= 0 && right > left && right <= destination.StorageSize)
+                        {
+                            try
+                            {
+                                _emulator.WriteMemory(destination.Storage + left, _emulator.ReadMemory(Arg(4), right - left));
+                                destination.HasContent = true;
+                                destination.Version++;
+                            }
+                            catch (Exception)
+                            {
+                                // Short source; keep whatever landed.
+                            }
+                        }
                     }
                     else if (destination.Storage != 0 && destination.StorageSize > 0)
                     {
@@ -1638,6 +1726,18 @@ namespace WPR.Wp8Native
             FrameCapture.Resource? resource = ResourceAt(Arg(1));
             long buffer = resource?.Storage ?? 0;
             int pitch = resource?.RowPitch > 0 ? resource.RowPitch : (int)(BackBufferWidth * 4);
+            long subresource = Arg(2);
+            if (resource is { Rows: > 0 } && subresource != 0)
+            {
+                // A lower mip level (or another slice) of a texture: only level 0 is kept, so it
+                // gets scratch memory at its own pitch rather than level 0's storage, where it
+                // would have overwritten the top-left of the full-size picture.
+                int mip = (int)Math.Min(subresource, 15);
+                int width = Math.Max(1, resource.PixelWidth >> mip);
+                pitch = resource.BlockBytes > 0 ? Math.Max(1, (width + 3) / 4) * resource.BlockBytes : width * Math.Max(1, resource.PixelBytes);
+                resource = null;
+                buffer = 0;
+            }
 
             if (buffer == 0)
             {

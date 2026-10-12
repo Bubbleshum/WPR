@@ -53,6 +53,14 @@ namespace WPR.Wp8Native
         /// </summary>
         public required IReadOnlyDictionary<(string Semantic, int Index), int> InputRegisters { get; init; }
 
+        /// <summary>
+        /// For a vertex shader: each input register the Direct3D 9 program declares (<c>dcl</c>),
+        /// with the Direct3D 9 usage (D3DDECLUSAGE) and usage index it is declared with. This, not
+        /// the signature, is what MojoShader builds the input layout from: every one of these needs
+        /// exactly one vertex element, or Direct3D 11 refuses the layout.
+        /// </summary>
+        public IReadOnlyDictionary<int, (int Usage, int Index)> DeclaredInputs { get; init; } = new Dictionary<int, (int, int)>();
+
         /// <summary>The effect parameter holding this shader's constants.</summary>
         public string ConstantName => IsPixel ? "ps_c" : "vs_c";
 
@@ -117,6 +125,7 @@ namespace WPR.Wp8Native
                     Samplers = samplers,
                     InputRegisters = inputs,
                     DroppedColourOutputs = droppedOutputs,
+                    DeclaredInputs = isPixel ? new Dictionary<int, (int, int)>() : DeclaredInputRegisters(code),
                 };
             }
             catch (Exception ex)
@@ -189,6 +198,52 @@ namespace WPR.Wp8Native
             }
 
             return dropped;
+        }
+
+        /// <summary>
+        /// The input registers a vs_2_x program declares: <c>dcl_usageN vR</c> - opcode 31, a usage
+        /// token (usage in bits 0-4, index in bits 16-19), then the register (INPUT is type 1).
+        /// </summary>
+        internal static Dictionary<int, (int Usage, int Index)> DeclaredInputRegisters(byte[] code)
+        {
+            Dictionary<int, (int, int)> declared = [];
+            if (code.Length < 4 || ((U32(code, 0) >> 8) & 0xFF) < 2)
+            {
+                return declared;
+            }
+
+            int at = 4;
+            while (at + 4 <= code.Length)
+            {
+                uint token = U32(code, at);
+                if (token == 0x0000FFFF)
+                {
+                    break;
+                }
+
+                uint opcode = token & 0xFFFF;
+                if (opcode == 0xFFFE)
+                {
+                    at += 4 + (int)(((token >> 16) & 0x7FFF) * 4);
+                    continue;
+                }
+
+                int length = (int)((token >> 24) & 0xF);
+                if (opcode == 31 && length >= 2 && at + 12 <= code.Length)
+                {
+                    uint usage = U32(code, at + 4);
+                    uint parameter = U32(code, at + 8);
+                    int type = (int)(((parameter >> 28) & 0x7) | ((parameter >> 8) & 0x18));
+                    if (type == 1)
+                    {
+                        declared[(int)(parameter & 0x7FF)] = ((int)(usage & 0x1F), (int)((usage >> 16) & 0xF));
+                    }
+                }
+
+                at += 4 + (length * 4);
+            }
+
+            return declared;
         }
 
         private static uint U32(ReadOnlySpan<byte> data, int at) => BinaryPrimitives.ReadUInt32LittleEndian(data[at..]);

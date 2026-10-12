@@ -31,10 +31,20 @@ namespace WPR.Wp8Native
     public sealed record GpuClearDepth(GpuTarget Target, int Flags, float Depth, byte Stencil) : GpuCommand;
 
     /// <summary>
-    /// CopyResource / a whole-surface CopySubresourceRegion between two render targets. A Direct3D
-    /// copy needs matching sizes; one that does not match is stretched rather than dropped.
+    /// CopyResource, or CopySubresourceRegion of mip 0, between two render targets.
     /// </summary>
-    public sealed record GpuCopy(GpuTarget Destination, GpuTarget Source) : GpuCommand;
+    /// <param name="DestinationX">Where the copied region lands (CopySubresourceRegion's DstX/DstY).</param>
+    /// <param name="SourceBox">
+    /// The region copied, as left, top, right, bottom (D3D11_BOX without the depth); null is the
+    /// whole source. A region is copied texel for texel and clipped to the destination, as
+    /// Direct3D does. A whole-surface copy between targets of different sizes - which Direct3D
+    /// would refuse - is stretched instead: Spark2 copies its 800x480 surface into the 480x800
+    /// host target, and the picture it draws there is already turned for the portrait target.
+    /// </param>
+    public sealed record GpuCopy(GpuTarget Destination, GpuTarget Source, int DestinationX = 0, int DestinationY = 0, int[]? SourceBox = null) : GpuCommand
+    {
+        public bool IsWholeSurface => DestinationX == 0 && DestinationY == 0 && SourceBox is null;
+    }
 
     /// <summary>A shader, by the object the game created, with its DXBC.</summary>
     public sealed record GpuShader(long Key, byte[] Dxbc);

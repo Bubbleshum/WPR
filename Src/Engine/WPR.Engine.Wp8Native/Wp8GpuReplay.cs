@@ -67,7 +67,19 @@ namespace WPR.Wp8Native
         /// <summary>WPR_WP8_GPU_TRACE=N: log every command of the Nth replayed frame.</summary>
         private int _failuresDescribed;
 
-        private static readonly int TraceFrame = int.TryParse(Environment.GetEnvironmentVariable("WPR_WP8_GPU_TRACE"), out int n) ? n : -1;
+        private static readonly (int First, int Last) TraceFrames = ParseTrace(Environment.GetEnvironmentVariable("WPR_WP8_GPU_TRACE"));
+
+        /// <summary>"N" or "N-M".</summary>
+        private static (int, int) ParseTrace(string? text)
+        {
+            string[] parts = text?.Split('-') ?? [];
+            return parts.Length switch
+            {
+                1 when int.TryParse(parts[0], out int n) => (n, n),
+                2 when int.TryParse(parts[0], out int a) && int.TryParse(parts[1], out int b) => (a, b),
+                _ => (-1, -1),
+            };
+        }
 
         private int _frameIndex;
 
@@ -87,13 +99,19 @@ namespace WPR.Wp8Native
             }
         }
 
-        /// <summary>Replays the frame, then shows its back buffer on the window, rotated to landscape.</summary>
-        public void Render(GpuFrame frame, int windowWidth, int windowHeight)
+        /// <summary>The back buffer the last replayed frame drew into, which <see cref="Present"/> shows.</summary>
+        private RenderTarget2D? _lastBackBuffer;
+
+        /// <summary>
+        /// Replays one frame's commands into the render targets. Each frame the guest presents is
+        /// replayed exactly once and in order, because targets keep their contents between frames.
+        /// </summary>
+        public void Replay(GpuFrame frame)
         {
             long started = System.Diagnostics.Stopwatch.GetTimestamp();
             try
             {
-                RenderFrame(frame, windowWidth, windowHeight);
+                RenderFrame(frame);
             }
             finally
             {
@@ -103,16 +121,17 @@ namespace WPR.Wp8Native
             }
         }
 
-        private void RenderFrame(GpuFrame frame, int windowWidth, int windowHeight)
+        private void RenderFrame(GpuFrame frame)
         {
-            bool trace = _frameIndex++ == TraceFrame;
+            int frameNumber = _frameIndex++;
+            bool trace = frameNumber >= TraceFrames.First && frameNumber <= TraceFrames.Last;
             EvictStreams();
             int index = 0;
             void Trace(string line)
             {
                 if (trace)
                 {
-                    _log?.Invoke($"[wpr-wp8-gpu-trace] {index,4} {line}");
+                    _log?.Invoke($"[wpr-wp8-gpu-trace] {frameNumber}:{index,4} {line}");
                 }
             }
 
@@ -158,9 +177,37 @@ namespace WPR.Wp8Native
                             RenderTarget2D source = TargetFor(copy.Source);
                             current = Bind(copy.Destination, current);
                             backBuffer = copy.Destination.IsBackBuffer ? current : backBuffer;
-                            _blit.Begin(SpriteSortMode.Immediate, BlendState.Opaque, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone);
-                            _blit.Draw(source, new Rectangle(0, 0, current.Width, current.Height), Color.White);
-                            _blit.End();
+                            Rectangle from, to;
+                            if (copy.IsWholeSurface)
+                            {
+                                // Same size: texel for texel. Different sizes: stretched (see GpuCopy).
+                                from = new Rectangle(0, 0, source.Width, source.Height);
+                                to = new Rectangle(0, 0, current.Width, current.Height);
+                                if (source.Width != current.Width || source.Height != current.Height)
+                                {
+                                    Warn($"copy stretch {Describe(copy.Source)}>{Describe(copy.Destination)}", $"copy {Describe(copy.Source)} -> {Describe(copy.Destination)} differs in size; stretched");
+                                }
+                            }
+                            else
+                            {
+                                // CopySubresourceRegion: the box (clamped to the source) lands at
+                                // (x, y) unscaled; whatever falls outside the destination is dropped.
+                                int[] box = copy.SourceBox ?? [0, 0, source.Width, source.Height];
+                                int left = Math.Clamp(box[0], 0, source.Width), top = Math.Clamp(box[1], 0, source.Height);
+                                int right = Math.Clamp(box[2], left, source.Width), bottom = Math.Clamp(box[3], top, source.Height);
+                                from = new Rectangle(left, top, right - left, bottom - top);
+                                to = new Rectangle(copy.DestinationX, copy.DestinationY, from.Width, from.Height);
+                            }
+
+                            if (from.Width > 0 && from.Height > 0)
+                            {
+                                // A copy ignores the viewport; SpriteBatch projects onto it.
+                                _device.Viewport = new Viewport(0, 0, current.Width, current.Height);
+                                _blit.Begin(SpriteSortMode.Immediate, BlendState.Opaque, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone);
+                                _blit.Draw(source, to, from, Color.White);
+                                _blit.End();
+                            }
+
                             break;
                         case GpuDraw draw:
                             current = Bind(draw.Target, current);
@@ -199,6 +246,19 @@ namespace WPR.Wp8Native
 
                             break;
                     }
+
+                    if (trace && current is not null && Environment.GetEnvironmentVariable("WPR_WP8_GPU_DUMP_EACH") is { Length: > 0 } each)
+                    {
+                        // The traced frame's target after every command.
+                        Directory.CreateDirectory(each);
+                        _device.SetRenderTarget(null);
+                        using (FileStream file = File.Create(Path.Combine(each, $"{frameNumber:D5}_{index:D4}.png")))
+                        {
+                            current.SaveAsPng(file, current.Width, current.Height);
+                        }
+
+                        _device.SetRenderTarget(current);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -217,9 +277,26 @@ namespace WPR.Wp8Native
             }
 
             backBuffer ??= _targets.GetValueOrDefault(GpuTarget.BackBufferKey);
+            _lastBackBuffer = backBuffer ?? _lastBackBuffer;
+            _device.SetRenderTarget(null);
+            if (trace && Environment.GetEnvironmentVariable("WPR_WP8_GPU_DUMP") is { Length: > 0 } dump)
+            {
+                // The traced frame's render targets as PNGs, to see what each one holds.
+                Directory.CreateDirectory(dump);
+                foreach (var (key, target) in _targets)
+                {
+                    using FileStream file = File.Create(Path.Combine(dump, $"{(key == GpuTarget.BackBufferKey ? "BB" : key.ToString("X8"))}_{target.Width}x{target.Height}.png"));
+                    target.SaveAsPng(file, target.Width, target.Height);
+                }
+            }
+        }
+
+        /// <summary>Shows the last replayed back buffer on the window, rotated to landscape.</summary>
+        public void Present(int windowWidth, int windowHeight)
+        {
             _device.SetRenderTarget(null);
             _device.Clear(Color.Black);
-            if (backBuffer is null)
+            if (_lastBackBuffer is not { IsDisposed: false } backBuffer)
             {
                 return;
             }
@@ -441,9 +518,14 @@ namespace WPR.Wp8Native
             int[] Registers);
 
         /// <summary>How a layout feeds a vertex shader, and which of its inputs nothing feeds.</summary>
-        private sealed record StreamPlan(SlotPlan[] Slots, int[] Unfed);
+        private sealed record StreamPlan(
+            SlotPlan[] Slots,
+            int[] Unfed,
+            IReadOnlyDictionary<int, (VertexElementUsage Usage, int Index)> UsageOf,
+            string? Invalid);
 
         private readonly Dictionary<(object Layout, Aon9Shader Shader), StreamPlan> _streamPlans = new();
+        private readonly Dictionary<StreamPlan, bool> _verifiedPlans = new(ReferenceEqualityComparer.Instance);
 
         /// <summary>A vertex array already repacked and uploaded, reused while the game keeps drawing it.</summary>
         private sealed class UploadedStream
@@ -474,9 +556,39 @@ namespace WPR.Wp8Native
                 return plan;
             }
 
+            // The input layout FNA3D builds has one element per input the Direct3D 9 program
+            // declares, placed by its (usage, index) - and Direct3D 11 refuses the whole layout
+            // (E_INVALIDARG, "Could not compile input layout", then a fatal error in
+            // ApplyVertexBufferBindings) when any of them is left without an element, or two
+            // elements claim one. So the declarations are built from the program's own dcl list:
+            // each declared register gets exactly one element, fed from the layout or from zeros,
+            // and nothing else is declared.
+            IReadOnlyDictionary<int, (int Usage, int Index)> declared = vertex.DeclaredInputs.Count > 0
+                ? vertex.DeclaredInputs
+                : vertex.InputRegisters.Values.Distinct().ToDictionary(r => r, r => (5, r));   // TEXCOORDr
+            var usageOf = new Dictionary<int, (VertexElementUsage Usage, int Index)>();
+            string? invalid = null;
+            var seen = new HashSet<(int, int)>();
+            foreach (var (register, (usage, index)) in declared)
+            {
+                if (D3D9Usage(usage) is not { } xna)
+                {
+                    invalid = $"input v{register} is declared with Direct3D 9 usage {usage}, which has no vertex element usage";
+                    break;
+                }
+
+                if (!seen.Add((usage, index)))
+                {
+                    invalid = $"two inputs are declared as usage {usage} index {index}";
+                    break;
+                }
+
+                usageOf[register] = (xna, index);
+            }
+
             var slots = new List<SlotPlan>();
             var fed = new HashSet<int>();
-            foreach (IGrouping<int, FrameCapture.VertexElement> slot in geometry.Layout.GroupBy(e => e.Slot))
+            foreach (IGrouping<int, FrameCapture.VertexElement> slot in invalid is null ? geometry.Layout.GroupBy(e => e.Slot) : [])
             {
                 var elements = new List<(int, uint, int, int)>();
                 var declaration = new List<VertexElement>();
@@ -484,37 +596,70 @@ namespace WPR.Wp8Native
                 int offset = 0;
                 foreach (FrameCapture.VertexElement element in slot)
                 {
-                    if (!vertex.InputRegisters.TryGetValue((element.Semantic.ToUpperInvariant(), (int)element.Index), out int register))
+                    if (!vertex.InputRegisters.TryGetValue((element.Semantic.ToUpperInvariant(), (int)element.Index), out int register) ||
+                        !usageOf.TryGetValue(register, out var use))
                     {
                         continue;   // not read by this shader
                     }
 
+                    if (!fed.Add(register))
+                    {
+                        // Two signature entries packed into one register (TEXCOORD0 in .xy, TEXCOORD1
+                        // in .zw): the first element feeds it, rather than declaring it twice.
+                        Warn($"packed {element.Semantic}{element.Index}", $"input {element.Semantic}{element.Index} shares register v{register} with another element; only the first feeds it");
+                        continue;
+                    }
+
                     if (VertexFormat(element.Format) is not { } format)
                     {
-                        Warn($"vfmt {element.Format}", $"vertex format {element.Format} ({element.Semantic}) is not replayed");
+                        Warn($"vfmt {element.Format}", $"vertex format {element.Format} ({element.Semantic}) is not replayed; reading zeros");
+                        fed.Remove(register);
                         continue;
                     }
 
                     elements.Add((element.Offset, element.Format, offset, format.Size));
-                    declaration.Add(new VertexElement(offset, format.Format, VertexElementUsage.TextureCoordinate, register));
+                    declaration.Add(new VertexElement(offset, format.Format, use.Usage, use.Index));
                     registers.Add(register);
-                    fed.Add(register);
                     offset += format.Size;
                 }
 
                 if (elements.Count > 0)
                 {
                     // Interned so the upload cache can compare keys by reference.
-                    string key = string.Intern(string.Join(";", declaration.Select(d => $"{d.Offset}:{d.VertexElementFormat}:{d.UsageIndex}")));
+                    string key = string.Intern(string.Join(";", declaration.Select(d => $"{d.Offset}:{d.VertexElementFormat}:{d.VertexElementUsage}{d.UsageIndex}")));
                     slots.Add(new SlotPlan(slot.Key, [.. elements], new VertexDeclaration(offset, [.. declaration]), key, [.. registers]));
                 }
             }
 
-            int[] unfed = vertex.InputRegisters.Values.Where(r => !fed.Contains(r)).Distinct().Order().ToArray();
-            plan = new StreamPlan([.. slots], unfed);
+            int[] unfed = usageOf.Keys.Where(r => !fed.Contains(r)).Order().ToArray();
+            plan = new StreamPlan([.. slots], unfed, usageOf, invalid);
+            if (invalid is not null)
+            {
+                Warn("layout " + invalid, $"vertex shader cannot be fed: {invalid}; its draws are skipped");
+            }
+
             _streamPlans[(geometry.Layout, vertex)] = plan;
             return plan;
         }
+
+        /// <summary>D3DDECLUSAGE to the XNA usage FNA3D turns back into it; null for POSITIONT, which has none.</summary>
+        private static VertexElementUsage? D3D9Usage(int usage) => usage switch
+        {
+            0 => VertexElementUsage.Position,
+            1 => VertexElementUsage.BlendWeight,
+            2 => VertexElementUsage.BlendIndices,
+            3 => VertexElementUsage.Normal,
+            4 => VertexElementUsage.PointSize,
+            5 => VertexElementUsage.TextureCoordinate,
+            6 => VertexElementUsage.Tangent,
+            7 => VertexElementUsage.Binormal,
+            8 => VertexElementUsage.TessellateFactor,
+            10 => VertexElementUsage.Color,
+            11 => VertexElementUsage.Fog,
+            12 => VertexElementUsage.Depth,
+            13 => VertexElementUsage.Sample,
+            _ => null,
+        };
 
         /// <summary>
         /// One vertex buffer per input slot, repacked so every element is in a format FNA accepts
@@ -531,6 +676,12 @@ namespace WPR.Wp8Native
         private bool Streams(FrameCapture.DrawCall geometry, Aon9Shader vertex, int firstVertex, int vertexCount, out VertexBufferBinding[] bindings)
         {
             StreamPlan plan = PlanFor(geometry, vertex);
+            bindings = [];
+            if (plan.Invalid is not null)
+            {
+                return false;
+            }
+
             var list = new List<VertexBufferBinding>(plan.Slots.Length + 1);
             List<int>? missing = null;
             foreach (SlotPlan slot in plan.Slots)
@@ -596,11 +747,60 @@ namespace WPR.Wp8Native
             if (list.Count > 0 && unfed.Length > 0)
             {
                 Warn("unfed " + string.Join(",", unfed), $"vertex shader inputs v{string.Join(",v", unfed)} have no stream; reading zeros");
-                list.Add(new VertexBufferBinding(ZeroStream(unfed, vertexCount)));
+                list.Add(new VertexBufferBinding(ZeroStream(unfed, plan.UsageOf, vertexCount)));
             }
 
             bindings = [.. list];
-            return list.Count > 0 && vertexCount > 0;
+            if (list.Count == 0 || vertexCount <= 0)
+            {
+                return false;
+            }
+
+            // Without a missing stream the bindings follow from the plan alone, so one check of
+            // each plan covers every draw made with it.
+            if (missing is null && _verifiedPlans.TryGetValue(plan, out bool verified))
+            {
+                return verified;
+            }
+
+            bool match = BindingsMatch(bindings, plan.UsageOf);
+            if (missing is null)
+            {
+                _verifiedPlans[plan] = match;
+            }
+
+            return match;
+        }
+
+        /// <summary>
+        /// The last check before FNA3D sees the bindings: every declared input fed by exactly one
+        /// element, and nothing else. A layout Direct3D 11 refuses is not an error FNA3D survives,
+        /// so a draw that fails this is skipped, never submitted.
+        /// </summary>
+        private bool BindingsMatch(VertexBufferBinding[] bindings, IReadOnlyDictionary<int, (VertexElementUsage Usage, int Index)> usageOf)
+        {
+            var wanted = new HashSet<(VertexElementUsage, int)>(usageOf.Values);
+            int elements = 0;
+            foreach (VertexBufferBinding binding in bindings)
+            {
+                foreach (VertexElement element in binding.VertexBuffer.VertexDeclaration.GetVertexElements())
+                {
+                    elements++;
+                    if (!wanted.Remove((element.VertexElementUsage, element.UsageIndex)))
+                    {
+                        Warn($"bind extra {element.VertexElementUsage}{element.UsageIndex}", $"vertex element {element.VertexElementUsage}{element.UsageIndex} is not a declared input or is fed twice; draw skipped");
+                        return false;
+                    }
+                }
+            }
+
+            if (wanted.Count > 0)
+            {
+                Warn("bind missing " + string.Join(",", wanted), $"vertex inputs {string.Join(",", wanted)} have no element; draw skipped");
+                return false;
+            }
+
+            return elements > 0;
         }
 
         /// <summary>Vertex arrays uploaded once, binds that reused one, and per-draw uploads, since start.</summary>
@@ -626,7 +826,7 @@ namespace WPR.Wp8Native
             Span<byte> target = _scratch.AsSpan(0, length);
             foreach (var e in slot.Elements)
             {
-                bool copy = e.SourceFormat is not (87 or 31 or 11 or 12 or 24 or 35 or 36 or 49 or 51);
+                bool copy = e.SourceFormat is not (87 or 31 or 11 or 12 or 24 or 30 or 14 or 35 or 36 or 49 or 51 or 38);
                 for (int i = 0; i < count; i++)
                 {
                     ReadOnlySpan<byte> source = data.AsSpan(((first + i) * sourceStride) + e.SourceOffset);
@@ -672,16 +872,16 @@ namespace WPR.Wp8Native
         private readonly Dictionary<string, VertexBuffer> _zeroStreams = new(StringComparer.Ordinal);
 
         /// <summary>A zero-filled float4 stream for each of <paramref name="registers"/>, at least <paramref name="count"/> long.</summary>
-        private VertexBuffer ZeroStream(int[] registers, int count)
+        private VertexBuffer ZeroStream(int[] registers, IReadOnlyDictionary<int, (VertexElementUsage Usage, int Index)> usageOf, int count)
         {
-            string key = string.Join(",", registers);
+            string key = string.Join(",", registers.Select(r => $"{usageOf[r].Usage}{usageOf[r].Index}"));
             if (_zeroStreams.TryGetValue(key, out VertexBuffer? buffer) && buffer.VertexCount >= count)
             {
                 return buffer;
             }
 
             buffer?.Dispose();
-            var declaration = new VertexDeclaration(registers.Select((r, i) => new VertexElement(i * 16, VertexElementFormat.Vector4, VertexElementUsage.TextureCoordinate, r)).ToArray());
+            var declaration = new VertexDeclaration(registers.Select((r, i) => new VertexElement(i * 16, VertexElementFormat.Vector4, usageOf[r].Usage, usageOf[r].Index)).ToArray());
             int size = Math.Max(count, 4096);
             buffer = new VertexBuffer(_device, declaration, size, BufferUsage.WriteOnly);
             buffer.SetData(new byte[size * declaration.VertexStride]);
@@ -697,15 +897,14 @@ namespace WPR.Wp8Native
             16 => (VertexElementFormat.Vector2, 8),            // R32G32_FLOAT
             41 => (VertexElementFormat.Single, 4),             // R32_FLOAT
             28 or 29 or 87 => (VertexElementFormat.Color, 4),  // R8G8B8A8_UNORM(_SRGB), B8G8R8A8_UNORM
-            30 => (VertexElementFormat.Byte4, 4),              // R8G8B8A8_UINT
             10 => (VertexElementFormat.HalfVector4, 8),        // R16G16B16A16_FLOAT
             34 => (VertexElementFormat.HalfVector2, 4),        // R16G16_FLOAT
             13 => (VertexElementFormat.NormalizedShort4, 8),   // R16G16B16A16_SNORM
             37 => (VertexElementFormat.NormalizedShort2, 4),   // R16G16_SNORM
-            14 => (VertexElementFormat.Short4, 8),             // R16G16B16A16_SINT
-            38 => (VertexElementFormat.Short2, 4),             // R16G16_SINT
-            31 or 11 or 12 or 24 => (VertexElementFormat.Vector4, 16),   // RGBA8_SNORM, RGBA16_UNORM/UINT, R10G10B10A2_UNORM
-            35 or 36 or 49 or 51 => (VertexElementFormat.Vector2, 8),    // RG16_UNORM/UINT, RG8_UNORM/SNORM
+            // Integer formats become floats: a 9_x vertex shader reads UBYTE4/SHORTn as float values,
+            // and FNA's Byte4/Short2/Short4 would reach Direct3D 11 as UINT/SINT bit patterns.
+            31 or 11 or 12 or 24 or 30 or 14 => (VertexElementFormat.Vector4, 16),   // RGBA8_SNORM, RGBA16_UNORM/UINT, R10G10B10A2_UNORM, RGBA8_UINT, RGBA16_SINT
+            35 or 36 or 49 or 51 or 38 => (VertexElementFormat.Vector2, 8),    // RG16_UNORM/UINT, RG8_UNORM/SNORM, RG16_SINT
             _ => null,
         };
 
@@ -740,6 +939,15 @@ namespace WPR.Wp8Native
                 case 24:
                     uint packed = BinaryPrimitives.ReadUInt32LittleEndian(source);
                     Floats(target, (packed & 0x3FF) / 1023f, ((packed >> 10) & 0x3FF) / 1023f, ((packed >> 20) & 0x3FF) / 1023f, (packed >> 30) / 3f);
+                    break;
+                case 30:
+                    Floats(target, source[0], source[1], source[2], source[3]);
+                    break;
+                case 14:
+                    Floats(target, (short)U16(source, 0), (short)U16(source, 2), (short)U16(source, 4), (short)U16(source, 6));
+                    break;
+                case 38:
+                    Floats(target, (short)U16(source, 0), (short)U16(source, 2));
                     break;
                 case 35:
                     Floats(target, U16(source, 0) / 65535f, U16(source, 2) / 65535f);
