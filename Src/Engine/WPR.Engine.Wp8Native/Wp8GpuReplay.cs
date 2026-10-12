@@ -147,6 +147,19 @@ namespace WPR.Wp8Native
                             int flags = clear.Flags | (_pendingDepthClears.TryGetValue(clear.Target.Key, out var earlier) ? earlier.Flags : 0);
                             _pendingDepthClears[clear.Target.Key] = (flags, clear.Depth, clear.Stencil);
                             break;
+                        case GpuCopy copy:
+                            if (trace)
+                            {
+                                Trace($"copy   {Describe(copy.Source)} -> {Describe(copy.Destination)}");
+                            }
+
+                            RenderTarget2D source = TargetFor(copy.Source);
+                            current = Bind(copy.Destination, current);
+                            backBuffer = copy.Destination.IsBackBuffer ? current : backBuffer;
+                            _blit.Begin(SpriteSortMode.Immediate, BlendState.Opaque, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone);
+                            _blit.Draw(source, new Rectangle(0, 0, current.Width, current.Height), Color.White);
+                            _blit.End();
+                            break;
                         case GpuDraw draw:
                             current = Bind(draw.Target, current);
                             backBuffer = draw.Target.IsBackBuffer ? current : backBuffer;

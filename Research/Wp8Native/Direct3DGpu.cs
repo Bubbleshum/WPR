@@ -143,6 +143,29 @@ namespace WPR.Wp8Native
                 original();
             });
 
+            // CopyResource(dst, src), and CopySubresourceRegion(dst, dstSub, x, y, z, src, srcSub, box)
+            // when it copies a whole surface to the origin. Spark2 (Assassin's Creed Pirates) renders
+            // on a device of its own and its Draw copies that shared texture into the host's target.
+            void Copy(long destination, long source)
+            {
+                if (GpuCapture && TargetOfResource(destination) is { } to && TargetOfResource(source) is { } from && to != from)
+                {
+                    _gpuCommands.Add(new GpuCopy(to, from));
+                }
+            }
+
+            Wrap(methods, 47, original => () => { Copy(Arg(1), Arg(2)); original(); });
+            Wrap(methods, 46, original => () =>
+            {
+                // r0 this, r1 dst, r2 dstSub, r3 x; stack: y, z, src, srcSub, box.
+                if (Arg(2) == 0 && Arg(3) == 0 && Arg(4) == 0 && Arg(5) == 0 && Arg(7) == 0 && Arg(8) == 0)
+                {
+                    Copy(Arg(1), Arg(6));
+                }
+
+                original();
+            });
+
             // ClearRenderTargetView(RTV, const FLOAT colour[4])
             Wrap(methods, 50, original => () =>
             {
@@ -185,6 +208,17 @@ namespace WPR.Wp8Native
         private GpuTarget? TargetOf(long view)
         {
             if (view == 0 || !_viewResources.TryGetValue(view, out long resource) || resource == 0)
+            {
+                return null;
+            }
+
+            return TargetOfResource(resource);
+        }
+
+        /// <summary>A texture as a render target: the back buffer, or by its storage.</summary>
+        private GpuTarget? TargetOfResource(long resource)
+        {
+            if (resource == 0)
             {
                 return null;
             }

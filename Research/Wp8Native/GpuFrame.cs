@@ -30,6 +30,12 @@ namespace WPR.Wp8Native
     /// <param name="Flags">D3D11_CLEAR_DEPTH (1) | D3D11_CLEAR_STENCIL (2).</param>
     public sealed record GpuClearDepth(GpuTarget Target, int Flags, float Depth, byte Stencil) : GpuCommand;
 
+    /// <summary>
+    /// CopyResource / a whole-surface CopySubresourceRegion between two render targets. A Direct3D
+    /// copy needs matching sizes; one that does not match is stretched rather than dropped.
+    /// </summary>
+    public sealed record GpuCopy(GpuTarget Destination, GpuTarget Source) : GpuCommand;
+
     /// <summary>A shader, by the object the game created, with its DXBC.</summary>
     public sealed record GpuShader(long Key, byte[] Dxbc);
 
