@@ -38,7 +38,7 @@ namespace WPR.SilverlightCompability
     /// <c>SilverlightRenderer.OffsetTo</c> uses. The tree must have been laid out first;
     /// <c>MixedModeGame</c> runs one pass after navigation.</para>
     /// </remarks>
-    internal static class SoftwareVisualRasteriser
+    internal static partial class SoftwareVisualRasteriser
     {
         /// <summary>Guards against a tree that contains a cycle; nothing legitimate is this deep.</summary>
         private const int MaxDepth = 64;
@@ -62,7 +62,9 @@ namespace WPR.SilverlightCompability
             if (root == null || width <= 0 || height <= 0) return false;
 
             var surface = new Surface(dest, width, height);
+            BeginPopupPass(surface);
             PaintElement(root, new Rect(0, 0, width, height), 1.0, surface, 0, 1.0, 1.0, new Rect(0, 0, width, height));
+            PaintPopups(root, surface, width, height);   // SoftwareVisualRasteriser.Popups.cs
             return surface.Painted;
         }
 
@@ -153,12 +155,11 @@ namespace WPR.SilverlightCompability
                         PaintChild(border.Child, bounds, opacity, surface, depth, scaleX, scaleY, clip);
                     break;
 
-                case Popup:
+                case Popup popup:
                     // Popups float above the tree instead of taking part in their parent's
-                    // layout, so painting one at the slot it was arranged into puts it in the
-                    // wrong place (usually a zero-height one). SilverlightRenderer gives them a
-                    // deferred page-level pass; nothing needs that here yet.
-                    ReportOnce("Popup", "not composited into the overlay");
+                    // layout; the slot is only remembered here and the child is painted by the
+                    // popup pass after the whole tree. See SoftwareVisualRasteriser.Popups.cs.
+                    NotePopupSlot(popup, bounds, scaleX, scaleY, surface);
                     break;
 
                 case MediaElement media:
@@ -1034,6 +1035,7 @@ namespace WPR.SilverlightCompability
             // itself does not change when that happens, only what we can draw from it.
             hash.Add(SilverlightImageDecoder.Generation);
             Sign(root, ref hash, 0);
+            SignPopups(root, ref hash);   // SoftwareVisualRasteriser.Popups.cs
             return hash.ToHashCode();
         }
 
