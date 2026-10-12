@@ -393,6 +393,29 @@ Next steps, in order:
    the root `LuaMobileSDK.dll` WinRT component (or the reverse). Whoever activates
    `LuaMobileSDK.LuaMobileSDKBridge` must load the ROOT file by path for the same reason.
    Contract suite: `PackagedLibrarySuite`.
+4. **Done 2026-10-12 (branch `acp-services`): the page's other component, saving, audio routing.**
+   - `LuaMobileSDKBridge` is activated where the managed page does it (after the resolutions,
+     before `CreateContentProvider`), with the host's `ICallback`. It is generic: a
+     `XamlShellStep` with `Class` set goes to any runtime class WMAppManifest.xml registers
+     (`WinRtRuntime.PackageClasses`); `ActivatePackageFactory` loads the DLL by its package path
+     (`.\LuaMobileSDK.dll`). Two fixes were needed on the way: vccorlib's `GetActivationFactory`
+     walked only the shell component's creator map (it now uses the module owning the
+     `ModuleBase*`; the forward is a tail call, so the return address is useless), and a
+     host-driven dynamic load had its continuation overwritten when the loader restored r12.
+   - **Saving.** The mobile SDK's SQLite (`msdk` in the local folder) goes through its own VFS
+     (`sqlite_vfs_win8.cpp` in the Lua module) over the CRT descriptor API, and its xSync is
+     `FlushFileBuffers(_get_osfhandle(fd))`. `_get_osfhandle` answered -1 for a descriptor from
+     `_open`, so every journal sync failed and every write transaction rolled back ("Error while
+     creating UserPreferences table", "no such table"). It now mints a handle owned by the
+     descriptor. The package's `msdk` is the SDK's own encrypted database, copied on first run;
+     the game creates its tables only then, so a store written by an older build (copied, tables
+     never created) stays without them until the game's data is cleared. `SqliteSuite` runs the
+     title's real `sqlite3.dll` in the guest over the Win32 file API.
+   - `Windows.Phone.Media.Devices.AudioRoutingManager` (asked for by `LuaDevice.dll`) is
+     implemented: loudspeaker, Earpiece|Speakerphone available, `AudioEndpointChanged` raised
+     through the deferred queue. Not yet reached in a 90 s run: the level load dies first in the
+     GPU replay (`Could not compile input layout` on a BLENDINDICES skinned draw, then an access
+     violation in `FNA3D_ApplyVertexBufferBindings`).
 
 **To reproduce:**
 
