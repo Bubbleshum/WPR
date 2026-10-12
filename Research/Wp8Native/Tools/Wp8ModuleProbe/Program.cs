@@ -2,7 +2,20 @@
 // work: package DLLs mapped, relocations, DllMain results, unresolved imports, how far the run got.
 //
 //   Wp8ModuleProbe [<budget in millions of instructions>] [<product id or folder>...]
+//
+// Or, for the DLLs a title loads at run time rather than imports:
+//
+//   Wp8ModuleProbe --load <package folder> <main image> <package-relative dll>...
+//
+// maps the main image, runs the start-up DllMains, then calls LoadPackagedLibrary on each path
+// exactly as guest code would (so each DllMain runs as a guest call) and lists, per module mapped,
+// every import the host does not implement.
 using WPR.Wp8Native;
+
+if (args.Length > 0 && args[0] == "--load")
+{
+    return args.Length < 3 ? Usage() : LoadProbe.Run(args[1], args[2], args[3..]);
+}
 
 long budget = 200_000_000;
 List<string> wanted = new();
@@ -127,4 +140,10 @@ static bool IsArm(string path)
     {
         return false;
     }
+}
+
+static int Usage()
+{
+    Console.WriteLine("Wp8ModuleProbe --load <package folder> <main image> <package-relative dll>...");
+    return 2;
 }
