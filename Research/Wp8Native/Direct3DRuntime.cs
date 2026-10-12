@@ -34,8 +34,8 @@ namespace WPR.Wp8Native
         /// The size of the device: the back buffer, and the window bounds that go with it.
         /// </summary>
         /// <remarks>
-        /// Windows Phone 8 is a portrait device. Its CoreWindow and its swap chain are both
-        /// 480x800 on WVGA, and a landscape game swaps the axes itself - so the size reported
+        /// Windows Phone 8 is a portrait device. Its swap chain is 480x800 on WVGA and 768x1280
+        /// on WXGA (its CoreWindow is 480x800 DIPs on both), and a landscape game swaps the axes itself - so the size reported
         /// here is not the size the game draws in, and the two must not be conflated.
         /// <see cref="FrameCapture.Width"/> is the other one.
         /// <para>
@@ -45,22 +45,35 @@ namespace WPR.Wp8Native
         /// laid out for a portrait viewport - every sprite 1.67x too wide, the wordmark off
         /// both edges of the screen - which looked like a projection bug and was not one.
         /// </para>
-        /// <para><c>WPR_WINDOW=WxH</c> overrides it.</para>
+        /// <para>The swap chain is the size the game asked for in <c>CreateSwapChainForCoreWindow</c>
+        /// (or <c>ResizeBuffers</c>), and the screen's physical size (<see cref="ScreenWidth"/>) when it
+        /// asked for zero - as on a WP8 phone, which stretched a smaller swap chain to the panel.
+        /// That matters on WXGA: Angry Birds Rio sizes its swap chain from CoreWindow.Bounds
+        /// (480x800 DIPs) and reads pointer positions as pixels of it, while the later Rovio titles
+        /// multiply by ResolutionScale and ask for 768x1280. Forcing the physical size on Rio gave
+        /// it the high-resolution layout with pointer positions 1.6x too small.</para>
         /// </remarks>
-        public static uint BackBufferWidth { get; private set; } = 480;
+        public uint BackBufferWidth => _swapChainWidth != 0 ? _swapChainWidth : ScreenWidth;
 
-        public static uint BackBufferHeight { get; private set; } = 800;
+        public uint BackBufferHeight => _swapChainHeight != 0 ? _swapChainHeight : ScreenHeight;
 
-        static Direct3DRuntime()
+        /// <summary>
+        /// The panel in physical pixels, portrait (<see cref="Wp8Display"/>): 768x1280 on the default
+        /// WXGA device, whose CoreWindow is still 480x800 DIPs. What DXGI's output and display modes
+        /// report. <c>WPR_WP8_RESOLUTION</c> and <c>WPR_WINDOW=WxH</c> override it.
+        /// </summary>
+        public static uint ScreenWidth => (uint)Wp8Display.PhysicalWidth;
+
+        public static uint ScreenHeight => (uint)Wp8Display.PhysicalHeight;
+
+        /// <summary>The size the game created or resized its swap chain to; zero for "the screen".</summary>
+        private uint _swapChainWidth, _swapChainHeight;
+
+        /// <summary>Takes a requested swap-chain size: zero (or nonsense) means the window's.</summary>
+        private void RequestSwapChainSize(uint width, uint height)
         {
-            string[] parts = Environment.GetEnvironmentVariable("WPR_WINDOW")?.Split('x', 'X') ?? [];
-            if (parts.Length == 2 &&
-                uint.TryParse(parts[0], out uint width) && uint.TryParse(parts[1], out uint height) &&
-                width > 0 && height > 0 && width <= 4096 && height <= 4096)
-            {
-                BackBufferWidth = width;
-                BackBufferHeight = height;
-            }
+            bool sane = width is > 0 and <= 4096 && height is > 0 and <= 4096;
+            (_swapChainWidth, _swapChainHeight) = sane ? (width, height) : (0u, 0u);
         }
 
         /// <summary>DXGI_FORMAT_B8G8R8A8_UNORM, what a WP8 swap chain uses.</summary>
@@ -1800,8 +1813,8 @@ namespace WPR.Wp8Native
         /// ScanlineOrdering, Scaling - seven words.</remarks>
         private void WriteModeDesc(long desc, uint format)
         {
-            _emulator.WriteUInt32(desc + 0, BackBufferWidth);
-            _emulator.WriteUInt32(desc + 4, BackBufferHeight);
+            _emulator.WriteUInt32(desc + 0, ScreenWidth);
+            _emulator.WriteUInt32(desc + 4, ScreenHeight);
             _emulator.WriteUInt32(desc + 8, 60);
             _emulator.WriteUInt32(desc + 12, 1);
             _emulator.WriteUInt32(desc + 16, format);
@@ -1842,8 +1855,8 @@ namespace WPR.Wp8Native
 
                     byte[] bytes = new byte[92];
                     System.Text.Encoding.Unicode.GetBytes(@"\\.\DISPLAY1").CopyTo(bytes, 0);
-                    BitConverter.GetBytes(BackBufferWidth).CopyTo(bytes, 64 + 8);
-                    BitConverter.GetBytes(BackBufferHeight).CopyTo(bytes, 64 + 12);
+                    BitConverter.GetBytes(ScreenWidth).CopyTo(bytes, 64 + 8);
+                    BitConverter.GetBytes(ScreenHeight).CopyTo(bytes, 64 + 12);
                     BitConverter.GetBytes(1).CopyTo(bytes, 80);        // attached
                     BitConverter.GetBytes(1).CopyTo(bytes, 84);        // DXGI_MODE_ROTATION_IDENTITY
                     BitConverter.GetBytes(0x10001).CopyTo(bytes, 88);  // a non-null HMONITOR
@@ -1995,7 +2008,8 @@ namespace WPR.Wp8Native
 
             Write(outPointer, (uint)pointer);
             SwapChainCreated = true;
-            long desc = Arg(outIndex - 2);
+            long desc = Arg(outIndex == 6 ? 3 : outIndex - 2); // ForHwnd: pDesc, then pFullscreenDesc
+            RequestSwapChainSize(desc == 0 ? 0 : _emulator.ReadUInt32(desc, 0), desc == 0 ? 0 : _emulator.ReadUInt32(desc + 4, 0));
             string asked = desc == 0
                 ? "no desc"
                 : $"desc {_emulator.ReadUInt32(desc, 0)}x{_emulator.ReadUInt32(desc + 4, 0)} " +
@@ -2039,7 +2053,13 @@ namespace WPR.Wp8Native
                     Return(HResultOk);
                 }),
                 [12] = ("GetDesc", SwapChainDesc),
-                [13] = ("ResizeBuffers", () => Return(HResultOk)),
+                // ResizeBuffers(BufferCount, Width, Height, NewFormat, SwapChainFlags): zero keeps
+                // the window's size, as DXGI does.
+                [13] = ("ResizeBuffers", () =>
+                {
+                    RequestSwapChainSize((uint)Arg(2), (uint)Arg(3));
+                    Return(HResultOk);
+                }),
                 [18] = ("GetDesc1", SwapChainDesc1),
                 [22] = ("Present1", Present),
             };

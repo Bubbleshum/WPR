@@ -118,19 +118,22 @@ namespace WPR.Wp8Native
 
                     [InspectableSlots + 6] = ("get_ResolutionScale", () =>
                     {
-                        // ResolutionScale.Scale100Percent. WVGA is unscaled.
+                        ScreenQueries.Scale++;
+                        // ResolutionScale: Scale160Percent on the default WXGA device, whose
+                        // enum values are the percentages themselves (Wp8Display).
                         if (ArmEmulator.IsStackAddress(Arg(1)))
                         {
-                            _emulator.WriteUInt32(Arg(1), (uint)ResolutionScale);
+                            _emulator.WriteUInt32(Arg(1), Wp8Display.ResolutionScaleEnum);
                         }
 
                         Return(HResultOk);
                     }),
                     [InspectableSlots + 7] = ("get_LogicalDpi", () =>
                     {
+                        ScreenQueries.Dpi++;
                         if (ArmEmulator.IsStackAddress(Arg(1)))
                         {
-                            _emulator.WriteSingle(Arg(1), 96f * ResolutionScale / 100f);
+                            _emulator.WriteSingle(Arg(1), Wp8Display.LogicalDpi);
                         }
 
                         Return(HResultOk);
@@ -325,15 +328,20 @@ namespace WPR.Wp8Native
         private long _coreDispatcher;
         private long _coreApplicationView;
 
-        /// <summary>The window size the image is told it has, in pixels.</summary>
-        /// <remarks>
-        /// WVGA. Every WP8 device shipped at 480x800 or a scale of it, and a game reads
-        /// this once to size its render target, so it is the one number here that has a
-        /// visible consequence.
-        /// </remarks>
-        private static float WindowWidth => Direct3DRuntime.BackBufferWidth;
+        /// <summary>How often the image asked about the screen, for the session log: which titles
+        /// size themselves from the bounds, the DPI or the resolution scale.</summary>
+        public (int Bounds, int Dpi, int Scale) ScreenQueries;
 
-        private static float WindowHeight => Direct3DRuntime.BackBufferHeight;
+        /// <summary>The window size the image is told it has, in DIPs.</summary>
+        /// <remarks>
+        /// 480x800 on WVGA and WXGA alike (<see cref="Wp8Display"/>): CoreWindow.Bounds and pointer
+        /// positions are logical, and a game multiplies by LogicalDpi / 96 to size its render
+        /// target in physical pixels - which is what <see cref="Direct3DRuntime.ScreenWidth"/>
+        /// answers.
+        /// </remarks>
+        private static float WindowWidth => Wp8Display.LogicalWidth;
+
+        private static float WindowHeight => Wp8Display.LogicalHeight;
 
         /// <summary>How many times the image got round its own main loop.</summary>
         public int ProcessEventsCalls { get; private set; }
@@ -981,12 +989,6 @@ namespace WPR.Wp8Native
         /// <c>ccw</c> (default - the device turned so its buttons are on the right, WP8's
         /// "Landscape"), <c>cw</c> ("LandscapeFlipped"), or <c>none</c>.
         /// </summary>
-        /// <summary>
-        /// DisplayProperties.ResolutionScale: 100 is WVGA (480x800), 150 is 720p, 160 is WXGA.
-        /// WPR_RESSCALE overrides it.
-        /// </summary>
-        private static readonly int ResolutionScale =
-            int.TryParse(Environment.GetEnvironmentVariable("WPR_RESSCALE"), out int scale) && scale > 0 ? scale : 100;
 
         /// <summary>
         /// Overrides <c>WPR_ROTATE</c> for this run. A Direct3D/XAML title's page is landscape,
@@ -1005,15 +1007,17 @@ namespace WPR.Wp8Native
         /// Hold the phone upright, then turn it a quarter turn anticlockwise: the former top
         /// edge is now the left edge, so landscape x runs along what was portrait y, and
         /// landscape y runs from what was the right edge down to what was the left. Turned
-        /// the other way, both axes reverse. The composition size is
-        /// <see cref="FrameCapture.Width"/> by <see cref="FrameCapture.Height"/> and the
-        /// window is <see cref="Direct3DRuntime.BackBufferWidth"/> by
-        /// <see cref="Direct3DRuntime.BackBufferHeight"/>; they are transposes of each other.
+        /// the other way, both axes reverse. The composition is <see cref="FrameCapture.Width"/>
+        /// by <see cref="FrameCapture.Height"/> host pixels (1280x768 on WXGA) and the window is
+        /// <see cref="WindowWidth"/> by <see cref="WindowHeight"/> DIPs (480x800), so the point is
+        /// scaled into DIPs first and then turned: a WP8 PointerPoint.Position is logical.
         /// </remarks>
         private (float X, float Y) ToWindow(float landscapeX, float landscapeY)
         {
-            float windowWidth = Direct3DRuntime.BackBufferWidth;
-            float windowHeight = Direct3DRuntime.BackBufferHeight;
+            float windowWidth = WindowWidth;
+            float windowHeight = WindowHeight;
+            landscapeX *= windowHeight / Math.Max(1, FrameCapture.Width);
+            landscapeY *= windowWidth / Math.Max(1, FrameCapture.Height);
 
             return (PointerRotation ?? Rotation) switch
             {
@@ -1256,6 +1260,7 @@ namespace WPR.Wp8Native
                 {
                     [InspectableSlots + 1] = ("get_Bounds", () =>
                     {
+                        ScreenQueries.Bounds++;
                         // Windows.Foundation.Rect is four floats. WVGA is the WP8 baseline
                         // and the resolution this title was built against.
                         if (ArmEmulator.IsStackAddress(Arg(1)))

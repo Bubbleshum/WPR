@@ -7,7 +7,13 @@ namespace WPR.Wp8Native
     /// </summary>
     public static class XamlShells
     {
-        private static readonly SizeF Wvga = new(480, 800);
+        // The managed WP8 page set WindowBounds in DIPs (ActualWidth x ActualHeight, 480x800 on
+        // every device), NativeResolution and RenderResolution in physical pixels
+        // (ActualWidth * ScaleFactor / 100: 768x1280 on WXGA) and ScaleFactor from
+        // Application.Current.Host.Content.ScaleFactor (160 on WXGA). All from Wp8Display.
+        private static readonly SizeF Window = new(Wp8Display.LogicalWidth, Wp8Display.LogicalHeight);
+
+        private static readonly SizeF Native = new(Wp8Display.PhysicalWidth, Wp8Display.PhysicalHeight);
 
         private static readonly Dictionary<string, XamlShell> Known = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -28,11 +34,11 @@ namespace WPR.Wp8Native
                 ],
                 Loaded:
                 [
-                    new("set_WindowBounds", Wvga),
-                    new("set_NativeResolution", Wvga),
-                    new("set_RenderResolution", Wvga),
+                    new("set_WindowBounds", Window),
+                    new("set_NativeResolution", Native),
+                    new("set_RenderResolution", Native),
                     new("set_m_TextInputContent", ""),
-                    new("set_ScaleFactor", 100f),
+                    new("set_ScaleFactor", (float)Wp8Display.Scale),
                     new("set_Orientation", 1),
                     new("CreateContentProvider"),
                     new("SetManipulationHost", XamlShell.ManipulationHost),
@@ -90,9 +96,9 @@ namespace WPR.Wp8Native
                 ],
                 Loaded:
                 [
-                    new("set_WindowBounds", Wvga),
-                    new("set_NativeResolution", Wvga),
-                    new("set_RenderResolution", Wvga),
+                    new("set_WindowBounds", Window),
+                    new("set_NativeResolution", Native),
+                    new("set_RenderResolution", Native),
                     new("CreateContentProvider"),
                     new("SetManipulationHost", XamlShell.ManipulationHost),
                 ])
@@ -123,9 +129,9 @@ namespace WPR.Wp8Native
                 Launch: [],
                 Loaded:
                 [
-                    new("set_WindowBounds", Wvga),
-                    new("set_NativeResolution", Wvga),
-                    new("set_RenderResolution", Wvga),
+                    new("set_WindowBounds", Window),
+                    new("set_NativeResolution", Native),
+                    new("set_RenderResolution", Native),
                     new("CreateContentProvider"),
                     new("SetManipulationHost", XamlShell.ManipulationHost),
                     new("SetDeviceData", "8.0.10521.0", "RM-821_eu_euro1_276", "1.0.0.0", "NOKIA"),
