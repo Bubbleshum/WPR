@@ -122,7 +122,7 @@ namespace WPR.Wp8Native
         {
             if (_iob != 0 && stream >= _iob + 0x20 && stream < _iob + 0x60)
             {
-                PrintToLog(text.TrimEnd('\n'));
+                PrintToLog(text.TrimEnd('\n'), text);
                 return Encoding.Latin1.GetByteCount(text);
             }
 

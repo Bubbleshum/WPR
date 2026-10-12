@@ -207,6 +207,20 @@ public sealed class CrtRuntimeSuite : IContractSuite
         Check("_set_errno sets errno", Errno() == 5);
         Call("perror", Narrow("reading"));
         Check("perror writes \"s: message\"", s.Extras.Printed.Contains("reading: Input/output error"));
+        Check("perror reaches the log as a whole line", s.Extras.StandardOutputLines.Contains("reading: Input/output error"));
+        long iob = Call("__iob_func");
+        long stdOut = iob + 0x20;
+        // Lua's print: one fputs per argument, a tab between, then the newline - one line in the log.
+        Call("fputs", Narrow("[string \"menu\"]:12: attempt to index nil"), stdOut);
+        Call("fputs", Narrow("\t"), stdOut);
+        Call("fputs", Narrow("x\n"), stdOut);
+        Check("fputs(stdout) pieces reach the log as one line",
+            s.Extras.StandardOutputLines.Contains("[string \"menu\"]:12: attempt to index nil\tx"), string.Join(" | ", s.Extras.StandardOutputLines));
+        Check("fputs(stdout) still fails: an app has no console", Call("fputs", Narrow("y"), stdOut) == Eof);
+        Call("fputc", '\n', stdOut);
+        Check("fputc(stdout) ends the pending line", s.Extras.StandardOutputLines.Contains("y"));
+        Call("fwrite", Narrow("from fwrite\n"), 1, 12, iob + 0x40);
+        Check("fwrite(stderr) reaches the log", s.Extras.StandardOutputLines.Contains("from fwrite"));
         long random = h.Buffer(8);
         Check("rand_s returns 0", Call("rand_s", random) == 0 && Call("rand_s", random + 4) == 0);
         Check("rand_s gives different numbers", e.ReadUInt32(random) != e.ReadUInt32(random + 4));

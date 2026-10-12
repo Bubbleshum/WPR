@@ -100,12 +100,14 @@ namespace WPR.Wp8Native
         }
 
         /// <summary>stdout and stderr: the debug log printf writes to, bounded as it bounds it.</summary>
-        private void PrintToLog(string text)
+        private void PrintToLog(string text, string? raw = null)
         {
             if (Extras.Printed.Count < 200)
             {
                 Extras.Printed.Add(text);
             }
+
+            Extras.TraceStandardOutput(raw ?? text + "\n");
         }
 
         private string Narrow(int index) => _frame.ReadNarrowString(Arg(index), 4096);

@@ -426,7 +426,48 @@ namespace WPR.Wp8Native
                 Printed.Add(text.TrimEnd('\n'));
             }
 
+            TraceStandardOutput(text);
             _frame.Return((uint)text.Length);
+        }
+
+        /// <summary>Whole lines written to stdout/stderr, as they reached the log - for the report and the tests.</summary>
+        public List<string> StandardOutputLines { get; } = new();
+
+        private readonly System.Text.StringBuilder _stdoutLine = new();
+        private int _stdoutLinesTraced;
+
+        /// <summary>
+        /// What a game writes to stdout/stderr, to the session log a line at a time, as the
+        /// debugger's output window showed it on a device. Lua's <c>print</c> and its error reports
+        /// arrive here in pieces (one fputs per argument, then the newline), so text is held until
+        /// its line ends. Bounded, because a title printing every frame would otherwise own the log.
+        /// </summary>
+        public void TraceStandardOutput(string text)
+        {
+            lock (_stdoutLine)
+            {
+                foreach (char c in text)
+                {
+                    if (c == '\n')
+                    {
+                        if (_stdoutLinesTraced++ < 5000)
+                        {
+                            string line = _stdoutLine.ToString().TrimEnd('\r');
+                            System.Diagnostics.Trace.WriteLine("[wpr-wp8-stdout] " + line);
+                            if (StandardOutputLines.Count < 200)
+                            {
+                                StandardOutputLines.Add(line);
+                            }
+                        }
+
+                        _stdoutLine.Clear();
+                    }
+                    else if (_stdoutLine.Length < 4096)
+                    {
+                        _stdoutLine.Append(c);
+                    }
+                }
+            }
         }
 
         /// <summary>long strtol(const char*, char** end, int base), base 0 meaning "from the prefix".</summary>

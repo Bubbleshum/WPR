@@ -75,6 +75,16 @@ namespace GameRun
             // reporter is composed by a head, which this harness has none of).
             WPR.Engine.Online.OnlineBackend.SetCrashReporter(new PrintingCrashReporter());
 
+            // The Windows head's run-time audio decoder (WP8 media engine MP3/AAC), so a WP8 title
+            // here hears what it hears in the app. Set WPR_FFMPEG to the head's ffmpeg.exe; without
+            // it the media engine fails compressed sources, as on a phone without the codec.
+            string ffmpeg = Environment.GetEnvironmentVariable("WPR_FFMPEG");
+            if (!string.IsNullOrEmpty(ffmpeg) && File.Exists(ffmpeg))
+            {
+                WPR.Engine.Audio.AudioDecoderBackend.SetDecoder(new WPR.Platform.Windows.Audio.FFmpegAudioDecoder(ffmpeg));
+                Console.Error.WriteLine("[gamerun] audio decoder: " + ffmpeg);
+            }
+
             var host = new FnaGameHost(app);
             if (script != null)
             {
