@@ -865,6 +865,17 @@ namespace Microsoft.Xna.Framework
 			// dispatched op 2 (move) instead of op 0 (press), so h2.d's release
 			// guard `if (i > 0)` failed and `be.ey.fm` never flipped).
 
+			// WPR: a host overlay (a MediaPlayerLauncher movie) has the screen. The game is not
+			// updated or drawn until it ends, and the time it was up is not handed to the game
+			// afterwards as one enormous step.
+			WPR.Xna.Rhi.IHostOverlay hostOverlay = WPR.Xna.Rhi.HostOverlay.Current;
+			if (hostOverlay != null)
+			{
+				accumulatedElapsedTime = TimeSpan.Zero;
+				RunHostOverlay(hostOverlay);
+				return;
+			}
+
 			// Do not allow any update to take longer than our maximum.
 			if (accumulatedElapsedTime > MaxElapsedTime)
 			{
@@ -1130,6 +1141,54 @@ namespace Microsoft.Xna.Framework
 		#endregion
 
 		#region Internal Methods
+
+		private void RunHostOverlay(WPR.Xna.Rhi.IHostOverlay overlay)
+		{
+			bool keep;
+			try
+			{
+				// The game's Update is what normally pumps FrameworkDispatcher (touch, gamepad,
+				// the media queue); the overlay needs the same input, so pump it here instead.
+				FrameworkDispatcher.Update();
+				keep = overlay.Update();
+			}
+			catch (Exception ex)
+			{
+				WPR.Xna.Rhi.XnaBackend.LogWarn("[wpr-overlay] Update threw: " + ex);
+				keep = false;
+			}
+
+			if (keep)
+			{
+				bool began = false;
+				try
+				{
+					began = BeginDraw();
+					if (began)
+					{
+						overlay.Draw(GraphicsDevice);
+					}
+				}
+				catch (Exception ex)
+				{
+					WPR.Xna.Rhi.XnaBackend.LogWarn("[wpr-overlay] Draw threw: " + ex);
+					keep = false;
+				}
+				finally
+				{
+					if (began)
+					{
+						try { EndDraw(); }
+						catch (Exception ex) { WprDebugTrace.WriteLine("[wpr-ex] overlay EndDraw threw: " + ex); }
+					}
+				}
+			}
+
+			if (!keep && ReferenceEquals(WPR.Xna.Rhi.HostOverlay.Current, overlay))
+			{
+				WPR.Xna.Rhi.HostOverlay.Clear();
+			}
+		}
 
 		internal void RedrawWindow()
 		{

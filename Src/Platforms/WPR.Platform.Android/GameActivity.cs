@@ -192,12 +192,13 @@ namespace WPR.Platform.Android
         /// <summary>
         /// Silences the song while the app is not in the foreground.
         ///
-        /// <para>Sound effects need no help — they play through FAudio, and SDL pauses its audio
-        /// device as part of this same lifecycle. The song is the exception: since the Android head
-        /// swapped FAudio's <c>XNA_Song</c> for a platform <c>MediaPlayer</c>, the music is ours
-        /// alone and nothing else will stop it, so it carried on playing over the home screen and
-        /// other apps. API 36 mutes background playback itself, which hides this on a current
-        /// emulator image but not on real devices.</para>
+        /// <para>Sound effects need no help — they play through FAudio, and SDL pauses their audio
+        /// device as part of this same lifecycle. Songs are the exception: they play on a second
+        /// FAudio engine (so <c>SoundEffect.MasterVolume</c> does not scale the music), and SDL's
+        /// OpenSL ES driver pauses only one output device, so the song carried on over the home
+        /// screen — measured on an API 36 emulator, the track stayed Active with frames advancing.
+        /// The same was true of the platform <c>MediaPlayer</c> songs used before. Whatever backend
+        /// the songs are on, <c>AudioBackendRegistry.SuspendForBackground</c> reaches it.</para>
         ///
         /// <para><c>OnPause</c> rather than <c>OnStop</c>: the game is no longer interactive as soon
         /// as it is obscured, and that is the point at which WP7 considered an app deactivated.</para>
@@ -225,7 +226,7 @@ namespace WPR.Platform.Android
 
             try
             {
-                WPR.Audio.AndroidMediaPlayer.AndroidMediaPlayerBackend.Current?.RestoreFromForeground();
+                WPR.Engine.Audio.AudioBackendRegistry.RestoreFromForeground();
             }
             catch (Exception ex)
             {
@@ -240,7 +241,7 @@ namespace WPR.Platform.Android
         {
             try
             {
-                WPR.Audio.AndroidMediaPlayer.AndroidMediaPlayerBackend.Current?.SuspendForBackground();
+                WPR.Engine.Audio.AudioBackendRegistry.SuspendForBackground();
             }
             catch (Exception ex)
             {

@@ -6,7 +6,7 @@ namespace WPR.Audio.FAudio
 {
     /// <summary>
     /// FAudio/Theorafile implementation of <see cref="IMediaBackend"/> — Stage 5c-3c (Plans/STAGE5C-SCOPE.md).
-    /// Forwards song playback to FAudio's <c>XNA_*</c> entry points and video decode to Theorafile.
+    /// Streams songs through <see cref="StreamingSongPlayer"/> (FAudio voice + Theorafile Vorbis decode) and decodes video with Theorafile.
     ///
     /// <para>Both binding classes live in the <b>global namespace</b> inside FNA.dll, which matters:
     /// FNA registers its <c>DllImport</c> resolver (<c>FNADllMap</c>) only for P/Invokes whose
@@ -14,37 +14,44 @@ namespace WPR.Audio.FAudio
     /// re-declaring the natives here — the same constraint that shaped
     /// <see cref="FAudioSoundBackend"/> and <see cref="FAudioXactBackend"/>.</para>
     ///
-    /// <para>Stateless. Everything the media subsystem owns is either a native singleton (the song
-    /// player) or an opaque handle the caller holds (the Theorafile decoder), so there is nothing
-    /// per-launch to reset here.</para>
+    /// <para>Per launch: <c>AudioBackendRegistry.Compose()</c> builds a fresh instance for every
+    /// game, and the song player it owns is torn down by <see cref="SongQuit"/> in the host's
+    /// teardown ladder. The video half is stateless — the Theorafile handle belongs to the caller.</para>
     /// </summary>
-    public sealed class FAudioMediaBackend : IMediaBackend
+    public sealed class FAudioMediaBackend : IMediaBackend, IBackgroundAwareAudio
     {
-        #region Song playback (FAudio XNA_*)
+        #region Song playback (managed streaming over an FAudio voice)
 
-        public void SongInit() => global::FAudio.XNA_SongInit();
+        // Not FAudio's native XNA_* song player: that one keeps a single one-second buffer queued
+        // and clicks once a second on a phone. See StreamingSongPlayer for the whole story.
+        private readonly StreamingSongPlayer _songs = new StreamingSongPlayer();
 
-        public void SongQuit() => global::FAudio.XNA_SongQuit();
+        public void SongInit() => _songs.Init();
 
-        public float PlaySong(string fileName) => global::FAudio.XNA_PlaySong(fileName);
+        public void SongQuit() => _songs.Quit();
 
-        public void PauseSong() => global::FAudio.XNA_PauseSong();
+        public float PlaySong(string fileName) => _songs.Play(fileName);
 
-        public void ResumeSong() => global::FAudio.XNA_ResumeSong();
+        public void PauseSong() => _songs.Pause();
 
-        public void StopSong() => global::FAudio.XNA_StopSong();
+        public void ResumeSong() => _songs.Resume();
 
-        public void SetSongVolume(float volume) => global::FAudio.XNA_SetSongVolume(volume);
+        public void StopSong() => _songs.Stop();
 
-        public bool GetSongEnded() => global::FAudio.XNA_GetSongEnded() != 0;
+        public void SetSongVolume(float volume) => _songs.SetVolume(volume);
 
-        public void EnableSongVisualization(bool enable) =>
-            global::FAudio.XNA_EnableVisualization(enable ? 1u : 0u);
+        public bool GetSongEnded() => _songs.Ended;
 
-        public bool IsSongVisualizationEnabled() => global::FAudio.XNA_VisualizationEnabled() == 1;
+        public void SuspendForBackground() => _songs.SuspendForBackground();
+
+        public void RestoreFromForeground() => _songs.RestoreFromForeground();
+
+        public void EnableSongVisualization(bool enable) => _songs.VisualizationEnabled = enable;
+
+        public bool IsSongVisualizationEnabled() => _songs.VisualizationEnabled;
 
         public void GetSongVisualizationData(float[] frequencies, float[] samples, int count) =>
-            global::FAudio.XNA_GetSongVisualizationData(frequencies, samples, (uint) count);
+            _songs.GetVisualizationData(frequencies, samples, count);
 
         #endregion
 

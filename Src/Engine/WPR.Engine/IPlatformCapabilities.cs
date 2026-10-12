@@ -93,6 +93,13 @@ namespace WPR.Engine
         /// </summary>
         IPlatformCapabilities AudioDecoder(IAudioDecoder decoder);
 
+        /// <summary>
+        /// Run-time decoding of a game's movies (WMV/MP4) for <c>MediaPlayerLauncher</c> and
+        /// <c>MediaElement</c>. Omit it and every movie reports itself finished at once, so games
+        /// skip their cutscenes.
+        /// </summary>
+        IPlatformCapabilities VideoDecoder(IVideoDecoder decoder);
+
         /// <summary>Where achievements are persisted.</summary>
         IPlatformCapabilities Achievements(WPR.Xna.Achievements.IAchievementStore store);
 

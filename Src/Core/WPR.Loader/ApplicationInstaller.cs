@@ -536,6 +536,21 @@ namespace WPR
                         }
                     }
 
+                    // Movies, where this platform needs them rewritten (Android: MediaCodec has no
+                    // WMV). Never fails the install: a movie that cannot be prepared is skipped at
+                    // run time, as every movie used to be.
+                    try
+                    {
+                        await Task.Run(() => VideoCompabilityConverter.PrepareMovies(appDataFolder, _ => { }, cancelSource));
+                    }
+                    catch (OperationCanceledException)
+                    {
+                    }
+                    catch (Exception exception)
+                    {
+                        Log.Warn(LogCategory.AppInstall, $"Movie preparation failed (cutscenes will be skipped): {exception.Message}");
+                    }
+
                     if (cancelSource.IsCancellationRequested)
                     {
                         Directory.Delete(appDataFolder, true);
@@ -732,6 +747,20 @@ namespace WPR
                         Log.Warn(LogCategory.AppInstall,
                             $"Repatch: .wma transcode failed for {app.Name} (repatch itself " +
                             $"succeeded; the game's music will be silent): {ex.Message}");
+                    }
+
+                    // Movies, as at install. Idempotent, so a repatch is also how an install made
+                    // before this existed gets its cutscenes.
+                    try
+                    {
+                        await Task.Run(() => VideoCompabilityConverter.PrepareMovies(installFolder, _ => { }, cancelToken));
+                    }
+                    catch (OperationCanceledException)
+                    {
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Warn(LogCategory.AppInstall, $"Repatch: movie preparation failed for {app.Name}: {ex.Message}");
                     }
                 }
 

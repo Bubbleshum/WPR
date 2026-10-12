@@ -1,5 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <!-- 2026-10-12: NOT REGISTERED any more. Songs moved back to FAudio (StreamingSongPlayer) once
+       the once-a-second click described below was fixed in managed code. Kept as a fallback:
+       caps.Audio(new AndroidMediaPlayerModule()) in AndroidPlatform restores it. -->
+
   <!--
     WPR.Audio.AndroidMediaPlayer — XNA Song playback over android.media.MediaPlayer.
 

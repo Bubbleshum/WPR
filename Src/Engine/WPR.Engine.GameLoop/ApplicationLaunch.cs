@@ -288,13 +288,24 @@ namespace WPR
             // sets its video-complete callback AFTER Show() returns; on the game thread because
             // completion ends up touching the GraphicsDevice. The shim assemblies live in the
             // shared Default ALC, so this single static hook serves every launch.
-            Microsoft.Phone.Tasks.MediaPlayerLauncher.Launched += _ =>
+            //
+            // The movie itself now plays (LauncherMovieOverlay) when the platform has a video
+            // decoder and the file is playable; the reactivation runs when it ends or is skipped.
+            // Otherwise it completes straight away, which is all this ever did before.
+            Microsoft.Phone.Tasks.MediaPlayerLauncher.Launched += launcher =>
             {
-                WprTrace("[wpr-trace] MediaPlayerLauncher.Launched -> scheduling app reactivation to complete video");
-                WprGameThread.Post(() =>
+                WprTrace("[wpr-trace] MediaPlayerLauncher.Launched " + launcher.Media + " -> playing, then reactivating");
+                Action reactivate = () =>
                 {
                     try { PhoneApplicationService.Current?.HandleApplicationStart(false); }
                     catch (Exception ex) { WprTrace("[wpr-ex] MediaPlayerLauncher reactivation threw: " + ex); }
+                };
+                WprGameThread.Post(() =>
+                {
+                    bool shown = false;
+                    try { shown = LauncherMovieOverlay.TryShow(launcher, () => WprGameThread.Post(reactivate)); }
+                    catch (Exception ex) { WprTrace("[wpr-ex] MediaPlayerLauncher movie threw: " + ex); }
+                    if (!shown) reactivate();
                 });
             };
         }
@@ -1496,6 +1507,15 @@ namespace WPR
 
         private static void TeardownAudioState()
         {
+            // A movie still up when the game exits: release it (its sound is a SoundEffect
+            // instance, so before the audio device goes) without posting its completion.
+            try { WPR.Xna.Rhi.HostOverlay.Clear(completed: false); }
+            catch (Exception ex) { Log.Warn(LogCategory.AppList, $"HostOverlay.Clear on teardown threw: {ex.Message}"); }
+            // Same for a MediaElement movie: ResetWprSingletons resets it again later, but by then
+            // the audio device it plays through is gone.
+            try { WPR.SilverlightCompability.MediaElement.ResetForNewLaunch(); }
+            catch (Exception ex) { Log.Warn(LogCategory.AppList, $"MediaElement reset on audio teardown threw: {ex.Message}"); }
+
             try
             {
                 // MediaPlayer exposes DisposeIfNecessary as internal — reflection. (It lives in

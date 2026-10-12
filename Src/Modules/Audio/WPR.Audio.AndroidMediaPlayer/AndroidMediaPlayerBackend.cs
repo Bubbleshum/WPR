@@ -39,7 +39,7 @@ namespace WPR.Audio.AndroidMediaPlayer
     /// trusting the extension. It is the one assumption in this class worth re-checking if songs
     /// silently fail to start.</para>
     /// </summary>
-    public sealed class AndroidMediaPlayerBackend : IMediaBackend
+    public sealed class AndroidMediaPlayerBackend : IMediaBackend, IBackgroundAwareAudio
     {
         /// <summary>
         /// The backend serving the game in this process, for <c>GameActivity</c> to reach on

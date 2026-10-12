@@ -98,12 +98,19 @@ namespace WPR.Platform.Android
                 ProbeInstallFolderForRelativePaths = true,
             });
 
-            // Replace FAudio's song player with the platform's own. FAudio's XNA_Song decodes a
-            // full second of Vorbis per buffer with a queue depth of one, refilled from
-            // OnBufferEnd, so once per second the voice starves while the audio thread decodes —
-            // audible on a phone as a click exactly once per second. The module claims the song
-            // half only; sound effects, XACT and video stay on FAudio.
-            caps.Audio(new WPR.Audio.AndroidMediaPlayer.AndroidMediaPlayerModule());
+            // Songs stay on FAudio, like sound effects and XACT. They used to be handed to the
+            // platform MediaPlayer (WPR.Audio.AndroidMediaPlayer) because FAudio's native XNA_Song
+            // kept one second-long buffer queued and clicked once a second on a phone; the FAudio
+            // module now streams songs itself with a deep queue (StreamingSongPlayer), so that
+            // reason is gone, and SDL pausing the audio device on background covers the lifecycle
+            // MediaPlayer needed hand-written hooks for. The module is kept, unregistered, as a
+            // fallback: re-adding caps.Audio(new AndroidMediaPlayerModule()) restores it.
+
+            // Games' movies (MediaPlayerLauncher, MediaElement). MediaCodec has no WMV, so this reads
+            // the MP4 + Ogg sidecars the installer writes beside each movie through the :transcode
+            // process (FFmpegKitAudioTranscoder.TranscodeVideoAsync); a repatch writes them for a game
+            // installed before they existed.
+            caps.VideoDecoder(new WPR.Video.MediaCodec.MediaCodecVideoDecoder());
 
             if (_context != null)
             {
