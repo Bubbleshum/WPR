@@ -8,7 +8,7 @@ namespace Wp8ContractTests.Suites;
 /// <summary>
 /// The WinRT system classes (WinRtObjects.cs and its partials): Package, StorageFolder/StorageFile,
 /// FileIO/PathIO, streams, DataReader/DataWriter, ApplicationData settings, PropertyValue,
-/// PropertySet, Uri, Launcher, ThreadPoolTimer, VibrationDevice, NetworkInformation, Globalization.
+/// PropertySet, Uri, Launcher, ThreadPoolTimer, VibrationDevice, AudioRoutingManager, NetworkInformation, Globalization.
 /// Every call goes through the object's real vtable slot, the way guest code makes it.
 /// </summary>
 public sealed class WinRtClassesSuite : IContractSuite
@@ -310,6 +310,42 @@ public sealed class WinRtClassesSuite : IContractSuite
         Invoke(device, 6, 0, 5_000_000, 0);   // Vibrate(TimeSpan 0.5 s) in r2:r3
         Check("Vibrate drives the host motor for the duration", vibrated == TimeSpan.FromMilliseconds(500));
         Check("Vibrate longer than 5 s is E_INVALIDARG", Invoke(device, 6, 0, 60_000_000, 0) == EInvalidArg);
+
+        // ---- AudioRoutingManager (Windows.Phone.Media.Devices) ----
+        // IAudioRoutingManager slots: 6 GetAudioEndpoint, 7 SetAudioEndpoint, 8 add_AudioEndpointChanged,
+        // 9 remove_AudioEndpointChanged, 10 get_AvailableAudioEndpoints. Statics: 6 GetDefault.
+        long routingFactory = E.WinRt.GetActivationFactory("Windows.Phone.Media.Devices.AudioRoutingManager", new Guid("977fb2a4-5590-4a6f-adde-6a3d0ad58250"))!.Value;
+        long routing = Ret(routingFactory, 6);
+        Check("AudioRoutingManager.GetDefault answers the manager", routing != 0);
+        Check("...the same one every time", Ret(routingFactory, 6) == routing);
+        Check("...it is an IAudioRoutingManager", QI(routing, new Guid("79340d20-71cc-4526-9f29-fc8d2486418b")) != 0);
+        Check("...and not a stand-in", !E.WinRt.ImprovisedClasses.Contains("Windows.Phone.Media.Devices.AudioRoutingManager"));
+        Check("GetAudioEndpoint: the loudspeaker (Speakerphone, 2)", Ret(routing, 6) == 2);
+        Check("AvailableAudioEndpoints: Earpiece | Speakerphone (3)", Ret(routing, 10) == 3);
+
+        // A delegate whose Invoke is code in the image (what LooksLikeDelegate asks for); it is only
+        // queued here, never run.
+        LoadedModule main = E.Modules[0];
+        long invoked = (main.ImageBase + main.Image.EntryPointRva) | 1;
+        long handlerVtable = _h.Buffer(16), handler = _h.Buffer(8);
+        for (int i = 0; i < 4; i++)
+        {
+            E.WriteUInt32(handlerVtable + (i * 4), (uint)invoked);
+        }
+
+        E.WriteUInt32(handler, (uint)handlerVtable);
+        long tokenOut = Out(8);
+        Check("add_AudioEndpointChanged: S_OK and a token", Invoke(routing, 8, handler, tokenOut) == SOk && E.ReadUInt32(tokenOut) != 0);
+        long token = E.ReadUInt32(tokenOut);
+        int queuedBefore = E.PendingDeferredCalls;
+        Check("SetAudioEndpoint(Earpiece) succeeds", Invoke(routing, 7, 1) == SOk && Ret(routing, 6) == 1);
+        Check("...and the change is raised later, not on the caller's stack", E.PendingDeferredCalls == queuedBefore + 1);
+        Check("SetAudioEndpoint to the endpoint already in use raises nothing", Invoke(routing, 7, 1) == SOk && E.PendingDeferredCalls == queuedBefore + 1);
+        Check("SetAudioEndpoint(Bluetooth): nothing is paired, E_INVALIDARG", Invoke(routing, 7, 3) == EInvalidArg && Ret(routing, 6) == 1);
+        Check("SetAudioEndpoint(WiredHeadset): nothing is plugged in, E_INVALIDARG", Invoke(routing, 7, 4) == EInvalidArg);
+        Check("remove_AudioEndpointChanged(token) = S_OK", Invoke(routing, 9, 0, token, 0) == SOk);   // an int64 starts at an even word: r2:r3
+        Check("SetAudioEndpoint(Default) routes to the loudspeaker and, unsubscribed, raises nothing",
+            Invoke(routing, 7, 0) == SOk && Ret(routing, 6) == 2 && E.PendingDeferredCalls == queuedBefore + 1);
 
         // ---- NetworkInformation, CoreApplication, Globalization ----
         long network = Static("Windows.Networking.Connectivity.NetworkInformation", "Windows.Networking.Connectivity.INetworkInformationStatics");
