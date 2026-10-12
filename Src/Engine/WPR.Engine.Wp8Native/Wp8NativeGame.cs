@@ -450,8 +450,26 @@ namespace WPR.Wp8Native
         /// </remarks>
         private readonly bool UseGpu = Environment.GetEnvironmentVariable("WPR_WP8_GPU") != "0";
 
-        private GpuFrame? _latestGpu;
+        /// <summary>
+        /// Frames the guest has presented and the host has not replayed yet, oldest first.
+        /// </summary>
+        /// <remarks>
+        /// Every frame is replayed exactly once, in order. A Direct3D render target keeps its
+        /// contents from one frame to the next, and games rely on it: Assassin's Creed Pirates'
+        /// loading screen draws its full-screen background once and then only what changes, so
+        /// when the host kept just the latest frame (the guest may present two per host frame)
+        /// the frames it dropped were the ones that painted the edges, and the menu showed
+        /// through there. Replaying the latest frame again on a host frame with nothing new
+        /// was wrong the other way: every blended draw landed twice on targets that persist.
+        /// </remarks>
+        private readonly List<GpuFrame> _pendingGpu = new();
+        private bool _anyGpuFrame;
         private Wp8GpuReplay? _replay;
+
+        /// <summary>Unreplayed frames kept at most; past this the oldest are dropped (and counted).</summary>
+        private const int MaxPendingGpuFrames = 16;
+
+        private long _gpuFramesDropped;
 
         private void OnGpuFrameBuilt(GpuFrame frame)
         {
@@ -459,7 +477,12 @@ namespace WPR.Wp8Native
             LogScreenQueries();
             lock (_gate)
             {
-                _latestGpu = frame;
+                _pendingGpu.Add(frame);
+                if (_pendingGpu.Count > MaxPendingGpuFrames)
+                {
+                    _gpuFramesDropped += _pendingGpu.Count - MaxPendingGpuFrames;
+                    _pendingGpu.RemoveRange(0, _pendingGpu.Count - MaxPendingGpuFrames);
+                }
             }
 
             if (!_closing)
@@ -732,21 +755,28 @@ namespace WPR.Wp8Native
         {
             if (UseGpu)
             {
-                GpuFrame? gpuFrame;
+                GpuFrame[] gpuFrames;
                 lock (_gate)
                 {
-                    gpuFrame = _latestGpu;
+                    gpuFrames = [.. _pendingGpu];
+                    _pendingGpu.Clear();
                 }
 
-                if (gpuFrame is null)
+                _anyGpuFrame |= gpuFrames.Length > 0;
+                if (!_anyGpuFrame)
                 {
                     GraphicsDevice.Clear(Color.Black);
                 }
                 else
                 {
                     _replay ??= new Wp8GpuReplay(GraphicsDevice, _log);
-                    _replay.Render(gpuFrame, GraphicsDevice.PresentationParameters.BackBufferWidth, GraphicsDevice.PresentationParameters.BackBufferHeight);
-                    _drawn++;
+                    foreach (GpuFrame gpuFrame in gpuFrames)
+                    {
+                        _replay.Replay(gpuFrame);
+                        _drawn++;
+                    }
+
+                    _replay.Present(GraphicsDevice.PresentationParameters.BackBufferWidth, GraphicsDevice.PresentationParameters.BackBufferHeight);
                 }
 
                 base.Draw(gameTime);
@@ -849,7 +879,7 @@ namespace WPR.Wp8Native
             long build = _emulator?.Direct3D.RasteriseTicks ?? 0;
             Log($"guest fps={(_presented - _statsPresented) / seconds:0.0} frames={_presented} drawn={_drawn} " +
                 $"drawlist-build total={build * 1000 / System.Diagnostics.Stopwatch.Frequency}ms textures={_textures.Count} " +
-                $"gpu: replayed={_replay?.DrawsReplayed} skipped={_replay?.DrawsSkipped} {_replay?.Statistics()} unrecorded={string.Join(",", _emulator?.Direct3D.GpuSkipped.Select(p => $"{p.Key}:{p.Value}") ?? [])} " +
+                $"gpu: replayed={_replay?.DrawsReplayed} skipped={_replay?.DrawsSkipped} frames-dropped={_gpuFramesDropped} {_replay?.Statistics()} unrecorded={string.Join(",", _emulator?.Direct3D.GpuSkipped.Select(p => $"{p.Key}:{p.Value}") ?? [])} " +
                 $"audio: {_emulator?.XAudio2.Summary()} voices={_audio?.VoicesCreated} underruns={_audio?.Underruns} callbacks={_emulator?.XAudio2.CallbacksMade}");
             // What the game did with its sensors (a handful of lines per run; same racy read as below).
             if (_emulator?.WinRt.SensorLog is { } sensorLog)

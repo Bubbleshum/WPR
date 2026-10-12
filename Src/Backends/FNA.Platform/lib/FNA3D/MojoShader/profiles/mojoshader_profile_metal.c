@@ -764,7 +764,7 @@ void emit_METAL_uniform(Context *ctx, RegisterType regtype, int regnum,
 
         // !!! FIXME: might trigger unused var warnings in Clang.
         //output_line(ctx, "constant %s &%s = %s[%d];", utype, varname, name, index);
-        output_line(ctx, "#define %s %s[%d];", varname, name, index);
+        output_line(ctx, "#define %s %s[%d]", varname, name, index);  // WPR: no ";" - it broke every direct read of a register inside a relatively indexed array
         push_output(ctx, &ctx->mainline);
         ctx->indent++;
         output_line(ctx, "#undef %s", varname);  // !!! FIXME: gross.

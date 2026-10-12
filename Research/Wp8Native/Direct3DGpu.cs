@@ -146,21 +146,30 @@ namespace WPR.Wp8Native
             // CopyResource(dst, src), and CopySubresourceRegion(dst, dstSub, x, y, z, src, srcSub, box)
             // when it copies a whole surface to the origin. Spark2 (Assassin's Creed Pirates) renders
             // on a device of its own and its Draw copies that shared texture into the host's target.
-            void Copy(long destination, long source)
+            void Copy(long destination, long source, int x = 0, int y = 0, int[]? box = null)
             {
-                if (GpuCapture && TargetOfResource(destination) is { } to && TargetOfResource(source) is { } from && to != from)
+                if (GpuCapture && TargetOfResource(destination) is { } to && TargetOfResource(source) is { } from && to.Key != from.Key)
                 {
-                    _gpuCommands.Add(new GpuCopy(to, from));
+                    _gpuCommands.Add(new GpuCopy(to, from, x, y, box));
                 }
             }
 
             Wrap(methods, 47, original => () => { Copy(Arg(1), Arg(2)); original(); });
             Wrap(methods, 46, original => () =>
             {
-                // r0 this, r1 dst, r2 dstSub, r3 x; stack: y, z, src, srcSub, box.
-                if (Arg(2) == 0 && Arg(3) == 0 && Arg(4) == 0 && Arg(5) == 0 && Arg(7) == 0 && Arg(8) == 0)
+                // r0 this, r1 dst, r2 dstSub, r3 x; stack: y, z, src, srcSub, box. Only mip 0 of a
+                // 2D target is a render target here; another subresource is not replayed.
+                if (Arg(2) == 0 && Arg(5) == 0 && Arg(7) == 0)
                 {
-                    Copy(Arg(1), Arg(6));
+                    int[]? box = null;
+                    if (Arg(8) != 0)
+                    {
+                        // D3D11_BOX: left, top, front, right, bottom, back.
+                        byte[] raw = _emulator.ReadMemory(Arg(8), 24);
+                        box = [BitConverter.ToInt32(raw, 0), BitConverter.ToInt32(raw, 4), BitConverter.ToInt32(raw, 12), BitConverter.ToInt32(raw, 16)];
+                    }
+
+                    Copy(Arg(1), Arg(6), (int)Arg(3), (int)Arg(4), box);
                 }
 
                 original();
