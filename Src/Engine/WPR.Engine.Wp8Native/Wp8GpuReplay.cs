@@ -38,6 +38,7 @@ namespace WPR.Wp8Native
         private DynamicIndexBuffer? _indices16;
         private DynamicIndexBuffer? _indices32;
         private readonly HashSet<string> _warned = new(StringComparer.Ordinal);
+        private readonly HashSet<long> _brokenVertexShaders = new();
 
         public Wp8GpuReplay(GraphicsDevice device, Action<string>? log)
         {
@@ -273,6 +274,16 @@ namespace WPR.Wp8Native
 
                     DrawsSkipped++;
                     Warn("ex:" + ex.GetType().Name + ex.Message, $"replay failed: {ex.GetType().Name}: {ex.Message}");
+                    if (command is GpuDraw broken && ex is InvalidOperationException)
+                    {
+                        // FNA3D reports a vertex shader it could not build through its log, as a
+                        // throw. It must never be drawn with again: on Direct3D 11 MojoShader keeps
+                        // the failed compile's released blob as that layout's bytecode, so the next
+                        // draw reads freed memory and the process dies (0xC0000005 in
+                        // FNA3D_ApplyVertexBufferBindings).
+                        _brokenVertexShaders.Add(broken.Vertex.Key);
+                        Warn($"broken {broken.Vertex.Key}", $"vertex shader 0x{broken.Vertex.Key:X8} failed on the device; its draws are skipped from now on");
+                    }
                 }
             }
 
@@ -347,6 +358,12 @@ namespace WPR.Wp8Native
         private bool Draw(GpuDraw draw)
         {
             _skip = null;
+            if (_brokenVertexShaders.Contains(draw.Vertex.Key))
+            {
+                _skip = "vertex shader failed on the device";
+                return false;
+            }
+
             Aon9Shader? vertex = Shader(draw.Vertex);
             Aon9Shader? pixel = Shader(draw.Pixel);
             if (vertex is null || pixel is null || vertex.IsPixel || !pixel.IsPixel)
@@ -440,6 +457,13 @@ namespace WPR.Wp8Native
                 else if (parsed.DroppedColourOutputs > 0)
                 {
                     Warn($"mrt {shader.Key}", $"shader 0x{shader.Key:X8} writes extra render targets; {parsed.DroppedColourOutputs} write(s) to oC1-oC3 dropped (one target is bound)");
+                }
+
+                if (parsed is not null && Environment.GetEnvironmentVariable("WPR_WP8_SHADER_DUMP") is { Length: > 0 } dumpShaders)
+                {
+                    // Each shader's Direct3D 9 program, for disassembly.
+                    Directory.CreateDirectory(dumpShaders);
+                    File.WriteAllBytes(Path.Combine(dumpShaders, $"{shader.Key:X8}.{(parsed.IsPixel ? "ps" : "vs")}.d3d9"), parsed.Bytecode);
                 }
 
                 _shaders[shader.Key] = parsed;
