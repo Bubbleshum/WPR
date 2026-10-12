@@ -1,7 +1,7 @@
 # Runtime convergence: one stub policy, one renderer, one input path
 
 **Status (2026-10-12):** Track 1 done (1a-1f; 1e's removal of `ConstructShapedObject` still waits on
-activation through generated class info). 2c, 3a, 3c, 3d, 3e done; 2a in progress; Track 4 spike done (Spark2 go,
+activation through generated class info). 2a, 2c, 3a, 3c, 3d, 3e done; Track 4 spike done (Spark2 go,
 Unity no-go). WP8 native now has one render path: every title replays on the GPU (the per-title allow-list is
 gone; `WPR_WP8_GPU=0` keeps the 2D draw list as a diagnostic). Open: 2b, 3b, Track 5.
 **Written against:** `f58fa86`.
