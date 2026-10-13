@@ -317,14 +317,22 @@ namespace WPR
             if (app == null) throw new ArgumentNullException(nameof(app));
             if (hooks == null) throw new ArgumentNullException(nameof(hooks));
 
-            // A Silverlight/XNA MIXED-MODE title also declares RuntimeType="Silverlight", but it
-            // is not a Silverlight UI app at all: it has no Game subclass, renders entirely with
-            // XNA, and drives itself from a GameTimer on its page. MixedModeGame hosts those, so
-            // they take the XNA path from here on and only a genuine UI app is refused.
+            // Every Silverlight title — mixed-mode (a GameTimer on its page drawing with XNA) and
+            // pure UI alike — is hosted by MixedModeGame: the page is laid out and rasterised on
+            // the CPU (SoftwareVisualRasteriser) and composited whenever the game itself paints
+            // nothing, and TouchPanel samples are routed into its visual tree. That is Stage C of
+            // Plans/SILVERLIGHT-XNA-CONVERGENCE.md. Before it, a pure UI app was refused here,
+            // which is why none could run on Android. (The desktop can still send one to the old
+            // Avalonia host for one release — see WPR.Common.SilverlightHostChoice; such a launch
+            // never reaches this method.)
+            //
+            // The detector is still asked, only to say which kind this is in the log: the hosting
+            // is identical, and MixedModeGame decides per frame whether the page or the game draws.
             bool isMixedMode = false;
+            bool isPureSilverlight = false;
             if (app.ApplicationType == ApplicationType.Silverlight)
             {
-                isMixedMode = MixedModeDetection.IsMixedMode(
+                bool hasSharedDevice = MixedModeDetection.IsMixedMode(
                     Path.Combine(
                         Configuration.Current!.DataPath(Application.DataStoreFolder),
                         app.ProductId!),
@@ -333,13 +341,11 @@ namespace WPR
                     // be converted to a delegate. Wrapping it keeps the Debug-only behaviour —
                     // in Release the call inside the lambda is erased and this is a no-op.
                     msg => WprTrace(msg));
-
-                if (!isMixedMode)
-                {
-                    throw new NotSupportedException(
-                        "Silverlight UI runtime is not yet implemented. " +
-                        "This XAP installs successfully but cannot be launched yet.");
-                }
+                Trace.WriteLine(hasSharedDevice
+                    ? "[wpr-silverlight] mixed-mode title (SharedGraphicsDeviceManager) — XNA host"
+                    : "[wpr-silverlight] pure Silverlight title — XNA host, page rasterised on the CPU");
+                isMixedMode = true;
+                isPureSilverlight = !hasSharedDevice;
             }
 
             // WP8 "Modern Native": an ARMv7 PE against WinRT. It runs on the dynarmic JIT inside
@@ -365,7 +371,7 @@ namespace WPR
             PlaytimeTracker.Begin(app.ProductId, app.Name);
             try
             {
-                await StartCore(app, hooks, isMixedMode, isNative);
+                await StartCore(app, hooks, isMixedMode, isNative, isPureSilverlight);
             }
             catch (Exception ex) when (ReportCrash(app, ex, CrashReport.Sources.GameRun))
             {
@@ -481,7 +487,7 @@ namespace WPR
             };
         }
 
-        private static async Task StartCore(Application app, IGameLaunchHooks hooks, bool isMixedMode, bool isNative = false)
+        private static async Task StartCore(Application app, IGameLaunchHooks hooks, bool isMixedMode, bool isNative = false, bool isPureSilverlight = false)
         {
             // Framework-side per-launch hooks. The FNA host used to register these before calling
             // in here, but every one of them names only WPR.Framework.Xna types, so they are launch
@@ -802,7 +808,8 @@ namespace WPR
                                 }
                             },
                             // See the IsMixedMode call above: WprTrace is [Conditional("DEBUG")].
-                            msg => WprTrace(msg));
+                            msg => WprTrace(msg),
+                            isPureSilverlight);
                     }
                     else if (isNative)
                     {
@@ -1619,6 +1626,11 @@ namespace WPR
             // ticking a dead page's animations into the next launch.
             try { WPR.SilverlightCompability.AnimationClock.ResetForNewLaunch(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"AnimationClock reset threw: {ex.Message}"); }
+
+            // Elements still waiting for their Loaded hold the dead game's objects, like the
+            // storyboards above.
+            try { WPR.SilverlightCompability.FrameworkElement.ResetPendingLoaded(); }
+            catch (Exception ex) { Log.Warn(LogCategory.AppList, $"pending-Loaded reset threw: {ex.Message}"); }
 
             try { WPR.SilverlightCompability.Touch.ResetForNewLaunch(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"Touch reset threw: {ex.Message}"); }

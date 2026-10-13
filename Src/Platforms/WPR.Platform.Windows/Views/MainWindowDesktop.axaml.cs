@@ -120,6 +120,20 @@ namespace WPR.Platform.Windows.Views
             await MessageBoxUtils.ShowSelectableErrorAsync(title, body);
         }
 
+        private static bool IsGameMakerApp(WPR.Models.Application app)
+        {
+            try
+            {
+                return GameMakerLauncher.LooksLikeGameMakerApp(System.IO.Path.Combine(
+                    Configuration.Current!.DataPath(WPR.Models.Application.DataStoreFolder),
+                    app.ProductId!));
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
         private static bool IsMixedMode(WPR.Models.Application app)
         {
             try
@@ -252,7 +266,15 @@ namespace WPR.Platform.Windows.Views
                         // gate picks MixedModeGame. This is the desktop's equivalent of that
                         // gate, and it deliberately asks the SAME detector rather than a second
                         // rule, so the two heads cannot disagree about what a game is.
+                        //
+                        // Since Stage C of the convergence plan a pure Silverlight title goes
+                        // to the XNA host as well (ApplicationLaunch hosts it in MixedModeGame).
+                        // The Avalonia host stays reachable for one release through
+                        // SilverlightHostChoice (WPR_SILVERLIGHT_AVALONIA=1, or
+                        // "SilverlightAvaloniaHost": true in config.json), and still takes a
+                        // GameMaker app, which it hands to YoYo's Runner rather than hosting.
                         if (args.Target.ApplicationType == ApplicationType.Silverlight &&
+                            (WPR.Common.SilverlightHostChoice.UseAvaloniaHost || IsGameMakerApp(args.Target)) &&
                             !IsMixedMode(args.Target))
                         {
                             runtimePath = WPR.Online.Hub.Client.RuntimePaths.SilverlightAvalonia;

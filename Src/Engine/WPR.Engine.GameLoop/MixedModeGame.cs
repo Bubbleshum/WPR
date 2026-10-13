@@ -60,6 +60,10 @@ namespace WPR
         private readonly Action<object> _onAppCreated;
         private readonly Action<string> _trace;
 
+        // A pure Silverlight UI app (no SharedGraphicsDeviceManager): the page is all there is.
+        // See the Loaded walk in LoadContent for the one thing that changes.
+        private readonly bool _isPureSilverlight;
+
         private readonly GraphicsDeviceManager _graphics;
         private bool _booted;
         private bool _backWasDown;
@@ -99,8 +103,10 @@ namespace WPR
             Assembly userAssembly,
             string entryPointTypeName,
             Action<object> onAppCreated,
-            Action<string> trace)
+            Action<string> trace,
+            bool isPureSilverlight = false)
         {
+            _isPureSilverlight = isPureSilverlight;
             _installFolder = installFolder ?? throw new ArgumentNullException(nameof(installFolder));
             _userAssembly = userAssembly ?? throw new ArgumentNullException(nameof(userAssembly));
             _entryPointTypeName = entryPointTypeName ?? throw new ArgumentNullException(nameof(entryPointTypeName));
@@ -166,7 +172,13 @@ namespace WPR
             // the first had ActualWidth/ActualHeight of zero, never saw LayoutUpdated, and left
             // that renderer null — a NullReferenceException out of the game's own draw, once a
             // frame, on the page where the game actually is.
-            if (RootFrame != null) RootFrame.Navigated += OnFrameNavigated;
+            if (RootFrame != null)
+            {
+                RootFrame.Navigated += OnFrameNavigated;
+                // A page swapped in by writing Frame.Content (Flowerz does every screen change
+                // this way) needs the same layout and orientation as a navigated one.
+                RootFrame.WprContentReplaced += (_, _) => OnFrameNavigated(RootFrame, null!);
+            }
 
             // The page the app navigated to decides which way round the screen is. Half the
             // mixed-mode library is landscape, and until this ran they were all given a portrait
@@ -198,6 +210,33 @@ namespace WPR
             catch (Exception ex)
             {
                 _trace("[wpr-mixed] layout pass threw: " + ex);
+            }
+
+            // Loaded on the ROOT, not only on the page. Silverlight raises it on the root visual
+            // once it enters the tree, and a pure Silverlight title commonly hangs its start-up
+            // there: Flowerz's AppFrame subscribes Loaded and only from it initialises its game
+            // state and navigates off the loading page, so without this it sits on that page
+            // for ever. Frame.DoNavigate already covers each page it navigates to; this adds
+            // the frame and anything above the first page. Idempotent per element.
+            //
+            // Pure Silverlight only, deliberately: the ten mixed-mode titles have never seen a
+            // frame-level Loaded under WPR, and their composite/no-composite split is the
+            // regression test for this host.
+            if (_isPureSilverlight)
+            {
+                try
+                {
+                    FrameworkElement.RaiseLoadedTree((UIElement?)(result.RootVisual ?? result.RootFrame));
+                    _trace("[wpr-mixed] pure Silverlight: Loaded raised on the root visual tree");
+                    // A Loaded handler commonly navigates; lay the tree out again so the page it
+                    // navigated to is arranged before the first frame.
+                    if (_layoutRoot != null)
+                        FrameworkElement.RunLayoutPass(_layoutRoot, layoutWidth, layoutHeight);
+                }
+                catch (Exception ex)
+                {
+                    _trace("[wpr-mixed] root Loaded walk threw: " + ex);
+                }
             }
 
             // A start page that never navigated means the page's OnNavigatedTo never ran, and
@@ -232,6 +271,14 @@ namespace WPR
                 try { SilverlightTouchRouter.TickInertia(gameTime.ElapsedGameTime.TotalSeconds); }
                 catch { /* inertia must never take the frame down */ }
             }
+
+            // Loaded for elements that joined the live tree since last frame (see
+            // FrameworkElement.NoteAttached). Before the storyboard clock, so an animation begun
+            // from such a handler gets this frame's tick. Pure Silverlight only, like the root
+            // Loaded walk; for a mixed-mode title the queue is emptied without raising, which is
+            // exactly what it has always seen.
+            if (_isPureSilverlight) FrameworkElement.RaisePendingLoaded();
+            else FrameworkElement.ResetPendingLoaded();
 
             // Deferred media transitions first: a page's Update may read CurrentState, and on
             // the phone the media pipeline runs independently of the game loop rather than
@@ -538,7 +585,42 @@ namespace WPR
             // Latched for PumpSilverlightTouch, which runs in Update and so cannot ask the
             // question itself: whoever presents the page owns its input.
             _hostCompositesPage = hostDraws;
-            if (hostDraws) CompositeSilverlightPage();
+            if (hostDraws)
+            {
+                if (_isPureSilverlight) RelayoutIfInvalidated();
+                CompositeSilverlightPage();
+            }
+        }
+
+        /// <summary>
+        /// Lays the page out again when something in it invalidated its measure since the last
+        /// pass — the continuous layout Silverlight's compositor ran, which a pure Silverlight
+        /// title depends on and a mixed-mode one (whose page is laid out once per navigation) has
+        /// so far not needed.
+        /// </summary>
+        /// <remarks>
+        /// <para>The measured case is Flowerz's game board: its NavigationManager swaps the page in
+        /// and only THEN calls OnNavigatedTo, which fills the score, the level and the piece
+        /// queue. Laid out once at the swap, every one of those TextBlocks was arranged at width
+        /// zero and the board showed "Level:" with nothing after it, while the Avalonia host —
+        /// which re-lays out on <c>MeasureInvalidatedEvent</c> — showed the numbers.</para>
+        /// <para>Polled rather than subscribed: <c>InvalidateMeasure</c> bubbles to the page, so
+        /// one flag read a frame is the whole cost of a static page, and there is no subscription
+        /// to move from page to page.</para>
+        /// <para>Pure Silverlight only, like the root Loaded walk: RunLayoutPass also raises
+        /// LayoutUpdated, which mixed-mode titles build their renderers from.</para>
+        /// </remarks>
+        private void RelayoutIfInvalidated()
+        {
+            if (RootFrame?.Content is not PhoneApplicationPage page || page.IsMeasureValid) return;
+            try
+            {
+                RunLayoutPassFor(page, _landscape);
+            }
+            catch (Exception ex)
+            {
+                _trace("[wpr-mixed] re-layout threw: " + ex);
+            }
         }
 
         /// <summary>
