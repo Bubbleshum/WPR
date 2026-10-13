@@ -299,6 +299,14 @@ namespace WPR.Wp8Native
                 Log("network: " + string.Join("; ", stubs.Winsock.Log.Take(40)));
             }
 
+            List<string> xbox = _emulator.WinRt.XboxCalls;
+            if (xbox.Count > 0)
+            {
+                // Every Xbox Live call the title made (sign-in excluded): which of its achievement
+                // and leaderboard calls reached the host, and with which ids.
+                Log($"xbox: {xbox.Count} call(s): " + string.Join("; ", xbox.Distinct().Take(60)));
+            }
+
             Log($"summary: frames={_presented} trap={trap} " +
                 $"defaulted=[{string.Join(", ", stubs.DefaultedCalls.Select(p => $"{p.Key} x{p.Value}"))}] " +
                 $"allowed=[{string.Join(", ", stubs.AllowedDefaults.Select(p => $"{p.Key} x{p.Value}"))}] " +

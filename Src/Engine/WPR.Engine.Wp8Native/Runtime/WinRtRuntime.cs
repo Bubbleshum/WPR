@@ -192,6 +192,7 @@ namespace WPR.Wp8Native
             // against the metadata the game ships in its own XAP. See XboxRuntime.cs.
             if (CreateXboxClass(className) is { } xbox)
             {
+                XboxCalls.Add("activate " + className);
                 _factories[className] = xbox;
                 return xbox;
             }
@@ -219,6 +220,12 @@ namespace WPR.Wp8Native
             long stand = CreateDiscoveryObject(className, slotCount: 40, failing: refuse);
             _factories[className] = stand;
             _improvised.Add(className);
+            if (className.StartsWith("Microsoft.Xbox", StringComparison.Ordinal))
+            {
+                // An Xbox class nothing implements: its calls land in the unimplemented list, so
+                // name it beside the Xbox calls that did reach the host.
+                XboxCalls.Add("improvised " + className);
+            }
             return stand;
         }
 
