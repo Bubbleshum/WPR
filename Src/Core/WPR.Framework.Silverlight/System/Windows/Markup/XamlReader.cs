@@ -86,6 +86,13 @@ namespace WPR.SilverlightCompability
         {
             if (xaml == null) throw new ArgumentNullException(nameof(xaml));
 
+            // A byte-order mark decoded into the string. Games that load a XAML file themselves
+            // commonly do Encoding.UTF8.GetString(bytes), which KEEPS the BOM as U+FEFF, and
+            // Silverlight's parser accepted that; XDocument.Parse rejects it as "data at the
+            // root level". Flowerz's in-game tips (Content/Strings/<culture>/Tips/*.xaml) are
+            // the measured case: the tip box opened empty.
+            xaml = xaml.TrimStart('﻿');
+
             XDocument doc;
             try { doc = XDocument.Parse(xaml); }
             catch (Exception ex) { throw new XamlParseException("Failed to parse XAML: " + ex.Message, ex); }
@@ -118,6 +125,13 @@ namespace WPR.SilverlightCompability
         {
             if (component == null) throw new ArgumentNullException(nameof(component));
             if (xaml == null) throw new ArgumentNullException(nameof(xaml));
+
+            // A byte-order mark decoded into the string. Games that load a XAML file themselves
+            // commonly do Encoding.UTF8.GetString(bytes), which KEEPS the BOM as U+FEFF, and
+            // Silverlight's parser accepted that; XDocument.Parse rejects it as "data at the
+            // root level". Flowerz's in-game tips (Content/Strings/<culture>/Tips/*.xaml) are
+            // the measured case: the tip box opened empty.
+            xaml = xaml.TrimStart('﻿');
 
             XDocument doc;
             try { doc = XDocument.Parse(xaml); }

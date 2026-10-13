@@ -200,6 +200,22 @@ namespace WPR.SilverlightCompability
             return result;
         }
 
+        /// <summary>
+        /// Strips leading separators and any leading <c>..</c> segments: a URI relative to the
+        /// application package cannot climb above its root, and Silverlight clamps it there. A
+        /// XAML file loaded through <c>XamlReader.Load</c> has no base URI of its own, so a path
+        /// written relative to where that file sat in the project resolves from the root —
+        /// Flowerz's tips name <c>../../../Content/Images/TipStart.png</c> from
+        /// <c>Content/Strings/&lt;culture&gt;/Tips/</c>.
+        /// </summary>
+        internal static string ClampToPackageRoot(string path)
+        {
+            string p = path.TrimStart('/', '\\');
+            while (p.StartsWith("../", StringComparison.Ordinal) || p.StartsWith("..\\", StringComparison.Ordinal))
+                p = p.Substring(3).TrimStart('/', '\\');
+            return p;
+        }
+
         private static Stream? OpenImageStream(string path)
         {
             // 1. Exactly as given — an absolute path, or one relative to the process cwd.
@@ -217,7 +233,7 @@ namespace WPR.SilverlightCompability
             {
                 try
                 {
-                    string relative = path.TrimStart('/', '\\')
+                    string relative = ClampToPackageRoot(path)
                         .Replace('\\', System.IO.Path.DirectorySeparatorChar)
                         .Replace('/', System.IO.Path.DirectorySeparatorChar);
                     string full = System.IO.Path.Combine(install!, relative);

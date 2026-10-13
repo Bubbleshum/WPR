@@ -389,9 +389,10 @@ frame grab is needed and it works before the game has ever run. Per game because
 coordinates only mean anything against one title's layout, and the file dies with the install.
 Bindings are read in `PrepareForLaunch`, so an edit applies from the **next** launch.
 
-**Not built:** none of this exists for Silverlight titles. They run a separate Avalonia pointer
-pipeline that never touches `TouchPanel`, so keyboard→touch is XNA-only and would need a second
-implementation there.
+**Silverlight titles get it too since Stage C (2026-10-13)**: they now run on the XNA host and read
+touch through `TouchPanel` → `SilverlightTouchRouter`, so these bindings apply. The exception is a
+title sent to the old Avalonia host with `WPR_SILVERLIGHT_AVALONIA=1`, whose pointer pipeline never
+touches `TouchPanel`.
 
 ### Vibration is its own subsystem, and it is NOT the XNA rumble API (2026-09-05)
 
@@ -1092,7 +1093,9 @@ still just calls this.
 **The XNA and Silverlight Back paths stay separate**, deliberately: one is a level-sampled gamepad
 button held for a frame, the other is a routed event a page can cancel before `GoBack()`.
 Silverlight apps aren't driven by `IGameHost` at all and there is no Silverlight path on Android,
-so a unifying interface would have two implementations and no polymorphic caller.
+so a unifying interface would have two implementations and no polymorphic caller. (Superseded in
+part, 2026-10-13: every Silverlight title now runs in `MixedModeGame`, which reads the pad's Back
+and routes it into `PhoneApplicationFrame.HandleBackKey` — the two paths meet there, not in a seam.)
 
 **A live bug fixed on the way past.** `SDL2_FNAPlatform.GetGamePadState` consulted
 `PhoneBackButtonPressed` **only** inside its `device == IntPtr.Zero` early return. Once any
@@ -1538,8 +1541,8 @@ Four more things that are deliberate:
 - **An unparseable file reads as "no verdict".** The worst a torn write can do is let the preferred
   driver be tried again; this file may cost a device its first choice, never its only one.
 - **The mark goes down at the first window creation, not at the start of the launch
-  (2026-10-04).** `ApplicationLaunch.Start` refuses a Silverlight UI app or a native WinRT app
-  before any `Game` exists, so such a launch never touches the driver and never presents a frame.
+  (2026-10-04).** `ApplicationLaunch.Start` refused a Silverlight UI app (until Stage C,
+  2026-10-13) or an unsupported runtime type before any `Game` exists, so such a launch never touches the driver and never presents a frame.
   Marked at the top of `FnaGameHost.RunAsync`, it left a pending mark, and once strikes became
   sticky one tap on an unsupported title condemned Vulkan for good. Seen on the S24 the day 0.2.03
   was built: every later game ran on OpenGL, where Doodle God then crashed. Anything new that can
@@ -4744,8 +4747,8 @@ more than 48/255, all at anti-aliased edges and dash phase) and `ShapeRasterTest
 fill rules, area of an ellipse/arc/ring, stroke width, caps, joins, stretch, signature). Flowerz's
 own `LevelAnimation`/`Explosion` controls (150 Paths, rotated petals with 50% shadows) render
 correctly through `scratchpad/slpage`, which boots a pure-Silverlight title from a repatched SCRATCH
-COPY of its install. Its `GameBoard` page still cannot be built (`MouseButtonEventHandler` is not
-shimmed) and images need a graphics device the probe does not have — separate Stage C gaps.
+COPY of its install. Its `GameBoard` page could not be built then (`MouseButtonEventHandler` had no
+rescope entry); fixed in Stage C, below.
 
 Not done: the Avalonia `SilverlightRenderer` still draws non-rectangle shapes as boxes (it goes in
 Stage D); `StrokeDashArray` phase restarts per figure; miters past the limit are bevelled rather
@@ -4753,6 +4756,94 @@ than clipped.
 
 **Patcher table change (v41)**: the shape/geometry types gained rescope entries. Not
 identity-binding — `--repatch-installed` on the desktop, automatic on Android.
+
+### Pure Silverlight titles run on the XNA host (Stage C, 2026-10-13, patcher v42)
+
+`ApplicationLaunch` no longer throws "Silverlight UI runtime is not yet implemented": every
+`ApplicationType.Silverlight` title is hosted by `MixedModeGame` (CPU rasteriser, `TouchPanel` →
+`SilverlightTouchRouter`). That throw was the **only** thing keeping them off Android. The detector
+still runs, only to log which kind it is, and passes `isPureSilverlight` to the host.
+
+**The Avalonia host stays for one release, desktop only**: `WPR_SILVERLIGHT_AVALONIA=1` (or `0` to
+force the XNA host), else `"SilverlightAvaloniaHost": true` in config.json, else
+`SilverlightHostChoice.DefaultUsesAvalonia` (**false**). `MainWindowDesktop` asks it; a GameMaker
+app still goes to `SilverlightLauncher`, which hands it to YoYo's Runner. Android ignores the flag.
+
+**Default is the XNA host, measured, not assumed** — both hosts driven by the same script
+(`scratchpad/gamerun` for XNA, `scratchpad/slav` = the Avalonia host headless, rendering
+`PhoneApplicationFrameView` with Avalonia.Headless + Skia), both against a **scratch data root**
+(`WPR_DATA_ROOT`, prepared by `scratchpad/slprep`, which copies and repatches installs and never
+writes the user's):
+
+| title | Avalonia host | XNA host, desktop | XNA host, Android (`WPR_Verify`, Release APK) |
+| --- | --- | --- | --- |
+| Flowerz | menus as **text only** (it cannot draw a `BitmapSource.SetSource` image), board reachable, **taps on the board do nothing** (no `MouseLeftButtonDown` on that host) | images, menus, board, pieces placed, queue counts down — D1–D4 | same, A1 (GLES 3.1) and A2 (Vulkan) |
+| Minesweeper | dashboard, panorama swipes to powerups / classic / speed | **identical** pictures — D1–D4 | dashboard → swipes → classic, A1 and A2 |
+| What In The World? | dies on start-page navigation (now: on `VoiceCommandService`) | same failure, same place | not run |
+
+Android: install a desktop-patched copy plus a catalogue row (the memory note on the emulator), held
+presses for taps, `fna3d_driver.txt` per cell; Carcassonne (mixed-mode, repatched on device to v42)
+still composites its menu on A2. Not run: S24 (P1/P2), Mali (P3).
+
+Neither host gets further into Minesweeper: its own guard `MainPage.c()` swallows every dashboard
+and mode-list tap (a popup / full-screen-ad / 1.2 s debounce check), on both. What In The World? is
+WP8 managed and stops in WinRT (`VoiceCommandService.InstallCommandSetsFromFileAsync`,
+`CurrentApp.AppId`, `InstallationManager`), as an unhandled exception on both hosts.
+
+**What the XNA host needed, all framework fixes shared by both hosts** — each is a pattern other
+pure Silverlight titles will hit:
+
+- **`GetResourceStream` reads files in the package.** A relative URI without `;component/` names a
+  XAP *file* (the Content build action). It only searched embedded resources, so Flowerz's strings
+  and images were null and its loading page sat black on **both** hosts. It also fixed **Big Buck
+  Hunter Pro** in the headless harness (its `AppResourceUtils.LoadFileStream` → black screen
+  before; menu now). Last pass, so an embedded resource of the same name still wins.
+- **Loaded on the root, and on elements that join a live tree.** Flowerz starts from
+  `AppFrame.Loaded`; its bloom animation starts from its own Loaded when added to a canvas, and the
+  game waits for that storyboard before drawing a placed piece. `UIElement.SetParent` queues the
+  child when the parent is loaded; `FrameworkElement.RaisePendingLoaded` (host, once a frame)
+  raises it. **Pure Silverlight only in `MixedModeGame`** — a mixed-mode title's queue is dropped
+  unraised, which is what it always saw.
+- **Re-layout on invalidation** (pure only): Flowerz fills its score/level TextBlocks in
+  `OnNavigatedTo`, *after* the page swap that triggered layout, so they were arranged at width 0.
+  `RelayoutIfInvalidated` polls the page's `IsMeasureValid` before compositing.
+- **`Frame` honours `ContentControl.Content` written on it.** Silverlight's Frame *is* a
+  ContentControl and Flowerz swaps every page with `((ContentControl)this).Content = page`. Ours
+  derives from FrameworkElement, so the value went into the property store and nothing changed.
+  `ContentControl.OnContentChanged` now routes a Frame to `ReplaceContentDirectly`
+  (`WprContentReplaced` event, no `Navigated`, Loaded raised).
+- **`FrameworkDispatcher.Update` off the game thread no longer touches `TouchPanel`** and no longer
+  counts as the app's pump. Flowerz and Minesweeper pump it from a `BackgroundWorker` every 10 ms
+  (the WP7 idiom for XNA audio in a Silverlight app); that raced the game thread's pump and a tap
+  could press and release between two frames — Minesweeper ignored every tap. "Game thread" is
+  `OffThreadGpuCalls.OnDeviceThread`, so a game that pumps before creating a device is unchanged.
+- `MouseButtonEventArgs : MouseEventArgs` (GetPosition lives on the base, and Flowerz casts to it);
+  `UIElement.MouseMove` (raised along the press chain); patcher **v42** rescopes
+  `MouseButtonEventHandler`/`MouseEventArgs`/`MouseEventHandler`, whose shims existed with no entry.
+- `ListBox : Selector` (selection moved to Selector; Minesweeper casts `(Selector)sender`), and a
+  tap selects the row before Tap handlers run. Panorama/Pivot horizontal pan + page commit ported
+  from `PhoneApplicationFrameView` into `SilverlightTouchRouter`.
+- `PropertyPath(string, params object[])` (every code-built storyboard in Flowerz),
+  `XamlReader.Load` strips a BOM, image paths clamp leading `..` at the package root, WP8
+  `IsNavigationInitiator`, `NameResolutionCallback`/`ResolveHostNameAsync(DnsEndPoint…)` (answers
+  synchronously: the caller waits 50 ms), a silent `BackgroundAudioPlayer`.
+
+**Mixed-mode distribution, measured with the harness idle for 25 s, combine HEAD vs this change**:
+identical for nine titles; **Big Buck Hunter Pro moved from "compositing" (a black screen, its
+start page failed on the missing file pass above) to "the game painted"** — which is what the
+"Who draws a mixed-mode page" list already says it should be. The Game of Life composites in an
+idle run on both builds (it sits on its title page); the list above was measured further in.
+
+**Three harness traps worth knowing.** gamerun's SDL window sits on the real desktop with
+`MouseAsTouch` on, so **a real click lands in the game** — scripted runs now move it off-screen
+(`GAMERUN_ONSCREEN=1` to keep it); turning `MouseAsTouch` off instead stops `TouchPanel` updating
+and the script with it. Neither harness composes a `Guide` message box, so a title that asks a
+question (Flowerz's "new game?" when a save exists) stalls there — `sl-run.ps1` clears the scratch
+store each run. And neither harness has audio on the Avalonia side (`NoAudioHardwareException` out
+of every Flowerz button click there): `AudioBackendRegistry`'s base is set only by `FnaGameHost`,
+so the **real** Avalonia host has the same problem.
+
+`MixedModeGame` keeps its name until Stage D deletes the Avalonia host.
 
 ### When I touch a shim type
 

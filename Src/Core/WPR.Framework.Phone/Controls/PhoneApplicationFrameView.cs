@@ -35,6 +35,7 @@ namespace Microsoft.Phone.Controls
         {
             _frame = frame ?? throw new ArgumentNullException(nameof(frame));
             _frame.Navigated += OnFrameNavigated;
+            _frame.WprContentReplaced += OnFrameContentReplaced;
             _currentPage = frame.Content;
             HookPage(_currentPage);
 
@@ -42,7 +43,12 @@ namespace Microsoft.Phone.Controls
             // call, so Frame.DoNavigate never runs for it — fire Loaded here so
             // its Loaded handlers (background work, splash dismissal) run on
             // first display. Frame.DoNavigate handles subsequent pages.
-            FrameworkElement.RaiseLoadedTree(_currentPage);
+            //
+            // From the FRAME, not the page (2026-10-13): the frame is the root visual and gets
+            // Loaded too, and Flowerz starts its game from AppFrame.Loaded. Idempotent per element,
+            // so the page is still raised exactly once. Same walk MixedModeGame does.
+            FrameworkElement.RaiseLoadedTree(_frame);
+            if (!ReferenceEquals(_currentPage, _frame.Content)) OnFrameContentReplaced(_frame, EventArgs.Empty);
 
             // Repaint when the Bing wallpaper arrives. Posted via the Avalonia
             // dispatcher so the InvalidateVisual call happens on the UI thread.
@@ -70,6 +76,7 @@ namespace Microsoft.Phone.Controls
         {
             base.OnDetachedFromVisualTree(e);
             _frame.Navigated -= OnFrameNavigated;
+            _frame.WprContentReplaced -= OnFrameContentReplaced;
             UnhookPage(_currentPage);
             BingWallpaper.Ready -= OnBingWallpaperReady;
             if (_animTimer != null)
@@ -81,6 +88,10 @@ namespace Microsoft.Phone.Controls
 
         private void OnAnimTick(object? sender, EventArgs e)
         {
+            // Loaded for elements added to the live tree since the last tick (see
+            // FrameworkElement.NoteAttached) — the same drain MixedModeGame runs per frame.
+            FrameworkElement.RaisePendingLoaded();
+
             // Only repaint while there's actually something animating — open
             // popups (which can host the WP toolkit's PerformanceProgressBar)
             // are the main case. Otherwise leave the surface untouched so we
@@ -156,7 +167,9 @@ namespace Microsoft.Phone.Controls
         public PhoneApplicationFrame Frame => _frame;
         public PhoneApplicationPage? CurrentPage => _currentPage;
 
-        private void OnFrameNavigated(object? sender, NavigationEventArgs e)
+        private void OnFrameNavigated(object? sender, NavigationEventArgs e) => OnFrameContentReplaced(sender, EventArgs.Empty);
+
+        private void OnFrameContentReplaced(object? sender, EventArgs e)
         {
             UnhookPage(_currentPage);
             _currentPage = _frame.Content;

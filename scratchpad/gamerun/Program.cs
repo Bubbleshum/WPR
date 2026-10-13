@@ -37,8 +37,13 @@ namespace GameRun
                 if (args[i] == "--focus-blip") int.TryParse(args[i + 1], out focusBlip);
             }
 
-            Configuration.Current = new Configuration(Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WPR"));
+            // WPR_DATA_ROOT points the run at a scratch data root (its own applications.db,
+            // AppData and IsolatedStore), so a repatched scratch copy can be run without touching
+            // the user's installs or saves.
+            Configuration.Current = new Configuration(
+                Environment.GetEnvironmentVariable("WPR_DATA_ROOT") is { Length: > 0 } dataRoot
+                    ? dataRoot
+                    : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WPR"));
 
             // gamerun --install <xap>: one XAP through the real install pipeline, then exit. The
             // desktop head's --reinstall-all would also repatch every installed game.
@@ -95,6 +100,36 @@ namespace GameRun
                 WPR.Engine.Sensors.SensorBackend.SetAccelerometer(s);
                 Console.Error.WriteLine("[gamerun] script registered");
             }
+            // The harness window sits on a desktop someone may be using, and the launch turns the
+            // real mouse into a finger (TouchPanel.MouseAsTouch). A scripted run must only see its
+            // own taps, so turn that off once the launch has set it.
+            // Default for scripted runs: move the window off-screen so a stray real click cannot
+            // land in it (MouseAsTouch would turn it into a tap). Frames are read back from the
+            // device, so an off-screen window shoots the same pictures.
+            if (script != null && Environment.GetEnvironmentVariable("GAMERUN_ONSCREEN") != "1")
+            {
+                Task.Delay(TimeSpan.FromSeconds(0.5)).ContinueWith(_ => Microsoft.Xna.Framework.WprGameThread.Post(() =>
+                {
+                    try
+                    {
+                        IntPtr handle = WPR.ApplicationLaunch.CurrentGame.Window.Handle;
+                        SDL2.SDL.SDL_SetWindowPosition(handle, -4000, -4000);
+                        Console.Error.WriteLine("[gamerun] window moved off-screen");
+                    }
+                    catch (Exception ex) { Console.Error.WriteLine("[gamerun] could not move window: " + ex.Message); }
+                }));
+            }
+
+            // (Opt-in: switching it off also stops TouchPanel's update, and with it the script.)
+            if (script != null && Environment.GetEnvironmentVariable("GAMERUN_NO_REAL_MOUSE") == "1")
+            {
+                Task.Delay(TimeSpan.FromSeconds(1)).ContinueWith(_ => Microsoft.Xna.Framework.WprGameThread.Post(() =>
+                {
+                    Microsoft.Xna.Framework.Input.Touch.TouchPanel.MouseAsTouch = false;
+                    Console.Error.WriteLine("[gamerun] real mouse no longer reaches the game");
+                }));
+            }
+
             if (exitAfter > 0)
             {
                 Task.Delay(TimeSpan.FromSeconds(exitAfter)).ContinueWith(_ =>

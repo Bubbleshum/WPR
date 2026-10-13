@@ -289,6 +289,21 @@ that plan says.
 
 **Exit:** every in-process game draws through `GraphicsDevice` and reads touch through `TouchPanel`.
 
+**Stage C done 2026-10-13** (branch `worktree-agent-a9bcbea36f8932402`): pure Silverlight titles
+are hosted by `MixedModeGame` by default on both heads, which is what makes them launchable on
+Android at all. The Avalonia host is still reachable on the desktop for one release
+(`WPR_SILVERLIGHT_AVALONIA=1` / `"SilverlightAvaloniaHost": true`, `WPR.Common.SilverlightHostChoice`).
+Patcher v42. Per-title results are in SILVERLIGHT-XNA-CONVERGENCE.md §4.
+
+**What remains for Stage D**: delete `SilverlightLauncher`, `PhoneApplicationFrameView`,
+`SilverlightRenderer`, `BrandedSplashRenderer` + `IBackgroundRenderer`, `SilverlightHostChoice` and
+the `SilverlightAvaloniaHost` setting, the Avalonia branch in `MainWindowDesktop` (GameMaker apps
+need a new home: call `GameMakerLauncher` directly), `MixedModeDetection` (keep only if the log line
+is wanted), the `isMixedMode` plumbing in `ApplicationLaunch`, and the `Avalonia` package in
+`WPR.Framework.Silverlight` (and with it the 11.3.9/12.1.3 split for that project); rename
+`MixedModeGame`. `scratchpad/slav` stops building at that point, which is fine — it exists only for
+the Stage C comparison.
+
 ### 2c. WP8 native keyboard
 
 `ICoreWindow` `add_KeyDown` / `add_KeyUp` are reached by Angry Birds Go! and unimplemented.

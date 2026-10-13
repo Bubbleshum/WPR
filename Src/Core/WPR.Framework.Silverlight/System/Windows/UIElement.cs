@@ -18,6 +18,7 @@ namespace WPR.SilverlightCompability
                     "Element already has a parent. Remove it from its current parent before re-attaching.");
             }
             Parent = newParent;
+            if (newParent != null) FrameworkElement.NoteAttached(this, newParent);
         }
 
         /// <summary>
@@ -153,6 +154,28 @@ namespace WPR.SilverlightCompability
             if (handler == null) return false;
 
             var args = new MouseButtonEventArgs { OriginalSource = this, PagePosition = pagePosition };
+            try { handler(this, args); }
+            catch { return false; }
+            return args.Handled;
+        }
+
+        /// <summary>The pointer moved over (or, while pressed, away from) this element.</summary>
+        public event MouseEventHandler? MouseMove;
+
+#pragma warning disable CS0067
+        // Hover has no meaning on a touchscreen, and WP7 raises these only around a press. Declared
+        // so the add_/remove_ accessors a page or toolkit control names resolve.
+        public event MouseEventHandler? MouseEnter;
+        public event MouseEventHandler? MouseLeave;
+#pragma warning restore CS0067
+
+        /// <summary>Delivers a move to this element. Returns true if a handler marked it handled.</summary>
+        internal bool RaiseMouseMove(Point pagePosition)
+        {
+            MouseEventHandler? handler = MouseMove;
+            if (handler == null) return false;
+
+            var args = new MouseEventArgs { OriginalSource = this, PagePosition = pagePosition };
             try { handler(this, args); }
             catch { return false; }
             return args.Handled;
