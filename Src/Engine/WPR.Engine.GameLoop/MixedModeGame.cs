@@ -44,8 +44,12 @@ namespace WPR
     /// Rabbids draws the overlay <em>before</em> its scene, making it the background, while
     /// Pirates draws it as the whole screen. Do not assume either.</para>
     ///
-    /// <para>See <c>Plans/SILVERLIGHT-XNA-CONVERGENCE.md</c> for the full measurement and for why
-    /// this host is expected to absorb the pure-Silverlight titles as well.</para>
+    /// <para>See <c>Plans/SILVERLIGHT-XNA-CONVERGENCE.md</c> for the full measurement. <b>Since
+    /// Stage C (2026-10-13) it hosts the pure Silverlight titles too</b> (constructed with
+    /// <c>isPureSilverlight: true</c>): their page is all there is, so the host composites it
+    /// every frame, and three things switch on that a mixed-mode title has never had — Loaded on
+    /// the root visual tree and on elements added later, and a re-layout whenever the page's
+    /// measure is invalidated. The name is kept until Stage D deletes the Avalonia host.</para>
     /// </summary>
     internal sealed class MixedModeGame : Game
     {

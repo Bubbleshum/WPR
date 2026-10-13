@@ -1,5 +1,12 @@
 # Collapsing the Silverlight host into the XNA host
 
+**Status (2026-10-13): Stage C is built, behind a flag for one release; Stage D is not started.**
+`ApplicationType.Silverlight` titles are hosted by `MixedModeGame` by default on both heads; the
+desktop can still send them to the Avalonia host with `WPR_SILVERLIGHT_AVALONIA=1` (or
+`"SilverlightAvaloniaHost": true` in config.json). The §5 gate (`IBackgroundRenderer`) was settled
+by retiring the D3D11 backend on 2026-10-12 (RUNTIME-CONVERGENCE §2a). Results in the Stage C entry
+of §4 and in CLAUDE.md, "Pure Silverlight titles run on the XNA host".
+
 **Status (2026-09-25): Stages A and B are built.** Gaps 1, 2, 3 and 5 are done; gap 4 turned out
 not to be needed (see below). Stage C has not started and is still gated on the
 `IBackgroundRenderer` decision in §5. What each stage actually delivered, and where it stopped:
@@ -181,6 +188,26 @@ runtime is not yet implemented" throw beneath it) and the `IsMixedMode` helper i
 *Exit:* Flowerz and Minesweeper reach the same screens they reach today on the Avalonia host,
 **and reach them on Android.** This is the gate; if the rasteriser is not at parity, Stage C
 does not start.
+
+**Done 2026-10-13, with two deviations from the text above.** The `isMixedMode` branch was not
+deleted but widened (every Silverlight title takes it; the detector only logs and sets
+`isPureSilverlight`), and `MixedModeGame` was not renamed — both wait for Stage D, so that the flag
+can still route a title back to Avalonia for one release. Measured with both hosts driven by one
+script against scratch copies (`scratchpad/gamerun`, `scratchpad/slav` = Avalonia host headless):
+
+| title | desktop Avalonia | desktop XNA host | Android emulator (XNA host) |
+| --- | --- | --- | --- |
+| Flowerz | text-only menus; board reachable, not playable | menus with art, board playable (D1–D4) | board playable, GLES 3.1 and Vulkan |
+| Minesweeper | dashboard + panorama pages | identical (D1–D4) | dashboard + panorama pages, GLES 3.1 and Vulkan |
+| What In The World? | dies at start (WinRT `VoiceCommandService`) | same | not run |
+
+The XNA host at least matches the Avalonia host on both gate titles, so it is the default. Neither
+host gets *into* a Minesweeper game: the title's own tap guard swallows every tap on both. What it
+took is in CLAUDE.md — mostly framework fixes both hosts share (`GetResourceStream` file pass,
+Loaded for late-added elements, `Frame.Content` as a ContentControl, off-thread
+`FrameworkDispatcher.Update`, `ListBox : Selector`, panorama paging in the router, patcher v42 for
+the mouse delegates). Text is the rasteriser's own and is not visibly worse than Avalonia's in
+either title (the §5 "text quality" worry did not materialise at this size).
 
 ### Stage D — delete the Avalonia renderer
 
