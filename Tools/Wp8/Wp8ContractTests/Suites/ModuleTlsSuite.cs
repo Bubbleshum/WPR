@@ -5,7 +5,7 @@ namespace Wp8ContractTests.Suites;
 
 /// <summary>
 /// Static TLS, TLS callbacks, forwarders loaded at GetProcAddress time, and unload range reuse
-/// (Research/Wp8Native/ModuleTls.cs, ModuleLoader.cs). No installed title has a TLS callback, a
+/// (Src/Engine/WPR.Engine.Wp8Native/Runtime/ModuleTls.cs, ModuleLoader.cs). No installed title has a TLS callback, a
 /// DLL with TLS or a runtime forwarder, so those are driven by a synthetic package written by
 /// <see cref="SyntheticPe"/>; the TEB/TLS layout is also checked against a real title whose
 /// Game.exe reads <c>__declspec(thread)</c> data 1,847 times.

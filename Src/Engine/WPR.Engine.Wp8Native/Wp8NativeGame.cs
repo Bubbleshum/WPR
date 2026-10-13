@@ -181,7 +181,7 @@ namespace WPR.Wp8Native
                 if (image.IsDll)
                 {
                     // A Direct3D/XAML title: the game is a WinRT component, and the host plays the
-                    // managed page that would have activated it (Research/Wp8Native/XamlInterop.cs).
+                    // managed page that would have activated it (Src/Engine/WPR.Engine.Wp8Native/Runtime/XamlInterop.cs).
                     string directory = Path.GetDirectoryName(_executable)!;
                     XamlShell? shell = XamlShells.ForComponent(_executable);
                     if (shell is null)
@@ -665,7 +665,7 @@ namespace WPR.Wp8Native
         /// <summary>
         /// The keyboard, as <c>CoreWindow.KeyDown</c>/<c>KeyUp</c>: the edges of
         /// <see cref="Keyboard.GetState()"/> between frames, mapped to <c>Windows.System.VirtualKey</c>
-        /// (Research/Wp8Native/Keyboard.cs raises them). On the desktop that is the PC keyboard; on
+        /// (Src/Engine/WPR.Engine.Wp8Native/Runtime/Keyboard.cs raises them). On the desktop that is the PC keyboard; on
         /// Android only a physical one, since no keyboard-emulation host is registered there.
         /// </summary>
         /// <remarks>
@@ -995,7 +995,7 @@ namespace WPR.Wp8Native
         // Android's AudioTrack, unlike FAudio's device, is not paused with the app: without this
         // the buffered tail plays over the home screen. The guest is told too, as WP8 told it:
         // CoreWindow.Activated/VisibilityChanged and CoreApplication.Suspending/Resuming, raised on
-        // its own thread at its next turn round the main loop (Research/Wp8Native/AppLifecycle.cs).
+        // its own thread at its next turn round the main loop (Src/Engine/WPR.Engine.Wp8Native/Runtime/AppLifecycle.cs).
         // The motor is ours alone, so a buzz in flight is stopped here, as GameActivity.OnPause does.
         protected override void OnDeactivated(object sender, EventArgs args)
         {

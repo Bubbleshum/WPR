@@ -2,7 +2,7 @@
 
 The WP8 "Modern Native" (ARM) research lives on its own branch in a worktree so `main` stays
 clear. Nothing on that branch is wired into WPR; it is a standalone probe under
-`Research/Wp8Native/`.
+`Src/Engine/WPR.Engine.Wp8Native/Runtime/`.
 
 | | |
 |---|---|
@@ -10,12 +10,12 @@ clear. Nothing on that branch is wired into WPR; it is a standalone probe under
 | Branch | `wp8-native`, branched from `2f35d69e` (main) |
 | Last commit | `becd2e4f` — *wip: WP8 native probe - dynarmic engine seam, Lua traceback, plan notes* |
 | Full plan | `Plans/WP8-NATIVE-PROBE.md` **on that branch** — measurements, evidence, order of work |
-| Long-form notes | `Research/Wp8Native/README.md` on that branch |
+| Long-form notes | `Docs/Wp8Native/README.md` on that branch |
 
 ## Resume in one minute
 
 ```powershell
-cd .claude\worktrees\wp8-native\Research\Wp8Native
+cd .claude\worktrees\wp8-native\Src\Engine\WPR.Engine.Wp8Native\Runtime
 .\run.ps1 -Desktop -Game C:\wp8-test\abrio\AngryBirdsRio.exe      # the window (defaults to dynarmic)
 .\run.ps1 -Game C:\wp8-test\abrio\AngryBirdsRio.exe -Screenshot .\f.png -Frame 300   # console + PNG
 ```
@@ -25,7 +25,7 @@ cd .claude\worktrees\wp8-native\Research\Wp8Native
 Two native DLLs sit beside the sources and are **gitignored, per machine**: `unicorn.dll`
 (GPL — never ship) and `wprcpu.dll` (the dynarmic shim, 0BSD). Both are already in the
 worktree. To rebuild the shim: WSL, `~/wprcpu`, `cmake --build build`, copy `build/wprcpu.dll`
-to `Research/Wp8Native/`. The shim source is versioned under `Research/Wp8Native/Native/` with
+to `Src/Engine/WPR.Engine.Wp8Native/Runtime/`. The shim source is versioned under `Src/Engine/WPR.Engine.Wp8Native/Native/` with
 the mingw toolchain file; the recipe is in the plan's §5.
 
 The test subject is Angry Birds Rio unpacked at `C:\wp8-test\abrio` — re-extract from

@@ -4,7 +4,7 @@
     The WP8 API census: every import of every ARM PE in every WP8 XAP in the library, checked
     against what the runtime implements, ranked by titles (Plans/RUNTIME-CONVERGENCE.md).
 
-      run Research/Wp8Native/Tools/Wp8Census (dotnet run, double-dash project option) with arguments: <out-dir> <library-root> [...]
+      run Tools/Wp8/Wp8Census (dotnet run, double-dash project option) with arguments: <out-dir> <library-root> [...]
 
     Not part of WPR.sln.
   -->
@@ -17,7 +17,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\..\Src\Engine\WPR.Engine.Wp8Native\WPR.Engine.Wp8Native.csproj" />
+    <ProjectReference Include="..\..\..\Src\Engine\WPR.Engine.Wp8Native\WPR.Engine.Wp8Native.csproj" />
   </ItemGroup>
 
 </Project>

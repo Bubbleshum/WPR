@@ -10,7 +10,7 @@ namespace WPR.Engine.Audio
     ///
     /// <para><b>Why this seam exists.</b> WP8 native titles play music through the Media
     /// Foundation media engine (<c>IMFMediaEngine</c>), which the WP8 runtime in
-    /// <c>Research/Wp8Native</c> implements. A scan of the 102 ARM titles in the library found its
+    /// <c>Src/Engine/WPR.Engine.Wp8Native/Runtime</c> implements. A scan of the 102 ARM titles in the library found its
     /// users (Assassin's Creed Pirates, Doodle God Blitz, FIFA 14/15, the GameMaker and Unity
     /// runners) feeding it MP3 - not the WAVE the runtime decodes itself. Install-time transcoding,
     /// the WP7 answer (<see cref="IAudioTranscoder"/>), does not fit: the same titles ship MP3s

@@ -5,7 +5,7 @@ using WPR.Wp8Native;
 namespace Wp8ContractTests.Suites;
 
 /// <summary>
-/// The multi-module loader (Research/Wp8Native/ModuleLoader.cs) against real installed packages,
+/// The multi-module loader (Src/Engine/WPR.Engine.Wp8Native/Runtime/ModuleLoader.cs) against real installed packages,
 /// read-only: Modern Combat 4's component imports PushNotificationWP8.dll (both prefer 0x10000000,
 /// so the DLL must be relocated) and can LoadPackagedLibrary its IGPLib.dll; a title whose Game.exe
 /// imports fmodex_arm.dll at its free preferred base. Each gets its own emulator; a title that is

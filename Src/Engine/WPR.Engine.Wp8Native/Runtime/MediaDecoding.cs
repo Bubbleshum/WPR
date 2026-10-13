@@ -12,7 +12,7 @@ namespace WPR.Wp8Native
     /// MF_MEDIA_ENGINE_ERR_SRC_NOT_SUPPORTED, as a phone without the codec would.
     /// </summary>
     /// <remarks>
-    /// Kept as an interface here so <c>Research/Wp8Native</c> carries no platform code: the
+    /// Kept as an interface here so <c>Src/Engine/WPR.Engine.Wp8Native/Runtime</c> carries no platform code: the
     /// Windows head implements it over its bundled ffmpeg, an Android one would over MediaCodec.
     /// Called on the emulator thread, synchronously, while the media engine loads a source.
     /// </remarks>

@@ -34,15 +34,16 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="..\*.cs" Exclude="..\Program.cs" />
+    <Compile Include="..\..\..\..\Src\Engine\WPR.Engine.Wp8Native\Runtime\*.cs" Exclude="..\..\..\..\Src\Engine\WPR.Engine.Wp8Native\Runtime\UnicornConst.cs" Link="Runtime\%(Filename)%(Extension)" />
+    <Compile Include="..\UnicornArmCpu.cs" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="UnicornEngine.Unicorn" Version="2.1.3" />
   </ItemGroup>
 
-  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\..\wprcpu.dll')">
-    <None Include="..\wprcpu.dll" Link="wprcpu.dll" CopyToOutputDirectory="PreserveNewest" />
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\..\..\..\..\Src\Engine\WPR.Engine.Wp8Native\Native\wprcpu.dll')">
+    <None Include="..\..\..\..\Src\Engine\WPR.Engine.Wp8Native\Native\wprcpu.dll" Link="wprcpu.dll" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\..\unicorn.dll')">

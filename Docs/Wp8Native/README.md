@@ -1,5 +1,11 @@
 # WP8 native probe
 
+> **Moved 2026-10-13.** This is the research log of the probe that became the WP8 native
+> runtime. The runtime is now `Src/Engine/WPR.Engine.Wp8Native/Runtime/` (the C++ shim and
+> `wprcpu.dll` are in `Native/` beside it); the probe, `run.ps1` and the WinForms host are in
+> `Tools/Wp8/Wp8Probe/`; the other tools are in `Tools/Wp8/`. Commands below that say
+> `.\run.ps1` run from `Tools/Wp8/Wp8Probe`. The screenshots it mentions are in this folder.
+
 Exploratory. **Not part of `WPR.sln`** — build it directly, it has no project references
 and nothing references it.
 

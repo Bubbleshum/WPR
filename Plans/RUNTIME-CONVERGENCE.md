@@ -96,7 +96,7 @@ the first unimplemented import instead of a null call several frames later.
 ### 1b. A regression run across the library
 
 Before changing anything else, run every installed WP8 native title headless for a fixed
-instruction budget (the `Research/Wp8Native` probe already does single titles) and record:
+instruction budget (the `Src/Engine/WPR.Engine.Wp8Native/Runtime` probe already does single titles) and record:
 frames presented, the first trap, and its import name. Keep the table in this file or next to
 it, and diff it after every change in this track.
 
@@ -263,7 +263,7 @@ reasons still hold.
 ### 2a. Decide `IBackgroundRenderer`: retire the D3D11 backend
 
 `Plans/SILVERLIGHT-XNA-CONVERGENCE.md` §5 gates Stage C on this. Since that plan was written,
-`Research/Wp8Native/XamlInterop.cs` implements `IDrawingSurfaceBackgroundContentProviderNative`
+`Src/Engine/WPR.Engine.Wp8Native/Runtime/XamlInterop.cs` implements `IDrawingSurfaceBackgroundContentProviderNative`
 and replays native `DrawingSurfaceBackgroundGrid` content through the shared device. The D3D11
 backend now draws only `D3D11ImageSplashRenderer` and `D3D11TestPatternRenderer`.
 
@@ -295,7 +295,7 @@ that plan says.
 Raise them from `Keyboard.GetState()` edges in `Wp8NativeGame`, alongside the existing pointer
 injection. Low priority: few WP8 titles used a keyboard. Easier after 1d names the slots.
 
-**Done 2026-10-12** (`Research/Wp8Native/Keyboard.cs`): `add_`/`remove_` for `KeyDown`, `KeyUp`
+**Done 2026-10-12** (`Src/Engine/WPR.Engine.Wp8Native/Runtime/Keyboard.cs`): `add_`/`remove_` for `KeyDown`, `KeyUp`
 and `CharacterReceived` keep every handler with a distinct token, AddRef on add and Release on
 remove; events go out at the next `ProcessEvents` or XAML frame with a `KeyEventArgs`
 (`VirtualKey`, `KeyStatus`, `Handled`). `GetKeyState`/`GetAsyncKeyState` answer real state.
@@ -305,7 +305,7 @@ auto-repeat.
 
 ### Not merged, on purpose
 
-- `Research/Wp8Native/Direct3DRuntime.cs` translates guest D3D11 into XNA draws. It is a
+- `Src/Engine/WPR.Engine.Wp8Native/Runtime/Direct3DRuntime.cs` translates guest D3D11 into XNA draws. It is a
   translator, not a second renderer.
 - Unity ports and GameMaker run as separate processes.
 - The launcher UI (Avalonia on Windows, native views on Android) is not game rendering.
@@ -359,7 +359,7 @@ the single registry.
 games subscribe to `VisibilityChanged` (slot 56, confirmed in `WinRtRuntime`). Raise them from the
 same `Game.Activated` / `Deactivated` the WP7 path turns into `PhoneApplicationService` events.
 
-**Done 2026-10-11** (`Research/Wp8Native/AppLifecycle.cs`): `OnDeactivated` raises
+**Done 2026-10-11** (`Src/Engine/WPR.Engine.Wp8Native/Runtime/AppLifecycle.cs`): `OnDeactivated` raises
 `CoreWindow.Activated(Deactivated)`, `VisibilityChanged(false)`, then `Suspending` with a working
 deferral (held until `Complete()` or a 5 s deadline); `OnActivated` raises `Resuming`,
 `VisibilityChanged(true)`, `Activated(CodeActivated)`. Delivered on the guest's thread at its next

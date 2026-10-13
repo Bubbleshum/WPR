@@ -195,7 +195,7 @@ it — never more members on this one, and never a new project.
 frame, which is also Android's, so samples pass through unconverted), `SensorBackend.Gyroscope`,
 `caps.Gyroscope(...)`, filled on Android by `WPR.Input.AndroidSensor.AndroidGyroscopeProvider`
 (`[wpr-gyro]` in logcat). **Windows declares none**: a PC has no gyroscope. Its consumer is the WP8
-native runtime, not a WP7 shim. `Research/Wp8Native/Sensors.cs` implements WinRT's
+native runtime, not a WP7 shim. `Src/Engine/WPR.Engine.Wp8Native/Runtime/Sensors.cs` implements WinRT's
 `Windows.Devices.Sensors.Gyrometer` and `Accelerometer` (both were improvised stand-ins that
 answered a placeholder object, so a game thought it had the sensor and read junk), backed by
 `Wp8NativeSensorHost`. `GetDefault` answers nullptr when the platform has none, which WP8 games
@@ -616,9 +616,26 @@ schemes) and `BingMapsTask`. `MarketplaceDetailTask` stays empty on purpose (see
 
 No `ApplicationPatcher.Version` bump and no reinstall — shim behaviour, picked up on next launch.
 
+### Where the WP8 native runtime lives (moved 2026-10-13)
+
+It used to be `Research/Wp8Native/`, compiled into the engine by a wildcard. Now:
+
+| what | where |
+| --- | --- |
+| the runtime (PE loader, CRT, WinRT, D3D, media...) | `Src/Engine/WPR.Engine.Wp8Native/Runtime/`, namespace `WPR.Wp8Native` |
+| the wprcpu C++ shim and the committed `wprcpu.dll` | `Src/Engine/WPR.Engine.Wp8Native/Native/` |
+| the Unicorn probe, `run.ps1`, the WinForms host | `Tools/Wp8/Wp8Probe/` |
+| contract tests, census, module probe, Wp8Run, WinRtSlotGen | `Tools/Wp8/` |
+| the probe's research log and screenshots | `Docs/Wp8Native/` |
+
+**Nothing in `Runtime/` may name an XNA or engine type**: the probe compiles those same files with
+no XNA reference (and with the GPL Unicorn CPU, which is why it never ships). XNA-facing code goes
+in the project root beside `Wp8NativeGame.cs`. Contract tests: `dotnet run --project
+Tools/Wp8/Wp8ContractTests`.
+
 ### WP8 media: byte streams, property stores, and decoding through the platform (2026-10-11)
 
-The WP8 runtime's Media Foundation (`Research/Wp8Native/Media*.cs`) gained three things:
+The WP8 runtime's Media Foundation (`Src/Engine/WPR.Engine.Wp8Native/Runtime/Media*.cs`) gained three things:
 
 * **`IMFByteStream`** (`MediaByteStream.cs`) over the host's streams - WinRT random-access streams
   and `CreateStreamOnHGlobal` IStreams, through `IHostStreams` (`HostStubs.MediaStreams.cs`) - and

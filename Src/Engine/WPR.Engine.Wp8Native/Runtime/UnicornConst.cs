@@ -3,7 +3,7 @@
 // The probe speaks UC_ARM_REG_* numbering throughout (see IArmCpu), and DynarmicArmCpu maps it.
 // The values are copied from UnicornEngine.Unicorn 2.1.3 - read out of that assembly by
 // reflection, not retyped - so a build without the package numbers registers identically.
-// This file is compiled only by WPR.Wp8Runtime.csproj, where WPR_NO_UNICORN is defined; with the
+// Only WPR.Engine.Wp8Native.csproj compiles this file (the probe in Tools/Wp8/Wp8Probe excludes it); WPR_NO_UNICORN is defined there; with the
 // package referenced these names come from UnicornEngine.Const and this would collide.
 // Unicorn is GPLv2 and must never ship (see the unicorn-is-gpl-wpr-is-mit note), which is the
 // whole reason this exists: numbers are not code, the binding is.

@@ -19,7 +19,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\..\Src\Engine\WPR.Engine.Wp8Native\WPR.Engine.Wp8Native.csproj" />
+    <ProjectReference Include="..\..\..\Src\Engine\WPR.Engine.Wp8Native\WPR.Engine.Wp8Native.csproj" />
   </ItemGroup>
 
 </Project>

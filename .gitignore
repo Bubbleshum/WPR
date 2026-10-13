@@ -35,8 +35,8 @@ x64/
 Src/Platforms/WPR.Platform.Android/Database/
 Src/Platforms/WPR.Platform.Windows/Database/
 
-# The win-x64 Unicorn native, fetched per machine - see Research/Wp8Native/README.md
-Research/Wp8Native/unicorn.dll
+# The win-x64 Unicorn native, fetched per machine - see Docs/Wp8Native/README.md
+Tools/Wp8/Wp8Probe/unicorn.dll
 
 # Android signing keys. Never commit these: the release keystore is what proves an
 # APK is genuinely this app, and a leaked one lets anyone ship an "update" for it.
@@ -48,6 +48,6 @@ Research/Wp8Native/unicorn.dll
 *.p12
 /scratchpad/
 
-# Research/Wp8Native/wprcpu.dll (the win-x64 dynarmic shim) is committed, like the other prebuilt
+# Src/Engine/WPR.Engine.Wp8Native/Native/wprcpu.dll (the win-x64 dynarmic shim) is committed, like the other prebuilt
 # native libraries, so the desktop head runs WP8 native titles from a plain build. Rebuild it from
 # WSL - see Plans/WP8-NATIVE-PROBE.md.

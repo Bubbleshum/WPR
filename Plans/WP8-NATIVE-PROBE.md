@@ -7,7 +7,7 @@ drives all three with injected touch. Two things stand between that and a playab
 both are understood: **one bug in the game's own Lua** blocks level entry, and **the CPU is 30×
 slower than it needs to be** for a reason that is measured, not guessed.
 
-Everything below is reproducible from `Research/Wp8Native/` — see its README, which is the long
+Everything below is reproducible from `Src/Engine/WPR.Engine.Wp8Native/Runtime/` — see its README, which is the long
 form of this document. This file is the continuation plan.
 
 ---
@@ -29,8 +29,8 @@ short pointer at `Plans/WP8-NATIVE-RESUME.md`. State at the last WIP commit:
 
 | | |
 |---|---|
-| Code | `Research/Wp8Native/` (console probe) + `Research/Wp8Native/Desktop/` (windowed host) |
-| Long-form notes | `Research/Wp8Native/README.md` — every finding, with the evidence that produced it |
+| Code | `Src/Engine/WPR.Engine.Wp8Native/Runtime/` (console probe) + `Tools/Wp8/Wp8Probe/Desktop/` (windowed host) |
+| Long-form notes | `Docs/Wp8Native/README.md` — every finding, with the evidence that produced it |
 | Test subject | Angry Birds Rio 2.2.0.0, unpacked to `C:\wp8-test\abrio` (re-extract from the XAP in `Documents\Windows Phone Games`) |
 | CPU | Unicorn 2.1.3 via `UnicornEngine.Unicorn`; `unicorn.dll` is a MinGW build, gitignored, and **must not be committed** |
 
@@ -121,7 +121,7 @@ roughly what the phone did.
 
 `~/wprcpu/` in WSL holds `wprcpu.h` + `shim.cpp`: a C ABI over dynarmic's A32 JIT, built to
 `wprcpu.dll` (static mingw runtime, imports only `KERNEL32`/`msvcrt`), copied to
-`Research/Wp8Native/wprcpu.dll` (gitignored beside `unicorn.dll`) and wrapped by
+`Src/Engine/WPR.Engine.Wp8Native/Native/wprcpu.dll` (gitignored beside `unicorn.dll`) and wrapped by
 `DynarmicNative.cs` / `DynarmicCpu.cs`. `WPR_DYNPROBE=1` runs its proofs at the end of any
 probe run, in the same process as the Unicorn benchmarks:
 
@@ -286,7 +286,7 @@ Reach for these before adding print statements — each exists because a guess c
 
 ## 9. Before it goes near a release
 
-- `Research/Wp8Native/` is **untracked**. Decide deliberately whether it is committed; if it
+- `Src/Engine/WPR.Engine.Wp8Native/Runtime/` is **untracked**. Decide deliberately whether it is committed; if it
   is, note that the PNGs are about 1.5 MB each.
 - `unicorn.dll` (21 MB, GPL) is gitignored. **Keep it that way.**
 - The probe has no product surface: it is in no solution filter, no head references it, and

@@ -105,10 +105,10 @@ run on Android. Moving it onto `MixedModeGame` is Stage C of
 
 ### WP8 native in more detail
 
-The runtime's sources live in `Research/Wp8Native/`, where they also build a
-standalone probe, and are compiled into `WPR.Engine.Wp8Native` with
-`WPR_NO_UNICORN` defined, so the CPU is always dynarmic (0BSD) through the `wprcpu`
-C shim: `Research/Wp8Native/wprcpu.dll` on Windows, `libwprcpu.so` under the Android
+The runtime's sources live in `Src/Engine/WPR.Engine.Wp8Native/Runtime/` (they began as a
+standalone probe, which `Tools/Wp8/Wp8Probe` still builds from the same files) and are compiled
+with `WPR_NO_UNICORN` defined, so the CPU is always dynarmic (0BSD) through the `wprcpu`
+C shim: `Src/Engine/WPR.Engine.Wp8Native/Native/wprcpu.dll` on Windows, `libwprcpu.so` under the Android
 head's `Libraries/<abi>/`. The main pieces:
 
 - **Module loader** (`PeImage`, `ModuleLoader`): maps the ARM PE image and its DLLs
@@ -164,7 +164,7 @@ is what let those moves happen without touching a single `NewNamespace` string.
 | `Engine/WPR.Engine.Graphics` | `GraphicsDriver` / `GraphicsDriverPreference` (the FNA3D driver choice a head declares), `GraphicsDriverProbe` (demotes Vulkan after a launch that never presented a frame) and the measured `GraphicsCapabilities` |
 | `Engine/WPR.Engine.GameLoop` | The launch sequence: `ApplicationLaunch` (picks XNA, mixed-mode or WP8 native and runs it), `IGameHost`, `IGameLaunchHooks`, `MixedModeGame` / `MixedModeDetection`, `GameLifecycleQuirks` |
 | `Engine/WPR.Engine.Input` | Keyboard emulation on the XNA side: the tilt components and `SyntheticTouchInputBackend`, which injects keyboard- and wheel-driven touch into `TouchPanel` |
-| `Engine/WPR.Engine.Wp8Native` | WP8 native ARM titles as an XNA `Game` (`Wp8NativeGame`): compiles in the `Research/Wp8Native` runtime and adds the GPU replay, audio, sensors, Xbox Live and launcher/vibration hosts (see above) |
+| `Engine/WPR.Engine.Wp8Native` | WP8 native ARM titles as an XNA `Game` (`Wp8NativeGame`): the runtime in `Runtime/`, plus the GPU replay, audio, sensors, Xbox Live and launcher/vibration hosts (see above) |
 | `Engine/WPR.Engine.Online` | WPR Hub contracts and registry (`ILeaderboardService`, `ICrashReporter`, `OnlineBackend`, `PlaytimeTracker`); speaks strings and longs only |
 | `Engine/WPR.Engine.Content` | `ContentPaths`: how Windows-style paths in game file I/O are resolved on the running filesystem |
 | `Engine/WPR.Engine.Launchers` | `IUriLauncher` / `IShareSheet` + `LauncherBackend`, and `WebLinkPolicy` (only http/https leave the game) |
@@ -233,6 +233,6 @@ look when a game crashes silently.
 The desktop runtime pulls in `FAudio.dll`, `FNA3D.dll`, `SDL2.dll`, `FNWP72.dll`
 and `ffmpeg.exe`, all shipped next to the executable and committed to the repo,
 plus `wprcpu.dll` (the dynarmic shim for WP8 native titles), committed under
-`Research/Wp8Native/` and copied to the output by `WPR.Engine.Wp8Native`.
+`Src/Engine/WPR.Engine.Wp8Native/Native/` and copied to the output by `WPR.Engine.Wp8Native`.
 There are no submodules and no `git lfs` step — a plain `git clone` is a complete
 checkout.
