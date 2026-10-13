@@ -88,7 +88,10 @@ namespace WPR.Wp8Native
             }
         }
 
-        /// <summary>Nothing to do: FAudio's device is paused with the app by SDL.</summary>
+        /// <summary>
+        /// Nothing to do: FAudio's output is paused with the app, by SDL for SDL's device and by
+        /// FAudio's own SDL event watch for its AAudio stream on Android.
+        /// </summary>
         public void Suspend(bool suspended)
         {
         }

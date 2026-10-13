@@ -71,6 +71,10 @@ void FAudio_PlatformRelease()
 	SDL_QuitSubSystem(SDL_INIT_AUDIO);
 }
 
+#ifdef __ANDROID__
+#include "FAudio_platform_aaudio.inl"
+#endif
+
 void FAudio_PlatformInit(
 	FAudio *audio,
 	uint32_t flags,
@@ -87,6 +91,14 @@ void FAudio_PlatformInit(
 
 	FAudio_assert(mixFormat != NULL);
 	FAudio_assert(updateSize != NULL);
+
+#ifdef __ANDROID__
+	/* WPR: AAudio carries the output where it can; see FAudio_platform_aaudio.inl. */
+	if (WPR_AA_TryInit(audio, flags, deviceIndex, mixFormat, updateSize, platformDevice))
+	{
+		return;
+	}
+#endif
 
 	/* Build the device spec */
 	want.freq = mixFormat->Format.nSamplesPerSec;
@@ -204,6 +216,13 @@ iosretry:
 
 void FAudio_PlatformQuit(void* platformDevice)
 {
+#ifdef __ANDROID__
+	if (WPR_AA_IsDevice(platformDevice))
+	{
+		WPR_AA_Quit((WPR_AAudioDevice*) platformDevice);
+		return;
+	}
+#endif
 	SDL_CloseAudioDevice((SDL_AudioDeviceID) ((size_t) platformDevice));
 }
 
