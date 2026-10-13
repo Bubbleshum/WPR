@@ -430,7 +430,8 @@ public sealed class MediaSuite : IContractSuite
         e.WriteMemory(fmt, WaveFormat(3, 2, 48000, 32));
         Check("Initialize(event-driven, 20 ms, float stereo 48 kHz)", M(client, 3, 0, 0x40000, 0, 200000, 0, 0, 0, fmt, 0) == SOk);
         Check("Initialize again is AUDCLNT_E_ALREADY_INITIALIZED", M(client, 3, 0, 0x40000, 0, 200000, 0, 0, 0, fmt, 0) == 0x88890002);
-        Check("GetBufferSize is 960 frames", M(client, 4, v) == SOk && h.U32(v) == 960);
+        // PhoneAudio.MinimumBufferDuration: a stream gets at least 50 ms (2400 frames), whatever it asked for.
+        Check("GetBufferSize is raised to 50 ms, 2400 frames", M(client, 4, v) == SOk && h.U32(v) == 2400);
         Check("Start without an event handle is AUDCLNT_E_EVENTHANDLE_NOT_SET", M(client, 10) == 0x88890014);
 
         long prc = Out();
@@ -438,11 +439,14 @@ public sealed class MediaSuite : IContractSuite
         Check("GetService(IAudioCaptureClient) is AUDCLNT_E_WRONG_ENDPOINT_TYPE",
             M(client, 14, h.Guid(new Guid("c8adbd64-e71e-48a0-a4de-185c395cd317")), Out()) == 0x88890003);
         long render = h.U32(prc), pdata = Out();
-        Check("GetBuffer beyond the free space is AUDCLNT_E_BUFFER_TOO_LARGE", M(render, 3, 961, pdata) == 0x88890006);
+        Check("GetBuffer beyond the free space is AUDCLNT_E_BUFFER_TOO_LARGE", M(render, 3, 2401, pdata) == 0x88890006);
         Check("GetBuffer(480)", M(render, 3, 480, pdata) == SOk && h.U32(pdata) != 0);
         Check("a second GetBuffer before ReleaseBuffer is AUDCLNT_E_OUT_OF_ORDER", M(render, 3, 10, pdata) == 0x88890007);
         Check("ReleaseBuffer of more than was asked is AUDCLNT_E_INVALID_SIZE", M(render, 4, 481, 0) == 0x88890009);
-        Check("ReleaseBuffer(480) and the padding is 480", M(render, 4, 480, 0) == SOk && M(client, 6, v) == SOk && h.U32(v) == 480);
+        // The padding hides one buffer of slack (PhoneAudio.Stream.Padding), so the game refills before the host runs dry.
+        Check("ReleaseBuffer(480) and the padding is 0 (inside the slack)", M(render, 4, 480, 0) == SOk && M(client, 6, v) == SOk && h.U32(v) == 0);
+        Check("a full buffer more fits, and then the padding is 480",
+            M(render, 3, 2400, pdata) == SOk && M(render, 4, 2400, 0) == SOk && M(client, 6, v) == SOk && h.U32(v) == 480);
 
         long evt = h.Call("CreateEventExW", 0, 0, 0, 0x1F0003);
         Check("SetEventHandle, Start", M(client, 13, evt) == SOk && M(client, 10) == SOk);
