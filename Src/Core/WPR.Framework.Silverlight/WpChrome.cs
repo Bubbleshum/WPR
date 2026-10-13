@@ -17,10 +17,8 @@ namespace WPR.SilverlightCompability
     /// 2026-10-13.)</para>
     ///
     /// <para><b>Everything is in the element's own LAYOUT units, relative to its top-left.</b>
-    /// The Avalonia renderer draws at scale 1; the rasteriser multiplies by whatever scale its
-    /// ancestors accumulated. Text heights come in through a delegate because the two renderers
-    /// measure with different fonts, and a layout that assumed one renderer's metrics would put
-    /// the other's text in the wrong place.</para>
+    /// The rasteriser multiplies by whatever scale its ancestors accumulated. Text heights come in
+    /// through a delegate, so the layout uses the metrics of the font that actually draws.</para>
     ///
     /// <para><b>Some of this arranges children</b> (<see cref="ArrangePanorama"/>,
     /// <see cref="ArrangePanoramaItem"/>, <see cref="ArrangeButtonPresenter"/>): the toolkit's own

@@ -5,10 +5,10 @@ using System.Runtime.CompilerServices;
 namespace WPR.SilverlightCompability
 {
     /// <summary>
-    /// Paints a laid-out Silverlight visual tree into a CPU pixel buffer, with no Avalonia and no
-    /// GraphicsDevice. It exists for <c>UIElementRenderer</c>: a mixed-mode game composites its
-    /// page into its own XNA scene, and that runs on Android, where the Avalonia renderer beside
-    /// this file cannot.
+    /// Paints a laid-out Silverlight visual tree into a CPU pixel buffer, with no UI framework and
+    /// no GraphicsDevice. It is WPR's only Silverlight renderer (since the Avalonia one was deleted
+    /// on 2026-10-13): <c>UIElementRenderer</c> uses it for a page a game composites into its own
+    /// XNA scene, and <c>SilverlightGame</c> for a page nothing else draws. It runs on both heads.
     /// </summary>
     /// <remarks>
     /// <para><b>Output is premultiplied RGBA packed the way XNA's <c>Color</c> packs it</b> — R in

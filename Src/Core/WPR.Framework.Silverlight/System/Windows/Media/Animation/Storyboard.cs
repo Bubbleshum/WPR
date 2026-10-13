@@ -16,8 +16,9 @@ namespace WPR.SilverlightCompability
     /// stuck for ever.</para>
     ///
     /// <para><b>A storyboard the host never pumps behaves exactly as it used to</b> — it is
-    /// registered and simply never advances. That is the pure-Silverlight (Avalonia) host today,
-    /// so this is additive for those titles rather than a behaviour change.</para>
+    /// registered and simply never advances. Since every Silverlight title runs on
+    /// <c>SilverlightGame</c>, which pumps <c>AnimationClock</c>, that is now only a harness that
+    /// does not.</para>
     /// </remarks>
     [ContentProperty(nameof(Children))]
     public class Storyboard : Timeline

@@ -17,9 +17,8 @@ namespace Microsoft.Xna.Framework.Graphics
     /// a cycle. Namespace and assembly are independent, and `WPR.Framework.Phone` sets the
     /// precedent of declaring a foreign namespace; the patcher entry carries the scope.</para>
     ///
-    /// <para><b>The rasteriser is a CPU one and deliberately so.</b> The other renderer in this
-    /// assembly draws into an Avalonia <c>DrawingContext</c>, and the mixed-mode host never
-    /// initialises Avalonia — that is what lets these titles run on Android at all. See
+    /// <para><b>The rasteriser is a CPU one and deliberately so</b>: no UI framework is involved,
+    /// which is what lets these titles run on Android at all. See
     /// <see cref="SoftwareVisualRasteriser"/> for exactly what it paints; the headline omission
     /// is text, which needs a glyph rasteriser.</para>
     ///

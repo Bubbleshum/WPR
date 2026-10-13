@@ -519,8 +519,8 @@ namespace WPR
         /// <para><b>This is the one place WPR's two Back paths meet, and they were separated on
         /// purpose.</b> The XNA path is a level-sampled <c>GamePad.Buttons.Back</c> held for
         /// exactly one frame; the Silverlight path is a routed event a page can cancel before
-        /// <c>GoBack()</c> runs. The note on <c>PhoneHardwareButtons</c> records that they have
-        /// disjoint hosts and so need no common interface — true of every title until mixed mode,
+        /// <c>GoBack()</c> runs. They once had disjoint hosts (the Avalonia Silverlight host had its
+        /// own bezel) and so need no common interface — true of every title until mixed mode,
         /// which is driven by <c>IGameHost</c> (so it gets the gamepad press) <i>and</i> has real
         /// Silverlight pages (so that is where its Back handler lives). Nothing called
         /// <c>HandleBackKey</c> here, so Back did nothing at all in these games.</para>

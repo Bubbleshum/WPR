@@ -24,10 +24,8 @@ namespace WPR.SilverlightCompability
     /// sat on the 2K logo for ever with a completely clean log. "Renders correctly, zero
     /// exceptions, never advances" is what a missing timeline engine looks like.</para>
     ///
-    /// <para><b>Pumped from the mixed-mode host</b> (<c>SilverlightGame.Update</c>), which is the
-    /// only frame loop a mixed-mode title has. The Avalonia Silverlight host has its own render
-    /// loop and does <b>not</b> call this yet, so storyboards still do nothing in pure-Silverlight
-    /// titles; wiring that up is a separate change and wants its own testing.</para>
+    /// <para><b>Pumped from the Silverlight host</b> (<c>SilverlightGame.Update</c>), which is the
+    /// only frame loop a Silverlight title has.</para>
     ///
     /// <para><b>What it animates:</b> <see cref="DoubleAnimation"/>,
     /// <see cref="DoubleAnimationUsingKeyFrames"/> (linear and eased) and
