@@ -252,6 +252,8 @@
     <ProjectReference Include="$(SolutionDir)\Modules\Audio\WPR.Audio.AndroidMediaPlayer\WPR.Audio.AndroidMediaPlayer.csproj" />
     <ProjectReference Include="$(SolutionDir)\Modules\Video\WPR.Video.MediaCodec\WPR.Video.MediaCodec.csproj" />
     <ProjectReference Include="$(SolutionDir)\Modules\Audio\WPR.Audio.MediaCodec\WPR.Audio.MediaCodec.csproj" />
+    <!-- Streaming voices on AudioTrack (WP8 titles' XAudio2 voices), declared in AndroidPlatform. -->
+    <ProjectReference Include="$(SolutionDir)\Modules\Audio\WPR.Audio.AudioTrack\WPR.Audio.AudioTrack.csproj" />
     <!-- Input/: this head implements WPR.Engine.Sensors.IAccelerometerProvider over the device's
          accelerometer and registers it into WPR.Sensors.SensorBackend (which ships inside the
          sensors framework, beside its consumer). Both were reached transitively via
@@ -308,6 +310,7 @@
     <TrimmerRootAssembly Include="WPR.Audio.AndroidMediaPlayer" />
     <TrimmerRootAssembly Include="WPR.Video.MediaCodec" />
     <TrimmerRootAssembly Include="WPR.Audio.MediaCodec" />
+    <TrimmerRootAssembly Include="WPR.Audio.AudioTrack" />
     <TrimmerRootAssembly Include="WPR.Input.AndroidSensor" />
     <TrimmerRootAssembly Include="WPR.Notifications.AndroidChannel" />
     <TrimmerRootAssembly Include="WPR.Vibration.AndroidVibrator" />

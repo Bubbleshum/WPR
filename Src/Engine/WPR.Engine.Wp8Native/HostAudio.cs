@@ -2,8 +2,11 @@ namespace WPR.Wp8Native
 {
     /// <summary>
     /// What <see cref="Wp8NativeGame"/> plays XAudio2's voices through, plus the bookkeeping it
-    /// reports. FAudio (<see cref="Wp8NativeAudio"/>) on the desktop; Android's own
-    /// <c>AudioTrack</c> (<see cref="AudioTrackOutput"/>) on a phone.
+    /// reports. One implementation on both heads, <see cref="Wp8NativeAudio"/>: each voice is a
+    /// <c>DynamicSoundEffectInstance</c>, so it plays on whatever <c>AudioBackendRegistry</c>
+    /// composed for streaming voices - FAudio on the desktop, Android's <c>AudioTrack</c>
+    /// (<c>WPR.Audio.AudioTrack</c>) on a phone. Until 2026-10-13 the phone had its own
+    /// <c>AudioTrackOutput</c> here, outside the registry.
     /// </summary>
     internal interface IHostAudio : IAudioOutput, IDisposable
     {
@@ -19,13 +22,6 @@ namespace WPR.Wp8Native
         void Suspend(bool suspended);
 
         /// <summary>The output for this platform.</summary>
-        static IHostAudio Create(Action<string>? log)
-        {
-#if ANDROID
-            return new AudioTrackOutput(log);
-#else
-            return new Wp8NativeAudio(log);
-#endif
-        }
+        static IHostAudio Create(Action<string>? log) => new Wp8NativeAudio(log);
     }
 }

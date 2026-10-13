@@ -1,4 +1,4 @@
-namespace WPR.Wp8Native
+namespace WPR.Audio.AudioTrack
 {
     /// <summary>
     /// Streaming windowed-sinc resampler for interleaved 16-bit PCM, with a pitch factor.

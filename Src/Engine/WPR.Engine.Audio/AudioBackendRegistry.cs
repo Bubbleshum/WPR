@@ -52,6 +52,16 @@ namespace WPR.Engine.Audio
 				"AudioBackendRegistry.SetBase(...) and Compose() before the XNA runtime opens an " +
 				"audio device.");
 
+		/// <summary>
+		/// The running title asked for its streaming voices to go to the platform's lowest-latency
+		/// output, where a module offers one. Set by the WP8 native host (whose games keep only a
+		/// couple of ~30 ms buffers queued) for its launch; cleared by every <see cref="Compose"/>.
+		/// A preference, not a capability: with no module that reads it, nothing changes.
+		/// Read by <c>WPR.Audio.AudioTrack</c> when it is registered with
+		/// <c>AudioTrackScope.LowLatencyRequests</c>.
+		/// </summary>
+		public static bool LowLatencyStreaming { get; set; }
+
 		/// <summary>True once a module has filled the XACT seam.</summary>
 		public static bool HasXact => _xact != null;
 
@@ -188,6 +198,7 @@ namespace WPR.Engine.Audio
 			IXactBackend? xact = null;
 			IMediaBackend? media = null;
 			string audioFrom = "none", xactFrom = "none", mediaFrom = "none";
+			LowLatencyStreaming = false;
 
 			foreach (IAudioModule module in Snapshot())
 			{
