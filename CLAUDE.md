@@ -3070,8 +3070,7 @@ Four details worth keeping:
 - **Copied unconditionally, not only when absent.** The staging folder is in external files and
   outlives the install, so a skip-if-present would leave the *previous* APK's FNA.dll behind after
   an update and patch games against the wrong build.
-- **`assembly-store-reader` is no longer referenced** by the Android head. The project is still in
-  the tree and the solution; delete it once it is clear nothing wants it back.
+- **`assembly-store-reader` is gone** (deleted 2026-10-13): nothing referenced it after this change.
 
 No `ApplicationPatcher.Version` bump for this half. **A manifest/asset change**, so Android needs
 the APK repackaged rather than just a managed rebuild.
@@ -5119,8 +5118,8 @@ Consequences to remember:
 - `build-android.ps1` / `build-android.sh` / `release.yml` all pass
   `-p:IncludeAndroidTargets=true`, so CI never depends on detection.
 - Desktop-only contributors should open `Src/WPR.Windows.slnf`, not `WPR.sln` —
-  the filter drops `WPR.Platform.Android`, `WPR.Audio.AndroidMediaPlayer`, the Java bindings and
-  `assembly-store-reader`, which are android-only and can't be TFM-stripped.
+  the filter drops `WPR.Platform.Android`, `WPR.Audio.AndroidMediaPlayer`, and the Java
+  bindings, which are android-only and can't be TFM-stripped.
 - The announce line (`WPR: .NET Android workload for API 34 ...`) only fires on
   `WPR.Platform.Windows`'s `Build`, so it does **not** print when a dependency's
   android inner build fails first — don't read its absence as "gating didn't run".

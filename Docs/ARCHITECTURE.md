@@ -184,7 +184,6 @@ is what let those moves happen without touching a single `NewNamespace` string.
 | `Core/WPR.SilverlightCompability.Tests` | Unit tests for the Silverlight/XAML re-implementation |
 | `JavaBindings/*` | Android bindings: SDL2 (`Org.Libsdl.App`), FFmpegKit |
 | `ThirdParty/Icons.Avalonia` | Vendored Projektanker icons, patched for Avalonia 11.3.9 |
-| `ThirdParty/assembly-store-reader` | Reads Android assembly stores (port/APK inspection) |
 
 ### The Android shell is native
 
