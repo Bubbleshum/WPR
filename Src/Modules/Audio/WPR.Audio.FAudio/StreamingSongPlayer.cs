@@ -88,7 +88,6 @@ namespace WPR.Audio.FAudio
 				 * callback underruns. FAudio's own XNA_SongInit never asked for more. */
 #if __ANDROID__
 				const uint engineFlags = global::FAudio.FAUDIO_1024_QUANTUM;
-				AndroidAudioOutput.ApplyOverride();
 #else
 				const uint engineFlags = 0;
 #endif

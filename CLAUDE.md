@@ -578,9 +578,8 @@ Why: SDL2's Android drivers open a plain track whose large buffer they keep full
 ~130 ms ahead of the speaker (Android reported ~175 ms latency on the emulator, now ~125). And
 **SDL allows only ONE output device on Android** (`OpenAudioDevice failed: Audio device already
 open`), so the songs engine, which opens second, got no sound at all on the SDL path. Below 8.1, or
-if AAudio will not open, FAudio falls back to SDL by itself, with that limit. `faudio_output.txt`
-(`sdl`) in the app's external files forces the fallback; it becomes the SDL hint
-`FAUDIO_ANDROID_OUTPUT`. The env file cannot set SDL hints any more: under CoreCLR,
+if AAudio will not open, FAudio falls back to SDL by itself, with that limit. There is no switch for it.
+Note the env file cannot set SDL hints any more: under CoreCLR,
 `AndroidEnvironment` values reach managed code but not SDL's `getenv`.
 
 SDL no longer pauses this output, so an SDL event watch pauses every stream on
@@ -589,8 +588,8 @@ SDL no longer pauses this output, so an SDL event watch pauses every stream on
 
 **WP8 voices stay on `AudioTrackOutput` on Android.** Angry Birds Rio on the emulator, 50 s:
 22-43 dry spells through AudioTrack, 56-135 through FAudio over AAudio, ~170 through FAudio over
-SDL. The emulator has no fast mixer, so the S24 may differ: `wp8_audio.txt` containing `faudio`
-routes WP8 through FAudio to compare. The emulator degrades after ~6 game runs (fps falls,
+SDL. The emulator has no fast mixer, so the S24 may differ; trying it means changing
+`IHostAudio.Create`. The emulator degrades after ~6 game runs (fps falls,
 everything underruns); cold-boot it between measurement sets. Not run on hardware yet.
 
 ### WP7 launchers leave the game through `IUriLauncher` (2026-09-24)

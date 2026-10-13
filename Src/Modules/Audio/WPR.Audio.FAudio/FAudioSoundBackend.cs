@@ -61,12 +61,11 @@ namespace WPR.Audio.FAudio
 				 * device needs no output resample.
 				 *
 				 * On Android 8.1+ the output is FAudio's own AAudio stream rather than SDL's
-				 * device (see AndroidAudioOutput), which mixes one quantum at a time into a
+				 * device (FAudio_platform_aaudio.inl, in libFAudio.so), which mixes one quantum at a time into a
 				 * buffer of two bursts; the quantum is kept there too. A 10 ms quantum was
 				 * measured on the emulator over AAudio and was no better. */
 #if __ANDROID__
 				const uint engineFlags = global::FAudio.FAUDIO_1024_QUANTUM;
-				AndroidAudioOutput.ApplyOverride();
 #else
 				const uint engineFlags = 0;
 #endif
