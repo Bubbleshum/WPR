@@ -564,6 +564,34 @@ skips its intro in the harness (a real tap on Android does not).
 
 No `ApplicationPatcher.Version` bump: Android sidecars come from a re-patch, which runs regardless.
 
+### FAudio has its own AAudio output on Android (2026-10-13)
+
+On Android 8.1+ every FAudio engine (sound effects/XACT, songs, WP8 voices when routed there) opens
+its own low-latency **AAudio** stream instead of SDL's audio device: `FAudio_platform_aaudio.inl`,
+included by `FAudio_platform_sdl2.c` under `__ANDROID__`, rebuilt into all three `libFAudio.so`
+(same NDK recipe as FNA3D, sources `lib/FAudio`; exported symbols unchanged). The callback mixes one
+FAudio quantum at a time into a FIFO; the stream buffer starts at two bursts and grows a burst on
+each xrun. Log: `FAudio: AAudio output: ...` (tag `SDL/APP`).
+
+Why: SDL2's Android drivers open a plain track whose large buffer they keep full, so FAudio mixed
+~130 ms ahead of the speaker (Android reported ~175 ms latency on the emulator, now ~125). And
+**SDL allows only ONE output device on Android** (`OpenAudioDevice failed: Audio device already
+open`), so the songs engine, which opens second, got no sound at all on the SDL path. Below 8.1, or
+if AAudio will not open, FAudio falls back to SDL by itself, with that limit. `faudio_output.txt`
+(`sdl`) in the app's external files forces the fallback; it becomes the SDL hint
+`FAUDIO_ANDROID_OUTPUT`. The env file cannot set SDL hints any more: under CoreCLR,
+`AndroidEnvironment` values reach managed code but not SDL's `getenv`.
+
+SDL no longer pauses this output, so an SDL event watch pauses every stream on
+`SDL_APP_DIDENTERBACKGROUND` and restarts it on `WILLENTERFOREGROUND` (verified: tracks `A` → `P` →
+`A`). A disconnected stream is reopened on its own thread.
+
+**WP8 voices stay on `AudioTrackOutput` on Android.** Angry Birds Rio on the emulator, 50 s:
+22-43 dry spells through AudioTrack, 56-135 through FAudio over AAudio, ~170 through FAudio over
+SDL. The emulator has no fast mixer, so the S24 may differ: `wp8_audio.txt` containing `faudio`
+routes WP8 through FAudio to compare. The emulator degrades after ~6 game runs (fps falls,
+everything underruns); cold-boot it between measurement sets. Not run on hardware yet.
+
 ### WP7 launchers leave the game through `IUriLauncher` (2026-09-24)
 
 `Microsoft.Phone.Tasks.WebBrowserTask.Show()` was an empty method, so every link a WP7 title opened
