@@ -1,4 +1,4 @@
-// Fetches Bing's "Image of the Day" and exposes it as an Avalonia Bitmap.
+// Fetches Bing's "Image of the Day" to a file the CPU rasteriser paints from.
 // Real WP7 Panorama-based games (Minesweeper, Solitaire, Sudoku, Mahjong)
 // overlay their UI on top of the Bing search app's daily wallpaper. The
 // Panorama itself has Background="Transparent" in the WP toolkit's default
@@ -8,9 +8,7 @@
 //
 // Caching: the fetched JPEG is stored under
 //   %LocalAppData%\WPR\BingWallpaper\YYYY-MM-DD.jpg
-// so we only hit the network once per day per app start. The Avalonia Bitmap
-// is held in a static field; subsequent panorama renders reuse the loaded
-// instance.
+// so we only hit the network once per day per app start.
 
 using System;
 using System.IO;
@@ -21,31 +19,16 @@ namespace WPR.SilverlightCompability
 {
     public static class BingWallpaper
     {
-        private static Avalonia.Media.Imaging.Bitmap? _cached;
         private static bool _attempted;
         private static readonly object _gate = new object();
-
-        /// <summary>
-        /// The cached wallpaper bitmap if it's been fetched. Triggers an async
-        /// background fetch on first access; returns null until the fetch
-        /// finishes (caller should re-render when ready — see <see cref="Ready"/>).
-        /// </summary>
-        public static Avalonia.Media.Imaging.Bitmap? Bitmap
-        {
-            get
-            {
-                EnsureFetchStarted();
-                return _cached;
-            }
-        }
 
         private static volatile string? _cachedFile;
 
         /// <summary>
-        /// The downloaded wallpaper's file, once it is on disk; null until then. Triggers the same
-        /// background fetch as <see cref="Bitmap"/>. This is what the CPU rasteriser reads: it
-        /// decodes the file itself, so it never touches the Avalonia bitmap (which cannot exist
-        /// on a head that does not initialise Avalonia).
+        /// The downloaded wallpaper's file, once it is on disk; null until then. Triggers a
+        /// background fetch on first access. <c>SoftwareVisualRasteriser</c> decodes the file
+        /// itself, and folds this path into its change signature so the frame the wallpaper
+        /// arrives on repaints.
         /// </summary>
         public static string? CachedFilePath
         {
@@ -55,11 +38,6 @@ namespace WPR.SilverlightCompability
                 return _cachedFile;
             }
         }
-
-        /// <summary>Fired (on the thread-pool thread that completed the fetch) when
-        /// <see cref="Bitmap"/> first becomes available. Renderer subscribes so it
-        /// can request a repaint when the wallpaper lands.</summary>
-        public static event Action? Ready;
 
         private static void EnsureFetchStarted()
         {
@@ -107,26 +85,11 @@ namespace WPR.SilverlightCompability
                     await File.WriteAllBytesAsync(cachedFile, bytes);
                 }
 
-                // Load the JPEG into an Avalonia Bitmap on the dispatcher thread —
-                // Bitmap construction must happen where the GPU resources can be
-                // touched safely. For non-UI loading we read into a memory stream
-                // and let the Bitmap copy out; works on any thread.
                 _cachedFile = cachedFile;
-                try
-                {
-                    using var fs = File.OpenRead(cachedFile);
-                    _cached = new Avalonia.Media.Imaging.Bitmap(fs);
-                }
-                catch
-                {
-                    // No Avalonia platform (the XNA-hosted path): the file is still usable.
-                }
-                try { Ready?.Invoke(); }
-                catch { /* don't propagate UI repaint exceptions out of the fetcher */ }
             }
             catch
             {
-                // Offline / blocked / network errors — leave _cached null. Renderer
+                // Offline / blocked / network errors — leave the path null. The rasteriser
                 // falls back to its dark-gray panorama background.
             }
         }

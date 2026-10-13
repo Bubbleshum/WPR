@@ -41,7 +41,7 @@ namespace Microsoft.Xna.Framework
     /// <see cref="Game"/> at all creates a <c>GameTimer</c> in its <c>PhoneApplicationPage</c>,
     /// subscribes <c>Update</c>/<c>Draw</c>, and calls <see cref="Start"/> from
     /// <c>OnNavigatedTo</c>. Under WPR there IS a real <see cref="Game"/> underneath —
-    /// <c>MixedModeGame</c> — so this type does not own a clock of its own. It registers itself
+    /// <c>SilverlightGame</c> — so this type does not own a clock of its own. It registers itself
     /// while started and the host pumps it from <c>Game.Update</c> / <c>Game.Draw</c>.</para>
     ///
     /// <para><b>Why the host drives it rather than a timer of our own:</b> a second clock would

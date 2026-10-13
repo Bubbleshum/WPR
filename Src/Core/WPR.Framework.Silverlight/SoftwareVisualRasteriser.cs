@@ -5,10 +5,10 @@ using System.Runtime.CompilerServices;
 namespace WPR.SilverlightCompability
 {
     /// <summary>
-    /// Paints a laid-out Silverlight visual tree into a CPU pixel buffer, with no Avalonia and no
-    /// GraphicsDevice. It exists for <c>UIElementRenderer</c>: a mixed-mode game composites its
-    /// page into its own XNA scene, and that runs on Android, where the Avalonia renderer beside
-    /// this file cannot.
+    /// Paints a laid-out Silverlight visual tree into a CPU pixel buffer, with no UI framework and
+    /// no GraphicsDevice. It is WPR's only Silverlight renderer (since the Avalonia one was deleted
+    /// on 2026-10-13): <c>UIElementRenderer</c> uses it for a page a game composites into its own
+    /// XNA scene, and <c>SilverlightGame</c> for a page nothing else draws. It runs on both heads.
     /// </summary>
     /// <remarks>
     /// <para><b>Output is premultiplied RGBA packed the way XNA's <c>Color</c> packs it</b> — R in
@@ -30,14 +30,13 @@ namespace WPR.SilverlightCompability
     /// in the log rather than being indistinguishable from a bug.</para>
     ///
     /// <para><b>Nothing is painted that the tree does not ask for.</b> In particular there is no
-    /// opaque page backdrop, unlike <see cref="SilverlightRenderer.RenderPage"/>: this output is
+    /// opaque page backdrop (the deleted Avalonia renderer filled black first): this output is
     /// composited over a game's own scene, so an unrequested fill would hide the game rather than
     /// the missing overlay.</para>
     ///
     /// <para><b>Coordinates come from <see cref="UIElement.ArrangedRect"/>, which is
-    /// parent-relative</b>, so each level adds its parent's origin — the same model
-    /// <c>SilverlightRenderer.OffsetTo</c> uses. The tree must have been laid out first;
-    /// <c>MixedModeGame</c> runs one pass after navigation.</para>
+    /// parent-relative</b>, so each level adds its parent's origin. The tree must have been laid out first;
+    /// <c>SilverlightGame</c> runs one pass after navigation.</para>
     /// </remarks>
     internal static partial class SoftwareVisualRasteriser
     {

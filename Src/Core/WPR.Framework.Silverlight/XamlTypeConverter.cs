@@ -138,8 +138,8 @@ namespace WPR.SilverlightCompability
                 return doubles;
             }
 
-            // Image.Source="foo.png" — wrap the raw path; Image.GetAvaloniaBitmap
-            // resolves it lazily via File.Exists when first rendered. Anything
+            // Image.Source="foo.png" — wrap the raw path; SilverlightImageDecoder
+            // resolves it lazily when first measured or rendered. Anything
             // deriving from ImageSource (BitmapImage, BitmapSource, WriteableBitmap)
             // hits this branch too — for those, code paths typically construct the
             // instance directly rather than going through string-attribute XAML, but

@@ -12,8 +12,7 @@ namespace WPR.Platform.Windows
 {
     /// <summary>
     /// Desktop launcher for externally-built native ports (see <see cref="WPR.UnityPortManifest"/>).
-    /// Unlike <see cref="SilverlightLauncher"/> / <see cref="XnaLauncher"/> — which host the game
-    /// in-process in an Avalonia / FNA window — a port is its own standalone executable, so this
+    /// Unlike <see cref="XnaLauncher"/> — which hosts the game in-process in an FNA window — a port is its own standalone executable, so this
     /// just spawns it and waits for it to exit, mirroring the GameMaker <c>Runner.exe</c> fast-path.
     /// </summary>
     public static class UnityPortLauncher

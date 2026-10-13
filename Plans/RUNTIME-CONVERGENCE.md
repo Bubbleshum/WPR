@@ -3,7 +3,7 @@
 **Status (2026-10-12):** Track 1 done (1a-1f; 1e's removal of `ConstructShapedObject` still waits on
 activation through generated class info). 2a, 2c, 3a, 3c, 3d, 3e done; Track 4 spike done (Spark2 go,
 Unity no-go). WP8 native now has one render path: every title replays on the GPU (the per-title allow-list is
-gone; `WPR_WP8_GPU=0` keeps the 2D draw list as a diagnostic). Track 5 done. Open: 2b, 3b.
+gone; `WPR_WP8_GPU=0` keeps the 2D draw list as a diagnostic). Track 5 done. 2b done (2026-10-13: one Silverlight host, the Avalonia one deleted). Open: 3b.
 **Written against:** `f58fa86`.
 **Prompted by:** Angry Birds Go! (WP8 native) dying on its first frame with `null call to 0x00000000`,
 and the question of how much of WPR's runtime is per-game and how much could be shared.
@@ -295,7 +295,14 @@ Android at all. The Avalonia host is still reachable on the desktop for one rele
 (`WPR_SILVERLIGHT_AVALONIA=1` / `"SilverlightAvaloniaHost": true`, `WPR.Common.SilverlightHostChoice`).
 Patcher v42. Per-title results are in SILVERLIGHT-XNA-CONVERGENCE.md §4.
 
-**What remains for Stage D**: delete `SilverlightLauncher`, `PhoneApplicationFrameView`,
+**Stage D done 2026-10-13**, without waiting the release: every item below is gone, and
+`MixedModeGame` is `SilverlightGame`. The mixed/pure test survives inside that host
+(`NamesSharedGraphicsDeviceManager`), because it gates behaviour, not routing; GameMaker exports
+go through `GameMakerLauncher.TryLaunchAsync` on the desktop. The APK does not shrink (the Android
+head's own `Avalonia.Android` reference still ships Avalonia). Details in
+SILVERLIGHT-XNA-CONVERGENCE.md §4 Stage D. What the list said remained:
+
+**What remained for Stage D**: delete `SilverlightLauncher`, `PhoneApplicationFrameView`,
 `SilverlightRenderer`, `BrandedSplashRenderer` + `IBackgroundRenderer`, `SilverlightHostChoice` and
 the `SilverlightAvaloniaHost` setting, the Avalonia branch in `MainWindowDesktop` (GameMaker apps
 need a new home: call `GameMakerLauncher` directly), `MixedModeDetection` (keep only if the log line

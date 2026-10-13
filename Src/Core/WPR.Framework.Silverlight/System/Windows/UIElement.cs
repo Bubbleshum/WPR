@@ -23,8 +23,8 @@ namespace WPR.SilverlightCompability
 
         /// <summary>
         /// Fires when this element transitions from measure-valid to measure-invalid.
-        /// The host (PhoneApplicationFrameView) listens on the root page so any descendant
-        /// invalidation triggers a repaint.
+        /// Raised on the root a descendant's invalidation bubbles to. (The deleted Avalonia host
+        /// repainted on it; <c>SilverlightGame</c> polls the root's measure validity instead.)
         /// </summary>
         internal event EventHandler? MeasureInvalidatedEvent;
 
@@ -35,7 +35,7 @@ namespace WPR.SilverlightCompability
         /// / <c>add_LostFocus</c> accessors. We do not currently raise these — WPR's host
         /// has no focus-tracking model — so handlers stay registered but never fire.
         /// Adding real focus dispatch would mean threading it through the input pipeline
-        /// in <see cref="PhoneApplicationFrameView"/>; left as a future enhancement.
+        /// in <c>SilverlightTouchRouter</c>; left as a future enhancement.
         /// </summary>
 #pragma warning disable CS0067 // intentionally never raised; see XML comment above
         public event RoutedEventHandler? GotFocus;

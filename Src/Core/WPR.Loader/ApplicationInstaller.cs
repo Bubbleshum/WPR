@@ -578,9 +578,8 @@ namespace WPR
                         // off); the head's flush after install sends it and runs the upload.
                         WPR.Engine.Online.OnlineBackend.Crashes?.Report(WPR.Engine.Online.CrashReport.ForInstall(
                             app!.ProductId, app.Name, appDataFolder!,
-                            app.ApplicationType == ApplicationType.Silverlight
-                                ? WPR.Engine.Online.CrashReport.RuntimePaths.SilverlightAvalonia
-                                : WPR.Engine.Online.CrashReport.RuntimePaths.XnaFna));
+                            // Every in-process title runs on the XNA host now, Silverlight included.
+                            WPR.Engine.Online.CrashReport.RuntimePaths.XnaFna));
                     }
                     catch (Exception ex) { Log.Warn(LogCategory.AppInstall, $"Could not write {WPR.Engine.Online.GamePackageRecord.FileName} (non-fatal): {ex.Message}"); }
                 }
