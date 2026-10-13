@@ -19,14 +19,14 @@ namespace Microsoft.Xna.Framework.Graphics
 	/// which is compiled out of the prebuilt release libFNA3D.so we ship, and the
 	/// driver's own init check only requires <c>supports_NonES3</c> on the non-ES
 	/// branch — so device creation succeeds and the first GetData branches to
-	/// address 0. On Android, where fna3d.env forces the OpenGL driver, that is a
-	/// hard SIGSEGV: "Cause: null pointer dereference, pc 0000000000000000".
+	/// address 0. On Android's OpenGL driver (the Settings picker, the driver probe's
+	/// demotion, or fna3d_driver.txt) that is a hard SIGSEGV: "Cause: null pointer
+	/// dereference, pc 0000000000000000".
 	/// </para>
 	/// <para>
-	/// Rebuilding FNA3D to fix it at source is not an option here: libFNA3D.so ships
-	/// prebuilt and checked in, the vendored C under FNA.Platform/lib is not compiled
-	/// by any build in this repo, and the build machine has neither an NDK nor cmake.
-	/// So the readback is served from a copy of whatever was uploaded instead.
+	/// FNA3D is not fixed at source: libFNA3D.so ships prebuilt (rebuilt by hand with the
+	/// NDK when needed) and FNA3D.dll cannot be rebuilt here, so the readback is served
+	/// from a copy of whatever was uploaded instead, which covers every driver.
 	/// </para>
 	/// <para>
 	/// This is complete for XNA 4.0 rather than a partial workaround, because a
