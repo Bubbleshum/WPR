@@ -4876,7 +4876,7 @@ Silverlight host, on both heads. Gone: `SilverlightLauncher`, `PhoneApplicationF
 desktop bezel), `SilverlightHostChoice` with the `WPR_SILVERLIGHT_AVALONIA` variable and the
 `SilverlightAvaloniaHost` config.json key (an old config.json still carrying it loads fine:
 Newtonsoft ignores unknown keys), and `MixedModeDetection` with the `isMixedMode` routing in
-`ApplicationLaunch` and `MainWindowDesktop`. About 2,300 lines.
+`ApplicationLaunch` and `MainWindowDesktop`. About 2,400 lines net.
 
 - **`WPR.Framework.Silverlight` references no UI framework.** Its Avalonia package, and with it the
   11.3.9/12.1.3 split *inside* that project, is gone; the measured cost of moving the desktop to

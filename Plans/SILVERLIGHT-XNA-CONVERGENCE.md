@@ -229,8 +229,8 @@ shrinks the APK by an amount not yet measured.
 (the desktop bezel, used only by the launcher), `SilverlightHostChoice` and the
 `SilverlightAvaloniaHost` setting, `MixedModeDetection` and the `isMixedMode` routing in
 `ApplicationLaunch` and `MainWindowDesktop`, and the Avalonia package in
-`WPR.Framework.Silverlight`: about 2,330 lines net (`git diff --shortstat` over `Src`: 295
-insertions, 2,628 deletions). Three things the table above did not foresee:
+`WPR.Framework.Silverlight`: about 2,430 lines net (`git diff --shortstat` over `Src`: 300
+insertions, 2,728 deletions). Three things the table above did not foresee:
 
 - **The mixed/pure distinction could not simply go.** It is behaviour inside the host (Loaded and
   re-layout for pure titles only, which the mixed-mode composite split depends on), so the
