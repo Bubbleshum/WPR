@@ -12,6 +12,12 @@ namespace WPR
     /// Detects whether an installed app is a GameMaker Studio export and, if so, runs it via
     /// YoYo's official <c>Runner.exe</c> instead of through the Silverlight host.
     ///
+    /// <para>The desktop head asks <see cref="TryLaunchAsync"/> before any in-process host, the
+    /// same shape as its Unity port launcher. Until 2026-10-13 this was reached only from inside
+    /// the Avalonia Silverlight host (<c>SilverlightLauncher</c>), which was deleted in Stage D of
+    /// <c>Plans/SILVERLIGHT-XNA-CONVERGENCE.md</c>. Android has no Runner, so there a GameMaker
+    /// title goes to the XNA host's <c>SilverlightGame</c> like any other Silverlight app.</para>
+    ///
     /// Heuristic for "is this a GMS app":
     /// - Has an <c>Assets/game.win</c> file (the GameMaker compiled game data).
     /// - Has a native WP component DLL — typically <c>WinPhoneRunnerAppComponent.dll.native_original</c>
@@ -26,6 +32,48 @@ namespace WPR
     /// </summary>
     public static class GameMakerLauncher
     {
+        private static Process? _current;
+
+        /// <summary>
+        /// Kills a running Runner (if any) so it does not outlive the WPR window. Best-effort.
+        /// Returns true if one was running.
+        /// </summary>
+        public static bool RequestExit()
+        {
+            Process? p = _current;
+            if (p == null) return false;
+            try { if (!p.HasExited) p.Kill(entireProcessTree: true); }
+            catch { /* already gone / access race - best-effort */ }
+            return true;
+        }
+
+        /// <summary>
+        /// If <paramref name="installFolder"/> holds a GameMaker export and a Runner is available,
+        /// runs it and returns true once it exits. Returns false when the title is not a GameMaker
+        /// app, or when Runner.exe could not be started, so the caller falls through to the
+        /// in-process Silverlight host.
+        /// </summary>
+        public static async Task<bool> TryLaunchAsync(string installFolder, string productId, string appName)
+        {
+            if (!LooksLikeGameMakerApp(installFolder)) return false;
+
+            Log.Info(LogCategory.AppLaunch,
+                "Detected GameMaker Studio app (game.win present); routing through Runner.exe");
+            Process? proc = Launch(installFolder, productId, appName);
+            if (proc == null)
+            {
+                Log.Warn(LogCategory.AppLaunch,
+                    "GameMaker fast-path failed to spawn Runner.exe; falling back to the Silverlight host");
+                return false;
+            }
+
+            _current = proc;
+            try { await Task.Run(() => proc.WaitForExit()); }
+            catch { /* user closed the window etc. */ }
+            finally { _current = null; }
+            return true;
+        }
+
         /// <summary>True if the install folder looks like a GMS Studio export.</summary>
         public static bool LooksLikeGameMakerApp(string installFolder)
         {

@@ -44,7 +44,7 @@
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Launchers\WPR.Engine.Launchers.csproj" />
   </ItemGroup>
 
-  <!-- The test project reaches PhoneApplicationFrameView.ConvertBrush (internal). -->
+  <!-- The test project reaches internals of the PhoneApplication* and gesture types. -->
   <ItemGroup>
     <InternalsVisibleTo Include="WPR.SilverlightCompability.Tests" />
   </ItemGroup>

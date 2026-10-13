@@ -25,7 +25,7 @@ namespace Microsoft.Phone.Controls
         ///
         /// <para><b>This aliases nothing and changes no fallback.</b> The frame assigned here is
         /// the same object every consumer already falls back to — <c>SilverlightAppHost</c>'s
-        /// "RootFrame but no RootVisual" backstop and <c>MixedModeGame</c>'s
+        /// "RootFrame but no RootVisual" backstop and <c>SilverlightGame</c>'s
         /// <c>RootVisual ?? RootFrame</c> both converge on it — and the generated
         /// <c>if (RootVisual != RootFrame) RootVisual = RootFrame</c> simply finds them already
         /// equal. An app that assigns a different root later still wins, because this only fires

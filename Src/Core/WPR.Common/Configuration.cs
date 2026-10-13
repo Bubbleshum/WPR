@@ -98,10 +98,6 @@ namespace WPR.Common
             // The gamertag games see while signed out of WPR Hub: "player" and six digits, made
             // once per install (see EffectiveGamerTag).
             public string? GuestGamerTag;
-            // Desktop only, and only for one release (convergence plan Stage C): true sends a pure
-            // Silverlight title to the old Avalonia host (SilverlightLauncher) instead of the XNA
-            // host every other game uses. Null (absent) = the default, see SilverlightHostChoice.
-            public bool? SilverlightAvaloniaHost;
         };
 
         private const string ConfigurationFilePath = "config.json";
@@ -260,17 +256,6 @@ namespace WPR.Common
         {
             get => _ConfPrivate!.VibrationEnabled ?? true;
             set => _ConfPrivate!.VibrationEnabled = value;
-        }
-        /// <summary>
-        /// Desktop: true = host pure Silverlight titles on the old Avalonia renderer, false = on
-        /// the XNA host, null = the build's default. Read through
-        /// <see cref="SilverlightHostChoice.UseAvaloniaHost"/>, which also honours
-        /// <c>WPR_SILVERLIGHT_AVALONIA</c>.
-        /// </summary>
-        public bool? SilverlightAvaloniaHost
-        {
-            get => _ConfPrivate!.SilverlightAvaloniaHost;
-            set => _ConfPrivate!.SilverlightAvaloniaHost = value;
         }
         /// <summary>
         /// Desktop: whether games run fullscreen, letterboxed to the game's own aspect ratio.

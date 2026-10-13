@@ -72,7 +72,7 @@ Four flavours, from [`ApplicationType.cs`](../Src/Core/WPR.Database/Models/Appli
 | Type | Status | Notes |
 | --- | --- | --- |
 | `XNA` | Working | The main path; hosted in-process on `WPR.Framework.Xna` + the FNA backend. |
-| `Silverlight` | Mixed-mode: working. Pure UI apps: experimental, desktop only | A Silverlight/XNA **mixed-mode** title (a page that drives XNA from a `GameTimer`) is detected by `MixedModeDetection` and hosted by `MixedModeGame` on the XNA path, on both heads. A pure Silverlight UI app runs only on the desktop, through the Avalonia re-implementation in `WPR.Framework.Silverlight`; `ApplicationLaunch` refuses it. |
+| `Silverlight` | Mixed-mode: working. Pure UI apps: experimental, desktop only | A Silverlight/XNA **mixed-mode** title (a page that drives XNA from a `GameTimer`) is detected by `MixedModeDetection` and hosted by `SilverlightGame` on the XNA path, on both heads. A pure Silverlight UI app runs only on the desktop, through the Avalonia re-implementation in `WPR.Framework.Silverlight`; `ApplicationLaunch` refuses it. |
 | `ModernNative` | Partial | WP8 native ARM titles, hosted in-process by `WPR.Engine.Wp8Native` on both heads. Covers `.exe` titles and **Direct3D/XAML** titles: XAPs whose manifest says `Silverlight` but whose game is a native ARM component DLL (`NativeXamlComponent` finds it, and the installer records the title as `ModernNative`). A guest that stops is reported to WPR Hub with the calls it was given stub answers for. |
 | `UnityPort` | Working (desktop) | Not hosted — WPR spawns an externally-rebuilt standalone port described by `wpr-port.json` in the install folder. Android would need a per-game AAR and isn't wired up. |
 
@@ -93,14 +93,14 @@ the input come from.
 | Runtime | Draws through | Input |
 | --- | --- | --- |
 | XNA | `GraphicsDevice` → `IGraphicsBackend` → FNA3D | SDL → `IInputBackend` → `TouchPanel` |
-| Mixed-mode Silverlight | the game's own XNA drawing, plus the Silverlight page rasterised on the CPU by `SoftwareVisualRasteriser` into a `Texture2D` on the same device | `TouchPanel` → `MixedModeGame.PumpSilverlightTouch` → routed Silverlight events |
+| Mixed-mode Silverlight | the game's own XNA drawing, plus the Silverlight page rasterised on the CPU by `SoftwareVisualRasteriser` into a `Texture2D` on the same device | `TouchPanel` → `SilverlightGame.PumpSilverlightTouch` → routed Silverlight events |
 | WP8 native | `Wp8GpuReplay` replays the guest's Direct3D 11 frame as draws on the same `GraphicsDevice` (`WPR_WP8_GPU=0` falls back to an older 2D draw list, as a diagnostic) | `TouchPanel` → `WinRt.InjectPointer` (CoreWindow pointer events); Back from `GamePad.Buttons.Back`; keys from `Keyboard.GetState()` edges |
 | Pure Silverlight (desktop only) | Avalonia `SilverlightRenderer`; a `DrawingSurfaceBackgroundGrid` shows `BrandedSplashRenderer` or a placeholder | Avalonia pointer events in `PhoneApplicationFrameView` |
 
 The first three share one window, one graphics device, the FNA3D driver choice and
 the `TouchPanel` input path, so keyboard→touch bindings, wheel scrolling and the
 driver picker apply to all of them. Pure Silverlight gets none of these and does not
-run on Android. Moving it onto `MixedModeGame` is Stage C of
+run on Android. Moving it onto `SilverlightGame` is Stage C of
 [`Plans/SILVERLIGHT-XNA-CONVERGENCE.md`](../Plans/SILVERLIGHT-XNA-CONVERGENCE.md).
 
 ### WP8 native in more detail
@@ -162,7 +162,7 @@ is what let those moves happen without touching a single `NewNamespace` string.
 | `Engine/WPR.Engine.Sensors` | `IAccelerometerProvider` + `SensorBackend` (motion input, in neutral `System.Numerics` terms) |
 | `Engine/WPR.Engine.Notifications` | `INotificationManager` + `NotificationBackend` and the notification DTOs (replaces `WPR.Common.NativeUI`) |
 | `Engine/WPR.Engine.Graphics` | `GraphicsDriver` / `GraphicsDriverPreference` (the FNA3D driver choice a head declares), `GraphicsDriverProbe` (demotes Vulkan after a launch that never presented a frame) and the measured `GraphicsCapabilities` |
-| `Engine/WPR.Engine.GameLoop` | The launch sequence: `ApplicationLaunch` (picks XNA, mixed-mode or WP8 native and runs it), `IGameHost`, `IGameLaunchHooks`, `MixedModeGame` / `MixedModeDetection`, `GameLifecycleQuirks` |
+| `Engine/WPR.Engine.GameLoop` | The launch sequence: `ApplicationLaunch` (picks XNA, mixed-mode or WP8 native and runs it), `IGameHost`, `IGameLaunchHooks`, `SilverlightGame` / `MixedModeDetection`, `GameLifecycleQuirks` |
 | `Engine/WPR.Engine.Input` | Keyboard emulation on the XNA side: the tilt components and `SyntheticTouchInputBackend`, which injects keyboard- and wheel-driven touch into `TouchPanel` |
 | `Engine/WPR.Engine.Wp8Native` | WP8 native ARM titles as an XNA `Game` (`Wp8NativeGame`): the runtime in `Runtime/`, plus the GPU replay, audio, sensors, Xbox Live and launcher/vibration hosts (see above) |
 | `Engine/WPR.Engine.Online` | WPR Hub contracts and registry (`ILeaderboardService`, `ICrashReporter`, `OnlineBackend`, `PlaytimeTracker`); speaks strings and longs only |

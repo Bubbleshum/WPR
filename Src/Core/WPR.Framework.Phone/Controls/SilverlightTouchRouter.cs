@@ -10,11 +10,10 @@ namespace Microsoft.Phone.Controls
     /// events, toolkit gestures and <c>Button.Click</c>.
     /// </summary>
     /// <remarks>
-    /// <para><b>Host-neutral on purpose.</b> It takes plain coordinates and a page root, so the
-    /// mixed-mode XNA host can drive it from <c>TouchPanel</c> exactly as
-    /// <see cref="PhoneApplicationFrameView"/> drives the same logic from Avalonia pointer events.
-    /// Before this, a mixed-mode title's Silverlight page rendered and could not be touched at all:
-    /// the only pointer pipeline WPR had ran on Avalonia, which that host never initialises.</para>
+    /// <para><b>Host-neutral on purpose.</b> It takes plain coordinates and a page root, and the
+    /// Silverlight host (<c>SilverlightGame</c>) drives it from <c>TouchPanel</c>. It is the only
+    /// Silverlight pointer pipeline since the Avalonia host (and its
+    /// <c>PhoneApplicationFrameView</c>) was deleted on 2026-10-13.</para>
     ///
     /// <para><b>It lives in this assembly rather than beside the rasteriser</b> because dispatching
     /// a tap means knowing about <see cref="GestureService"/> and <see cref="GestureListener"/>,
@@ -221,8 +220,7 @@ namespace Microsoft.Phone.Controls
                 SetPressed(null);
             }
 
-            // A horizontal drag over a Panorama or Pivot pans it, live — the same rule the Avalonia
-            // host's PhoneApplicationFrameView applies. Decided on the gesture's TOTAL travel, so a
+            // A horizontal drag over a Panorama or Pivot pans it, live. Decided on the gesture's TOTAL travel, so a
             // drag that starts sideways stays a pan and the list inside does not scroll as well.
             if (interaction.IsDragging && _panorama != null && Math.Abs(totalX) > Math.Abs(totalY))
             {

@@ -9,9 +9,8 @@ namespace WPR.SilverlightCompability
     /// </summary>
     /// <remarks>
     /// <para>WPR applies no <c>ControlTemplate</c>s, so a control's look is synthesised by the
-    /// renderer. The geometry, state and theme colours come from <see cref="WpChrome"/>, which the
-    /// Avalonia <see cref="SilverlightRenderer"/> reads too, so a page looks the same through
-    /// either. Only the drawing is here.</para>
+    /// renderer. The geometry, state and theme colours come from <see cref="WpChrome"/>; only the
+    /// drawing is here.</para>
     ///
     /// <para><b>Animation and state are in the change signature</b> (<see cref="SignChrome"/>):
     /// a panorama mid-swipe, a toggled switch, a pressed button or an indeterminate progress bar
@@ -67,8 +66,8 @@ namespace WPR.SilverlightCompability
                     return true;
             }
 
-            // Button only, as in SilverlightRenderer: CheckBox and RadioButton are ToggleButtons and
-            // have chrome of their own that neither renderer draws yet.
+            // Button only: CheckBox and RadioButton are ToggleButtons and have chrome of their own
+            // that is not drawn yet.
             if (element is Button button && WpChrome.UsesDefaultChrome(button))
             {
                 PaintButton(button, bounds, opacity, surface, depth, scaleX, scaleY, clip, drawClip);
@@ -87,7 +86,7 @@ namespace WPR.SilverlightCompability
         /// <summary>
         /// The brush a <see cref="TextBlock"/> is drawn with: its own, else a pressed button's
         /// content colour, else the nearest ancestor's <c>Foreground</c> — Silverlight's
-        /// inheritance, which <see cref="SilverlightRenderer"/> follows too. Null means the theme
+        /// inheritance. Null means the theme
         /// default.
         /// </summary>
         private static Brush? EffectiveForeground(TextBlock text)

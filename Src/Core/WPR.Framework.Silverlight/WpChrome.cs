@@ -10,12 +10,11 @@ namespace WPR.SilverlightCompability
     /// </summary>
     /// <remarks>
     /// <para><b>Why this exists.</b> WPR applies no <c>ControlTemplate</c>s, so the look of a
-    /// Panorama, Pivot, ToggleSwitch, progress bar or Button is synthesised by the renderer. It
-    /// used to be synthesised only by the Avalonia <see cref="SilverlightRenderer"/>, so a page
-    /// drawn by <see cref="SoftwareVisualRasteriser"/> (the CPU path every XNA-hosted page takes)
-    /// showed bare content where the Avalonia window showed chrome. Both now take their geometry
-    /// and state from here, so the two cannot drift: the only thing a renderer still owns is how
-    /// to put a rectangle or a string on its own surface.</para>
+    /// Panorama, Pivot, ToggleSwitch, progress bar or Button is synthesised by the renderer
+    /// (<see cref="SoftwareVisualRasteriser"/>), which takes geometry and state from here and owns
+    /// only how to put a rectangle or a string on its surface. (This was split out so the
+    /// Avalonia renderer and the rasteriser could not drift; the Avalonia one was deleted on
+    /// 2026-10-13.)</para>
     ///
     /// <para><b>Everything is in the element's own LAYOUT units, relative to its top-left.</b>
     /// The Avalonia renderer draws at scale 1; the rasteriser multiplies by whatever scale its

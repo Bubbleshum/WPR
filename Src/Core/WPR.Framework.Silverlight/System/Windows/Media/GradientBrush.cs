@@ -28,7 +28,7 @@ namespace WPR.SilverlightCompability
     /// <summary>Shim for <c>System.Windows.Media.GradientBrush</c>.</summary>
     /// <remarks>
     /// Carries the stops and the spread/mapping settings its two concrete subclasses share. Both
-    /// are painted by <c>SoftwareVisualRasteriser</c> and by <c>SilverlightRenderer</c>.
+    /// are painted by <c>SoftwareVisualRasteriser</c>.
     /// <para>This type existed before anything drew a gradient, for a reason worth keeping in
     /// mind: the XAML reader resolves types by name, so a brush it cannot find throws out of the
     /// element declaring it and takes every child of that element with it. A brush that does not

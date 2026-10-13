@@ -1,6 +1,6 @@
 // Pointer-events → WP-style gestures bridge.
 //
-// Sits between Avalonia's PhoneApplicationFrameView pointer handlers and:
+// Sits between SilverlightTouchRouter (fed from TouchPanel by SilverlightGame) and:
 //   - Microsoft.Phone.Controls.Toolkit GestureListener attached events (Tap,
 //     DoubleTap, Flick, DragStarted/Delta/Completed, Hold, etc.) — the form
 //     user XAML reaches for: <toolkit:GestureService.GestureListener>

@@ -184,7 +184,7 @@
          implementer rather than an accidental consumer. -->
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Framework.Devices.Sensors\WPR.Framework.Devices.Sensors.csproj" />
     <!-- FNA game-loop host driver (ApplicationLaunch + FnaGameHost/IGameHost), used by
-         SilverlightLauncher / XnaLauncher. -->
+         XnaLauncher. -->
     <ProjectReference Include="$(SolutionDir)\Backends\WPR.Backend.FNA\WPR.Backend.FNA.csproj" />
     <!-- WPR.Backend.Direct3D11 (Vortice) was referenced here until 2026-10-12, when it was
          retired: it only drew splash / test-pattern placeholders behind DrawingSurfaceBackgroundGrid
