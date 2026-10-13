@@ -3,7 +3,7 @@
 **Status (2026-10-12):** Track 1 done (1a-1f; 1e's removal of `ConstructShapedObject` still waits on
 activation through generated class info). 2a, 2c, 3a, 3c, 3d, 3e done; Track 4 spike done (Spark2 go,
 Unity no-go). WP8 native now has one render path: every title replays on the GPU (the per-title allow-list is
-gone; `WPR_WP8_GPU=0` keeps the 2D draw list as a diagnostic). Track 5 done. Open: 2b, 3b.
+gone; `WPR_WP8_GPU=0` keeps the 2D draw list as a diagnostic). Track 5 done. 3b done but scoped to WP8 until the phone measurement (see 3b). Open: 2b.
 **Written against:** `f58fa86`.
 **Prompted by:** Angry Birds Go! (WP8 native) dying on its first frame with `null call to 0x00000000`,
 and the question of how much of WPR's runtime is per-game and how much could be shared.
@@ -351,6 +351,24 @@ goes through `DynamicSoundEffectInstance` on both heads.
 **Check:** measure an XNA title that uses `DynamicSoundEffectInstance` on a phone before and after.
 If it was not choppy before, the module only needs to cover WP8, and that is still worth doing for
 the single registry.
+
+**Done (2026-10-13), scoped to WP8 until measured.** `Src/Modules/Audio/WPR.Audio.AudioTrack`
+(`AudioTrackModule` → `AudioTrackSoundBackend` decorating FAudio, `AudioTrackVoice`,
+`SincResampler`) claims 16-bit PCM voices made through `CreateSourceVoice` and forwards everything
+else. `AudioTrackOutput` is gone; `Wp8NativeAudio` is the only `IHostAudio` on both heads and sets
+`AudioBackendRegistry.LowLatencyStreaming`, which the module reads when registered with
+`AudioTrackScope.LowLatencyRequests` (the Android default). The launch line shows
+`sound=AudioTrack`. Tracks are pooled across Stop/Play, pan/3D is a software matrix on a stereo
+track, master volume and background suspend are handled by the backend. See CLAUDE.md, "WP8 sound
+goes through the registry".
+
+**The measurement is still open.** The S24 was not connected during this work, so neither the XNA
+before/after nor the WP8 regression check on hardware was run. XNA titles therefore stay on FAudio.
+To measure without a rebuild, `audiotrack_scope.txt` (`all` / `off`) in the app's external files
+directory switches scope per launch; compare `dumpsys media.audio_flinger` underruns for Pitfall!
+and Feed Me Oil with the file absent and set to `all`, and for a WP8 title (MC4, AC Pirates,
+Monopoly) with it absent and `off`. If `all` is no worse and FAudio underruns, change the default in
+`AndroidPlatform`.
 
 ### 3c. Lifecycle reaches the guest
 

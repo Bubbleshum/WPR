@@ -564,6 +564,67 @@ skips its intro in the harness (a real tap on Android does not).
 
 No `ApplicationPatcher.Version` bump: Android sidecars come from a re-patch, which runs regardless.
 
+### WP8 sound goes through the registry; streaming voices on AudioTrack (2026-10-13)
+
+`WPR.Engine.Wp8Native.AudioTrackOutput` (WP8 voices straight onto Android `AudioTrack`s, with
+`SincResampler`) sat outside `AudioBackendRegistry`, so it never showed in the `[wpr-audio]` line
+and only WP8 titles could use it. It is now a module, **`Src/Modules/Audio/WPR.Audio.AudioTrack`**
+(plan 3b in `Plans/RUNTIME-CONVERGENCE.md`), and `Wp8NativeAudio` (one `DynamicSoundEffectInstance`
+per XAudio2 voice) is the only `IHostAudio` on both heads.
+
+**What the module covers: the streaming-voice half of `IAudioBackend`, nothing else.**
+`AudioTrackSoundBackend` decorates the FAudio sound backend. A voice is claimed when it is created
+through `CreateSourceVoice` with 16-bit PCM, which in the framework means a
+`DynamicSoundEffectInstance` (static effects use `CreateSourceVoiceRaw`; the movie player's float
+voices stay on FAudio too). Every call on an unclaimed handle, and the device, 3D maths and the
+microphone, goes to `next`. Handles are one byte of `AllocHGlobal` each, so they can never equal a
+live FAudio voice pointer. The launch line then reads `sound=AudioTrack`, i.e. the top of the chain.
+
+Things it has to do because the tracks are not under FAudio's mastering voice or SDL's device:
+
+- **`SoundEffect.MasterVolume`** is multiplied into each track's volume (`SetMasterVolume` is
+  intercepted, then forwarded).
+- **Background**: the backend is `IBackgroundAwareAudio`, reached from `GameActivity.OnPause`, so
+  `Wp8NativeAudio.Suspend` is a no-op on both heads now.
+- **The output matrix** (XNA pan, `Apply3D`) is applied in software: every track is **stereo**, a
+  mono source is duplicated through `[L, R]` gains (FAudio's default `[1, 1]`). Reverb sends and
+  filters are not supported on these voices and are logged once each.
+- **Tracks are pooled** (2 idle per rate/channel pair, 8 in all). XAudio2's `FlushSourceBuffers`
+  becomes `DynamicSoundEffectInstance.Stop()` + `Play()`, which destroys and re-creates the voice; a
+  new `AudioTrack` and writer thread for every flush would be wasteful. A pooled track is paused,
+  flushed and has its resampler reset; its underrun counter is re-baselined on reuse.
+
+Everything the old class learned is kept and is in `AudioTrackVoice`: native output rate plus our
+own sinc resampler (AudioFlinger's resampler made MC4's 32 kHz mix dull), the 10 ms start
+threshold (API 31+; silence priming below it), non-blocking writes from one writer thread per
+track, and "buffer finished" read off the playback head.
+
+**Scope: WP8 titles only, by default, and that is a measurement decision still to make.** The module
+is registered as `AudioTrackModule(AudioTrackScope.LowLatencyRequests)`: it claims voices only while
+`AudioBackendRegistry.LowLatencyStreaming` is set, which `Wp8NativeAudio`'s constructor does and
+every `Compose()` clears. XNA titles' dynamic instances therefore stay on FAudio exactly as before.
+The plan's risk note says to switch them only if a phone measurement shows FAudio underrunning for
+them. The installed XNA titles that use `DynamicSoundEffectInstance` (byte scan of the desktop
+installs): **Pitfall!** (`55ebed63…`, Krome's Atari emulator streams its audio), **Feed Me Oil**
+(`5de64ff7…`, `OggSound`), **Little Acorns** (`7a5dcbbb…`, `TwoDeeXNA`) and **FC Rocket**
+(`e77de387…`, `FCArcadeLib`); the movie player is the fifth user but submits float.
+
+**A/B on a device without a rebuild:** `audiotrack_scope.txt` beside `fna3d_driver.txt` in the
+app's external files directory. `all` puts every 16-bit dynamic instance on AudioTrack, `off`
+registers no module (WP8 back on FAudio, as on the desktop), anything else or no file is the
+default. Read in `AndroidPlatform.ChosenAudioTrackScope`; the `:game` process re-reads it every
+launch. Measure with `adb shell dumpsys media.audio_flinger` (per-track underrun frames for the
+`:game` pid) and the `[wpr-audiotrack]` lines (`voice … played at 48000 Hz stereo`, and at device
+close `underruns=N`) in `Logs/wpr-game.log`.
+
+Desktop is unchanged: no module is registered there, so the flag is read by nothing and WP8 voices
+stay on FAudio. Verified with Modern Combat 4 in `scratchpad/gamerun`: `[wpr-audio] sound=FAudio`,
+one source voice, buffers and callbacks advancing through menus and play. Its `underruns=` counter
+(frames on which a playing voice had nothing queued) climbs mainly during loading, when the guest
+runs at 1-2 fps; it moved 403 → 408 over ~300 frames of steady play.
+
+No `ApplicationPatcher.Version` bump and no reinstall.
+
 ### WP7 launchers leave the game through `IUriLauncher` (2026-09-24)
 
 `Microsoft.Phone.Tasks.WebBrowserTask.Show()` was an empty method, so every link a WP7 title opened
@@ -3931,7 +3992,7 @@ WPR.<Subsystem>.<Technology>
 
 | Contract in | Modules |
 | --- | --- |
-| `WPR.Engine.Audio` | `WPR.Audio.FAudio`, `WPR.Audio.AndroidMediaPlayer` |
+| `WPR.Engine.Audio` | `WPR.Audio.FAudio`, `WPR.Audio.AndroidMediaPlayer`, `WPR.Audio.AudioTrack`, `WPR.Audio.MediaCodec` |
 | `WPR.Engine.Notifications` | `WPR.Notifications.WindowsToast`, `WPR.Notifications.AndroidChannel` |
 | `WPR.Engine.Vibration` | `WPR.Vibration.AndroidVibrator` |
 
