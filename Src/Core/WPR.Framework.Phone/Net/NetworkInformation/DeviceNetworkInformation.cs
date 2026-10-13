@@ -40,6 +40,21 @@ namespace Microsoft.Phone.Net.NetworkInformation
         {
             callback?.Invoke(null);
         }
+
+        /// <summary>
+        /// WP7's real signature. Answers at once, on the calling thread, with a result whose
+        /// <see cref="NameResolutionResult.NetworkInterface"/> is the reported Wi-Fi adapter and
+        /// no addresses — consistent with <see cref="IsNetworkAvailable"/>. Synchronous because
+        /// the callers are connectivity probes that wait a few milliseconds for the answer ("What
+        /// In The World?" waits 50 ms and then reads the result), and a real DNS round trip would
+        /// miss that window and read as "offline".
+        /// </summary>
+        public static void ResolveHostNameAsync(System.Net.DnsEndPoint endPoint, NameResolutionCallback callback, object? context)
+        {
+            callback?.Invoke(new NameResolutionResult(
+                endPoint, Array.Empty<System.Net.IPEndPoint>(), NetworkError.Success,
+                NetworkInterfaceInfo.WiFi, context));
+        }
     }
 
     /// <summary>

@@ -499,6 +499,54 @@ namespace WPR.SilverlightCompability
         /// Loaded the popup stays open and the per-tap guard reads
         /// <c>popup.IsOpen == true</c> and blocks every navigation.
         /// </summary>
+        // Elements attached to an already-loaded parent, waiting for their Loaded. See NoteAttached.
+        private static readonly System.Collections.Generic.List<UIElement> _pendingLoaded = new();
+
+        /// <summary>
+        /// Called when <paramref name="child"/> gains <paramref name="parent"/>. If the parent is
+        /// already in the live tree (its Loaded has been raised) and the child is not, the child
+        /// is queued for Loaded, which <see cref="RaisePendingLoaded"/> delivers.
+        /// </summary>
+        /// <remarks>
+        /// <para>Silverlight raises Loaded on an element that joins a live tree, not only on the
+        /// tree that was there at navigation. Games start their animations there: Flowerz's
+        /// BloomAnimation is added to the board's animation canvas when a piece is placed and
+        /// begins its storyboard from its own Loaded handler; the game then waits for that
+        /// storyboard's Completed before it draws the piece. With Loaded only ever raised at
+        /// navigation the bloom never started, and every placed flower stayed invisible.</para>
+        /// <para>Deferred to the host's next frame rather than raised inside <c>Children.Add</c>,
+        /// as Silverlight does (it raises Loaded before the next render, not re-entrantly), and
+        /// because the add commonly happens under a game lock or on a game worker thread.</para>
+        /// </remarks>
+        internal static void NoteAttached(UIElement child, UIElement parent)
+        {
+            if (parent is not FrameworkElement { _loadedRaised: true }) return;
+            if (child is FrameworkElement { _loadedRaised: true }) return;
+            lock (_pendingLoaded) _pendingLoaded.Add(child);
+        }
+
+        /// <summary>
+        /// Raises Loaded on every element that joined a live tree since the last call. Hosts
+        /// call this once a frame, on their UI thread.
+        /// </summary>
+        public static void RaisePendingLoaded()
+        {
+            UIElement[] batch;
+            lock (_pendingLoaded)
+            {
+                if (_pendingLoaded.Count == 0) return;
+                batch = _pendingLoaded.ToArray();
+                _pendingLoaded.Clear();
+            }
+            foreach (UIElement element in batch) RaiseLoadedTree(element);
+        }
+
+        /// <summary>Drops anything still queued; called between launches.</summary>
+        internal static void ResetPendingLoaded()
+        {
+            lock (_pendingLoaded) _pendingLoaded.Clear();
+        }
+
         public static void RaiseLoadedTree(UIElement? root)
         {
             if (root == null) return;

@@ -51,7 +51,23 @@ namespace Microsoft.Xna.Framework
 
 		public static void Update()
 		{
-			PumpCount += 1;
+			/* WPR: a pump from a thread other than the game (device) thread services audio and
+			 * media only. Pure Silverlight titles pump from a BackgroundWorker every 10 ms - the WP7
+			 * idiom for keeping XNA audio and GamerServices alive in a Silverlight app (Flowerz's
+			 * GameState.ProcessGamerServices, Minesweeper's App) - and on the phone that pump never
+			 * touched input, because a Silverlight app read touch through Silverlight. Here it drove
+			 * TouchPanel.Update from a worker, racing the game thread's own pump: a tap could be
+			 * pressed and released entirely between two frames and never be seen (Minesweeper's
+			 * dashboard ignored every tap), and it counted as "the app pumped", so the mixed-mode
+			 * host's fallback pump never ran either. Off-thread pumps therefore neither count nor
+			 * update the touch panel. Before a device exists every thread reads as the device
+			 * thread, so nothing changes for a game that pumps before creating one.
+			 */
+			bool onGameThread = WPR.Xna.Rhi.OffThreadGpuCalls.OnDeviceThread;
+			if (onGameThread)
+			{
+				PumpCount += 1;
+			}
 
 			/* Updates the status of various framework components
 			 * (such as power state and media), and raises related events.
@@ -67,7 +83,7 @@ namespace Microsoft.Xna.Framework
 
 			MediaPlayer.PumpUpdate();
 
-			if (TouchPanel.TouchDeviceExists)
+			if (onGameThread && TouchPanel.TouchDeviceExists)
 			{
 				TouchPanel.Update();
 			}
