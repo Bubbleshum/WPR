@@ -77,15 +77,19 @@ namespace WPR.SilverlightCompability.Tests
         }
 
         [Fact]
-        public void LoadComponent_UnknownEventHandlerMethod_Throws()
+        public void LoadComponent_UnknownEventHandlerMethod_IsSkipped()
         {
             var page = new FakeMainPage();
             string xaml = @"
 <PhoneApplicationPage xmlns=""http://schemas.microsoft.com/winfx/2006/xaml/presentation""
                       xmlns:x=""http://schemas.microsoft.com/winfx/2006/xaml"">
-  <Button Click=""ThisMethodDoesNotExist"" />
+  <Button x:Name=""actionBtn"" Click=""ThisMethodDoesNotExist"" />
 </PhoneApplicationPage>";
-            Assert.Throws<XamlParseException>(() => XamlReader.LoadComponent(page, xaml));
+            // The reader is lenient by design (XamlReader pass 1/2): one bad attribute or child is logged
+            // and skipped rather than losing the whole page, so a game whose XAML names something WPR
+            // has not shimmed still gets the rest of its tree.
+            XamlReader.LoadComponent(page, xaml);
+            Assert.NotNull(page.actionBtn);
         }
 
         [Fact]
