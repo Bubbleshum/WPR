@@ -1,9 +1,10 @@
 # Collapsing the Silverlight host into the XNA host
 
-**Status (2026-10-13): Stage C is built, behind a flag for one release; Stage D is not started.**
-`ApplicationType.Silverlight` titles are hosted by `MixedModeGame` by default on both heads; the
-desktop can still send them to the Avalonia host with `WPR_SILVERLIGHT_AVALONIA=1` (or
-`"SilverlightAvaloniaHost": true` in config.json). The §5 gate (`IBackgroundRenderer`) was settled
+**Status (2026-10-13): all four stages are done.** Stage D deleted the Avalonia host the same day
+Stage C shipped (the user chose not to wait the one release §5 suggested), so every
+`ApplicationType.Silverlight` title runs on one host, `SilverlightGame` (renamed from
+`MixedModeGame`), on both heads, and there is no flag. Results in the Stage C and Stage D entries
+of §4 and in CLAUDE.md ("Pure Silverlight titles run on the XNA host", "One Silverlight host"). The §5 gate (`IBackgroundRenderer`) was settled
 by retiring the D3D11 backend on 2026-10-12 (RUNTIME-CONVERGENCE §2a). Results in the Stage C entry
 of §4 and in CLAUDE.md, "Pure Silverlight titles run on the XNA host".
 
@@ -223,6 +224,28 @@ Plus the `Avalonia` package reference in `WPR.Framework.Silverlight.csproj` — 
 in the APK today** (the android leg pulls Avalonia 12.1.3 while the desktop leg stays on 11.3.9,
 a split the csproj comment explains and apologises for). Removing it deletes that split and
 shrinks the APK by an amount not yet measured.
+
+**Done 2026-10-13.** Deleted the four files above plus `IBackgroundRenderer`, `PhoneHardwareButtons`
+(the desktop bezel, used only by the launcher), `SilverlightHostChoice` and the
+`SilverlightAvaloniaHost` setting, `MixedModeDetection` and the `isMixedMode` routing in
+`ApplicationLaunch` and `MainWindowDesktop`, and the Avalonia package in
+`WPR.Framework.Silverlight`: about 2,330 lines net (`git diff --shortstat` over `Src`: 295
+insertions, 2,628 deletions). Three things the table above did not foresee:
+
+- **The mixed/pure distinction could not simply go.** It is behaviour inside the host (Loaded and
+  re-layout for pure titles only, which the mixed-mode composite split depends on), so the
+  detector's test moved into `SilverlightGame` (`NamesSharedGraphicsDeviceManager`) rather than
+  being deleted.
+- **GameMaker exports** were routed to YoYo's Runner from inside `SilverlightLauncher`; they now
+  have their own step (`GameMakerLauncher.TryLaunchAsync`, desktop only, falling back to
+  `SilverlightGame`). Unverified: no GameMaker title is installed here.
+- **The APK did not shrink**: the Android head still references `Avalonia.Android` 12.1.3 for its
+  AppCompat theme resources, so Avalonia ships regardless. The split is now between the two heads
+  only.
+
+Measured on the desktop harness, `combine` against this change: the ten mixed-mode titles keep
+their composite/no-composite split exactly, Flowerz and Minesweeper reach the same screens (D1–D4).
+Android not run.
 
 ---
 
