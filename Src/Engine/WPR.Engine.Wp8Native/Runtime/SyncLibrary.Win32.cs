@@ -446,7 +446,11 @@ namespace WPR.Wp8Native
         private void WaitAny(long[] handles, bool waitAll, long milliseconds)
         {
             int me = _emulator.CurrentThreadId;
-            Event?[] objects = handles.Select(h => _events.GetValueOrDefault(h)).ToArray();
+            Event?[] objects = new Event?[handles.Length];
+            for (int i = 0; i < handles.Length; i++)
+            {
+                objects[i] = _events.GetValueOrDefault(handles[i]);
+            }
 
             if (TrySatisfy(objects, waitAll, me) is { } now)
             {
@@ -455,6 +459,12 @@ namespace WPR.Wp8Native
                 return;
             }
 
+            // Separate method so the satisfied-at-once path allocates no closures.
+            WaitAnyBlocking(handles, objects, waitAll, milliseconds, me);
+        }
+
+        private void WaitAnyBlocking(long[] handles, Event?[] objects, bool waitAll, long milliseconds, int me)
+        {
             if (milliseconds != 0)
             {
                 long deadline = milliseconds == Infinite ? long.MaxValue : _wallClock.ElapsedMilliseconds + milliseconds;
@@ -661,6 +671,14 @@ namespace WPR.Wp8Native
                 return;
             }
 
+            // Separate method: the closures below would otherwise be allocated on every enter,
+            // contended or not (C# creates a method's closure class at its top) - a steady few
+            // MB/s while a WP8 title loads.
+            EnterSectionContended(section);
+        }
+
+        private void EnterSectionContended(long section)
+        {
             int me = Me;
             bool switched = _emulator.BlockCurrentThread(
                 () => SectionFree(section),

@@ -119,6 +119,7 @@ namespace WPR.Wp8Native
 
         private readonly List<string> _log = new();
         private readonly List<string> _unimplemented = new();
+        private readonly HashSet<(string Interface, int Slot)> _unimplementedSlots = new();
         private readonly List<string> _unknownIids = new();
 
         /// <summary>Every Direct3D and DXGI call worth naming, in order.</summary>
@@ -300,10 +301,12 @@ namespace WPR.Wp8Native
 
         private void Unhandled(string interfaceName, int slot)
         {
-            string entry = $"{interfaceName}::slot{slot}  r1=0x{Arg(1):X8} r2=0x{Arg(2):X8} r3=0x{Arg(3):X8}";
-            if (!_unimplemented.Contains(entry, StringComparer.Ordinal))
+            // Recorded once per slot, with the first call's registers. Keying on the registers too
+            // made every call with new arguments a new entry, found by a linear scan: a 3D scene
+            // calling an unimplemented slot per draw grew the list and the scan without bound.
+            if (_unimplementedSlots.Add((interfaceName, slot)))
             {
-                _unimplemented.Add(entry);
+                _unimplemented.Add($"{interfaceName}::slot{slot}  r1=0x{Arg(1):X8} r2=0x{Arg(2):X8} r3=0x{Arg(3):X8}");
             }
 
             // Zero is S_OK for the HRESULT half of this surface and harmless for the void

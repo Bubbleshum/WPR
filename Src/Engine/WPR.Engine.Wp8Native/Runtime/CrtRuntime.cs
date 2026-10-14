@@ -838,28 +838,7 @@ namespace WPR.Wp8Native
         }
 
         private void CopyGuest(long destination, long source, long count)
-        {
-            const int chunk = 1 << 20;
-            if (destination > source && destination < source + count)
-            {
-                // Overlapping with the destination above: copy from the end down.
-                for (long done = count; done > 0;)
-                {
-                    int step = (int)Math.Min(chunk, done);
-                    done -= step;
-                    _emulator.WriteMemory(destination + done, _emulator.ReadMemory(source + done, step));
-                }
-
-                return;
-            }
-
-            for (long done = 0; done < count;)
-            {
-                int step = (int)Math.Min(chunk, count - done);
-                _emulator.WriteMemory(destination + done, _emulator.ReadMemory(source + done, step));
-                done += step;
-            }
-        }
+            => _emulator.CopyMemory(destination, source, count);   // overlap-safe, allocation-free
 
         // =======================================================================================
         // Time

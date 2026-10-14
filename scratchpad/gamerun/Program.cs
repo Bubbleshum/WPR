@@ -14,6 +14,11 @@ namespace GameRun
         [STAThread]
         public static void Main(string[] args)
         {
+            AllocListener.StartIfAsked();
+            if (Environment.GetEnvironmentVariable("GAMERUN_NOFOCUS") == "1")
+            {
+                Microsoft.Xna.Framework.WprActivationGuard.SuppressFocusActivation(TimeSpan.FromDays(1));
+            }
             string productId = args.Length > 0 ? args[0] : null;
             if (productId == null)
             {

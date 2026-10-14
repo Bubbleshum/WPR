@@ -101,6 +101,25 @@
             /// mesh drawn every frame is copied once rather than once per draw.
             /// </summary>
             internal List<(int Offset, int Stride, int First, int Count, byte[] Data)>? Snapshots { get; set; }
+
+            /// <summary>
+            /// A constant buffer's contents copied at <see cref="ConstantCopyVersion"/>, shared by
+            /// every draw that binds it unchanged (copies are never written after they are taken).
+            /// </summary>
+            internal byte[]? ConstantCopy { get; set; }
+
+            internal int ConstantCopyVersion { get; set; } = -1;
+
+            /// <summary>The <see cref="Version"/> <see cref="IndexSnapshots"/> were resolved at.</summary>
+            internal int IndexSnapshotVersion { get; set; } = -1;
+
+            /// <summary>
+            /// Index ranges already resolved at <see cref="IndexSnapshotVersion"/>, the index-buffer
+            /// twin of <see cref="Snapshots"/>. Resolving every draw's indices afresh was ~110 MB/s
+            /// of int[] and byte[] in Assassin's Creed Pirates' 3D scenes, much of it on the large
+            /// object heap, which a phone's GC reclaims last.
+            /// </summary>
+            internal List<(int Offset, int Start, int Count, uint Format, int[] Indices, int Lowest, int Highest)>? IndexSnapshots { get; set; }
         }
 
         /// <summary>One element of a vertex, as CreateInputLayout described it.</summary>
@@ -165,18 +184,10 @@
         /// </summary>
         public static DrawCall Snapshot(ArmEmulator emulator, DrawCall call)
         {
-            int[] indices = ResolveIndices(emulator, call);
+            (int[] indices, int lowest, int highest) = ResolveIndicesCached(emulator, call);
             if (indices.Length == 0)
             {
                 return call with { Indices = indices };
-            }
-
-            int lowest = int.MaxValue;
-            int highest = int.MinValue;
-            foreach (int index in indices)
-            {
-                lowest = Math.Min(lowest, index);
-                highest = Math.Max(highest, index);
             }
 
             var streams = new List<VertexStream>(call.Streams.Count);
@@ -535,6 +546,79 @@
             }
         }
 
+        /// <summary>Non-indexed draws' sequences (start, count), shared; bounded.</summary>
+        [ThreadStatic]
+        private static Dictionary<(int Start, int Count), int[]>? _sequences;
+
+        /// <summary>
+        /// <see cref="ResolveIndices"/>, reusing an earlier draw's array while the index buffer is
+        /// unchanged (snapshots are never written after they are taken, so sharing is safe), with
+        /// the range of vertices the indices span.
+        /// </summary>
+        private static (int[] Indices, int Lowest, int Highest) ResolveIndicesCached(ArmEmulator emulator, DrawCall call)
+        {
+            int count = Math.Clamp(call.IndexCount, 0, 200_000);
+            if (count == 0)
+            {
+                return ([], 0, 0);
+            }
+
+            if (call.IndexBuffer is not { Storage: not 0 } buffer)
+            {
+                var sequences = _sequences ??= new();
+                if (!sequences.TryGetValue((call.StartIndex, count), out int[]? sequence))
+                {
+                    if (sequences.Count >= 256)
+                    {
+                        sequences.Clear();
+                    }
+
+                    sequence = ResolveIndices(emulator, call);
+                    sequences[(call.StartIndex, count)] = sequence;
+                }
+
+                return (sequence, call.StartIndex, call.StartIndex + count - 1);
+            }
+
+            if (buffer.IndexSnapshotVersion != buffer.Version || buffer.IndexSnapshots is null)
+            {
+                buffer.IndexSnapshotVersion = buffer.Version;
+                (buffer.IndexSnapshots ??= []).Clear();
+            }
+
+            foreach (var known in buffer.IndexSnapshots)
+            {
+                if (known.Offset == call.IndexOffset && known.Start == call.StartIndex &&
+                    known.Count == count && known.Format == call.IndexFormat)
+                {
+                    return (known.Indices, known.Lowest, known.Highest);
+                }
+            }
+
+            int[] indices = ResolveIndices(emulator, call);
+            int lowest = int.MaxValue;
+            int highest = int.MinValue;
+            foreach (int index in indices)
+            {
+                lowest = Math.Min(lowest, index);
+                highest = Math.Max(highest, index);
+            }
+
+            if (indices.Length > 0)
+            {
+                // A scene draws many ranges of one static index buffer; a ring buffer many small
+                // ones per version. Keep the list bounded either way.
+                if (buffer.IndexSnapshots.Count >= 64)
+                {
+                    buffer.IndexSnapshots.Clear();
+                }
+
+                buffer.IndexSnapshots.Add((call.IndexOffset, call.StartIndex, count, call.IndexFormat, indices, lowest, highest));
+            }
+
+            return (indices, lowest, highest);
+        }
+
         private static int[] ResolveIndices(ArmEmulator emulator, DrawCall call)
         {
             int count = Math.Clamp(call.IndexCount, 0, 200_000);
@@ -555,19 +639,30 @@
             int stride = sixteenBit ? 2 : 4;
             long start = call.IndexBuffer.Storage + call.IndexOffset + ((long)call.StartIndex * stride);
 
+            byte[] raw = System.Buffers.ArrayPool<byte>.Shared.Rent(count * stride);
             try
             {
-                byte[] raw = emulator.ReadMemory(start, count * stride);
-                for (int i = 0; i < count; i++)
+                emulator.ReadMemory(start, raw.AsSpan(0, count * stride));
+                if (sixteenBit)
                 {
-                    indices[i] = sixteenBit
-                        ? BitConverter.ToUInt16(raw, i * 2)
-                        : (int)BitConverter.ToUInt32(raw, i * 4);
+                    ReadOnlySpan<ushort> words = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, ushort>(raw.AsSpan(0, count * 2));
+                    for (int i = 0; i < count; i++)
+                    {
+                        indices[i] = words[i];
+                    }
+                }
+                else
+                {
+                    System.Runtime.InteropServices.MemoryMarshal.Cast<byte, int>(raw.AsSpan(0, count * 4)).CopyTo(indices);
                 }
             }
             catch (Exception)
             {
                 return [];
+            }
+            finally
+            {
+                System.Buffers.ArrayPool<byte>.Shared.Return(raw);
             }
 
             return indices;

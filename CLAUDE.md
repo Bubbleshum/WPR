@@ -823,6 +823,58 @@ game handed its intro's soundtrack with no picture waits for frames that never c
 must never start more guest calls - the original caller is resumed straight after it, so a nested
 call silently never happens. Contract tests are `Suites/MediaStreamsSuite.cs`.
 
+### The WP8 runtime must not allocate per guest call (2026-10-14)
+
+Reported as "Assassin's Creed Pirates (`40ae56ef-…`) is really slow on my phone". On the S24 the
+log showed ~370 gen0 GCs a second on the menu, ~2,700 a second during a ~30 s 0-fps stretch after
+PLAY, and `managed=` climbing ~60 MB/s in play to 2.9 GB (6 GB in an earlier run), with 316 MB free.
+**The desktop reproduces all of it, so measure there first**: `scratchpad/gamerun` against a scratch
+`WPR_DATA_ROOT` (rewrite `DataStorePath` in the copied config.json), skip the intro, tap PLAY.
+`GAMERUN_NOFOCUS=1` stops a focus change on the desktop suspending the game mid-run, and
+`GAMERUN_ALLOC=1` prints GC allocation ticks by type every 5 s. For stacks,
+`dotnet-trace collect --profile gc-verbose` and aggregate the `GCAllocationTick` stacks with
+TraceEvent. **The MP3 decode is not the stall**: MediaCodec took ~1.5 s, ffmpeg less.
+
+Measured on the desktop (D3D11), before and after:
+
+| | before | after |
+| --- | --- | --- |
+| allocation during the post-PLAY load | ~340 MB/s (memcmp/memcpy/strlen/strcmp arrays) | ~0 (gen0 49→50 over 25 s) |
+| allocation in play | ~190 MB/s, much of it LOH `int[]` | ~20 MB/s |
+| private bytes at 130 s | 7.0 GB and climbing ~100 MB/s | 2.0 GB, flat |
+| `managed=` in play | 1.4 → 5 GB | 330-400 MB |
+
+The causes, each a pattern to avoid in this runtime:
+
+- **An array per guest-memory access.** `ArmEmulator.ReadMemory(long, int)` returns a new `byte[]`,
+  and `ReadUInt32`/`WriteUInt32` (every critical-section word), memcmp (both sides at the full
+  count), memcpy, memset, strlen and strcmp all went through it. `IArmCpu.MemReadInto`/`MemWriteFrom`
+  (span overloads; the dynarmic engine reads straight into the span, Unicorn keeps a default) and
+  `ArmEmulator.ReadMemory(long, Span<byte>)`/`WriteMemory(long, ReadOnlySpan<byte>)`/`CopyMemory`
+  now serve those. **Use the span forms on any path the guest can hit per call.**
+- **Per-draw index resolution.** `FrameCapture.Snapshot` resolved every draw's indices into a new
+  `int[]` plus a `byte[]`, each frame. They are now cached on the index buffer `Resource` by
+  `Version`, the twin of the vertex `Snapshots` cache; constant-buffer copies likewise
+  (`ConstantCopy`). Both rely on Map/UpdateSubresource bumping `Version`.
+- **Two unbounded lists.** `ArmEmulator._insideDeferred` recorded every import a deferred callback
+  made, to name them when it returned. A callback that never returns (a worker loop) grew it for
+  ever, a 4M-entry list in a heap dump. It now stops at 91 (more are never printed). And
+  `Direct3DRuntime.Unhandled` keyed its once-only list on the call's registers, so each call was a
+  new entry found by a linear scan; it is once per slot now.
+- Smaller ones: closures allocated on the uncontended path of `EnterSection`/`WaitAny` (C# creates a
+  method's closure class at its top, so the slow path moved to its own method), hex-string keys per
+  draw for blend/depth/raster/sampler state (an identity-keyed cache sits in front), and a
+  `Vector4[]` per draw in `SetConstants`.
+
+**The ~30 s load after PLAY is still there, and it is CPU, not GC.** Profiled with
+`dotnet-sampled-thread-time`: 54% guest code, ~40% in `wprcpu_read`/`wprcpu_write` (big memcpys
+through a host buffer, ~3M host calls a second; the S24 makes the same number). Halving that needs a
+native guest-to-guest copy in `wprcpu` (a rebuild of `wprcpu.dll` and the Android `.so`), not more
+managed work. The `underruns=` counter climbing ~60/s is a voice left playing with nothing queued,
+on the desktop before and after; it is not this.
+
+Contract tests: 2,177 passed. No `ApplicationPatcher.Version` bump and no reinstall.
+
 ### WP8 achievements and leaderboards reach WPR through one door (2026-10-14)
 
 Every in-scope WP8 native title ships `Microsoft.Xbox.winmd` and calls Xbox Live from its **native**

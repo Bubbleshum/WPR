@@ -290,7 +290,15 @@ namespace WPR.Wp8Native
                 {
                     if (ResourceAt(slots[i]) is { Storage: not 0, StorageSize: > 0 } buffer)
                     {
-                        copies[i] = _emulator.ReadMemory(buffer.Storage, (int)Math.Min(buffer.StorageSize, 64 * 1024));
+                        // Copied once per content version (Map and UpdateSubresource bump it), not
+                        // once per draw: a scene binds the same unchanged buffers hundreds of times.
+                        if (buffer.ConstantCopy is null || buffer.ConstantCopyVersion != buffer.Version)
+                        {
+                            buffer.ConstantCopy = _emulator.ReadMemory(buffer.Storage, (int)Math.Min(buffer.StorageSize, 64 * 1024));
+                            buffer.ConstantCopyVersion = buffer.Version;
+                        }
+
+                        copies[i] = buffer.ConstantCopy;
                     }
                 }
 

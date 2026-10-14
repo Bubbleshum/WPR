@@ -140,6 +140,22 @@ public sealed class DynarmicArmCpu : IArmCpu
         }
     }
 
+    public void MemReadInto(long address, Span<byte> destination)
+    {
+        if (!_cpu.TryRead((uint)address, destination))
+        {
+            throw new CpuMemoryException(address, $"read of {destination.Length} bytes at 0x{address:X8} touches unmapped memory");
+        }
+    }
+
+    public void MemWriteFrom(long address, ReadOnlySpan<byte> source)
+    {
+        if (!_cpu.TryWrite((uint)address, source))
+        {
+            throw new CpuMemoryException(address, $"write of {source.Length} bytes at 0x{address:X8} touches unmapped memory");
+        }
+    }
+
     public RunResult Run(long startAddress, long instructionBudget)
     {
         _stopped = false;

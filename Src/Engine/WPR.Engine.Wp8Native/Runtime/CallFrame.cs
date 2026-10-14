@@ -110,23 +110,41 @@ namespace WPR.Wp8Native
                 return string.Empty;
             }
 
-            List<byte> bytes = new();
+            // Read a chunk at a time into a pooled buffer: the CRT's file reads pass every path
+            // through here, and the list-and-copies version was a steady source of garbage.
             const int chunk = 128;
-
-            while (bytes.Count < limit)
+            byte[] bytes = System.Buffers.ArrayPool<byte>.Shared.Rent(chunk * 2);
+            try
             {
-                byte[] block = _emulator.ReadMemory(address + bytes.Count, chunk);
-                int terminator = Array.IndexOf(block, (byte)0);
-                if (terminator >= 0)
+                int length = 0;
+                while (length < limit)
                 {
-                    bytes.AddRange(block[..terminator]);
-                    break;
+                    if (bytes.Length < length + chunk)
+                    {
+                        byte[] larger = System.Buffers.ArrayPool<byte>.Shared.Rent(bytes.Length * 2);
+                        bytes.AsSpan(0, length).CopyTo(larger);
+                        System.Buffers.ArrayPool<byte>.Shared.Return(bytes);
+                        bytes = larger;
+                    }
+
+                    Span<byte> block = bytes.AsSpan(length, chunk);
+                    _emulator.ReadMemory(address + length, block);
+                    int terminator = block.IndexOf((byte)0);
+                    if (terminator >= 0)
+                    {
+                        length += terminator;
+                        break;
+                    }
+
+                    length += chunk;
                 }
 
-                bytes.AddRange(block);
+                return Encoding.Latin1.GetString(bytes, 0, length);
             }
-
-            return Encoding.Latin1.GetString(bytes.ToArray());
+            finally
+            {
+                System.Buffers.ArrayPool<byte>.Shared.Return(bytes);
+            }
         }
 
         public void WriteNarrowString(long address, string text)
