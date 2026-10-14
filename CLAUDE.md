@@ -601,7 +601,7 @@ own sinc resampler (AudioFlinger's resampler made MC4's 32 kHz mix dull), the 10
 threshold (API 31+; silence priming below it), non-blocking writes from one writer thread per
 track, and "buffer finished" read off the playback head.
 
-**Scope: WP8 titles only, by default, and that is a measurement decision still to make.** The module
+**Scope: WP8 titles only, by default (measured on the S24, 2026-10-14: WP8 underruns equal to the old class; FAudio's AAudio MMAP output reports none to AudioFlinger, so XNA cannot be compared and stays on it).** The module
 is registered as `AudioTrackModule(AudioTrackScope.LowLatencyRequests)`: it claims voices only while
 `AudioBackendRegistry.LowLatencyStreaming` is set, which `Wp8NativeAudio`'s constructor does and
 every `Compose()` clears. XNA titles' dynamic instances therefore stay on FAudio exactly as before.

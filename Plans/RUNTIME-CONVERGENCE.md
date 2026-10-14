@@ -3,7 +3,7 @@
 **Status (2026-10-12):** Track 1 done (1a-1f; 1e's removal of `ConstructShapedObject` still waits on
 activation through generated class info). 2a, 2c, 3a, 3c, 3d, 3e done; Track 4 spike done (Spark2 go,
 Unity no-go). WP8 native now has one render path: every title replays on the GPU (the per-title allow-list is
-gone; `WPR_WP8_GPU=0` keeps the 2D draw list as a diagnostic). Track 5 done. 2b done (2026-10-13: one Silverlight host, the Avalonia one deleted). 3b done but scoped to WP8 until the phone measurement (see 3b).
+gone; `WPR_WP8_GPU=0` keeps the 2D draw list as a diagnostic). Track 5 done. 2b done (2026-10-13: one Silverlight host, the Avalonia one deleted). 3b done (2026-10-14, measured on the S24, scoped to WP8; see 3b). The plan's tracks are all done.
 **Written against:** `f58fa86`.
 **Prompted by:** Angry Birds Go! (WP8 native) dying on its first frame with `null call to 0x00000000`,
 and the question of how much of WPR's runtime is per-game and how much could be shared.
@@ -359,6 +359,13 @@ reads `textures=N (bc=M)`. Measured over the ten in-scope titles, normal and `WP
 before, no skipped draws; Stella's 14 textures and 5 of MC4's 8 are BC. Not yet run on a phone.
 
 ### 3b. Android audio through the registry
+
+**Done 2026-10-14** (`Src/Modules/Audio/WPR.Audio.AudioTrack`, see CLAUDE.md). Measured on the S24 (build 26 vs
+build 25, AudioFlinger underrun frames over 45 s from launch): MONOPOLY 122,688 / 124,512 vs 125,856, Angry Birds
+Rio 87,441 vs 87,633 - the module matches the old `AudioTrackOutput`. XNA titles stay on FAudio (its own AAudio
+output since 2026-10-13); that path is MMAP and reports no underruns to AudioFlinger, so it cannot be compared this
+way, and the scope stays WP8-only. Stage D was checked on the same build: Flowerz (menu, Play) and Minesweeper
+(dashboard) on the S24.
 
 `AudioTrackOutput` exists because FAudio ran dry with small double-buffered chunks on phones. It
 sits outside `AudioBackendRegistry`, so it never appears in the `[wpr-audio]` line, and XNA
