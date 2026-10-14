@@ -54,8 +54,14 @@ namespace WPR.Engine.Online
             /// </summary>
             public const string Refused = "refused";
 
+            /// <summary>
+            /// Not a crash: a step of installing or preparing a game failed, and WPR carried on and
+            /// installed or launched it anyway (the patcher threw, the audio transcoder failed).
+            /// </summary>
+            public const string InstallProblem = "install-problem";
+
             /// <summary>True for the sources that are not crashes and must never be grouped as one.</summary>
-            public static bool IsNotACrash(string? source) => source is Install or Compatibility or Refused;
+            public static bool IsNotACrash(string? source) => source is Install or Compatibility or Refused or InstallProblem;
 
             /// <summary>True for the sources that carry a managed exception from inside a game run.</summary>
             public static bool IsManagedCrash(string? source) => source is GameRun or Unhandled;
@@ -98,6 +104,31 @@ namespace WPR.Engine.Online
                 RuntimePath = runtimePath,
                 LogTail = "", // nothing has run yet; "" rather than null so the reporter does not read a stale log
             };
+
+        /// <summary>
+        /// A step that failed while WPR installed or prepared a game it then went on to install or
+        /// launch anyway. See <see cref="Sources.InstallProblem"/>.
+        /// </summary>
+        public static CrashReport ForInstallProblem(string stage, string reason, Exception exception,
+            string? titleId, string? titleName, GamePackageRecord? package, string? installFolder, string continued)
+        {
+            CrashReport report = new CrashReport
+            {
+                Source = Sources.InstallProblem,
+                TitleId = titleId,
+                TitleName = titleName,
+                InstallFolder = installFolder,
+                Package = package,
+                RuntimePath = RuntimePaths.XnaFna,
+                ExceptionType = "WPR.InstallProblem." + reason,
+                ExceptionMessage = exception.GetType().FullName + ": " + exception.Message,
+                StackTrace = exception.ToString(),
+            };
+            report.Extra["stage"] = stage;
+            report.Extra["reason"] = reason;
+            report.Extra["continued"] = continued;
+            return report;
+        }
 
         /// <summary>The game's ProductId (braces and case do not matter).</summary>
         public string? TitleId { get; set; }

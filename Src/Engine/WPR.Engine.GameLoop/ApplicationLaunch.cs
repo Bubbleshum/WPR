@@ -352,7 +352,7 @@ namespace WPR
             // frame, unsupported Silverlight features), sent as ONE report when the run ends.
             CompatibilityProblems.InstallFirstChanceObserver();
             CompatibilityProblems.Begin();
-            Stopwatch ran = Stopwatch.StartNew();
+            _runClock = Stopwatch.StartNew();
             bool endedNormally = false;
 
             // WPR Hub playtime: the whole run is one session, paused while the game is in the
@@ -370,7 +370,7 @@ namespace WPR
             finally
             {
                 PlaytimeTracker.End();
-                ReportCompatibilityProblems(app, endedNormally ? "ended normally" : "ended with an exception", ran.Elapsed);
+                ReportCompatibilityProblems(app, endedNormally ? "ended normally" : "ended with an exception", _runClock.Elapsed);
                 _reportingApp = null;
             }
         }
@@ -380,6 +380,9 @@ namespace WPR
         /// The problems collected are attached to that report, so the run sends one report, not two.
         /// </summary>
         private static volatile bool _crashReportedThisRun;
+
+        /// <summary>How long the current run has lasted, for the reports. Restarted per launch.</summary>
+        private static Stopwatch _runClock = new Stopwatch();
 
         /// <summary>
         /// Ends collection for the run and queues its compatibility report, if it met anything and
@@ -419,7 +422,7 @@ namespace WPR
             try
             {
                 IReadOnlyList<CompatibilityProblem> problems = CompatibilityProblems.Snapshot();
-                CompatibilityProblems.AttachTo(report, problems, CompatibilityProblems.Dropped, outcome, TimeSpan.Zero);
+                CompatibilityProblems.AttachTo(report, problems, CompatibilityProblems.Dropped, outcome, _runClock.Elapsed);
             }
             catch (Exception)
             {

@@ -29,8 +29,8 @@ namespace WPR.Engine.Online
         /// <summary>Seconds into the run of the first occurrence.</summary>
         public double FirstSeenSeconds { get; set; }
 
-        /// <summary>One line: <c>[missing-type] x3 @1.2s Could not load type ...</c>.</summary>
-        public string Summary => $"[{Category}] x{Count} @{FirstSeenSeconds:0.0}s {Detail}";
+        /// <summary>One line: <c>[missing-type] x3 @1.2s System.Windows.Controls.RichTextBox [System.Windows]</c>.</summary>
+        public string Summary => $"[{Category}] x{Count} @{FirstSeenSeconds:0.0}s {Key}";
     }
 
     /// <summary>
@@ -201,20 +201,19 @@ namespace WPR.Engine.Online
             switch (ex)
             {
                 case TypeLoadException tle when ex is not EntryPointNotFoundException and not DllNotFoundException:
-                    return (Categories.MissingType, tle.TypeName is { Length: > 0 } name && !tle.Message.Contains(name, StringComparison.Ordinal)
-                        ? name + " | " + tle.Message : tle.Message, tle.Message);
+                    return (Categories.MissingType, TypeKey(tle), tle.Message);
                 case MissingMemberException mme: // MissingMethodException and MissingFieldException derive from it
                     return (Categories.MissingMember, mme.Message, mme.Message);
                 case EntryPointNotFoundException or DllNotFoundException:
                     return (Categories.MissingNative, ex.Message, ex.Message);
                 case FileNotFoundException fnf:
                     return IsAssemblyLoad(fnf.Message, fnf.FileName) && !IsNoiseAssembly(fnf.FileName ?? fnf.Message)
-                        ? (Categories.MissingAssembly, fnf.FileName ?? fnf.Message, fnf.Message)
+                        ? (Categories.MissingAssembly, AssemblyKey(fnf.FileName ?? fnf.Message), fnf.Message)
                         : null;
                 case FileLoadException fle:
                     return IsNoiseAssembly(fle.FileName ?? fle.Message)
                         ? null
-                        : (Categories.MissingAssembly, fle.FileName ?? fle.Message, fle.Message);
+                        : (Categories.MissingAssembly, AssemblyKey(fle.FileName ?? fle.Message), fle.Message);
                 case BadImageFormatException or InvalidProgramException:
                     return (Categories.BadIl, ex.GetType().Name + ": " + Thrower(ex) + " " + ex.Message, ex.GetType().Name + " in " + Thrower(ex) + ": " + ex.Message);
                 case NotImplementedException or PlatformNotSupportedException:
@@ -223,6 +222,32 @@ namespace WPR.Engine.Online
                 default:
                     return null;
             }
+        }
+
+        /// <summary>
+        /// <c>System.Windows.Controls.RichTextBox [System.Windows]</c>: the type and the simple name
+        /// of the assembly it was looked for in. Versions are left out on purpose - the hub's
+        /// scrubber reads <c>4.0.0.0</c> as an IP address - and the full message is the detail.
+        /// </summary>
+        private static string TypeKey(TypeLoadException tle)
+        {
+            string type = tle.TypeName is { Length: > 0 } name ? name
+                : System.Text.RegularExpressions.Regex.Match(tle.Message, "type '([^']+)'") is { Success: true } t ? t.Groups[1].Value
+                : tle.Message;
+            System.Text.RegularExpressions.Match m = System.Text.RegularExpressions.Regex.Match(tle.Message, "from assembly '([^',]+)");
+            return m.Success ? $"{type} [{m.Groups[1].Value}]" : type;
+        }
+
+        /// <summary>The assembly's simple name from a display name, a path, or a load message.</summary>
+        private static string AssemblyKey(string nameOrMessage)
+        {
+            string s = nameOrMessage;
+            System.Text.RegularExpressions.Match quoted = System.Text.RegularExpressions.Regex.Match(s, "assembly '([^']+)'");
+            if (quoted.Success) s = quoted.Groups[1].Value;
+            int comma = s.IndexOf(',');
+            if (comma > 0) s = s.Substring(0, comma);
+            if (s.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)) s = Path.GetFileNameWithoutExtension(s);
+            return s.Trim();
         }
 
         /// <summary>
@@ -319,7 +344,7 @@ namespace WPR.Engine.Online
                 Type? t = m?.DeclaringType;
                 if (m == null) continue;
                 if (t == typeof(CompatibilityProblems)) continue;
-                if (t?.Namespace == "System.Runtime.ExceptionServices" || t?.FullName == "System.AppDomain") continue;
+                if (t?.Namespace == "System.Runtime.ExceptionServices" || t?.FullName is "System.AppDomain" or "System.Runtime.EH") continue;
                 sb.Append("   at ").Append(t?.FullName).Append('.').Append(m.Name).Append('\n');
                 if (++written >= MaxStackFrames) break;
             }
@@ -411,6 +436,7 @@ namespace WPR.Engine.Online
             foreach (CompatibilityProblem p in problems)
             {
                 sb.Append('\n').Append(p.Summary).Append('\n');
+                if (p.Detail != p.Key) sb.Append("   ").Append(p.Detail).Append('\n');
                 if (!string.IsNullOrEmpty(p.Stack)) sb.Append(p.Stack.TrimEnd()).Append('\n');
             }
             return sb.ToString();

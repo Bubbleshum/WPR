@@ -45,6 +45,8 @@ public class CompatibilityProblemsTests
         Assert.Equal(CompatibilityProblems.Categories.MissingType, problems[0].Category);
         Assert.Equal(5, problems[0].Count);
         Assert.Contains("PlaylistCollection", problems[0].Detail);
+        // Keyed without the version, which the hub's scrubber would read as an IP address.
+        Assert.Equal("Microsoft.Xna.Framework.Media.PlaylistCollection [FNA]", problems[0].Key);
         Assert.Equal(1, problems[1].Count);
     }
 
@@ -101,7 +103,7 @@ public class CompatibilityProblemsTests
 
         CompatibilityProblem p = Assert.Single(problems);
         Assert.Equal(CompatibilityProblems.Categories.MissingAssembly, p.Category);
-        Assert.StartsWith("System.ServiceModel.Http", p.Key);
+        Assert.Equal("System.ServiceModel.Http", p.Key);
     }
 
     [Fact]

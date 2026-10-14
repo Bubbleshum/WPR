@@ -125,6 +125,13 @@ namespace WPR
 
             try
             {
+                // A Marketplace download still wrapped in its DRM ("PRE\x07", not "PK\x03\x04")
+                // cannot be opened by anything. Say so, rather than an unexpected-error throw.
+                if (IsDrmWrapped(fileStream))
+                {
+                    return ( ApplicationInstallError.NotDecrypted, app, dataFolderProduct );
+                }
+
                 ZipArchive archive = new ZipArchive(fileStream);
                 ZipArchiveEntry? entry = archive.GetEntry("WMAppManifest.xml");
                 if (entry == null)
@@ -521,13 +528,9 @@ namespace WPR
                         app!.PatchedVersion = 0;
                         try { ApplicationContext.Current.SaveChanges(); } catch (Exception) { /* the row is already saved */ }
 
-                        WPR.Engine.Online.CrashReport report = WPR.Engine.Online.CrashReport.ForRefusal(
-                            "install", nameof(ApplicationInstallError.PatchFailed), exception.GetType().FullName + ": " + exception.Message,
-                            app.ProductId, app.Name, package, appDataFolder);
-                        report.ExceptionType = "WPR.InstallProblem.PatchFailed";
-                        report.StackTrace = exception.ToString();
-                        report.Extra["continued"] = "installed anyway";
-                        WPR.Engine.Online.OnlineBackend.Crashes?.Report(report);
+                        WPR.Engine.Online.OnlineBackend.Crashes?.Report(WPR.Engine.Online.CrashReport.ForInstallProblem(
+                            "install", nameof(ApplicationInstallError.PatchFailed), exception,
+                            app.ProductId, app.Name, package, appDataFolder, "installed anyway"));
                     }
                     catch (OperationCanceledException)
                     {
@@ -572,11 +575,23 @@ namespace WPR
                             await Task.Run(() => AudioCompabilityConverter.ScanWmaAndConvert(appDataFolder,
                                 progress => progressSet(80 + (int)((double)progress / 5)),
                                 cancelSource));
-                        } catch (Exception exception)
+                        }
+                        catch (OperationCanceledException)
                         {
-                            Log.Error(LogCategory.AppInstall, $"Application WMA conversion failed with exception:\n{exception}");
-                            ReportRefusedPackage(fileStream, ApplicationInstallError.ConvertFailed, package);
-                            return ApplicationInstallError.ConvertFailed;
+                            // Handled by the cancellation check below.
+                        }
+                        catch (Exception exception)
+                        {
+                            // This used to fail the install, so that a broken transcoder could not
+                            // produce a game that installs cleanly and plays no music. It now
+                            // installs the game anyway - every game is attempted - and tells WPR
+                            // Hub, which is where a silently mute game would otherwise go unseen.
+                            // The row was already saved, so the old early return also left a
+                            // half-installed game behind an error dialog.
+                            Log.Error(LogCategory.AppInstall, $"Application WMA conversion failed (installing anyway, songs may be silent):\n{exception}");
+                            WPR.Engine.Online.OnlineBackend.Crashes?.Report(WPR.Engine.Online.CrashReport.ForInstallProblem(
+                                "install", nameof(ApplicationInstallError.ConvertFailed), exception,
+                                app.ProductId, app.Name, package, appDataFolder, "installed anyway"));
                         }
                     }
 
@@ -653,6 +668,14 @@ namespace WPR
             {
                 if (WPR.Engine.Online.OnlineBackend.Crashes is not { } reporter) return;
 
+                // A caller that could not read the manifest does not know why; the commonest
+                // reason by far is a package still wrapped in Marketplace DRM.
+                if (error is ApplicationInstallError.InvalidManifestFiles or ApplicationInstallError.MissingManifestFiles
+                    && fileStream != null && IsDrmWrapped(fileStream))
+                {
+                    error = ApplicationInstallError.NotDecrypted;
+                }
+
                 if (package == null && fileStream is { CanSeek: true })
                 {
                     package = WPR.Engine.Online.GamePackageRecord.Measure(fileStream);
@@ -660,7 +683,7 @@ namespace WPR
                 }
 
                 ApplicationPreview? identity = null;
-                if (fileStream is { CanSeek: true, CanRead: true })
+                if (error != ApplicationInstallError.NotDecrypted && fileStream is { CanSeek: true, CanRead: true })
                 {
                     identity = ReadPreview(fileStream);
                 }
@@ -679,8 +702,30 @@ namespace WPR
             }
         }
 
+        /// <summary>True for a package that starts <c>PRE\x07</c>: a Marketplace download still in its DRM wrapper.</summary>
+        private static bool IsDrmWrapped(Stream stream)
+        {
+            if (!stream.CanSeek || !stream.CanRead) return false;
+            long position = stream.Position;
+            try
+            {
+                stream.Position = 0;
+                Span<byte> magic = stackalloc byte[4];
+                return stream.Read(magic) == 4 && magic[0] == (byte)'P' && magic[1] == (byte)'R' && magic[2] == (byte)'E' && magic[3] == 7;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+            finally
+            {
+                try { stream.Position = position; } catch (Exception) { /* best effort */ }
+            }
+        }
+
         private static string DescribeRefusal(ApplicationInstallError error) => error switch
         {
+            ApplicationInstallError.NotDecrypted => "The package is a Marketplace download still wrapped in its DRM (starts PRE\\x07, not a ZIP).",
             ApplicationInstallError.MissingManifestFiles => "The package has no WMAppManifest.xml, or a managed package has no AppManifest.xaml.",
             ApplicationInstallError.InvalidManifestFiles => "The package's manifest is missing required attributes or names no entry assembly.",
             ApplicationInstallError.ModernNativeUnsupported => "A WP8 native package with no executable image to run.",

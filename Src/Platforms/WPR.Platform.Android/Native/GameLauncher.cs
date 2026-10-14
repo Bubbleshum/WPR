@@ -87,13 +87,9 @@ namespace WPR.Platform.Android.Native
                     Log.Error(LogCategory.AppList, $"Repatch before launch failed, launching anyway: {ex}");
                     try
                     {
-                        WPR.Engine.Online.CrashReport report = WPR.Engine.Online.CrashReport.ForRefusal(
-                            "launch-repatch", "PatchFailed", ex.GetType().FullName + ": " + ex.Message,
-                            app.ProductId, app.Name, package: null, installFolder: installFolder);
-                        report.ExceptionType = "WPR.InstallProblem.PatchFailed";
-                        report.StackTrace = ex.ToString();
-                        report.Extra["continued"] = "launched anyway";
-                        WPR.Engine.Online.OnlineBackend.Crashes?.Report(report);
+                        WPR.Engine.Online.OnlineBackend.Crashes?.Report(WPR.Engine.Online.CrashReport.ForInstallProblem(
+                            "launch-repatch", "PatchFailed", ex, app.ProductId, app.Name,
+                            package: null, installFolder: installFolder, continued: "launched anyway"));
                     }
                     catch (Exception) { /* reporting only */ }
                 }
