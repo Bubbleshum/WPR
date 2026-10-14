@@ -695,6 +695,73 @@ game handed its intro's soundtrack with no picture waits for frames that never c
 must never start more guest calls - the original caller is resumed straight after it, so a nested
 call silently never happens. Contract tests are `Suites/MediaStreamsSuite.cs`.
 
+### WP8 achievements and leaderboards reach WPR through one door (2026-10-14)
+
+Every in-scope WP8 native title ships `Microsoft.Xbox.winmd` and calls Xbox Live from its **native**
+code. That covers Rovio, Gameloft MC4, EA MONOPOLY, and Ubisoft's Spark2 through `LuaMobileSDK.dll`.
+None uses a system of its own, and MC4's managed page only calls `FakeInitXBLUser`. So there is one
+path:
+
+```
+guest -> XboxRuntime.cs / XboxData.cs / XboxAttributes.cs  (WinRT slots)
+      -> IXboxLiveHost  (Runtime/, engine-free)
+      -> Wp8NativeXboxHost
+           achievements -> SignedInGamer.AwardAchievement -> achievements.db, toast, OnlineBackend.Progress
+           leaderboards -> OnlineBackend.Leaderboards (WPR Hub)
+```
+
+The XNA award path does the rest: the "already earned, no toast" rule, `EarnedOnline` and the upload.
+`ApplicationLaunch.Start` creates the host for every `ModernNative` launch. `PlaytimeTracker` runs
+there too, so WP8 playtime and presence reach the hub with no extra work. Catalogue keys are the
+numeric XLAST ids (see the memory note on that).
+
+| family / title | achievements | leaderboards | verified |
+| --- | --- | --- | --- |
+| Rovio: Classic, Rio, Seasons, Space, Star Wars, Star Wars II, Stella, Amazing Alex | `GetAchievementsAsync` at boot; unlock by XLAST id | `PostResultAsync` (Max); board list from the SPA in `xbl.dll` | **Classic live**: level 1-1 cleared, 31140 posted to boards 1 and 2, read back in its own Total score screen beside another hub player. Achievements screen draws the catalogue |
+| EA: MONOPOLY Millionaire | same | SPA: board 4 `Score`, **Sum**, i.e. Add | **live**: starting Pass 'n Play unlocked 17. Toast `5G - Multi-Millionaires!`, `achievements.db` `IsEarned=1 EarnedOnline=1`, hub `user_achievements` row with playtime |
+| Ubisoft Spark2: AC Pirates | through LuaMobileSDK, XBL network | SPA: board 1 `BOUNTY`, Max; names `LeaderboardAttribute` | **live**: sign-in, achievements menu, leaderboard read reaches the hub (1 row). The row is not drawn (see gaps) |
+| Gameloft: Modern Combat 4 | `GetAchievementsAsync(max 20)` | SPA: `LOCAL_XP`/`ONLINE_XP`, **Min** | reads only. Its menu took no synthetic input, so no unlock or post was seen |
+
+What this needed (`9ee14875`, `46248967`):
+
+- **`GetLeaderboardsAsync` answers the title's boards**, read from the gameconfig inside its Xbox SPA
+  (`XboxTitleConfig`: `XDBF` module, gzipped UTF-16 `<GameConfigProject>`, `StatsView` id, en-US
+  name, rating aggregation). It used to answer an empty list, and every Angry Birds leaderboard screen
+  then stopped on "Sorry, we're not sure what happened" without asking for a board. Seasons, Star
+  Wars, Star Wars II and Amazing Alex define their boards on the service, not in the SPA. They fall
+  back to the boards the host has seen posted (`KnownLeaderboards`, persisted). Star Wars II posts all
+  16 at boot, so it is covered. **Seasons and Star Wars still show the error until a score is
+  posted.**
+- **`LeaderboardAttribute` + `PostResultsAsync`**: the class was improvised and the call posted
+  nothing. The game's own attribute vector is now read through its vtable. The rating is the
+  lowest-numbered numeric column and the others travel as columns.
+- **Host board rules** (`Wp8NativeXboxHost`, state in `Online/wp8-leaderboards/<productId>.json`):
+  - Add is summed locally and the total sent, because the hub keeps a player's best.
+  - Min goes to `BestTime<id>:0` (lower wins); everything else to `BestScore<id>:0`. The aggregation
+    is remembered, so a read before any post in this run names the right board.
+  - **A 0 to an Add/Max/Min board is not sent.** Star Wars II posts 0 to every board at each boot from
+    a fresh save.
+- **Spark2 `IsInternetAvailable` is true when an Xbox Live host is attached.** AC Pirates gates its
+  Achievements and Leaderboard menus on it alone.
+- The run summary gains an `xbox:` line: activations, `SignInAsync`, every achievement/leaderboard
+  call with its ids. Read it first when a title's online features look dead.
+
+Contract tests: `Suites/XboxLiveSuite.cs`, covering the guest surface, the SPA reader, and
+`Wp8NativeXboxHost` against an in-memory store, toast, progress and leaderboard service.
+
+**Open:**
+
+- **MC4's Min.** MC4 posted nothing in any run, so the rule could not be decided from what it does.
+  Its SPA puts Min on an XP column. If MC4 does post with Min, XP lands on a lower-wins board.
+  `BoardKey` is the one place to change.
+- **AC Pirates' leaderboard rows are not drawn.** The rows arrive, but each row's `get_Attributes` is
+  an empty view. The game probably asks `GetLeaderboardAsync` for attribute ids and draws those.
+- **MONOPOLY's `Score` board (Sum)** and **Classic's unlocks** were not reached live. Classic's
+  achievements are by bird or star count.
+- **Harness, desktop in use:** a scripted run must suppress focus activation. Otherwise a focus loss
+  suspends the WP8 guest (`lifecycle: suspended`, fps ~0). The xbl harness copy calls
+  `XnaBackend.SuppressFocusActivation`.
+
 ### WPR Hub: leaderboards and automatic crash reports (2026-09-27)
 
 The online backend is **WPR Hub** (Laravel, `C:\Users\BenSl\PhpstormProjects\WPR-Hub`). Same
