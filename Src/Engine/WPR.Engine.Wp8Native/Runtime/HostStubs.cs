@@ -1698,9 +1698,12 @@ namespace WPR.Wp8Native
             long source = Arg(1);
             long count = Arg(2);
 
+            // memmove through a pooled buffer. These three stubs are called millions of times while
+            // a WP8 title loads, and an array per call (two for memcmp, at the full count) was
+            // what held Assassin's Creed Pirates at 0 fps for ~30 s after PLAY.
             if (count is > 0 and < SaneLengthLimit && destination != 0 && source != 0)
             {
-                _emulator.WriteMemory(destination, _emulator.ReadMemory(source, (int)count));
+                _emulator.CopyMemory(destination, source, count);
             }
 
             Return(destination);
@@ -1713,9 +1716,14 @@ namespace WPR.Wp8Native
 
             if (count is > 0 and < SaneLengthLimit && destination != 0)
             {
-                byte[] fill = new byte[count];
-                Array.Fill(fill, (byte)(Arg(1) & 0xFF));
-                _emulator.WriteMemory(destination, fill);
+                Span<byte> fill = stackalloc byte[(int)Math.Min(count, 4096)];
+                fill.Fill((byte)(Arg(1) & 0xFF));
+                for (long done = 0; done < count;)
+                {
+                    int step = (int)Math.Min(fill.Length, count - done);
+                    _emulator.WriteMemory(destination + done, (ReadOnlySpan<byte>)fill[..step]);
+                    done += step;
+                }
             }
 
             Return(destination);
@@ -1724,22 +1732,31 @@ namespace WPR.Wp8Native
         private void MemoryCompare()
         {
             long count = Arg(2);
-            if (count is <= 0 or >= SaneLengthLimit || Arg(0) == 0 || Arg(1) == 0)
+            long leftAddress = Arg(0);
+            long rightAddress = Arg(1);
+            if (count is <= 0 or >= SaneLengthLimit || leftAddress == 0 || rightAddress == 0)
             {
                 Return(0);
                 return;
             }
 
-            byte[] left = _emulator.ReadMemory(Arg(0), (int)count);
-            byte[] right = _emulator.ReadMemory(Arg(1), (int)count);
-
-            for (int i = 0; i < count; i++)
+            // A chunk at a time, stopping at the first difference as memcmp does: the game calls
+            // this with large counts on buffers that differ early.
+            Span<byte> left = stackalloc byte[256];
+            Span<byte> right = stackalloc byte[256];
+            for (long done = 0; done < count;)
             {
-                if (left[i] != right[i])
+                int step = (int)Math.Min(left.Length, count - done);
+                _emulator.ReadMemory(leftAddress + done, left[..step]);
+                _emulator.ReadMemory(rightAddress + done, right[..step]);
+                int differ = left[..step].CommonPrefixLength(right[..step]);
+                if (differ < step)
                 {
-                    Return(left[i] < right[i] ? -1 : 1);
+                    Return(left[differ] < right[differ] ? -1 : 1);
                     return;
                 }
+
+                done += step;
             }
 
             Return(0);
@@ -1753,10 +1770,11 @@ namespace WPR.Wp8Native
             }
 
             const int chunk = 256;
+            Span<byte> bytes = stackalloc byte[chunk];
             for (long offset = 0; offset < SaneLengthLimit; offset += chunk)
             {
-                byte[] bytes = _emulator.ReadMemory(address + offset, chunk);
-                int terminator = Array.IndexOf(bytes, (byte)0);
+                _emulator.ReadMemory(address + offset, bytes);
+                int terminator = bytes.IndexOf((byte)0);
                 if (terminator >= 0)
                 {
                     return offset + terminator;
@@ -1773,9 +1791,11 @@ namespace WPR.Wp8Native
                 return 0;
             }
 
+            Span<byte> unit = stackalloc byte[2];
             for (long index = 0; index < SaneLengthLimit / 2; index++)
             {
-                if (BitConverter.ToUInt16(_emulator.ReadMemory(address + (index * 2), 2)) == 0)
+                _emulator.ReadMemory(address + (index * 2), unit);
+                if (BitConverter.ToUInt16(unit) == 0)
                 {
                     return index;
                 }

@@ -88,6 +88,23 @@ public interface IArmCpu : IDisposable
     /// <summary>Writes guest memory. Ignores protection, keeps translated code coherent.</summary>
     void MemWrite(long address, byte[] source);
 
+    /// <summary>
+    /// <see cref="MemRead(long, byte[])"/> into a caller's buffer. The host stubs read guest
+    /// memory millions of times a second (memcmp, memcpy, strlen, every word a critical section
+    /// touches), and an array per read was most of the managed allocation a WP8 title caused:
+    /// hundreds of gen0 collections a second on a phone. Engines that can read into a span
+    /// override this; the default goes through an array.
+    /// </summary>
+    void MemReadInto(long address, Span<byte> destination)
+    {
+        byte[] buffer = new byte[destination.Length];
+        MemRead(address, buffer);
+        buffer.CopyTo(destination);
+    }
+
+    /// <summary><see cref="MemWrite(long, byte[])"/> from a caller's buffer; see <see cref="MemReadInto"/>.</summary>
+    void MemWriteFrom(long address, ReadOnlySpan<byte> source) => MemWrite(address, source.ToArray());
+
     // ---- execution -------------------------------------------------------------------------
     /// <summary>
     /// Runs from <paramref name="startAddress"/> (bit 0 = Thumb) for at most

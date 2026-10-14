@@ -34,6 +34,48 @@ namespace WPR.Wp8Native
         private readonly Dictionary<string, DepthStencilState> _depths = new(StringComparer.Ordinal);
         private readonly Dictionary<string, RasterizerState> _rasters = new(StringComparer.Ordinal);
         private readonly Dictionary<string, SamplerState> _samplers = new(StringComparer.Ordinal);
+
+        // In front of the four caches above: the same state object's desc array arrives draw after
+        // draw, and hex-encoding it into a string key every time was a steady few MB/s of garbage.
+        // Keyed by the array's identity (arrays compare by reference, so the tuples do too; descs
+        // are never written after capture), and bounded.
+        private readonly Dictionary<(byte[] Desc, float A, float B, float C, float D), BlendState> _blendByRef = new();
+        private readonly Dictionary<(byte[] Desc, int Ref), DepthStencilState> _depthByRef = new();
+        private readonly Dictionary<byte[], RasterizerState> _rasterByRef = new(ReferenceEqualityComparer.Instance);
+        private readonly Dictionary<byte[], SamplerState> _samplerByRef = new(ReferenceEqualityComparer.Instance);
+
+        /// <summary>Stands for "no desc" (the Direct3D default) in the identity-keyed caches.</summary>
+        private static readonly byte[] NoDesc = [];
+
+        private static TValue Remember<TKey, TValue>(Dictionary<TKey, TValue> cache, TKey key, TValue value)
+            where TKey : notnull
+        {
+            if (cache.Count >= 4096)
+            {
+                cache.Clear();
+            }
+
+            cache[key] = value;
+            return value;
+        }
+
+        private BlendState BlendForCached(byte[]? desc, float[] factor)
+        {
+            var key = (desc ?? NoDesc, factor[0], factor[1], factor[2], factor[3]);
+            return _blendByRef.TryGetValue(key, out BlendState? state) ? state : Remember(_blendByRef, key, BlendFor(desc, factor));
+        }
+
+        private DepthStencilState DepthForCached(byte[]? desc, int stencilRef)
+        {
+            var key = (desc ?? NoDesc, stencilRef);
+            return _depthByRef.TryGetValue(key, out DepthStencilState? state) ? state : Remember(_depthByRef, key, DepthFor(desc, stencilRef));
+        }
+
+        private RasterizerState RasterForCached(byte[]? desc)
+            => _rasterByRef.TryGetValue(desc ?? NoDesc, out RasterizerState? state) ? state : Remember(_rasterByRef, desc ?? NoDesc, RasterFor(desc));
+
+        private SamplerState SamplerForCached(byte[]? desc)
+            => _samplerByRef.TryGetValue(desc ?? NoDesc, out SamplerState? state) ? state : Remember(_samplerByRef, desc ?? NoDesc, SamplerFor(desc));
         private readonly Dictionary<string, (VertexDeclaration Declaration, DynamicVertexBuffer? Buffer)> _vertexBuffers = new(StringComparer.Ordinal);
         private DynamicIndexBuffer? _indices16;
         private DynamicIndexBuffer? _indices32;
@@ -406,9 +448,9 @@ namespace WPR.Wp8Native
             SetConstants(effect, pixel, draw.PixelConstants);
 
             // Fixed-function state.
-            _device.BlendState = BlendFor(draw.Blend, draw.BlendFactor);
-            _device.DepthStencilState = draw.DepthTarget is null ? DepthStencilState.None : DepthFor(draw.DepthStencil, draw.StencilRef);
-            _device.RasterizerState = RasterFor(draw.Rasterizer);
+            _device.BlendState = BlendForCached(draw.Blend, draw.BlendFactor);
+            _device.DepthStencilState = draw.DepthTarget is null ? DepthStencilState.None : DepthForCached(draw.DepthStencil, draw.StencilRef);
+            _device.RasterizerState = RasterForCached(draw.Rasterizer);
             if (draw.Viewport is { } v)
             {
                 _device.Viewport = new Viewport((int)v[0], (int)v[1], Math.Max(1, (int)v[2]), Math.Max(1, (int)v[3]))
@@ -421,7 +463,7 @@ namespace WPR.Wp8Native
             foreach (Aon9SamplerMap map in pixel.Samplers)
             {
                 _device.Textures[map.Register] = draw.Textures.TryGetValue(map.Texture, out GpuTexture? texture) ? TextureFor(texture) : null;
-                _device.SamplerStates[map.Register] = SamplerFor(draw.Samplers.GetValueOrDefault(map.Sampler));
+                _device.SamplerStates[map.Register] = SamplerForCached(draw.Samplers.GetValueOrDefault(map.Sampler));
             }
 
             effect.CurrentTechnique.Passes[0].Apply();
@@ -508,7 +550,10 @@ namespace WPR.Wp8Native
         /// </remarks>
         private static float Ordered(float value) => float.IsNaN(value) ? -float.MaxValue : value;
 
-        private static void SetConstants(Effect effect, Aon9Shader shader, IReadOnlyDictionary<int, byte[]> buffers)
+        /// <summary>Register scratch by length: SetValue copies, so one array per size serves every draw.</summary>
+        private readonly Dictionary<int, Vector4[]> _registerScratch = new();
+
+        private void SetConstants(Effect effect, Aon9Shader shader, IReadOnlyDictionary<int, byte[]> buffers)
         {
             if (shader.ConstantRegisters == 0 || shader.ConstantArrays.Count == 0)
             {
@@ -517,7 +562,12 @@ namespace WPR.Wp8Native
 
             // Registers nothing maps stay zero: c0 of a vertex shader is the runtime's position
             // fix-up, which the host's rasteriser does not need.
-            Vector4[] registers = new Vector4[shader.ConstantRegisters];
+            if (!_registerScratch.TryGetValue(shader.ConstantRegisters, out Vector4[]? registers))
+            {
+                _registerScratch[shader.ConstantRegisters] = registers = new Vector4[shader.ConstantRegisters];
+            }
+
+            Array.Clear(registers);
             foreach (Aon9ConstantMap map in shader.ConstantMaps)
             {
                 if (!buffers.TryGetValue(map.Buffer, out byte[]? data))

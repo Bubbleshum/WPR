@@ -586,7 +586,81 @@ namespace WPR.Wp8Native
             return buffer;
         }
 
-        public uint ReadUInt32(long address) => BitConverter.ToUInt32(ReadMemory(address, 4));
+        /// <summary>
+        /// Reads guest memory into a caller's buffer, allocating nothing. Prefer this on any path
+        /// the guest can call per frame or per byte: an array per read was most of what a WP8
+        /// title allocated (Assassin's Creed Pirates: ~2.7 GB in 8 s of loading, all memcmp,
+        /// memcpy and strlen), which on a phone is hundreds of gen0 collections a second.
+        /// </summary>
+        public void ReadMemory(long address, Span<byte> destination) => _cpu.MemReadInto(address, destination);
+
+        /// <summary><see cref="WriteMemory(long, byte[])"/> from a caller's buffer, with the same trap-page guard.</summary>
+        public void WriteMemory(long address, ReadOnlySpan<byte> data)
+        {
+            NoteHostWrite(address, data.Length);
+            NoteOverflow(address, data.Length);
+
+            if (address < TrapBase + TrapSize && address + data.Length > TrapBase)
+            {
+                RejectedWrites.Add(
+                    $"refused a {data.Length}-byte write to 0x{address:X8} - that is the trap page" +
+                    (_lastTrap is null ? string.Empty : $" (during {_lastTrap})"));
+                return;
+            }
+
+            _cpu.MemWriteFrom(address, data);
+        }
+
+        /// <summary>
+        /// memmove within guest memory through a pooled buffer: overlapping ranges are copied in
+        /// the safe direction, a chunk at a time, and nothing is allocated.
+        /// </summary>
+        public void CopyMemory(long destination, long source, long count)
+        {
+            if (count <= 0 || destination == source)
+            {
+                return;
+            }
+
+            const int chunk = 64 * 1024;
+            byte[] buffer = System.Buffers.ArrayPool<byte>.Shared.Rent((int)Math.Min(chunk, count));
+            try
+            {
+                if (destination > source && destination < source + count)
+                {
+                    for (long done = count; done > 0;)
+                    {
+                        int step = (int)Math.Min(chunk, done);
+                        done -= step;
+                        Span<byte> span = buffer.AsSpan(0, step);
+                        ReadMemory(source + done, span);
+                        WriteMemory(destination + done, (ReadOnlySpan<byte>)span);
+                    }
+
+                    return;
+                }
+
+                for (long done = 0; done < count;)
+                {
+                    int step = (int)Math.Min(chunk, count - done);
+                    Span<byte> span = buffer.AsSpan(0, step);
+                    ReadMemory(source + done, span);
+                    WriteMemory(destination + done, (ReadOnlySpan<byte>)span);
+                    done += step;
+                }
+            }
+            finally
+            {
+                System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
+            }
+        }
+
+        public uint ReadUInt32(long address)
+        {
+            Span<byte> word = stackalloc byte[4];
+            _cpu.MemReadInto(address, word);
+            return BitConverter.ToUInt32(word);
+        }
 
         /// <summary>
         /// Reads a word, answering <paramref name="fallback"/> if the address is not mapped.
@@ -608,15 +682,25 @@ namespace WPR.Wp8Native
             }
         }
 
-        public void WriteUInt32(long address, uint value) => WriteMemory(address, BitConverter.GetBytes(value));
+        public void WriteUInt32(long address, uint value)
+        {
+            Span<byte> word = stackalloc byte[4];
+            BitConverter.TryWriteBytes(word, value);
+            WriteMemory(address, (ReadOnlySpan<byte>)word);
+        }
 
-        public void WriteUInt64(long address, ulong value) => WriteMemory(address, BitConverter.GetBytes(value));
+        public void WriteUInt64(long address, ulong value)
+        {
+            Span<byte> word = stackalloc byte[8];
+            BitConverter.TryWriteBytes(word, value);
+            WriteMemory(address, (ReadOnlySpan<byte>)word);
+        }
 
         /// <summary>Writes a WinRT <c>boolean</c>, which is one byte and not four.</summary>
         public void WriteBoolean(long address, bool value) => WriteMemory(address, [value ? (byte)1 : (byte)0]);
 
         /// <summary>Writes a 32-bit float, the element type of Rect, Point and Size.</summary>
-        public void WriteSingle(long address, float value) => WriteMemory(address, BitConverter.GetBytes(value));
+        public void WriteSingle(long address, float value) => WriteUInt32(address, BitConverter.SingleToUInt32Bits(value));
 
         /// <summary>Reads a null-terminated UTF-16 string, as every WinRT class name is.</summary>
         public string ReadUtf16String(long address, int maxChars = 256)
@@ -1394,6 +1478,16 @@ namespace WPR.Wp8Native
         /// <summary>Deferred callbacks queued and run, in order.</summary>
         public IReadOnlyList<string> DeferredLog => _deferredLog;
 
+        /// <summary>Bounded like the vtable call list: a running game queues work items all session.</summary>
+        private void LogDeferred(string line)
+        {
+            _deferredLog.Add(line);
+            if (_deferredLog.Count > 4096)
+            {
+                _deferredLog.RemoveRange(0, 2048);
+            }
+        }
+
         /// <summary>
         /// Queues emulated code to be called later rather than now.
         /// </summary>
@@ -1407,7 +1501,7 @@ namespace WPR.Wp8Native
         public void QueueDeferredCall(string name, long function, params long[] arguments)
         {
             _deferred.Enqueue((name, function, arguments));
-            _deferredLog.Add($"queued {name} at 0x{function:X8} ({_deferred.Count} pending)");
+            LogDeferred($"queued {name} at 0x{function:X8} ({_deferred.Count} pending)");
         }
 
         public int PendingDeferredCalls => _deferred.Count;
@@ -1441,7 +1535,7 @@ namespace WPR.Wp8Native
             }
 
             (string name, long function, long[] arguments) = _deferred.Dequeue();
-            _deferredLog.Add($"-> {name} at 0x{function:X8} (from a yield)");
+            LogDeferred($"-> {name} at 0x{function:X8} (from a yield)");
             Yields++;
             long importsBefore = CallOrderTotal;
             _insideDeferred = new List<string>();
@@ -1452,7 +1546,7 @@ namespace WPR.Wp8Native
             long resumeTrap = CallEmulated(name, function, arguments, onReturn: () =>
             {
                 _domain = null;
-                _deferredLog.Add(
+                LogDeferred(
                     $"   {name} returned 0x{_cpu.RegRead(Arm.UC_ARM_REG_R0):X8} " +
                     $"after {CallOrderTotal - importsBefore:N0} import call(s)" +
                     DescribeDeferredWork());
@@ -1480,7 +1574,7 @@ namespace WPR.Wp8Native
             }
 
             (string name, long function, long[] arguments) = _deferred.Dequeue();
-            _deferredLog.Add($"-> {name} at 0x{function:X8} (from a wait)");
+            LogDeferred($"-> {name} at 0x{function:X8} (from a wait)");
             Yields++;
             long importsBefore = CallOrderTotal;
             _insideDeferred = new List<string>();
@@ -1489,7 +1583,7 @@ namespace WPR.Wp8Native
             long resumeTrap = CallEmulated(name, function, arguments, onReturn: () =>
             {
                 _domain = null;
-                _deferredLog.Add(
+                LogDeferred(
                     $"   {name} returned 0x{_cpu.RegRead(Arm.UC_ARM_REG_R0):X8} " +
                     $"after {CallOrderTotal - importsBefore:N0} import call(s)" +
                     DescribeDeferredWork());
@@ -1518,7 +1612,7 @@ namespace WPR.Wp8Native
             }
 
             (string name, long function, long[] arguments) = _deferred.Dequeue();
-            _deferredLog.Add($"-> {name} at 0x{function:X8}");
+            LogDeferred($"-> {name} at 0x{function:X8}");
             long importsBefore = CallOrderTotal;
             _insideDeferred = new List<string>();
 
@@ -1534,7 +1628,7 @@ namespace WPR.Wp8Native
                 // that comes back S_OK having made fifty calls did nothing; the same line
                 // showing a hundred thousand is a loader that ran. Nothing else here can tell
                 // those apart, and they look identical in the log.
-                _deferredLog.Add(
+                LogDeferred(
                     $"   {name} returned 0x{_cpu.RegRead(Arm.UC_ARM_REG_R0):X8} " +
                     $"after {CallOrderTotal - importsBefore:N0} import call(s)" +
                     DescribeDeferredWork());
@@ -1724,7 +1818,13 @@ namespace WPR.Wp8Native
             {
                 case TrapKind.Import:
                     CallOrderTotal++;
-                    _insideDeferred?.Add(slot.Name);
+                    // Only named when there are few (DescribeDeferredWork prints up to 90), so
+                    // stop at 91. A callback that never returns - a worker loop - otherwise grew
+                    // this by every import it made, for ever: AC Pirates had a 4M-entry list.
+                    if (_insideDeferred is { Count: <= 90 })
+                    {
+                        _insideDeferred.Add(slot.Name);
+                    }
                     if (_captures.Count > 0)
                     {
                         _captures.Peek().Add(slot.Name);
@@ -2167,7 +2267,7 @@ namespace WPR.Wp8Native
                         _threadDeaths.Add(
                             $"{_domain.Name} called through a null pointer at 0x{from:X8}" +
                             Newline + "                " + registers);
-                        _deferredLog.Add($"   {_domain.Name} DIED at 0x{from:X8} - abandoned");
+                        LogDeferred($"   {_domain.Name} DIED at 0x{from:X8} - abandoned");
                         _abandoned = _domain;
                         _domain = null;
                     }

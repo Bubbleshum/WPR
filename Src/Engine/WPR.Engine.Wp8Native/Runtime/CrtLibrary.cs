@@ -48,7 +48,7 @@ namespace WPR.Wp8Native
             handlers["_ismbblead"] = () => _frame.Return(0);
 
             // --- comparison ---
-            handlers["strcmp"] = () => _frame.Return(Compare(Read(0), Read(1)));
+            handlers["strcmp"] = () => _frame.Return(CompareInPlace(_frame.Arg(0), _frame.Arg(1)));
             handlers["strcoll"] = () => _frame.Return(Compare(Read(0), Read(1)));
             handlers["strncmp"] = () => _frame.Return(CompareBounded());
             handlers["wcscmp"] = () => _frame.Return(
@@ -478,6 +478,45 @@ namespace WPR.Wp8Native
             };
 
         private string Read(int argumentIndex) => _frame.ReadNarrowString(_frame.Arg(argumentIndex));
+
+        /// <summary>
+        /// strcmp without making strings: both sides a chunk at a time (the same 128-byte reads
+        /// and 64 KB cap as <see cref="CallFrame.ReadNarrowString"/>), stopping at the first
+        /// difference or terminator. Assassin's Creed Pirates calls strcmp ~100,000 times a
+        /// second while loading; two strings per call was its largest remaining allocation.
+        /// </summary>
+        private int CompareInPlace(long left, long right)
+        {
+            if (left == 0 || right == 0)
+            {
+                // ReadNarrowString reads a null pointer as the empty string.
+                return left == right ? 0 : Compare(Read(0), Read(1));
+            }
+
+            const int chunk = 128;
+            Span<byte> a = stackalloc byte[chunk];
+            Span<byte> b = stackalloc byte[chunk];
+            for (int done = 0; done < 64 * 1024; done += chunk)
+            {
+                _emulator.ReadMemory(left + done, a);
+                _emulator.ReadMemory(right + done, b);
+                for (int i = 0; i < chunk; i++)
+                {
+                    if (a[i] != b[i])
+                    {
+                        // Latin-1 ordinal order is byte order; a terminator sorts first.
+                        return a[i] < b[i] ? -1 : 1;
+                    }
+
+                    if (a[i] == 0)
+                    {
+                        return 0;
+                    }
+                }
+            }
+
+            return 0;
+        }
 
         private static string Truncate(string text, int max)
             => max <= 0 ? string.Empty : text.Length <= max ? text : text[..max];
