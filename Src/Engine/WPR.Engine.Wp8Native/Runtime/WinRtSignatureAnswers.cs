@@ -34,6 +34,16 @@ namespace WPR.Wp8Native
         /// </summary>
         public IReadOnlyDictionary<string, int> DefaultedSlots => _defaultedSlots;
 
+        private readonly Dictionary<string, int> _guessedSlots = new(StringComparer.Ordinal);
+
+        /// <summary>
+        /// Members of a stand-in class the metadata does not describe, answered by the out-parameter
+        /// heuristics in <c>CreateDiscoveryObject</c> (which register looks like a stack pointer).
+        /// The last shape-guessing in the runtime (Plans/RUNTIME-CONVERGENCE.md, 1e); counted so it
+        /// reaches the <c>summary:</c> line, where an empty list means none of it ran.
+        /// </summary>
+        public IReadOnlyDictionary<string, int> GuessedSlots => _guessedSlots;
+
         /// <summary>The first member whose signature could not be answered, which stopped the guest.</summary>
         public string? FirstUnanswerableSlot { get; private set; }
 

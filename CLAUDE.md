@@ -727,6 +727,32 @@ no XNA reference (and with the GPL Unicorn CPU, which is why it never ships). XN
 in the project root beside `Wp8NativeGame.cs`. Contract tests: `dotnet run --project
 Tools/Wp8/Wp8ContractTests`.
 
+### An unimplemented C++ constructor is a defaulted import, not a shaped object (2026-10-14)
+
+`ConstructShapedObject` and `LooksLikeVtable` are gone (Plans/RUNTIME-CONVERGENCE.md 1e). They
+served one path: an imported `??0…` (an MSVC constructor from MSVCR110/MSVCP110/vccorlib/ConcRT)
+with no handler, where they wrote a synthetic trap vtable into the object unless a memory probe
+decided its first word was already a vptr. **It was never on the WinRT activation path**, and
+those C++ classes have no `.winmd`, so 1d's generated interface table could not have replaced it.
+Measured instead: zero calls across all 11 in-scope titles on D3D11 and Vulkan, and all 322 system
+`??0` imports they make have handlers (the `C++ constructors` contract suite re-checks that against
+whatever is installed).
+
+Now `HostStubs.IsCxxConstructor` routes one to the ordinary default: it returns **`this`** (callers
+use the constructor's return value, so 0 would be a null object), leaves the object untouched, is
+counted in `DefaultedCalls` (so it is in the `summary:` line's `defaulted=[…]` and the hub report)
+and traps under `WPR_WP8_TRAP_IMPORTS=1`. The old stand-in did neither of the last two. **If one
+shows up, implement it** — do not bring a guessed vtable back.
+
+The remaining shape-guessing is the WinRT stand-in for an unknown class (`CreateDiscoveryObject`):
+members 1d's metadata does not describe are answered by out-parameter heuristics. Those calls are
+now counted as `guessedslots=[…]` on the `summary:` line.
+
+**Harness trap:** `gamerun`'s `WPR_DATA_ROOT` only moves where `config.json` is read from. If the
+copied `config.json` still carries `DataStorePath` pointing at `%LOCALAPPDATA%\WPR`, the game runs
+from the real installs and writes the **real** isolated store (whose saves the scripts did not move
+aside, because they moved the scratch root's). Rewrite `DataStorePath` in the scratch copy first.
+
 ### WP8 media: byte streams, property stores, and decoding through the platform (2026-10-11)
 
 The WP8 runtime's Media Foundation (`Src/Engine/WPR.Engine.Wp8Native/Runtime/Media*.cs`) gained three things:

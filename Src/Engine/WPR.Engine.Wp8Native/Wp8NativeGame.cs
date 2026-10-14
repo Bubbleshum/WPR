@@ -304,7 +304,8 @@ namespace WPR.Wp8Native
                 $"allowed=[{string.Join(", ", stubs.AllowedDefaults.Select(p => $"{p.Key} x{p.Value}"))}] " +
                 $"raised=[{string.Join("; ", stubs.RaiseLog)}] " +
                 $"slottrap={_emulator!.WinRt.FirstUnanswerableSlot ?? "none"} " +
-                $"defaultedslots=[{string.Join(", ", _emulator.WinRt.DefaultedSlots.Select(p => $"{p.Key} x{p.Value}"))}]");
+                $"defaultedslots=[{string.Join(", ", _emulator.WinRt.DefaultedSlots.Select(p => $"{p.Key} x{p.Value}"))}] " +
+                $"guessedslots=[{string.Join(", ", _emulator.WinRt.GuessedSlots.Select(p => $"{p.Key} x{p.Value}"))}]");
         }
 
         /// <summary>

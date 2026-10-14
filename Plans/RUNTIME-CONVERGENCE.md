@@ -1,7 +1,7 @@
 # Runtime convergence: one stub policy, one renderer, one input path
 
-**Status (2026-10-12):** Track 1 done (1a-1f; 1e's removal of `ConstructShapedObject` still waits on
-activation through generated class info). 2a, 2c, 3a, 3c, 3d, 3e done; Track 4 spike done (Spark2 go,
+**Status (2026-10-12):** Track 1 done (1a-1f; 1e finished 2026-10-14: `ConstructShapedObject` and
+`LooksLikeVtable` are gone, see 1e). 2a, 2c, 3a, 3c, 3d, 3e done; Track 4 spike done (Spark2 go,
 Unity no-go). WP8 native now has one render path: every title replays on the GPU (the per-title allow-list is
 gone; `WPR_WP8_GPU=0` keeps the 2D draw list as a diagnostic). Track 5 done. 2b done (2026-10-13: one Silverlight host, the Avalonia one deleted). 3b done (2026-10-14, measured on the S24, scoped to WP8; see 3b). The plan's tracks are all done.
 **Written against:** `f58fa86`.
@@ -234,6 +234,66 @@ first-chance exception and expensive).
 - **After 1d:** when activation goes through generated class info, the stub knows the object's
   layout and `ConstructShapedObject` has nothing left to do. Remove it then, not before; titles
   may currently depend on it.
+
+> **Done 2026-10-14, and the premise turned out not to apply.** `ConstructShapedObject` was never
+> on the activation path. Its only caller was `HostStubs.Dispatch`, for an imported `??0…` (an MSVC
+> C++ constructor) with no handler — classes from `MSVCR110`/`MSVCP110`/`vccorlib110`/ConcRT.
+> WinRT activation (`GetActivationFactory` → `CreateDiscoveryObject`) never reached it, and no
+> `.winmd` describes those C++ classes, so 1d's generated interface table has nothing to build
+> their vtables from. What decided it was measurement:
+>
+> - **Run:** a counter on every call, in the `summary:` line, over all 11 in-scope titles on D3D11
+>   and on Vulkan (32 s each, clean saves): **zero calls on every title, both drivers.** Nothing
+>   depended on it.
+> - **Static:** the 322 `??0` imports those titles make from system DLLs (imports bound to a DLL in
+>   the package, AC Pirates' `SparkSystem`/`OMath`/… constructors, never reach the host) all have
+>   handlers. `Wp8ContractTests`' `C++ constructors` suite checks that on every run.
+>
+> **What replaced it:** nothing shape-based. An unimplemented constructor is an ordinary defaulted
+> import (`HostStubs.IsCxxConstructor`): it returns `this` (the one part of the old stub that is
+> the contract — callers use the constructor's return value), leaves the object untouched, is
+> counted in `DefaultedCalls` and so reaches the `summary:` line's `defaulted=[…]` and the hub
+> crash report, and traps under `WPR_WP8_TRAP_IMPORTS=1`. That closes the "shaped constructors are
+> still silent" gap from 1b. The fix for one that shows up is to implement it.
+> `ArmEmulator.CreateShapedObject`/`CreateShapedVtable`/`ShapedObjectCalls` had no other caller and
+> went with it.
+>
+> **Not touched, and not this item:** the WinRT stand-in for an unknown *class*
+> (`CreateDiscoveryObject`), whose members are answered from 1d's metadata where it covers them
+> (`defaultedslots=[…]`) and by out-parameter heuristics (`IsStackAddress`) where it does not.
+> That is the remaining shape-guessing in the runtime. It was recorded only in `UnimplementedCalls`
+> and the probe report; it is now also counted per member as `guessedslots=[…]` on the `summary:`
+> line (`WinRtRuntime.GuessedSlots`), so it reaches the hub report like the other defaults.
+> Measured (D3D11, 30 s): empty on 8 titles; Star Wars `IAsyncOperation<LoadListingInformationAsync>::slot10 x1`;
+> MC4 `IGPLib.IGPControl::slot6`/`slot8` (its own component, no system metadata); MONOPOLY
+> `Windows.System.Display.DisplayRequest::slot6` and `Windows.UI.ViewManagement.InputPane::slot6`.
+> The last two are the next 1d gap: a stand-in factory is named after the *class*, so slot 6
+> (`IActivationFactory::ActivateInstance` or the statics interface's first member) never finds an
+> interface in the generated table. Implementing those two classes, or resolving a class's
+> factory/statics interfaces from the metadata, would empty it.
+>
+> Before/after, desktop, 32 s per title from clean saves (a scratch data root), frames presented.
+> Screenshots at 18 s and 30 s showed the same screen in all four cells for every title (Star
+> Wars' daily reward is random; AC Pirates is mid intro movie, which runs on the wall clock).
+> `defaulted=[]` on all 44 runs; `defaultedslots=` identical before and after
+> (`IDisplayPropertiesStatics::put_AutoRotationPreferences x1` on the eight Rovio exes, empty on
+> Alex, MC4 and AC Pirates); GPU warnings only AC Pirates' two pre-existing ones, on all four.
+> A `*` is a run with `lifecycle: suspended` (the harness window lost focus and the guest
+> paused), which is what every low count here is.
+>
+> | title | D3D11 before | D3D11 after | Vulkan before | Vulkan after |
+> | --- | ---: | ---: | ---: | ---: |
+> | Amazing Alex | 1725* | 1695 | 1673 | 1587 |
+> | Angry Birds | 1662 | 1478* | 1620 | 1609 |
+> | Angry Birds Rio | 844* | 1728 | 1671 | 1662 |
+> | Angry Birds Seasons | 1619 | 1613 | 1534 | 571* |
+> | Angry Birds Space | 846* | 583* | 1658 | 1603 |
+> | Angry Birds Star Wars | 1724 | 1711 | 1664 | 1660 |
+> | Angry Birds Star Wars II | 1648 | 916* | 1586 | 1567 |
+> | Modern Combat 4 | 1511* | 1431 | 1450* | 1438 |
+> | MONOPOLY Millionaire | 1662 | 1661 | 821* | 1589 |
+> | Angry Birds Stella | 1697 | 1672 | 1587 | 1620 |
+> | AC Pirates | 1217* | 1189* | 1108 | 1154 |
 
 ### 1f. Host noise worth clearing
 
