@@ -166,6 +166,22 @@ public sealed class WinRtClassesSuite : IContractSuite
         byte[] onDisk = File.ReadAllBytes(Path.Combine(h.Sandbox, "save.txt"));
         Check("the stream wrote the host file", onDisk.Take(7).SequenceEqual(new byte[] { 1, 2, 3, 4, (byte)'a', (byte)'b', (byte)'c' }), BitConverter.ToString(onDisk.Take(8).ToArray()));
 
+        // ---- a transacted write: nothing reaches the file until CommitAsync ----
+        long tx = Results(Call(created, "Windows.Storage.IStorageFile", "OpenTransactedWriteAsync"));
+        Check("OpenTransactedWriteAsync gives a StorageStreamTransaction", tx != 0);
+        long txStream = Get(tx, "Windows.Storage.IStorageStreamTransaction", "get_Stream");
+        long txSize = txStream == 0 ? -1 : Get(txStream, "Windows.Storage.Streams.IRandomAccessStream", "get_Size");
+        Check("its Stream holds the file's current contents", txSize == new FileInfo(Path.Combine(h.Sandbox, "save.txt")).Length, $"stream 0x{txStream:X} size {txSize}");
+        long txWriter = Ret(writerFactory, Slot("Windows.Storage.Streams.IDataWriterFactory", "CreateDataWriter"), QI(txStream, "Windows.Storage.Streams.IOutputStream"));
+        Invoke(txWriter, Slot("Windows.Storage.Streams.IDataWriter", "WriteUInt32"), 0x0D0C0B0A);
+        U32At(Call(txWriter, "Windows.Storage.Streams.IDataWriter", "StoreAsync"));
+        Check("a transacted write does not reach the file before CommitAsync", File.ReadAllBytes(Path.Combine(h.Sandbox, "save.txt")).Take(4).SequenceEqual(new byte[] { 1, 2, 3, 4 }));
+        Check("CommitAsync completes", Status(Call(tx, "Windows.Storage.IStorageStreamTransaction", "CommitAsync")) == 1);
+        Check("and then the file holds the new bytes and the untouched rest",
+            File.ReadAllBytes(Path.Combine(h.Sandbox, "save.txt")).Take(7).SequenceEqual(new byte[] { 0x0A, 0x0B, 0x0C, 0x0D, (byte)'a', (byte)'b', (byte)'c' }));
+        Invoke(QI(tx, "Windows.Foundation.IClosable"), 6);
+        Check("CommitAsync after Close fails RO_E_CLOSED", Status(Call(tx, "Windows.Storage.IStorageStreamTransaction", "CommitAsync")) == 3);
+
         long plain = Ret(Factory("Windows.Storage.Streams.DataWriter", new Guid("00000035-0000-0000-c000-000000000046")), 6);
         h.SetD64(0, 1.5);
         Invoke(plain, Slot("Windows.Storage.Streams.IDataWriter", "WriteDouble"));
