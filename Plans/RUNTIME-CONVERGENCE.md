@@ -325,6 +325,14 @@ remove; events go out at the next `ProcessEvents` or XAML frame with a `KeyEvent
 `TextInputEXT` characters. Contract tests: `Suites/KeyboardSuite.cs`. Not modelled: `KeyDown`
 auto-repeat.
 
+**Auto-repeat done 2026-10-14.** The last key pressed repeats `KeyDown` (`WasKeyDown` true) after
+`KeyRepeatDelay`, every `KeyRepeatInterval`; repeats due between two frames are coalesced into one
+event's `RepeatCount`. Another key takes the repeat over, and releasing the repeating key ends it.
+`Wp8NativeGame` sets the Windows keyboard settings (else 500 ms / 33 ms) and calls
+`PumpKeyRepeat()` once a frame. `CharacterReceived` repeats come from SDL's text input; one that
+arrives once the key has been held half the delay is marked `WasKeyDown`. 19 new checks in
+`KeyboardSuite`.
+
 ### Not merged, on purpose
 
 - `Src/Engine/WPR.Engine.Wp8Native/Runtime/Direct3DRuntime.cs` translates guest D3D11 into XNA draws. It is a
@@ -411,6 +419,19 @@ same `Game.Activated` / `Deactivated` the WP7 path turns into `PhoneApplicationS
 deferral (held until `Complete()` or a 5 s deadline); `OnActivated` raises `Resuming`,
 `VisibilityChanged(true)`, `Activated(CodeActivated)`. Delivered on the guest's thread at its next
 `ProcessEvents` or XAML frame. Not done: a XAML shell's page-level `Application_Deactivated` steps.
+
+**XAML shell half done 2026-10-14.** On WP8 the Silverlight page ran `Application_Deactivated` /
+`OnNavigatedFrom`, and the `DrawingSurfaceBackgroundGrid` disconnected the content provider and
+stopped drawing; on a fast resume `Application_Activated` / `OnNavigatedTo` ran and the grid called
+`Connect` again (new device) before drawing. `XamlShell.Deactivated` / `Activated` now hold each
+title's calls (from its decompiled App/MainPage: Alex `FusionMain.Deactivate`/`Activate`, MC4
+`SetFullVersion(true, false)` on activation, AC Pirates none), and `DeliverLifecycle` raises, leaving:
+`Activated(Deactivated)`, `VisibilityChanged(false)`, the shell's calls, `Disconnect`, `Suspending`;
+coming back: `Resuming`, `VisibilityChanged(true)`, the shell's calls, `Connect` (same device),
+`Activated(CodeActivated)`. While disconnected nothing is drawn and the loop is paced by the host
+(`IdleTurn`). Measured on D1 with a deactivate/activate script: Alex, MC4 and AC Pirates disconnect,
+reconnect and draw at 60 fps again, and Alex's Play button works after the return. 19 new checks in
+`HostWiringSuite`. Not raised: `Obscured`/`Unobscured` (lock screen), which is where MC4 pauses.
 
 ### 3d. Vibration and launchers
 
