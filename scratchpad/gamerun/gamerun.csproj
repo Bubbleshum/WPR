@@ -10,6 +10,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\..\Src\Platforms\WPR.Platform.Windows\Audio\FFmpegAudioDecoder.cs" Link="FFmpegAudioDecoder.cs" />
+    <Compile Include="..\..\Src\Platforms\WPR.Platform.Windows\Audio\FFmpegVideoDecoder.cs" Link="FFmpegVideoDecoder.cs" />
     <ProjectReference Include="..\..\Src\Backends\WPR.Backend.FNA\WPR.Backend.FNA.csproj" />
     <ProjectReference Include="..\..\Src\Core\WPR.Database\WPR.Database.csproj" />
     <!-- Mirror the WCF packages the two real heads carry. The Default ALC binds from THIS exe's

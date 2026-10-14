@@ -88,6 +88,7 @@ namespace GameRun
             {
                 WPR.Engine.Audio.AudioDecoderBackend.SetDecoder(new WPR.Platform.Windows.Audio.FFmpegAudioDecoder(ffmpeg));
                 Console.Error.WriteLine("[gamerun] audio decoder: " + ffmpeg);
+                WPR.Engine.Audio.VideoDecoderBackend.SetDecoder(new WPR.Platform.Windows.Audio.FFmpegVideoDecoder(ffmpeg));
             }
 
             var host = new FnaGameHost(app);

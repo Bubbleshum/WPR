@@ -832,6 +832,7 @@ namespace WPR.Wp8Native
 
             FrameCapture.Resource resource = new() { Name = created.Name };
             _resources[pointer] = resource;
+            RecordResourceDesc(pointer, kind, Arg(1));
 
             if (kind == "Texture2D")
             {
@@ -989,6 +990,97 @@ namespace WPR.Wp8Native
             }
         }
 
+        /// <summary>CopyResource on the resources' memory: row by row for textures, bytes for buffers.</summary>
+        private void CopyResourceMemory(FrameCapture.Resource destination, FrameCapture.Resource source)
+        {
+            if (destination.Rows > 0 && source.Rows > 0)
+            {
+                int rows = Math.Min(destination.Rows, source.Rows);
+                int bytes = Math.Min(destination.RowPitch, source.RowPitch);
+                for (int y = 0; y < rows; y++)
+                {
+                    _emulator.WriteMemory(destination.Storage + ((long)y * destination.RowPitch), _emulator.ReadMemory(source.Storage + ((long)y * source.RowPitch), bytes));
+                }
+            }
+            else
+            {
+                int bytes = (int)Math.Min(destination.StorageSize, source.StorageSize);
+                if (bytes > 0)
+                {
+                    _emulator.WriteMemory(destination.Storage, _emulator.ReadMemory(source.Storage, bytes));
+                }
+            }
+
+            destination.HasContent |= source.HasContent || source.Rows > 0;
+            destination.Version++;
+        }
+
+        /// <summary>
+        /// CopySubresourceRegion on the resources' memory: the source box (all of the source when
+        /// null) to (x, y) in the destination, in 4x4 blocks for a block-compressed pair; a buffer's
+        /// box and x are byte offsets.
+        /// </summary>
+        private void CopyRegionMemory(FrameCapture.Resource destination, int x, int y, FrameCapture.Resource source, long box)
+        {
+            if (destination.Rows <= 0 || source.Rows <= 0)
+            {
+                // Buffers.
+                int left = box != 0 ? (int)_emulator.ReadUInt32(box + 0, 0) : 0;
+                int right = box != 0 ? (int)_emulator.ReadUInt32(box + 12, 0) : (int)source.StorageSize;
+                int count = (int)Math.Min(right - left, destination.StorageSize - x);
+                if (left >= 0 && x >= 0 && count > 0 && right <= source.StorageSize)
+                {
+                    _emulator.WriteMemory(destination.Storage + x, _emulator.ReadMemory(source.Storage + left, count));
+                    destination.HasContent = true;
+                    destination.Version++;
+                }
+
+                return;
+            }
+
+            if (destination.BlockBytes != source.BlockBytes || destination.PixelBytes != source.PixelBytes)
+            {
+                return;   // a format pair D3D11 only copies between when it reinterprets; not kept here
+            }
+
+            int sl = 0, st = 0, sr = source.PixelWidth, sb = source.PixelHeight;
+            if (box != 0)
+            {
+                sl = (int)_emulator.ReadUInt32(box + 0, 0);
+                st = (int)_emulator.ReadUInt32(box + 4, 0);
+                sr = (int)_emulator.ReadUInt32(box + 12, 0);
+                sb = (int)_emulator.ReadUInt32(box + 16, 0);
+            }
+
+            int unit = 1, unitBytes = Math.Max(1, destination.PixelBytes);
+            if (destination.BlockBytes > 0)
+            {
+                unit = 4;
+                unitBytes = destination.BlockBytes;
+            }
+
+            int sx0 = sl / unit, sy0 = st / unit, sx1 = (sr + unit - 1) / unit, sy1 = (sb + unit - 1) / unit;
+            int dx0 = x / unit, dy0 = y / unit;
+            int sourceUnits = source.RowPitch / unitBytes, destinationUnits = destination.RowPitch / unitBytes;
+            sx1 = Math.Min(sx1, sourceUnits);
+            sy1 = Math.Min(sy1, source.Rows);
+            int width = Math.Min(sx1 - sx0, destinationUnits - dx0);
+            int height = Math.Min(sy1 - sy0, destination.Rows - dy0);
+            if (sx0 < 0 || sy0 < 0 || dx0 < 0 || dy0 < 0 || width <= 0 || height <= 0)
+            {
+                return;
+            }
+
+            for (int row = 0; row < height; row++)
+            {
+                byte[] bytes = _emulator.ReadMemory(source.Storage + ((long)(sy0 + row) * source.RowPitch) + ((long)sx0 * unitBytes), width * unitBytes);
+                _emulator.WriteMemory(destination.Storage + ((long)(dy0 + row) * destination.RowPitch) + ((long)dx0 * unitBytes), bytes);
+            }
+
+            destination.HasContent = true;
+            destination.Version++;
+        }
+
         /// <summary>
         /// UpdateSubresource with a D3D11_BOX (left, top, front, right, bottom, back, in texels):
         /// the source rows land inside that rectangle of level 0, not at its origin. A texture
@@ -1129,9 +1221,41 @@ namespace WPR.Wp8Native
             }),
         };
 
+        /// <summary>
+        /// Each created resource's D3D11_RESOURCE_DIMENSION and the description it was created
+        /// with, which GetType and GetDesc hand back. Anything not here (the swap chain's back
+        /// buffer) answers as the back buffer.
+        /// </summary>
+        private readonly Dictionary<long, (int Dimension, byte[] Desc)> _resourceDescs = new();
+
+        private void RecordResourceDesc(long pointer, string kind, long desc)
+        {
+            (int dimension, int bytes) = kind switch
+            {
+                "Buffer" => (1, 24),      // D3D11_BUFFER_DESC
+                "Texture3D" => (4, 36),   // D3D11_TEXTURE3D_DESC
+                _ => (3, 44),             // D3D11_TEXTURE2D_DESC
+            };
+
+            if (desc != 0)
+            {
+                _resourceDescs[pointer] = (dimension, _emulator.ReadMemory(desc, bytes));
+            }
+        }
+
         private Dictionary<int, (string, Action)> ResourceMethods() => new()
         {
-            [7] = ("GetType", () => Return(3)), // D3D11_RESOURCE_DIMENSION_TEXTURE2D
+            // void GetType(D3D11_RESOURCE_DIMENSION*)
+            [7] = ("GetType", () =>
+            {
+                int dimension = _resourceDescs.TryGetValue(Arg(0), out var known) ? known.Dimension : 3;
+                if (Arg(1) != 0)
+                {
+                    _emulator.WriteUInt32(Arg(1), (uint)dimension);
+                }
+
+                Return(dimension);
+            }),
             [10] = ("GetDesc", () =>
             {
                 // D3D11_TEXTURE2D_DESC: Width, Height, MipLevels, ArraySize, Format,
@@ -1139,6 +1263,16 @@ namespace WPR.Wp8Native
                 long desc = Arg(1);
                 if (desc == 0)
                 {
+                    return;
+                }
+
+                // The description the resource was created with. Every texture used to answer
+                // with the back buffer's: Scaleform (Halo: Spartan Assault) sizes the staging
+                // copy of each texture it uploads from GetDesc, so a 680x68 BC3 texture got a
+                // 480x800 BGRA staging twin and the upload never matched.
+                if (_resourceDescs.TryGetValue(Arg(0), out var created))
+                {
+                    _emulator.WriteMemory(desc, created.Desc);
                     return;
                 }
 
@@ -1570,6 +1704,32 @@ namespace WPR.Wp8Native
                     {
                         Note(described);
                     }
+                }
+
+                Return(HResultOk);
+            }),
+            // void CopyResource(pDstResource, pSrcResource): the whole contents, same size and
+            // format. Done here on the resources' memory, so a texture filled through a staging
+            // copy (Map the staging texture, write, CopyResource) has its pixels where a draw reads
+            // them. The GPU replay additionally copies between render targets (Direct3DGpu).
+            [47] = ("CopyResource", () =>
+            {
+                if (ResourceAt(Arg(1)) is { Storage: not 0 } destination && ResourceAt(Arg(2)) is { Storage: not 0 } source && destination != source)
+                {
+                    CopyResourceMemory(destination, source);
+                }
+
+                Return(HResultOk);
+            }),
+
+            // void CopySubresourceRegion(pDst, DstSubresource, DstX, DstY, DstZ, pSrc,
+            // SrcSubresource, const D3D11_BOX* pSrcBox): level 0 to level 0, as everything here keeps.
+            [46] = ("CopySubresourceRegion", () =>
+            {
+                if (Arg(2) == 0 && Arg(7) == 0 &&
+                    ResourceAt(Arg(1)) is { Storage: not 0 } destination && ResourceAt(Arg(6)) is { Storage: not 0 } source && destination != source)
+                {
+                    CopyRegionMemory(destination, (int)Arg(3), (int)Arg(4), source, Arg(8));
                 }
 
                 Return(HResultOk);

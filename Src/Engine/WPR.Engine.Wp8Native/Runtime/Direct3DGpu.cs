@@ -157,9 +157,14 @@ namespace WPR.Wp8Native
             // CopyResource(dst, src), and CopySubresourceRegion(dst, dstSub, x, y, z, src, srcSub, box)
             // when it copies a whole surface to the origin. Spark2 (Assassin's Creed Pirates) renders
             // on a device of its own and its Draw copies that shared texture into the host's target.
+            // Only a source the GPU drew into is a GPU copy. One filled from the CPU (a staging
+            // texture, Mapped and written - Scaleform's upload path) is copied in memory by the
+            // context itself; turning both ends into render targets here made the destination an
+            // empty target that every later draw sampled instead of its pixels.
             void Copy(long destination, long source, int x = 0, int y = 0, int[]? box = null)
             {
-                if (GpuCapture && TargetOfResource(destination) is { } to && TargetOfResource(source) is { } from && to.Key != from.Key)
+                bool drawnSource = source == _backBufferPointer || (ResourceAt(source) is { Storage: not 0 } s && _renderTargetKeys.Contains(s.Storage));
+                if (GpuCapture && drawnSource && TargetOfResource(destination) is { } to && TargetOfResource(source) is { } from && to.Key != from.Key)
                 {
                     _gpuCommands.Add(new GpuCopy(to, from, x, y, box));
                 }
