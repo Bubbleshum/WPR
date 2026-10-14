@@ -349,9 +349,12 @@ namespace WPR
             _crashReportedThisRun = false;
 
             // What the game carries on past (unknown types it catches, exceptions out of every
-            // frame, unsupported Silverlight features), sent as ONE report when the run ends.
+            // frame, unsupported Silverlight features), sent as one crash-kind report per distinct
+            // problem when the run ends. Each new problem is also written to
+            // CompatibilityProblems.RunFilePath as it is met, so a native crash that kills this
+            // process does not lose the list (the launcher, or the next start, reports it).
             CompatibilityProblems.InstallFirstChanceObserver();
-            CompatibilityProblems.Begin();
+            CompatibilityProblems.Begin(RunIdentityOf(app));
             _runClock = Stopwatch.StartNew();
             bool endedNormally = false;
 
@@ -385,8 +388,9 @@ namespace WPR
         private static Stopwatch _runClock = new Stopwatch();
 
         /// <summary>
-        /// Ends collection for the run and queues its compatibility report, if it met anything and
-        /// did not already send a crash report carrying the same list. Never throws.
+        /// Ends collection for the run and queues its per-problem compatibility reports, unless a
+        /// crash report already did (<see cref="QueueProblemsBeside"/>). Then drops the run's persisted
+        /// list: it has been handed over. Never throws.
         /// </summary>
         private static void ReportCompatibilityProblems(Application app, string outcome, TimeSpan ran)
         {
@@ -403,16 +407,18 @@ namespace WPR
 
                 if (_crashReportedThisRun || OnlineBackend.Crashes is not { } reporter) return;
 
-                CrashReport? report = CompatibilityProblems.BuildReport(problems, dropped, outcome, ran);
-                if (report == null) return;
-                FillTitle(report, app);
-                reporter.Report(report);
-                XnaBackendLog($"[wpr-compat] {problems.Count} compatibility problem(s) queued for WPR Hub: "
+                int queued = CompatibilityProblems.ReportProblems(reporter, problems, dropped, outcome, ran,
+                    r => FillTitle(r, app), excludeKey: null);
+                XnaBackendLog($"[wpr-compat] {problems.Count} compatibility problem(s), {queued} report(s) queued for WPR Hub: "
                     + CompatibilityProblems.Headline(problems, dropped));
             }
             catch (Exception ex)
             {
                 TeardownLog("compatibility report could not be queued: " + ex.Message);
+            }
+            finally
+            {
+                CompatibilityProblems.DiscardRunFile();
             }
         }
 
@@ -422,11 +428,66 @@ namespace WPR
             try
             {
                 IReadOnlyList<CompatibilityProblem> problems = CompatibilityProblems.Snapshot();
-                CompatibilityProblems.AttachTo(report, problems, CompatibilityProblems.Dropped, outcome, _runClock.Elapsed);
+                int dropped = CompatibilityProblems.Dropped;
+                CompatibilityProblems.AttachTo(report, problems, dropped, outcome, _runClock.Elapsed);
             }
             catch (Exception)
             {
                 // The crash report matters more than the list.
+            }
+        }
+
+        /// <summary>
+        /// After a crash report is queued: the per-problem reports too, all but the one that IS the
+        /// crash (<paramref name="crash"/>'s own key). Each problem is its own hub group, so sending
+        /// them does not count the crash twice, and a title that crashes still counts towards
+        /// "RichTextBox is missing". Done at crash time rather than at the end of the run because an
+        /// unhandled exception on a worker thread kills the process before the run's finally
+        /// blocks. The persisted list is dropped afterwards: it has been handed over.
+        /// </summary>
+        private static void QueueProblemsBeside(CrashReport report, string outcome, Exception? crash = null)
+        {
+            try
+            {
+                IReadOnlyList<CompatibilityProblem> problems = CompatibilityProblems.Snapshot();
+                int dropped = CompatibilityProblems.Dropped;
+                if (problems.Count > 0 && OnlineBackend.Crashes is { } reporter)
+                {
+                    string? crashKey = crash == null ? null : CompatibilityProblems.KeyOf(crash);
+                    string? title = report.TitleId;
+                    CompatibilityProblems.ReportProblems(reporter, problems, dropped, outcome, _runClock.Elapsed,
+                        r => { r.TitleId = title; r.TitleName = report.TitleName; r.InstallFolder = report.InstallFolder; r.GraphicsBackend = report.GraphicsBackend; },
+                        crashKey);
+                }
+            }
+            catch (Exception)
+            {
+                // The crash report matters more than the list.
+            }
+            finally
+            {
+                CompatibilityProblems.DiscardRunFile();
+            }
+        }
+
+        /// <summary>What the persisted problem list is filed under.</summary>
+        private static RunIdentity? RunIdentityOf(Application app)
+        {
+            try
+            {
+                CrashReport probe = new CrashReport();
+                FillTitle(probe, app);
+                return new RunIdentity
+                {
+                    ProductId = probe.TitleId,
+                    TitleName = probe.TitleName,
+                    InstallFolder = probe.InstallFolder,
+                    GraphicsBackend = probe.GraphicsBackend,
+                };
+            }
+            catch (Exception)
+            {
+                return null;
             }
         }
 
@@ -489,9 +550,11 @@ namespace WPR
 
                 CrashReport report = CrashReport.FromException(ex, source);
                 FillTitle(report, app);
-                AttachProblems(report, "crashed");
                 _crashReportedThisRun = true;
+                // The crash first: the per-problem reports queued beside it are secondary.
+                AttachProblems(report, "crashed");
                 reporter.Report(report);
+                QueueProblemsBeside(report, "crashed", ex);
             }
             catch (Exception reportEx)
             {
@@ -525,9 +588,10 @@ namespace WPR
                     StackTrace = failure.Reason + '\n' + failure.Details,
                 };
                 FillTitle(report, app);
-                AttachProblems(report, "WP8 guest stopped");
                 _crashReportedThisRun = true;
+                AttachProblems(report, "WP8 guest stopped");
                 reporter.Report(report);
+                QueueProblemsBeside(report, "WP8 guest stopped");
                 TeardownLog($"WP8 guest failure reported: {failure.Reason}");
             }
             catch (Exception reportEx)

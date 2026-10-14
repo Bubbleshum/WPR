@@ -156,27 +156,200 @@ public class CompatibilityProblemsTests
     }
 
     [Fact]
-    public void The_report_is_one_compat_report_or_none()
+    public void Each_problem_is_its_own_crash_kind_report_shaped_to_group_across_titles()
     {
-        Assert.Null(CompatibilityProblems.BuildReport(Array.Empty<CompatibilityProblem>(), 0, "ended normally", TimeSpan.FromSeconds(5)));
+        Assert.Empty(CompatibilityProblems.BuildProblemReports(Array.Empty<CompatibilityProblem>(), 0, "ended normally", TimeSpan.FromSeconds(5)));
 
         CompatibilityProblems.Begin();
-        CompatibilityProblems.Observe(MissingType("Microsoft.Xna.Framework.Media.PlaylistCollection"));
+        CompatibilityProblems.Observe(MissingType("System.Windows.Controls.RichTextBox"), captureStack: true);
+        CompatibilityProblems.Observe(MissingType("System.Windows.Controls.RichTextBox"));
         CompatibilityProblems.Note(CompatibilityProblems.Categories.UiRender, "Popup", "Popup: popups are not drawn");
         var problems = CompatibilityProblems.End();
 
-        CrashReport? report = CompatibilityProblems.BuildReport(problems, 0, "ended normally", TimeSpan.FromSeconds(83));
-        Assert.NotNull(report);
-        Assert.Equal(CrashReport.Sources.Compatibility, report!.Source);
-        Assert.True(CrashReport.Sources.IsNotACrash(report.Source));
-        Assert.Equal("WPR.CompatibilityProblems", report.ExceptionType);
-        Assert.StartsWith("2 compatibility problem(s): missing-type", report.ExceptionMessage);
-        Assert.Equal("2", report.Extra["problem_count"]);
-        Assert.Equal("83", report.Extra["run_seconds"]);
-        Assert.StartsWith("[missing-type] x1", report.Extra["p01"]);
-        Assert.StartsWith("[uirender] x1", report.Extra["p02"]);
-        Assert.Contains("PlaylistCollection", report.StackTrace);
-        Assert.True(report.Extra.Count < 46);
+        var reports = CompatibilityProblems.BuildProblemReports(problems, 0, "ended normally", TimeSpan.FromSeconds(83));
+        Assert.Equal(2, reports.Count);
+
+        CrashReport missing = reports[0];
+        Assert.Equal(CrashReport.Sources.Compatibility, missing.Source);
+        Assert.True(CrashReport.Sources.IsNotACrash(missing.Source));
+        Assert.False(CrashReport.Sources.SentAsManual(missing.Source)); // goes to the hub as kind "crash"
+        Assert.Equal("System.TypeLoadException", missing.ExceptionType);
+        Assert.StartsWith("missing-type: System.Windows.Controls.RichTextBox [FNA]", missing.ExceptionMessage);
+        Assert.Equal("2", missing.Extra["problem_count"]);
+        Assert.Equal("83", missing.Extra["run_seconds"]);
+        Assert.Equal("2", missing.Extra["run_problems"]);
+
+        // Exactly one "at" line - the synthetic frame - so the hub fingerprint is the same for every
+        // title; where it was first seen follows as "from" lines the fingerprinter ignores.
+        string[] lines = missing.StackTrace!.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal("at WPR.Compatibility.missing-type: System.Windows.Controls.RichTextBox [FNA]", lines[0]);
+        Assert.Single(lines, l => l.TrimStart().StartsWith("at ", StringComparison.Ordinal));
+        Assert.Contains(lines, l => l.Contains("from ") && l.Contains(nameof(Each_problem_is_its_own_crash_kind_report_shaped_to_group_across_titles)));
+
+        CrashReport ui = reports[1];
+        Assert.Equal("WPR.Compatibility.uirender", ui.ExceptionType);
+        Assert.StartsWith("at WPR.Compatibility.uirender: Popup", ui.StackTrace);
+        Assert.All(reports, r => Assert.True(r.Extra.Count < 46));
+    }
+
+    [Fact]
+    public void The_crash_own_problem_is_not_also_a_compat_report()
+    {
+        CompatibilityProblems.Begin();
+        var crash = new MissingMethodException("Method not found: 'Void Game.Boom()'.");
+        CompatibilityProblems.Observe(crash);
+        CompatibilityProblems.Observe(MissingType("Other"));
+        var problems = CompatibilityProblems.End();
+
+        string? key = CompatibilityProblems.KeyOf(new System.Reflection.TargetInvocationException(crash));
+        var reports = CompatibilityProblems.BuildProblemReports(problems, 0, "crashed", TimeSpan.Zero, key);
+        Assert.Single(reports);
+        Assert.Contains("Other", reports[0].ExceptionMessage);
+    }
+
+    private static CrashReport Candidate(string title, string key)
+    {
+        var r = new CrashReport { Source = CrashReport.Sources.Compatibility, TitleId = title };
+        r.Extra["problem_category"] = "missing-type";
+        r.Extra["problem_key"] = key;
+        r.Extra["problem_count"] = "1";
+        return r;
+    }
+
+    [Fact]
+    public void A_run_sends_at_most_ten_and_the_last_names_the_rest()
+    {
+        var candidates = Enumerable.Range(1, 14).Select(i => Candidate("T", "Type" + i)).ToList();
+        var sent = CompatibilityProblems.SelectForSending(candidates, r => r.Extra["problem_key"] == "Type2");
+
+        Assert.Equal(CompatibilityProblems.MaxReportsPerRun, sent.Count);
+        Assert.DoesNotContain(sent, r => r.Extra["problem_key"] == "Type2");
+        Assert.Equal("3", sent[^1].Extra["more_problems"]);       // 13 new, 10 sent
+        Assert.Equal("[missing-type] x1 Type12", sent[^1].Extra["m01"]);
+        Assert.False(sent[0].Extra.ContainsKey("more_problems"));
+    }
+
+    [Fact]
+    public void The_same_problem_is_sent_once_per_title_and_version()
+    {
+        string a = CompatibilityProblems.SentId(Candidate("{abcd}", "RichTextBox"), "0.2.06")!;
+        Assert.Equal(a, CompatibilityProblems.SentId(Candidate("ABCD", "RichTextBox"), "0.2.06"));
+        Assert.NotEqual(a, CompatibilityProblems.SentId(Candidate("EF01", "RichTextBox"), "0.2.06"));   // another title
+        Assert.NotEqual(a, CompatibilityProblems.SentId(Candidate("ABCD", "RichTextBox"), "0.2.07"));   // a new WPR
+        Assert.Null(CompatibilityProblems.SentId(new CrashReport { Source = CrashReport.Sources.GameRun }, "0.2.06"));
+
+        string dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "wpr-compat-test-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var log = new CompatibilitySentLog(System.IO.Path.Combine(dir, "compat-sent.txt"));
+            Assert.False(log.Contains(a));
+            log.Add(a);
+            Assert.True(new CompatibilitySentLog(System.IO.Path.Combine(dir, "compat-sent.txt")).Contains(a));
+            File.AppendAllText(System.IO.Path.Combine(dir, "compat-sent.txt"), "garbage\n0123");     // torn: ignored
+            Assert.True(log.Contains(a));
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { }
+        }
+    }
+
+    private sealed class ListReporter : ICrashReporter
+    {
+        public readonly System.Collections.Generic.List<CrashReport> Reports = new();
+        public void Report(CrashReport report) => Reports.Add(report);
+        public System.Threading.Tasks.Task FlushAsync() => System.Threading.Tasks.Task.CompletedTask;
+    }
+
+    [Fact]
+    public void A_run_persists_each_new_problem_and_survives_a_torn_write()
+    {
+        string dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "wpr-compat-test-" + Guid.NewGuid().ToString("N"));
+        string? before = CompatibilityProblems.RunFilePath;
+        CompatibilityProblems.RunFilePath = System.IO.Path.Combine(dir, "compat-run.txt");
+        try
+        {
+            CompatibilityProblems.Begin(new RunIdentity { ProductId = "{C0FFEE}", TitleName = "Carcassonne", InstallFolder = @"C:\x\y" });
+            CompatibilityProblems.Observe(MissingType("System.Windows.Controls.RichTextBox"));
+            CompatibilityProblems.Observe(MissingType("System.Windows.Controls.RichTextBox")); // a repeat writes nothing
+            CompatibilityProblems.Note(CompatibilityProblems.Categories.UiRender, "Popup", "tab\there\nand a new line");
+
+            string text = File.ReadAllText(CompatibilityProblems.RunFilePath);
+            Assert.Equal(2, text.Split('\n').Count(l => l.StartsWith("p\t", StringComparison.Ordinal)));
+
+            // The live run is never taken for an abandoned one.
+            Assert.Null(CompatibilityProblems.TakeRunFile(force: false));
+            Assert.True(File.Exists(CompatibilityProblems.RunFilePath));
+
+            // What a native crash leaves: the file as it stands, with half a line at the end.
+            File.AppendAllText(CompatibilityProblems.RunFilePath, "p\tmissing-type\tHalf");
+            PersistedRun run = CompatibilityProblems.ParseRunFile(File.ReadAllText(CompatibilityProblems.RunFilePath))!;
+            Assert.Equal("{C0FFEE}", run.Run.ProductId);
+            Assert.Equal("Carcassonne", run.Run.TitleName);
+            Assert.Equal(@"C:\x\y", run.Run.InstallFolder);
+            Assert.Equal(Environment.ProcessId, run.Run.ProcessId);
+            Assert.Equal(2, run.Problems.Count);
+            Assert.Equal("System.TypeLoadException", run.Problems[0].ExceptionType);
+            Assert.Equal("tab\there\nand a new line", run.Problems[1].Detail);
+            Assert.Null(run.Problems[1].ExceptionType);
+
+            // A run that ends normally drops its file.
+            CompatibilityProblems.End();
+            CompatibilityProblems.DiscardRunFile();
+            Assert.False(File.Exists(CompatibilityProblems.RunFilePath));
+
+            // Unparseable: no product id.
+            Assert.Null(CompatibilityProblems.ParseRunFile("wpr-compat-run 1\nproduct\t\n"));
+            Assert.Null(CompatibilityProblems.ParseRunFile("rubbish"));
+        }
+        finally
+        {
+            CompatibilityProblems.End();
+            CompatibilityProblems.RunFilePath = before;
+            try { Directory.Delete(dir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void A_run_that_died_is_reported_as_a_native_crash_carrying_its_problems()
+    {
+        string dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "wpr-compat-test-" + Guid.NewGuid().ToString("N"));
+        string? before = CompatibilityProblems.RunFilePath;
+        CompatibilityProblems.RunFilePath = System.IO.Path.Combine(dir, "compat-run.txt");
+        try
+        {
+            // A run in a process that has since died (pid 0 is never alive).
+            CompatibilityProblems.Begin(new RunIdentity { ProductId = "{C0FFEE}", TitleName = "Carcassonne", ProcessId = 0 });
+            CompatibilityProblems.Observe(MissingType("System.Windows.Controls.RichTextBox"), captureStack: true);
+            CompatibilityProblems.Observe(MissingType("System.Windows.Data.BindingExpression"));
+            CompatibilityProblems.End(); // the process "died": nothing discarded the file
+
+            var reporter = new ListReporter();
+            CompatibilityProblems.RecoverAbandonedRun(reporter);
+
+            Assert.False(File.Exists(CompatibilityProblems.RunFilePath));
+            CrashReport crash = Assert.Single(reporter.Reports, r => r.Source == CrashReport.Sources.NativeCrash);
+            Assert.Equal("{C0FFEE}", crash.TitleId);
+            Assert.Equal("NativeCrash", crash.ExceptionType);
+            Assert.Equal("2", crash.Extra["problem_count"]);
+            Assert.Equal("next-start", crash.Extra["recovered"]);
+            Assert.Contains("RichTextBox", crash.StackTrace);
+            // A native crash has no frames of its own: the problems' stacks must not become its
+            // fingerprint, so they are "from" lines, never "at" frames.
+            Assert.Contains("    from ", crash.StackTrace);
+            Assert.DoesNotContain(crash.StackTrace!.Split('\n'), l => l.TrimStart().StartsWith("at ", StringComparison.Ordinal));
+            Assert.Equal(2, reporter.Reports.Count(r => r.Source == CrashReport.Sources.Compatibility && r.TitleId == "{C0FFEE}"));
+
+            // Taken once: a second recovery finds nothing.
+            CompatibilityProblems.RecoverAbandonedRun(reporter);
+            Assert.Equal(3, reporter.Reports.Count);
+        }
+        finally
+        {
+            CompatibilityProblems.End();
+            CompatibilityProblems.RunFilePath = before;
+            try { Directory.Delete(dir, true); } catch { }
+        }
     }
 
     [Fact]
