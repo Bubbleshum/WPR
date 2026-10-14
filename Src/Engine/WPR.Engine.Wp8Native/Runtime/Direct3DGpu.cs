@@ -113,6 +113,17 @@ namespace WPR.Wp8Native
                 _gpuDepthTarget = Arg(3);
             }));
 
+            // OMSetRenderTargetsAndUnorderedAccessViews(NumRTVs, RTV* const*, DSV*, ...): the same
+            // binding, unless NumRTVs is D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL.
+            methods[34] = (methods.GetValueOrDefault(34).Item1 ?? "OMSetRenderTargetsAndUnorderedAccessViews", Chain(methods.GetValueOrDefault(34).Item2, () =>
+            {
+                if (Arg(1) != 0xFFFFFFFF)
+                {
+                    _gpuRenderTarget = Arg(1) > 0 && Arg(2) != 0 ? _emulator.ReadUInt32(Arg(2), 0) : 0;
+                    _gpuDepthTarget = Arg(3);
+                }
+            }));
+
             // OMSetBlendState(state, const FLOAT factor[4], UINT mask)
             methods[35] = ("OMSetBlendState", Chain(methods.GetValueOrDefault(35).Item2, () =>
             {

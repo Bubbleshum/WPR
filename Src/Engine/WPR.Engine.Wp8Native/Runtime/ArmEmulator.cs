@@ -53,6 +53,13 @@ namespace WPR.Wp8Native
         /// <summary>How many of the earliest and latest calls to keep.</summary>
         private const int CallOrderKept = 64;
 
+        /// <summary>
+        /// WPR_WP8_IMPORT_TRACE=N: log the first N import calls (name, thread, lr, r0-r2) to the
+        /// per-game log. A diagnostic: what led up to a failure, when the last-calls ring is too short.
+        /// </summary>
+        private static readonly long ImportTraceLimit =
+            long.TryParse(Environment.GetEnvironmentVariable("WPR_WP8_IMPORT_TRACE"), out long n) ? n : 0;
+
         private readonly List<string> _callOrder = new();
         private readonly Queue<string> _recentCalls = new();
 
@@ -1789,6 +1796,14 @@ namespace WPR.Wp8Native
             {
                 case TrapKind.Import:
                     CallOrderTotal++;
+                    if (CallOrderTotal <= ImportTraceLimit
+                        && !slot.Name.EndsWith("CriticalSection", StringComparison.Ordinal))
+                    {
+                        System.Diagnostics.Trace.WriteLine(
+                            $"[wpr-wp8-import] #{CallOrderTotal} t{CurrentThreadId} {slot.Name} lr=0x{_cpu.RegRead(Arm.UC_ARM_REG_LR):X8} " +
+                            $"r0=0x{_cpu.RegRead(Arm.UC_ARM_REG_R0):X8} r1=0x{_cpu.RegRead(Arm.UC_ARM_REG_R1):X8} r2=0x{_cpu.RegRead(Arm.UC_ARM_REG_R2):X8}");
+                    }
+
                     _insideDeferred?.Add(slot.Name);
                     if (_captures.Count > 0)
                     {
@@ -2113,7 +2128,7 @@ namespace WPR.Wp8Native
         /// The same walk the throw path does, available anywhere. A loop that is destroying
         /// the wrong object says nothing about who told it to; the frame above it does.
         /// </remarks>
-        public string WalkHere()
+        public string WalkHere(long? fromPc = null)
         {
             int[] core =
             [
@@ -2126,7 +2141,7 @@ namespace WPR.Wp8Native
             try
             {
                 List<UnwoundFrame> frames = Unwinder.Walk(
-                    pc: _cpu.RegRead(Arm.UC_ARM_REG_PC) & ~1L,
+                    pc: (fromPc ?? _cpu.RegRead(Arm.UC_ARM_REG_PC)) & ~1L,
                     liveRegisters: core.Select(ReadRegister).ToArray(),
                     maxFrames: 12);
 
@@ -2297,8 +2312,11 @@ namespace WPR.Wp8Native
             if (kind == FaultKind.FetchUnmapped)
             {
                 long from = _cpu.RegRead(Arm.UC_ARM_REG_LR);
+                // The wild target has no frame of its own yet, so the caller's frame is the
+                // innermost one: unwind from lr with the live registers.
                 UncontainedNullCall ??= $"jumped to unmapped 0x{address:X8} (lr 0x{from:X8})" +
                                         Newline + "                " + DescribeNullCall() +
+                                        Newline + "                call stack:" + Newline + WalkHere(from) +
                                         Newline + "                code addresses on the stack:" +
                                         Newline + ScanStack(96);
                 StopReason ??= $"jumped to unmapped memory at 0x{address:X8}, lr 0x{from:X8}";

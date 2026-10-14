@@ -375,6 +375,7 @@ namespace WPR.Wp8Native
             [new Guid("9d8e1289-d7b3-465f-8126-250e349af85d")] = "IDXGIKeyedMutex",
             [new Guid("035f3ab4-482e-4e50-b41f-8a7f8bd8960b")] = "IDXGIResource",
             [new Guid("30961379-4609-4a41-998e-54fe567ee0c1")] = "IDXGIResource1",
+            [new Guid("9b7e4e00-342c-4106-a19f-4f2704f689f0")] = "ID3D10Multithread",
         };
 
         /// <summary>
@@ -498,9 +499,77 @@ namespace WPR.Wp8Native
                     => CreateDxgiResource(owner),
                 "IDXGIKeyedMutex" when owner.Name == "Texture2D_BackBuffer" || _keyedMutexOwners.Contains(owner)
                     => CreateKeyedMutex(owner),
+                "ID3D10Multithread" when owner.Name is "Device" or "Context"
+                    => CreateInterface(owner, wanted, 7, MultithreadMethods()),
                 _ => 0,
             };
         }
+
+        // -------------------------------------------------------------------
+        // ID3D10Multithread
+        //
+        // IUnknown 0-2, Enter 3, Leave 4, SetMultithreadProtected 5, GetMultithreadProtected 6.
+        // One per device, shared by the device and its immediate context, as on Windows. Halo:
+        // Spartan Assault asks the device for it on its render thread and turns protection on;
+        // refused, it called through the null it got back.
+        // -------------------------------------------------------------------
+
+        /// <summary>The guest thread holding the device's ID3D10Multithread lock, and how deep.</summary>
+        private int _multithreadOwner;
+        private int _multithreadDepth;
+        private bool _multithreadProtected = true;   // D3D11 devices are created thread safe
+
+        private Dictionary<int, (string, Action)> MultithreadMethods() => new()
+        {
+            // void Enter(): a recursive lock - re-entry by the holder nests, anyone else waits.
+            [3] = ("Enter", () =>
+            {
+                Return(0);
+                int me = _emulator.CurrentThreadId;
+                if (_multithreadDepth == 0 || _multithreadOwner == me)
+                {
+                    _multithreadOwner = me;
+                    _multithreadDepth++;
+                    return;
+                }
+
+                bool switched = _emulator.BlockCurrentThread(
+                    () => _multithreadDepth == 0,
+                    () => { _multithreadOwner = me; _multithreadDepth = 1; },
+                    why: $"ID3D10Multithread held by thread {_multithreadOwner}");
+                if (!switched)
+                {
+                    // Nothing else can run, so nobody will leave it: take it rather than hang.
+                    _multithreadOwner = me;
+                    _multithreadDepth = 1;
+                }
+            }),
+
+            // void Leave(): only the holder's leave counts.
+            [4] = ("Leave", () =>
+            {
+                if (_multithreadDepth > 0 && _multithreadOwner == _emulator.CurrentThreadId)
+                {
+                    _multithreadDepth--;
+                }
+
+                Return(0);
+            }),
+
+            // BOOL SetMultithreadProtected(BOOL): the previous setting.
+            [5] = ("SetMultithreadProtected", () =>
+            {
+                bool previous = _multithreadProtected;
+                _multithreadProtected = Arg(1) != 0;
+                Return(previous ? 1 : 0);
+            }),
+
+            // BOOL GetMultithreadProtected()
+            [6] = ("GetMultithreadProtected", () => Return(_multithreadProtected ? 1 : 0)),
+        };
+
+        /// <summary>Whether the device's ID3D10Multithread lock is held, and by which guest thread.</summary>
+        public (int Owner, int Depth) MultithreadLock => (_multithreadOwner, _multithreadDepth);
 
         // -------------------------------------------------------------------
         // D3D11CreateDevice
@@ -1096,6 +1165,60 @@ namespace WPR.Wp8Native
 
         private const int ContextSlots = 135;
 
+        /// <summary>D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT.</summary>
+        private const int MaxRenderTargets = 8;
+
+        /// <summary>The render target views bound by OMSetRenderTargets, by slot; 0 is unbound.</summary>
+        private readonly long[] _boundRenderTargetViews = new long[MaxRenderTargets];
+
+        /// <summary>The depth-stencil view bound by OMSetRenderTargets; 0 is unbound.</summary>
+        private long _boundDepthStencilView;
+
+        /// <summary>
+        /// Records OMSetRenderTargets: slots past <paramref name="count"/> are unbound, as D3D11
+        /// does, and a null array binds nothing.
+        /// </summary>
+        private void BindOutputMerger(int count, long views, long depthStencil)
+        {
+            for (int i = 0; i < MaxRenderTargets; i++)
+            {
+                _boundRenderTargetViews[i] = views != 0 && i < count ? _emulator.ReadUInt32(views + (i * 4), 0) : 0;
+            }
+
+            _boundDepthStencilView = depthStencil;
+        }
+
+        /// <summary>
+        /// OMGetRenderTargets' out-parameters: what is bound, each AddRef'd as D3D11 hands back
+        /// every interface from a Get* call (the caller releases them), null where nothing is.
+        /// </summary>
+        private void WriteBoundRenderTargets(long count, long views, long depthStencil)
+        {
+            if (views != 0 && count is > 0 and <= MaxRenderTargets)
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    long view = _boundRenderTargetViews[i];
+                    AddRefPointer(view);
+                    _emulator.WriteUInt32(views + (i * 4), (uint)view);
+                }
+            }
+
+            if (depthStencil != 0)
+            {
+                AddRefPointer(_boundDepthStencilView);
+                _emulator.WriteUInt32(depthStencil, (uint)_boundDepthStencilView);
+            }
+        }
+
+        private void AddRefPointer(long pointer)
+        {
+            if (pointer != 0 && _byPointer.TryGetValue(pointer, out ComObject? owner))
+            {
+                owner.RefCount++;
+            }
+        }
+
         private Dictionary<int, (string, Action)> ContextMethods()
         {
             Dictionary<int, (string, Action)> methods = ContextSetters();
@@ -1161,14 +1284,20 @@ namespace WPR.Wp8Native
             // (ID3D11Predicate**, BOOL*)
             methods[86] = ("GetPredication", () => { Zero(Arg(1), 1); Zero(Arg(2), 1); Return(0); });
 
-            // (NumViews, ID3D11RenderTargetView**, ID3D11DepthStencilView**)
-            methods[89] = ("OMGetRenderTargets", () => { Zero(Arg(2), Arg(1)); Zero(Arg(3), 1); Return(0); });
+            // (NumViews, ID3D11RenderTargetView**, ID3D11DepthStencilView**). The output merger
+            // is the one piece of state these answer for real: Halo: Spartan Assault sizes its
+            // frame by asking the bound render target for its texture's description, and a null
+            // view sent it through a null vtable on its first frame.
+            methods[89] = ("OMGetRenderTargets", () =>
+            {
+                WriteBoundRenderTargets(Arg(1), Arg(2), Arg(3));
+                Return(0);
+            });
 
             // (NumRTVs, RTV**, DSV**, UAVStart, NumUAVs, UAV**)
             methods[90] = ("OMGetRenderTargetsAndUnorderedAccessViews", () =>
             {
-                Zero(Arg(2), Arg(1));
-                Zero(Arg(3), 1);
+                WriteBoundRenderTargets(Arg(1), Arg(2), Arg(3));
                 Zero(Arg(6), Arg(5));
                 Return(0);
             });
@@ -1297,7 +1426,21 @@ namespace WPR.Wp8Native
             [21] = ("DrawInstanced", CountDraw("DrawInstanced")),
             [33] = ("OMSetRenderTargets", () =>
             {
+                // (NumViews, ID3D11RenderTargetView* const*, ID3D11DepthStencilView*)
                 RenderTargetsBound = (int)Arg(1);
+                BindOutputMerger((int)Arg(1), Arg(2), Arg(3));
+                Return(HResultOk);
+            }),
+            [34] = ("OMSetRenderTargetsAndUnorderedAccessViews", () =>
+            {
+                // (NumRTVs, RTV* const*, DSV*, UAVStartSlot, NumUAVs, ...). NumRTVs of
+                // D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL (0xFFFFFFFF) leaves them as they are.
+                if (Arg(1) != 0xFFFFFFFF)
+                {
+                    RenderTargetsBound = (int)Arg(1);
+                    BindOutputMerger((int)Arg(1), Arg(2), Arg(3));
+                }
+
                 Return(HResultOk);
             }),
             [44] = ("RSSetViewports", () =>
