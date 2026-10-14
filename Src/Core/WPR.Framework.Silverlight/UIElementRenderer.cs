@@ -187,6 +187,8 @@ namespace Microsoft.Xna.Framework.Graphics
                 System.Diagnostics.Trace.WriteLine(
                     "[wpr-uirender] rasterising " + (Element?.GetType().Name ?? "<null>") + " threw " +
                     ex.GetType().Name + ": " + ex.Message);
+                WPR.Engine.Online.CompatibilityProblems.NoteFrameException(
+                    WPR.Engine.Online.CompatibilityProblems.Categories.UiRender, ex);
             }
         }
 

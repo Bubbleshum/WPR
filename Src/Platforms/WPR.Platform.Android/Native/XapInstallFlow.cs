@@ -98,11 +98,20 @@ namespace WPR.Platform.Android.Native
                 {
                     using FileStream previewStream = new FileStream(
                         stagedPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-                    return ApplicationInstaller.ReadPreview(previewStream);
+                    ApplicationPreview? read = ApplicationInstaller.ReadPreview(previewStream);
+                    // Refused before the installer runs; WPR Hub still hears which package it was
+                    // (a no-op with server logging off).
+                    if (read == null)
+                    {
+                        ApplicationInstaller.ReportRefusedPackage(previewStream,
+                            ApplicationInstallError.InvalidManifestFiles, packageSource: packageSource);
+                    }
+                    return read;
                 });
 
                 if (preview == null)
                 {
+                    _ = WPR.Engine.Online.OnlineBackend.FlushAsync();
                     progress.Dismiss();
                     WpDialogs.Error(host, WPR.Shell.Resources.InstallationFailed,
                         LocaleUtils.GetDisplayName(ApplicationInstallError.InvalidManifestFiles));
@@ -131,6 +140,8 @@ namespace WPR.Platform.Android.Native
 
                 if (error != ApplicationInstallError.None)
                 {
+                    // The installer queued a refusal report; send it.
+                    _ = WPR.Engine.Online.OnlineBackend.FlushAsync();
                     WpDialogs.Error(host, WPR.Shell.Resources.InstallationFailed,
                         LocaleUtils.GetDisplayName(error));
                     return false;

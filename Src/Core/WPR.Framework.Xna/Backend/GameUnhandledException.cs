@@ -103,6 +103,22 @@ namespace WPR.Xna.Rhi
 		}
 
 		/// <summary>
+		/// <see cref="Report"/>, and when the game carries on past the exception (the common case:
+		/// every XNA title, and a Silverlight one that handled it), records it as a compatibility
+		/// problem for the end-of-run WPR Hub report. A quit (the game declined it) is not one.
+		/// </summary>
+		public static bool ReportFrameException(Exception exception)
+		{
+			bool handled = Report(exception);
+			if (handled)
+			{
+				WPR.Engine.Online.CompatibilityProblems.NoteFrameException(
+					WPR.Engine.Online.CompatibilityProblems.Categories.UpdateThrew, exception);
+			}
+			return handled;
+		}
+
+		/// <summary>
 		/// Drops the reporter and any pending termination. Called from
 		/// <c>Application.ResetCurrent</c>, which <c>ResetWprSingletons</c> runs first at teardown
 		/// — these are statics in the shared framework, not in the game's ALC, so on the desktop

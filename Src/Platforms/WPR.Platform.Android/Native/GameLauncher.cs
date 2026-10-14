@@ -51,17 +51,19 @@ namespace WPR.Platform.Android.Native
                 app.ProductId!);
 
             UnityPortManifest? portManifest = UnityPortManifest.TryLoad(installFolder);
-            if (portManifest != null)
+            if (portManifest != null && LaunchUnityPort(host, app, portManifest, installFolder))
             {
-                LaunchUnityPort(host, app, portManifest, installFolder);
                 return;
             }
+            // A port with no Android build is not refused: the original package is attempted
+            // in-process below like any title, and reports to WPR Hub if it fails.
 
             WpProgressDialog progress = WpProgressDialog.Show(
                 host, app.Name ?? "game", WPR.Shell.Resources.LaunchingInProcess, indeterminate: true);
 
             Task.Run(() =>
             {
+                bool repatched = true;
                 try
                 {
                     // A WP8 native title is ARM code: the IL patcher has nothing to do there.
@@ -77,10 +79,19 @@ namespace WPR.Platform.Android.Native
                 }
                 catch (Exception ex)
                 {
-                    Log.Error(LogCategory.AppList, $"Failed to prepare game: {ex}");
-                    progress.Dismiss();
-                    ShowError(host, ex.Message);
-                    return;
+                    // Not a reason to refuse the game (this used to show an error and stop).
+                    // Launch what is on disk - the previous patch, or a partly updated one - and
+                    // let the run report what breaks. PatchedVersion stays behind, so the next
+                    // launch tries the repatch again; WPR Hub hears about the failure now.
+                    repatched = false;
+                    Log.Error(LogCategory.AppList, $"Repatch before launch failed, launching anyway: {ex}");
+                    try
+                    {
+                        WPR.Engine.Online.OnlineBackend.Crashes?.Report(WPR.Engine.Online.CrashReport.ForInstallProblem(
+                            "launch-repatch", "PatchFailed", ex, app.ProductId, app.Name,
+                            package: null, installFolder: installFolder, continued: "launched anyway"));
+                    }
+                    catch (Exception) { /* reporting only */ }
                 }
 
                 host.RunOnUiThread(() =>
@@ -89,7 +100,7 @@ namespace WPR.Platform.Android.Native
                     {
                         progress.Dismiss();
 
-                        if (app.PatchedVersion < ApplicationPatcher.Version)
+                        if (repatched && app.PatchedVersion < ApplicationPatcher.Version)
                         {
                             app.PatchedVersion = ApplicationPatcher.Version;
                             var tracked = WPR.Models.ApplicationContext.Current.Applications?
@@ -364,16 +375,17 @@ namespace WPR.Platform.Android.Native
         ///     which means it lights up automatically once that AAR is present.</item>
         ///   <item><b>Separate installed APK</b> — launched by package.</item>
         /// </list>
+        /// Returns false when the port has no Android build reachable from here, so the caller
+        /// attempts the original package in-process instead of refusing the game. The one case
+        /// still answered with a message is a bundled port APK the player only has to install.
         /// </summary>
-        private static void LaunchUnityPort(Activity host, WprApplication app, UnityPortManifest manifest, string installFolder)
+        private static bool LaunchUnityPort(Activity host, WprApplication app, UnityPortManifest manifest, string installFolder)
         {
-            app.ApplicationType = WPR.Models.ApplicationType.UnityPort;
-
             var android = manifest.Android;
             if (android == null)
             {
-                ShowPortError(host, app, $"This port has no Android build defined in {UnityPortManifest.FileName}.");
-                return;
+                Log.Warn(LogCategory.AppList, $"Unity port '{app.Name}' has no Android build in {UnityPortManifest.FileName}; attempting the original package.");
+                return false;
             }
 
             // (1) Embedded Unity-as-a-Library activity, resolved by name so this compiles
@@ -383,14 +395,15 @@ namespace WPR.Platform.Android.Native
                 try
                 {
                     var cls = Java.Lang.Class.ForName(android.Activity);
+                    app.ApplicationType = WPR.Models.ApplicationType.UnityPort;
                     host.StartActivity(new Intent(host, cls));
-                    return;
+                    return true;
                 }
                 catch (Java.Lang.ClassNotFoundException)
                 {
                     global::Android.Util.Log.Warn("WPR",
                         $"Unity port activity '{android.Activity}' is not in this APK — the Unity library is not embedded yet.");
-                    // fall through to package / error
+                    // fall through to package / the original package
                 }
             }
 
@@ -400,26 +413,27 @@ namespace WPR.Platform.Android.Native
                 Intent? launch = host.PackageManager!.GetLaunchIntentForPackage(android.Package);
                 if (launch != null)
                 {
+                    app.ApplicationType = WPR.Models.ApplicationType.UnityPort;
                     host.StartActivity(launch);
-                    return;
+                    return true;
                 }
 
                 if (!string.IsNullOrEmpty(android.Apk) &&
                     File.Exists(Path.Combine(installFolder, android.Apk)))
                 {
+                    // Not a refusal: the port is right there, the player only has to install it.
                     ShowPortError(host, app,
                         $"The port package '{android.Package}' is not installed. Install the bundled APK " +
                         $"at '{Path.Combine(installFolder, android.Apk)}' and relaunch.");
-                    return;
+                    return true;
                 }
-
-                ShowPortError(host, app, $"The port package '{android.Package}' is not installed on this device.");
-                return;
             }
 
-            ShowPortError(host, app,
-                "This Unity port is not embedded yet. Build the Unity project for Android and either bind its " +
-                "library into WPR (Unity-as-a-Library) or install its APK. See Plans/Unity_WP8_Feasibility.md.");
+            // Used to be an error dialog ("This Unity port is not embedded yet"). Attempt the
+            // original package instead; if it fails, the run reports it to WPR Hub.
+            Log.Warn(LogCategory.AppList,
+                $"Unity port '{app.Name}' is not embedded or installed on this device; attempting the original package.");
+            return false;
         }
 
         private static void ShowPortError(Activity host, WprApplication app, string message)
