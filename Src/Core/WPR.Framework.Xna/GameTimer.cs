@@ -311,7 +311,7 @@ namespace Microsoft.Xna.Framework
                  * Silverlight game exits by throwing a private exception and leaving
                  * Application.UnhandledException's e.Handled false. Report it and let Game.Tick
                  * act on the verdict; a title with no reporter is swallowed exactly as before. */
-                WPR.Xna.Rhi.GameUnhandledException.Report(ex);
+                WPR.Xna.Rhi.GameUnhandledException.ReportFrameException(ex);
             }
 
             try
@@ -327,7 +327,7 @@ namespace Microsoft.Xna.Framework
                 System.Diagnostics.Trace.WriteLine("[wpr-mixed] GameTimer.FrameAction threw: " + ex);
 
                 // Same contract as the Update handler above: a quit can be raised from either.
-                WPR.Xna.Rhi.GameUnhandledException.Report(ex);
+                WPR.Xna.Rhi.GameUnhandledException.ReportFrameException(ex);
             }
         }
     }

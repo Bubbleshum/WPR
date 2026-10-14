@@ -70,7 +70,10 @@ public sealed class HubCrashReporter : ICrashReporter
             // process that died, and then its launcher sees a process with no exit reason and
             // reports a native crash. Keep the managed one: it has the stack.
             if (report.Source == CrashReport.Sources.NativeCrash
-                && _reports.ReadAll().Any(r => r.Item.TitleId == report.TitleId
+                // Managed crashes only: a compatibility or install report for the same title says
+                // nothing about why the process died, and must not swallow the native one.
+                && _reports.ReadAll().Any(r => CrashReport.Sources.IsManagedCrash(r.Item.Source)
+                                               && r.Item.TitleId == report.TitleId
                                                && (report.OccurredAt - r.Item.OccurredAt).Duration() < TimeSpan.FromMinutes(2)))
             {
                 _connection.Log($"native crash for {report.TitleName ?? report.TitleId} already covered by a managed report");
@@ -205,7 +208,7 @@ public sealed class HubCrashReporter : ICrashReporter
                 continue;
             }
 
-            GamePackageRecord? package = GamePackageRecord.TryLoad(crash.InstallFolder);
+            GamePackageRecord? package = GamePackageRecord.TryLoad(crash.InstallFolder) ?? crash.Package;
             if (crash.Source == CrashReport.Sources.Install && package is null)
             {
                 // An install report exists only to carry the fingerprint; without one (the game
@@ -310,12 +313,20 @@ public sealed class HubCrashReporter : ICrashReporter
 
     private DiagnosticReport Build(CrashReport crash, GamePackageRecord? package)
     {
-        var extra = new Dictionary<string, string> { ["source"] = crash.Source, ["occurred_at"] = crash.OccurredAt.ToString("O") };
+        var extra = new Dictionary<string, string>();
+        // The report's own pairs first, capped so the hub's 50-entry limit is never reached.
+        foreach (var kv in crash.Extra?.Take(46) ?? Enumerable.Empty<KeyValuePair<string, string>>())
+        {
+            extra[Truncate(kv.Key, 64)!] = Truncate(Diagnostics.Scrub(kv.Value), 1000) ?? "";
+        }
+        extra["source"] = crash.Source;
+        extra["occurred_at"] = crash.OccurredAt.ToString("O");
 
         return new DiagnosticReport
         {
-            // An install is not a crash, and must not be grouped or counted as one.
-            Kind = crash.Source == CrashReport.Sources.Install ? "manual" : "crash",
+            // An install, a refusal or a list of compatibility problems is not a crash, and must
+            // not be grouped or counted as one: the hub fingerprints only kind "crash".
+            Kind = CrashReport.Sources.IsNotACrash(crash.Source) ? "manual" : "crash",
             InstallId = Diagnostics.GetOrCreateInstallId(_installIdPath),
             WprVersion = Truncate(_connection.Settings.WprVersion, 32)!,
             Platform = _connection.Settings.Platform,

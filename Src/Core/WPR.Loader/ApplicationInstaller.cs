@@ -201,9 +201,20 @@ namespace WPR
                 // Normalize whitespace: WP8 manifests use values like "Modern Native" with a space
                 // that Enum.TryParse won't accept. Map to the equivalent enum identifier.
                 string normalizedRuntimeType = runtimeTypeAttrb.Value.Replace(" ", "");
-                if (!Enum.TryParse(normalizedRuntimeType, true, out ApplicationType runtimeTypeParsed))
+                if (!Enum.TryParse(normalizedRuntimeType, true, out ApplicationType runtimeTypeParsed)
+                    || !Enum.IsDefined(runtimeTypeParsed) || runtimeTypeParsed == ApplicationType.UnityPort)
                 {
-                    return ( ApplicationInstallError.NotSupportedAppType, app, dataFolderProduct );
+                    // A RuntimeType WPR has never seen is not a reason to refuse the game: every
+                    // package is attempted, and one that fails reports to WPR Hub from the run.
+                    // Guess from what the package carries: a native default task means a native
+                    // title; anything else goes to SilverlightGame, which hosts both a Silverlight
+                    // page and a SharedGraphicsDeviceManager XNA game.
+                    string? task = (appNode!.SelectSingleNode("//DefaultTask") as XmlElement)?.GetAttribute("ImagePath");
+                    runtimeTypeParsed = task != null && task.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                        ? ApplicationType.ModernNative
+                        : ApplicationType.Silverlight;
+                    Log.Warn(LogCategory.AppInstall,
+                        $"Unknown RuntimeType '{runtimeTypeAttrb.Value}'; attempting it as {runtimeTypeParsed}.");
                 }
 
                 // WP8 "Modern Native" packages (native ARM/C++ against WinRT) have no managed
@@ -227,10 +238,20 @@ namespace WPR
                 if (isNative && nativeImage == null)
                 {
                     nativeImage = (appNode!.SelectSingleNode("//DefaultTask") as XmlElement)?.GetAttribute("ImagePath");
-                    if (string.IsNullOrWhiteSpace(nativeImage) ||
-                        !nativeImage.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ||
-                        archive.GetEntry(nativeImage) == null)
+                    if (string.IsNullOrWhiteSpace(nativeImage) || archive.GetEntry(nativeImage) == null)
                     {
+                        // The default task names no image in the package. Rather than refuse,
+                        // try the package's one executable if it has exactly one: the WP8 host
+                        // will answer what it can and report the rest to WPR Hub.
+                        List<ZipArchiveEntry> exes = archive.Entries
+                            .Where(e => e.FullName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                            .ToList();
+                        nativeImage = exes.Count == 1 ? exes[0].FullName : null;
+                    }
+
+                    if (nativeImage == null)
+                    {
+                        // Nothing to execute at all: a real refusal (reported by Install).
                         return ( ApplicationInstallError.ModernNativeUnsupported, app, dataFolderProduct );
                     }
                 }
@@ -405,6 +426,10 @@ namespace WPR
 
                 if (error != ApplicationInstallError.None)
                 {
+                    if (error != ApplicationInstallError.Canceled)
+                    {
+                        ReportRefusedPackage(fileStream, error, package);
+                    }
                     return error;
                 }
 
@@ -485,10 +510,28 @@ namespace WPR
                             patcher.Patch(appDataFolder, progress => progressSet(60 + (int)((double)progress / 5)), cancelSource);
                         });
                     }
-                    catch (Exception exception)
+                    catch (Exception exception) when (exception is not OperationCanceledException)
                     {
-                        Log.Error(LogCategory.AppInstall, $"Application DLL patching failed with exception:\n{exception}");
-                        return ApplicationInstallError.PatchFailed;
+                        // Not a reason to refuse the game. Most of the patcher works per assembly
+                        // and already skips one it cannot write, so an exception here usually
+                        // leaves a partly patched folder that may well run; the run's own reports
+                        // say what broke. PatchedVersion 0 marks it stale, so Android repatches on
+                        // the next launch and the desktop offers Repatch.
+                        Log.Error(LogCategory.AppInstall, $"Application DLL patching failed with exception (installing anyway):\n{exception}");
+                        app!.PatchedVersion = 0;
+                        try { ApplicationContext.Current.SaveChanges(); } catch (Exception) { /* the row is already saved */ }
+
+                        WPR.Engine.Online.CrashReport report = WPR.Engine.Online.CrashReport.ForRefusal(
+                            "install", nameof(ApplicationInstallError.PatchFailed), exception.GetType().FullName + ": " + exception.Message,
+                            app.ProductId, app.Name, package, appDataFolder);
+                        report.ExceptionType = "WPR.InstallProblem.PatchFailed";
+                        report.StackTrace = exception.ToString();
+                        report.Extra["continued"] = "installed anyway";
+                        WPR.Engine.Online.OnlineBackend.Crashes?.Report(report);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Handled by the cancellation check straight below.
                     }
 
                     if (cancelSource.IsCancellationRequested)
@@ -532,6 +575,7 @@ namespace WPR
                         } catch (Exception exception)
                         {
                             Log.Error(LogCategory.AppInstall, $"Application WMA conversion failed with exception:\n{exception}");
+                            ReportRefusedPackage(fileStream, ApplicationInstallError.ConvertFailed, package);
                             return ApplicationInstallError.ConvertFailed;
                         }
                     }
@@ -588,11 +632,63 @@ namespace WPR
             } catch (Exception ex)
             {
                 Log.Error(LogCategory.AppInstall, $"An unexpected error happen during the installation: \n{ex}");
+                ReportRefusedPackage(fileStream, ApplicationInstallError.UnexpectedError);
                 return ApplicationInstallError.UnexpectedError;
             }
 
             return ApplicationInstallError.None;
         }
+
+        /// <summary>
+        /// Tells WPR Hub about a package WPR would not install (no manifest, a native package with
+        /// nothing to execute, ...), so the hub learns which titles people try. Queued through the
+        /// crash reporter, so it is a no-op with server logging off, and carries the package's
+        /// fingerprint so the hub can ask for a build it has never seen. Never throws.
+        /// </summary>
+        /// <param name="package">Already measured, when the caller has it; otherwise measured here.</param>
+        public static void ReportRefusedPackage(Stream? fileStream, ApplicationInstallError error,
+            WPR.Engine.Online.GamePackageRecord? package = null, string? packageSource = null)
+        {
+            try
+            {
+                if (WPR.Engine.Online.OnlineBackend.Crashes is not { } reporter) return;
+
+                if (package == null && fileStream is { CanSeek: true })
+                {
+                    package = WPR.Engine.Online.GamePackageRecord.Measure(fileStream);
+                    if (package != null) package.Source = packageSource;
+                }
+
+                ApplicationPreview? identity = null;
+                if (fileStream is { CanSeek: true, CanRead: true })
+                {
+                    identity = ReadPreview(fileStream);
+                }
+
+                WPR.Engine.Online.CrashReport report = WPR.Engine.Online.CrashReport.ForRefusal(
+                    "install", error.ToString(), DescribeRefusal(error),
+                    string.IsNullOrEmpty(identity?.ProductId) ? null : identity!.ProductId,
+                    identity?.Name, package);
+                if (identity?.ApplicationType is { } type) report.Extra["runtime_type"] = type.ToString();
+                reporter.Report(report);
+                Log.Info(LogCategory.AppInstall, $"Refused package reported to WPR Hub: {error} ({identity?.Name ?? package?.PackageFileName ?? "unnamed"})");
+            }
+            catch (Exception ex)
+            {
+                Log.Warn(LogCategory.AppInstall, $"Could not report a refused package: {ex.Message}");
+            }
+        }
+
+        private static string DescribeRefusal(ApplicationInstallError error) => error switch
+        {
+            ApplicationInstallError.MissingManifestFiles => "The package has no WMAppManifest.xml, or a managed package has no AppManifest.xaml.",
+            ApplicationInstallError.InvalidManifestFiles => "The package's manifest is missing required attributes or names no entry assembly.",
+            ApplicationInstallError.ModernNativeUnsupported => "A WP8 native package with no executable image to run.",
+            ApplicationInstallError.NotSupportedAppType => "The package's runtime type is not one WPR can host.",
+            ApplicationInstallError.ConvertFailed => "The install-time audio transcoder failed for every track.",
+            ApplicationInstallError.UnexpectedError => "The installer threw; see the session log.",
+            _ => error.ToString(),
+        };
 
         /// <summary>
         /// Remove the DB row for <paramref name="app"/> and best-effort delete its install

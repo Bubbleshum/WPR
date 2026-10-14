@@ -924,7 +924,7 @@ namespace Microsoft.Xna.Framework
 						 *
 						 * A pure XNA title registers no reporter, so Report returns true and this
 						 * is exactly the swallow-and-continue it has always been. */
-						WPR.Xna.Rhi.GameUnhandledException.Report(ex);
+						WPR.Xna.Rhi.GameUnhandledException.ReportFrameException(ex);
 					}
 				}
 
@@ -998,6 +998,7 @@ namespace Microsoft.Xna.Framework
                 catch (Exception ex2)
                 {
                     WprDebugTrace.WriteLine("[wpr-ex] Game.Update (variable timestep) threw: " + ex2);
+                    WPR.Engine.Online.CompatibilityProblems.NoteFrameException(WPR.Engine.Online.CompatibilityProblems.Categories.UpdateThrew, ex2);
 					Exit();
                 }
             }
@@ -1093,6 +1094,7 @@ namespace Microsoft.Xna.Framework
 					catch (Exception ex)
 					{
 						WprDebugTrace.WriteLine("[wpr-ex] Game.Draw threw: " + ex);
+						WPR.Engine.Online.CompatibilityProblems.NoteFrameException(WPR.Engine.Online.CompatibilityProblems.Categories.DrawThrew, ex);
 						try
 						{
 							int reset = Microsoft.Xna.Framework.Graphics.SpriteBatch.WprForceEndAll();

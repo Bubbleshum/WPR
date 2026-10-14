@@ -331,23 +331,37 @@ namespace WPR
 
             if (app.ApplicationType != ApplicationType.XNA && !isSilverlight && !isNative)
             {
+                // The one launch WPR refuses outright: a stored type no host here runs (a Unity
+                // port whose wpr-port.json has gone). Both launchers route ports elsewhere first,
+                // so reaching this is rare; the hub is told, since it is a title someone tried.
+                ReportRefusal(app, "unsupported-runtime-type",
+                    $"Application runtime type '{app.ApplicationType}' has no host in WPR.");
                 throw new NotSupportedException(
                     $"Application runtime type '{app.ApplicationType}' is not supported.");
             }
 
-            // Past the refusals above, anything that escapes is a crash worth reporting; they are
-            // "WPR cannot run this kind of app", which the hub already knows. The filter never
+            // Anything that escapes from here on is a crash worth reporting. The filter never
             // catches - it records and returns false - so the exception, its stack and the
             // teardown below all proceed exactly as before. It does run BEFORE StartCore's finally
             // blocks (filters run in the first pass), which is harmless: it only writes a file.
             InstallCrashReportHook();
             _reportingApp = app;
+            _crashReportedThisRun = false;
+
+            // What the game carries on past (unknown types it catches, exceptions out of every
+            // frame, unsupported Silverlight features), sent as ONE report when the run ends.
+            CompatibilityProblems.InstallFirstChanceObserver();
+            CompatibilityProblems.Begin();
+            Stopwatch ran = Stopwatch.StartNew();
+            bool endedNormally = false;
+
             // WPR Hub playtime: the whole run is one session, paused while the game is in the
             // background (the Activated/Deactivated wiring is at game creation, in StartCore).
             PlaytimeTracker.Begin(app.ProductId, app.Name);
             try
             {
                 await StartCore(app, hooks, isSilverlight, isNative);
+                endedNormally = true;
             }
             catch (Exception ex) when (ReportCrash(app, ex, CrashReport.Sources.GameRun))
             {
@@ -356,8 +370,93 @@ namespace WPR
             finally
             {
                 PlaytimeTracker.End();
+                ReportCompatibilityProblems(app, endedNormally ? "ended normally" : "ended with an exception", ran.Elapsed);
                 _reportingApp = null;
             }
+        }
+
+        /// <summary>
+        /// Set once a crash (managed, or a WP8 guest failure) has been queued for the current run.
+        /// The problems collected are attached to that report, so the run sends one report, not two.
+        /// </summary>
+        private static volatile bool _crashReportedThisRun;
+
+        /// <summary>
+        /// Ends collection for the run and queues its compatibility report, if it met anything and
+        /// did not already send a crash report carrying the same list. Never throws.
+        /// </summary>
+        private static void ReportCompatibilityProblems(Application app, string outcome, TimeSpan ran)
+        {
+            try
+            {
+                int dropped = CompatibilityProblems.Dropped;
+                IReadOnlyList<CompatibilityProblem> problems = CompatibilityProblems.End();
+                if (problems.Count == 0) return;
+
+                foreach (CompatibilityProblem p in problems)
+                {
+                    TeardownLog("compat: " + p.Summary);
+                }
+
+                if (_crashReportedThisRun || OnlineBackend.Crashes is not { } reporter) return;
+
+                CrashReport? report = CompatibilityProblems.BuildReport(problems, dropped, outcome, ran);
+                if (report == null) return;
+                FillTitle(report, app);
+                reporter.Report(report);
+                XnaBackendLog($"[wpr-compat] {problems.Count} compatibility problem(s) queued for WPR Hub: "
+                    + CompatibilityProblems.Headline(problems, dropped));
+            }
+            catch (Exception ex)
+            {
+                TeardownLog("compatibility report could not be queued: " + ex.Message);
+            }
+        }
+
+        /// <summary>Attaches the problems collected so far to a crash report about this run.</summary>
+        private static void AttachProblems(CrashReport report, string outcome)
+        {
+            try
+            {
+                IReadOnlyList<CompatibilityProblem> problems = CompatibilityProblems.Snapshot();
+                CompatibilityProblems.AttachTo(report, problems, CompatibilityProblems.Dropped, outcome, TimeSpan.Zero);
+            }
+            catch (Exception)
+            {
+                // The crash report matters more than the list.
+            }
+        }
+
+        private static void FillTitle(CrashReport report, Application app)
+        {
+            report.TitleId = app.ProductId;
+            report.TitleName = app.Name;
+            report.InstallFolder = WprHostEnvironment.CurrentInstallFolder
+                ?? Path.Combine(Configuration.Current!.DataPath(Application.DataStoreFolder), app.ProductId!);
+            report.GraphicsBackend = WPR.Engine.Graphics.GraphicsCapabilitiesStore.Current?.Backend
+                ?? WPR.Engine.Graphics.GraphicsDriverPreference.ResolveDriverName();
+        }
+
+        /// <summary>A launch WPR declines before running anything. No-op without a reporter.</summary>
+        private static void ReportRefusal(Application app, string reason, string detail)
+        {
+            try
+            {
+                if (OnlineBackend.Crashes is not { } reporter) return;
+                string folder = Path.Combine(Configuration.Current!.DataPath(Application.DataStoreFolder), app.ProductId ?? "");
+                reporter.Report(CrashReport.ForRefusal("launch", reason, detail, app.ProductId, app.Name,
+                    package: null, installFolder: folder));
+            }
+            catch (Exception ex)
+            {
+                TeardownLog("refusal could not be reported: " + ex.Message);
+            }
+        }
+
+        /// <summary>Through the backend logger, so it reaches the session log in Release too.</summary>
+        private static void XnaBackendLog(string line)
+        {
+            try { WPR.Xna.Rhi.XnaBackend.LogInfo(line); } catch { /* logging only */ }
         }
 
         /// <summary>The game being run, for the process-wide unhandled-exception hook. Null between launches.</summary>
@@ -386,12 +485,9 @@ namespace WPR
                 }
 
                 CrashReport report = CrashReport.FromException(ex, source);
-                report.TitleId = app.ProductId;
-                report.TitleName = app.Name;
-                report.InstallFolder = WprHostEnvironment.CurrentInstallFolder
-                    ?? Path.Combine(Configuration.Current!.DataPath(Application.DataStoreFolder), app.ProductId!);
-                report.GraphicsBackend = WPR.Engine.Graphics.GraphicsCapabilitiesStore.Current?.Backend
-                    ?? WPR.Engine.Graphics.GraphicsDriverPreference.ResolveDriverName();
+                FillTitle(report, app);
+                AttachProblems(report, "crashed");
+                _crashReportedThisRun = true;
                 reporter.Report(report);
             }
             catch (Exception reportEx)
@@ -424,13 +520,10 @@ namespace WPR
                     ExceptionType = "WP8 guest stopped",
                     ExceptionMessage = $"{failure.Reason} (after {failure.FramesPresented} frame(s))",
                     StackTrace = failure.Reason + '\n' + failure.Details,
-                    TitleId = app.ProductId,
-                    TitleName = app.Name,
-                    InstallFolder = WprHostEnvironment.CurrentInstallFolder
-                        ?? Path.Combine(Configuration.Current!.DataPath(Application.DataStoreFolder), app.ProductId!),
-                    GraphicsBackend = WPR.Engine.Graphics.GraphicsCapabilitiesStore.Current?.Backend
-                        ?? WPR.Engine.Graphics.GraphicsDriverPreference.ResolveDriverName(),
                 };
+                FillTitle(report, app);
+                AttachProblems(report, "WP8 guest stopped");
+                _crashReportedThisRun = true;
                 reporter.Report(report);
                 TeardownLog($"WP8 guest failure reported: {failure.Reason}");
             }

@@ -1009,6 +1009,10 @@ namespace WPR.SilverlightCompability
 
         private static void ReportOnce(string key, string what)
         {
+            // Before the once-per-process dedupe below: that set outlives a launch on the desktop
+            // head, and each run's WPR Hub report needs its own list. The collector dedupes itself.
+            WPR.Engine.Online.CompatibilityProblems.Note(
+                WPR.Engine.Online.CompatibilityProblems.Categories.UiRender, key, key + ": " + what);
             lock (Reported)
             {
                 if (!Reported.Add(key)) return;
