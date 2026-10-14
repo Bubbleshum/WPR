@@ -312,7 +312,14 @@ namespace WPR
         // Path failed to compile as a whole. Flowerz (981750c8-24cc-df11-9eae-00237de2db9e) is the
         // measured case: 51 named Paths. Not identity-binding; --repatch-installed is enough and
         // Android repatches on next launch.
-        public static int Version => 41;
+        // Bumped to 42: System.Windows.Input.MouseButtonEventHandler, MouseEventArgs and
+        // MouseEventHandler gained rescope entries (the shims already existed), plus the WP7
+        // NetworkInformation name-resolution types. Pure Silverlight titles now run on the XNA
+        // host (convergence plan Stage C), and Flowerz's game board subscribes
+        // MouseLeftButtonDown in its constructor, so with the WP7 scope left on the delegate the
+        // game screen could never be built. Not identity-binding; --repatch-installed is enough
+        // and Android repatches on next launch.
+        public static int Version => 42;
 
         private AssemblyNameReference FnaBackendRef;
         private AssemblyNameReference FNARef;
@@ -1402,6 +1409,13 @@ namespace WPR
                 { "System.Windows.Input.ManipulationDelta", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
                 { "System.Windows.Input.ManipulationVelocities", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
                 { "System.Windows.Input.MouseButtonEventArgs", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                // The rest of the mouse family (v42). The shims existed but had no entries, so a
+                // page subscribing MouseLeftButtonDown named [System.Windows]MouseButtonEventHandler
+                // and the whole method failed to compile — Flowerz's GameBoard constructor, i.e. the
+                // game screen itself. MouseEventArgs is where GetPosition is declared.
+                { "System.Windows.Input.MouseButtonEventHandler", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Input.MouseEventArgs", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Input.MouseEventHandler", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
                 { "System.Windows.Input.KeyEventArgs", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
                 { "System.Windows.Input.Key", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
                 // Bulk: media — transforms

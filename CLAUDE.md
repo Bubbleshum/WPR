@@ -96,12 +96,14 @@ Three things make this hard to recognise:
 publish, each with the reasoning inline. The Android job is unaffected — it builds
 `-f net10.0-android36.0` with no `-r`.
 
-**Avalonia is still split — 11.3.9 on desktop, 12.1.3 on android — and that is NOT because
-the TFM blocked it.** net10 removes the *restore* obstacle, and the desktop could take 12.1.3
+**Avalonia is still split — 11.3.9 in the desktop head, 12.1.3 (`Avalonia.Android`, kept only for
+its AppCompat theme resources) in the Android head — and that is NOT because the TFM blocked it.**
+No shared project references Avalonia any more: `WPR.Framework.Silverlight` did, and carried this
+split inside itself, until the Avalonia Silverlight host was deleted (Stage D, 2026-10-13). net10 removes the *restore* obstacle, and the desktop could take 12.1.3
 tomorrow; what stops it is four migrations riding along behind the version number, chief among
 them that `Avalonia.ReactiveUI` stops at 11.3.9 and its successor pulls **ReactiveUI 24**, where
 `System.Reactive.Unit` became `RxVoid`. The full measured list is on the `AvaloniaVersion`
-property in `WPR.Framework.Silverlight.csproj` — **read it before starting, because "bump the
+property in `WPR.Platform.Windows.csproj` — **read it before starting, because "bump the
 version" is the wrong mental model.** A trial run on 2026-09-25 reached 84 compile errors with
 more behind them, and Avalonia 12's XAML and theme changes do not surface at compile time at
 all, so this needs a real pass through the UI afterwards.
@@ -111,8 +113,9 @@ all, so this needs a real pass through the UI afterwards.
 - **Build**: the user clicks build/run in Rider, which builds `WPR.Platform.Windows`
   for `net10.0-windows10.0.17763.0` and pulls in the rest by project reference.
 - **Run**: `WPR.Platform.Windows` is the entry point (assembly/exe `WPR.Platform.Windows`, renamed from `WPR.UI.Desktop` on 2026-08-29). The UI lists installed games;
-  picking one launches via `SilverlightLauncher.LaunchAsync` or
-  `XnaLauncher.LaunchAsync`.
+  picking one launches via `XnaLauncher.LaunchAsync` (every in-process title: XNA, Silverlight,
+  WP8 native), or as a separate process through `UnityPortLauncher` (a `wpr-port.json`) or
+  `GameMakerLauncher` (a GameMaker export with a Runner.exe available).
 - **Run configurations are committed** (added 2026-08-30) and split across two
   mechanisms — don't add a third:
   - `Src/Platforms/WPR.Platform.Windows/Properties/launchSettings.json` — the three
@@ -195,7 +198,7 @@ it — never more members on this one, and never a new project.
 frame, which is also Android's, so samples pass through unconverted), `SensorBackend.Gyroscope`,
 `caps.Gyroscope(...)`, filled on Android by `WPR.Input.AndroidSensor.AndroidGyroscopeProvider`
 (`[wpr-gyro]` in logcat). **Windows declares none**: a PC has no gyroscope. Its consumer is the WP8
-native runtime, not a WP7 shim. `Research/Wp8Native/Sensors.cs` implements WinRT's
+native runtime, not a WP7 shim. `Src/Engine/WPR.Engine.Wp8Native/Runtime/Sensors.cs` implements WinRT's
 `Windows.Devices.Sensors.Gyrometer` and `Accelerometer` (both were improvised stand-ins that
 answered a placeholder object, so a game thought it had the sensor and read junk), backed by
 `Wp8NativeSensorHost`. `GetDefault` answers nullptr when the platform has none, which WP8 games
@@ -389,9 +392,8 @@ frame grab is needed and it works before the game has ever run. Per game because
 coordinates only mean anything against one title's layout, and the file dies with the install.
 Bindings are read in `PrepareForLaunch`, so an edit applies from the **next** launch.
 
-**Not built:** none of this exists for Silverlight titles. They run a separate Avalonia pointer
-pipeline that never touches `TouchPanel`, so keyboard→touch is XNA-only and would need a second
-implementation there.
+**Silverlight titles get it too since Stage C (2026-10-13)**: they now run on the XNA host and read
+touch through `TouchPanel` → `SilverlightTouchRouter`, so these bindings apply.
 
 ### Vibration is its own subsystem, and it is NOT the XNA rumble API (2026-09-05)
 
@@ -625,6 +627,37 @@ runs at 1-2 fps; it moved 403 → 408 over ~300 frames of steady play.
 
 No `ApplicationPatcher.Version` bump and no reinstall.
 
+### FAudio has its own AAudio output on Android (2026-10-13)
+
+On Android 8.1+ every FAudio engine (sound effects/XACT, songs, WP8 voices when routed there) opens
+its own low-latency **AAudio** stream instead of SDL's audio device: `FAudio_platform_aaudio.inl`,
+included by `FAudio_platform_sdl2.c` under `__ANDROID__`, rebuilt into all three `libFAudio.so`
+(same NDK recipe as FNA3D, sources `lib/FAudio`; exported symbols unchanged). The callback mixes one
+FAudio quantum at a time into a FIFO; the stream buffer starts at two bursts and grows a burst on
+each xrun. Log: `FAudio: AAudio output: ...` (tag `SDL/APP`).
+
+Why: SDL2's Android drivers open a plain track whose large buffer they keep full, so FAudio mixed
+~130 ms ahead of the speaker (Android reported ~175 ms latency on the emulator, now ~125). And
+**SDL allows only ONE output device on Android** (`OpenAudioDevice failed: Audio device already
+open`), so the songs engine, which opens second, got no sound at all on the SDL path. Below 8.1, or
+if AAudio will not open, FAudio falls back to SDL by itself, with that limit. There is no switch for it.
+Note the env file cannot set SDL hints any more: under CoreCLR,
+`AndroidEnvironment` values reach managed code but not SDL's `getenv`.
+
+SDL no longer pauses this output, so an SDL event watch pauses every stream on
+`SDL_APP_DIDENTERBACKGROUND` and restarts it on `WILLENTERFOREGROUND` (verified: tracks `A` → `P` →
+`A`). A disconnected stream is reopened on its own thread.
+
+**WP8 voices stay on `AudioTrackOutput` on Android.** Angry Birds Rio on the emulator, 50 s:
+22-43 dry spells through AudioTrack, 56-135 through FAudio over AAudio, ~170 through FAudio over
+SDL. The emulator has no fast mixer, so the S24 may differ; trying it means changing
+`IHostAudio.Create`. The emulator degrades after ~6 game runs (fps falls,
+everything underruns); cold-boot it between measurement sets. Not run on hardware yet.
+
+**Read with the AudioTrack section above (merged 2026-10-14):** "WP8 voices stay on
+`AudioTrackOutput`" below is now true through the `WPR.Audio.AudioTrack` module, which replaced
+that class. Trying WP8 on FAudio-over-AAudio is `audiotrack_scope.txt` = `off`, no code change.
+
 ### WP7 launchers leave the game through `IUriLauncher` (2026-09-24)
 
 `Microsoft.Phone.Tasks.WebBrowserTask.Show()` was an empty method, so every link a WP7 title opened
@@ -677,9 +710,26 @@ schemes) and `BingMapsTask`. `MarketplaceDetailTask` stays empty on purpose (see
 
 No `ApplicationPatcher.Version` bump and no reinstall — shim behaviour, picked up on next launch.
 
+### Where the WP8 native runtime lives (moved 2026-10-13)
+
+It used to be `Research/Wp8Native/`, compiled into the engine by a wildcard. Now:
+
+| what | where |
+| --- | --- |
+| the runtime (PE loader, CRT, WinRT, D3D, media...) | `Src/Engine/WPR.Engine.Wp8Native/Runtime/`, namespace `WPR.Wp8Native` |
+| the wprcpu C++ shim and the committed `wprcpu.dll` | `Src/Engine/WPR.Engine.Wp8Native/Native/` |
+| the Unicorn probe, `run.ps1`, the WinForms host | `Tools/Wp8/Wp8Probe/` |
+| contract tests, census, module probe, Wp8Run, WinRtSlotGen | `Tools/Wp8/` |
+| the probe's research log and screenshots | `Docs/Wp8Native/` |
+
+**Nothing in `Runtime/` may name an XNA or engine type**: the probe compiles those same files with
+no XNA reference (and with the GPL Unicorn CPU, which is why it never ships). XNA-facing code goes
+in the project root beside `Wp8NativeGame.cs`. Contract tests: `dotnet run --project
+Tools/Wp8/Wp8ContractTests`.
+
 ### WP8 media: byte streams, property stores, and decoding through the platform (2026-10-11)
 
-The WP8 runtime's Media Foundation (`Research/Wp8Native/Media*.cs`) gained three things:
+The WP8 runtime's Media Foundation (`Src/Engine/WPR.Engine.Wp8Native/Runtime/Media*.cs`) gained three things:
 
 * **`IMFByteStream`** (`MediaByteStream.cs`) over the host's streams - WinRT random-access streams
   and `CreateStreamOnHGlobal` IStreams, through `IHostStreams` (`HostStubs.MediaStreams.cs`) - and
@@ -881,7 +931,7 @@ hub: all players returned, `BestScore` equals the rating, distinct pictures per 
   and a DbContext is not thread-safe. Writing only `EarnedOnline` is safe against the tracked copy
   because EF writes only the properties it saw change.
 * **Playtime**: `PlaytimeTracker` (engine) runs one session per game run, started and ended in
-  `ApplicationLaunch.Start` and in the desktop `SilverlightLauncher`. It pauses on the game's
+  `ApplicationLaunch.Start`. It pauses on the game's
   `Deactivated` and resumes on `Activated`, and checkpoints every minute to a new `PlaySessions`
   table in `achievements.db` (`CREATE TABLE IF NOT EXISTS`, no migration). Each unlock is sent with
   the playtime before it, from those sessions. Sessions under 5 s are dropped as failed launches.
@@ -1122,9 +1172,11 @@ are not parts of the sensor bucket, and building them as such would have recreat
 **Trigger to revisit:** a head that gets touch from somewhere other than SDL — a native Android
 `MotionEvent` path, or a UWP/WinUI head.
 
-Also: `WPR.Framework.Silverlight`'s pointer pipeline (`Gestures.cs` + `PhoneApplicationFrameView`)
-is a *separate* recognizer over Avalonia pointer events that never touches `TouchPanel`. Two
-systems by design, not by accident — don't "unify gestures".
+Also: the Silverlight pointer pipeline (`SilverlightTouchRouter` + `Gestures.cs`) is a *separate*
+recognizer from XNA's `GestureDetector`. Since 2026-10-13 it is fed from `TouchPanel` samples by
+`SilverlightGame` (it used to run over Avalonia pointer events in `PhoneApplicationFrameView`,
+deleted with the Avalonia host), but it still produces Silverlight routed events and toolkit
+gestures, not XNA gestures. Two recognizers by design — don't "unify gestures".
 
 **The hardware Back press is on `IGameHost`**: `PressBackButton()`, implemented by `FnaGameHost`
 over `WprPhoneBackButton`. Before this, `GameActivity` held a `FnaGameHost` typed field purely to
@@ -1136,7 +1188,9 @@ still just calls this.
 **The XNA and Silverlight Back paths stay separate**, deliberately: one is a level-sampled gamepad
 button held for a frame, the other is a routed event a page can cancel before `GoBack()`.
 Silverlight apps aren't driven by `IGameHost` at all and there is no Silverlight path on Android,
-so a unifying interface would have two implementations and no polymorphic caller.
+so a unifying interface would have two implementations and no polymorphic caller. (Superseded in
+part, 2026-10-13: every Silverlight title now runs in `SilverlightGame`, which reads the pad's Back
+and routes it into `PhoneApplicationFrame.HandleBackKey` — the two paths meet there, not in a seam.)
 
 **A live bug fixed on the way past.** `SDL2_FNAPlatform.GetGamePadState` consulted
 `PhoneBackButtonPressed` **only** inside its `device == IntPtr.Zero` early return. Once any
@@ -1582,8 +1636,8 @@ Four more things that are deliberate:
 - **An unparseable file reads as "no verdict".** The worst a torn write can do is let the preferred
   driver be tried again; this file may cost a device its first choice, never its only one.
 - **The mark goes down at the first window creation, not at the start of the launch
-  (2026-10-04).** `ApplicationLaunch.Start` refuses a Silverlight UI app or a native WinRT app
-  before any `Game` exists, so such a launch never touches the driver and never presents a frame.
+  (2026-10-04).** `ApplicationLaunch.Start` refused a Silverlight UI app (until Stage C,
+  2026-10-13) or an unsupported runtime type before any `Game` exists, so such a launch never touches the driver and never presents a frame.
   Marked at the top of `FnaGameHost.RunAsync`, it left a pending mark, and once strikes became
   sticky one tap on an unsupported title condemned Vulkan for good. Seen on the S24 the day 0.2.03
   was built: every later game ran on OpenGL, where Doodle God then crashed. Anything new that can
@@ -3131,8 +3185,7 @@ Four details worth keeping:
 - **Copied unconditionally, not only when absent.** The staging folder is in external files and
   outlives the install, so a skip-if-present would leave the *previous* APK's FNA.dll behind after
   an update and patch games against the wrong build.
-- **`assembly-store-reader` is no longer referenced** by the Android head. The project is still in
-  the tree and the solution; delete it once it is clear nothing wants it back.
+- **`assembly-store-reader` is gone** (deleted 2026-10-13): nothing referenced it after this change.
 
 No `ApplicationPatcher.Version` bump for this half. **A manifest/asset change**, so Android needs
 the APK repackaged rather than just a managed rebuild.
@@ -4566,14 +4619,14 @@ opposite directions; do not assume either.**
 `SoftwareVisualRasteriser` (`Src/Core/WPR.Framework.Silverlight/`) is the painter. Four things
 about it are deliberate:
 
-- **CPU, not Avalonia.** `SilverlightRenderer` beside it draws into an Avalonia `DrawingContext`,
-  and the mixed-mode host never initialises Avalonia — that is what lets these titles run on
-  Android at all. So this is a second renderer over the same tree, on purpose.
+- **CPU, not Avalonia.** No UI framework is involved, which is what lets these titles run on
+  Android at all. It began as a second renderer beside the Avalonia `SilverlightRenderer`; since
+  Stage D (2026-10-13) it is the only one.
 - **Output is premultiplied RGBA packed as XNA's `Color`** (R in the low byte). Games blit it with
   a default `SpriteBatch.Begin()`, which is `BlendState.AlphaBlend`, i.e. premultiplied; a
   straight-alpha buffer fringes every edge.
-- **It paints only what the tree asks for**, with no page backdrop — unlike
-  `SilverlightRenderer.RenderPage`, which fills black first. An unrequested fill here would hide
+- **It paints only what the tree asks for**, with no page backdrop (the deleted Avalonia
+  renderer filled black first). An unrequested fill here would hide
   the game rather than the missing overlay.
 - **Text is not drawn.** It needs a glyph rasteriser, which is a different and much larger job.
   Gradients, `RenderTransform` and popups are also absent. Every unsupported thing it meets is
@@ -4624,9 +4677,9 @@ loading screen routinely builds one, and a missing type resolves when the method
 added, and tapping **My Rabbid** on the main menu did nothing with nothing on screen to say why.
 The properties live on `RangeBase` because that is where Silverlight declares them: `bar.Value = 50`
 compiles to `callvirt RangeBase::set_Value`, and a hierarchy that puts the setter on the wrong
-class does not resolve at JIT time. `SilverlightRenderer.DrawProgressBar` now matches our shim's
-own FullName as well as the two WP7 ones — matching only the WP7 name would have stopped
-recognising it the moment the type existed.
+class does not resolve at JIT time. The chrome classifier (`WpChrome`, then also the Avalonia
+`SilverlightRenderer`) matches our shim's own FullName as well as the two WP7 ones — matching only
+the WP7 name would have stopped recognising it the moment the type existed.
 
 **Not identity-binding, so `--repatch-installed` is enough and nothing needs a reinstall.** The
 rasteriser itself is shim behaviour and needs neither.
@@ -4644,7 +4697,7 @@ Little Acorns unaffected (Little Acorns reaches a level).
 
 ### Who draws a mixed-mode page: ask what was PAINTED, not what subscribed (2026-09-25)
 
-`MixedModeGame.Draw` composites the Silverlight page only when **nothing else painted the frame**.
+`SilverlightGame.Draw` composites the Silverlight page only when **nothing else painted the frame**.
 Two things can already have accounted for it, and neither may be drawn over: the game may have
 rasterised that very tree itself (`UIElementRenderer.GameCompositedThisFrame`), or it may have
 painted a scene of its own. Otherwise the screen would be empty, so the host draws the page.
@@ -4789,15 +4842,134 @@ more than 48/255, all at anti-aliased edges and dash phase) and `ShapeRasterTest
 fill rules, area of an ellipse/arc/ring, stroke width, caps, joins, stretch, signature). Flowerz's
 own `LevelAnimation`/`Explosion` controls (150 Paths, rotated petals with 50% shadows) render
 correctly through `scratchpad/slpage`, which boots a pure-Silverlight title from a repatched SCRATCH
-COPY of its install. Its `GameBoard` page still cannot be built (`MouseButtonEventHandler` is not
-shimmed) and images need a graphics device the probe does not have — separate Stage C gaps.
+COPY of its install. Its `GameBoard` page could not be built then (`MouseButtonEventHandler` had no
+rescope entry); fixed in Stage C, below.
 
-Not done: the Avalonia `SilverlightRenderer` still draws non-rectangle shapes as boxes (it goes in
-Stage D); `StrokeDashArray` phase restarts per figure; miters past the limit are bevelled rather
+Not done: `StrokeDashArray` phase restarts per figure; miters past the limit are bevelled rather
 than clipped.
 
 **Patcher table change (v41)**: the shape/geometry types gained rescope entries. Not
 identity-binding — `--repatch-installed` on the desktop, automatic on Android.
+
+### Pure Silverlight titles run on the XNA host (Stage C, 2026-10-13, patcher v42)
+
+`ApplicationLaunch` no longer throws "Silverlight UI runtime is not yet implemented": every
+`ApplicationType.Silverlight` title is hosted by `SilverlightGame` (CPU rasteriser, `TouchPanel` →
+`SilverlightTouchRouter`). That throw was the **only** thing keeping them off Android. (The
+Avalonia host stayed behind a flag at this point; Stage D, next section, deleted it.)
+
+**Default is the XNA host, measured, not assumed** — both hosts driven by the same script
+(`scratchpad/gamerun` for XNA, `scratchpad/slav` = the Avalonia host headless, rendering
+`PhoneApplicationFrameView` with Avalonia.Headless + Skia), both against a **scratch data root**
+(`WPR_DATA_ROOT`, prepared by `scratchpad/slprep`, which copies and repatches installs and never
+writes the user's):
+
+| title | Avalonia host | XNA host, desktop | XNA host, Android (`WPR_Verify`, Release APK) |
+| --- | --- | --- | --- |
+| Flowerz | menus as **text only** (it cannot draw a `BitmapSource.SetSource` image), board reachable, **taps on the board do nothing** (no `MouseLeftButtonDown` on that host) | images, menus, board, pieces placed, queue counts down — D1–D4 | same, A1 (GLES 3.1) and A2 (Vulkan) |
+| Minesweeper | dashboard, panorama swipes to powerups / classic / speed | **identical** pictures — D1–D4 | dashboard → swipes → classic, A1 and A2 |
+| What In The World? | dies on start-page navigation (now: on `VoiceCommandService`) | same failure, same place | not run |
+
+Android: install a desktop-patched copy plus a catalogue row (the memory note on the emulator), held
+presses for taps, `fna3d_driver.txt` per cell; Carcassonne (mixed-mode, repatched on device to v42)
+still composites its menu on A2. Not run: S24 (P1/P2), Mali (P3).
+
+Neither host gets further into Minesweeper: its own guard `MainPage.c()` swallows every dashboard
+and mode-list tap (a popup / full-screen-ad / 1.2 s debounce check), on both. What In The World? is
+WP8 managed and stops in WinRT (`VoiceCommandService.InstallCommandSetsFromFileAsync`,
+`CurrentApp.AppId`, `InstallationManager`), as an unhandled exception on both hosts.
+
+**What the XNA host needed, all framework fixes shared by both hosts** — each is a pattern other
+pure Silverlight titles will hit:
+
+- **`GetResourceStream` reads files in the package.** A relative URI without `;component/` names a
+  XAP *file* (the Content build action). It only searched embedded resources, so Flowerz's strings
+  and images were null and its loading page sat black on **both** hosts. It also fixed **Big Buck
+  Hunter Pro** in the headless harness (its `AppResourceUtils.LoadFileStream` → black screen
+  before; menu now). Last pass, so an embedded resource of the same name still wins.
+- **Loaded on the root, and on elements that join a live tree.** Flowerz starts from
+  `AppFrame.Loaded`; its bloom animation starts from its own Loaded when added to a canvas, and the
+  game waits for that storyboard before drawing a placed piece. `UIElement.SetParent` queues the
+  child when the parent is loaded; `FrameworkElement.RaisePendingLoaded` (host, once a frame)
+  raises it. **Pure Silverlight only in `SilverlightGame`** — a mixed-mode title's queue is dropped
+  unraised, which is what it always saw.
+- **Re-layout on invalidation** (pure only): Flowerz fills its score/level TextBlocks in
+  `OnNavigatedTo`, *after* the page swap that triggered layout, so they were arranged at width 0.
+  `RelayoutIfInvalidated` polls the page's `IsMeasureValid` before compositing.
+- **`Frame` honours `ContentControl.Content` written on it.** Silverlight's Frame *is* a
+  ContentControl and Flowerz swaps every page with `((ContentControl)this).Content = page`. Ours
+  derives from FrameworkElement, so the value went into the property store and nothing changed.
+  `ContentControl.OnContentChanged` now routes a Frame to `ReplaceContentDirectly`
+  (`WprContentReplaced` event, no `Navigated`, Loaded raised).
+- **`FrameworkDispatcher.Update` off the game thread no longer touches `TouchPanel`** and no longer
+  counts as the app's pump. Flowerz and Minesweeper pump it from a `BackgroundWorker` every 10 ms
+  (the WP7 idiom for XNA audio in a Silverlight app); that raced the game thread's pump and a tap
+  could press and release between two frames — Minesweeper ignored every tap. "Game thread" is
+  `OffThreadGpuCalls.OnDeviceThread`, so a game that pumps before creating a device is unchanged.
+- `MouseButtonEventArgs : MouseEventArgs` (GetPosition lives on the base, and Flowerz casts to it);
+  `UIElement.MouseMove` (raised along the press chain); patcher **v42** rescopes
+  `MouseButtonEventHandler`/`MouseEventArgs`/`MouseEventHandler`, whose shims existed with no entry.
+- `ListBox : Selector` (selection moved to Selector; Minesweeper casts `(Selector)sender`), and a
+  tap selects the row before Tap handlers run. Panorama/Pivot horizontal pan + page commit ported
+  from `PhoneApplicationFrameView` into `SilverlightTouchRouter`.
+- `PropertyPath(string, params object[])` (every code-built storyboard in Flowerz),
+  `XamlReader.Load` strips a BOM, image paths clamp leading `..` at the package root, WP8
+  `IsNavigationInitiator`, `NameResolutionCallback`/`ResolveHostNameAsync(DnsEndPoint…)` (answers
+  synchronously: the caller waits 50 ms), a silent `BackgroundAudioPlayer`.
+
+**Mixed-mode distribution, measured with the harness idle for 25 s, combine HEAD vs this change**:
+identical for nine titles; **Big Buck Hunter Pro moved from "compositing" (a black screen, its
+start page failed on the missing file pass above) to "the game painted"** — which is what the
+"Who draws a mixed-mode page" list already says it should be. The Game of Life composites in an
+idle run on both builds (it sits on its title page); the list above was measured further in.
+
+**Three harness traps worth knowing.** gamerun's SDL window sits on the real desktop with
+`MouseAsTouch` on, so **a real click lands in the game** — scripted runs now move it off-screen
+(`GAMERUN_ONSCREEN=1` to keep it); turning `MouseAsTouch` off instead stops `TouchPanel` updating
+and the script with it. Neither harness composes a `Guide` message box, so a title that asks a
+question (Flowerz's "new game?" when a save exists) stalls there — `sl-run.ps1` clears the scratch
+store each run. And neither harness has audio on the Avalonia side (`NoAudioHardwareException` out
+of every Flowerz button click there): `AudioBackendRegistry`'s base is set only by `FnaGameHost`,
+so the **real** Avalonia host has the same problem.
+
+
+### One Silverlight host: the Avalonia one is deleted (Stage D, 2026-10-13)
+
+`SilverlightGame` (`Src/Engine/WPR.Engine.GameLoop/`, **renamed from `MixedModeGame`**) is the only
+Silverlight host, on both heads. Gone: `SilverlightLauncher`, `PhoneApplicationFrameView`,
+`SilverlightRenderer`, `BrandedSplashRenderer`, `IBackgroundRenderer`, `PhoneHardwareButtons` (the
+desktop bezel), `SilverlightHostChoice` with the `WPR_SILVERLIGHT_AVALONIA` variable and the
+`SilverlightAvaloniaHost` config.json key (an old config.json still carrying it loads fine:
+Newtonsoft ignores unknown keys), and `MixedModeDetection` with the `isMixedMode` routing in
+`ApplicationLaunch` and `MainWindowDesktop`. About 2,400 lines net.
+
+- **`WPR.Framework.Silverlight` references no UI framework.** Its Avalonia package, and with it the
+  11.3.9/12.1.3 split *inside* that project, is gone; the measured cost of moving the desktop to
+  Avalonia 12 now sits on `AvaloniaVersion` in `WPR.Platform.Windows.csproj`. **The APK still
+  carries Avalonia**: the Android head references `Avalonia.Android` 12.1.3 for its AppCompat theme
+  resources, so the APK did not shrink (Release, 208,486,666 bytes).
+- **The mixed/pure distinction survives, inside the host.** It is behaviour, not routing: Loaded on
+  the root tree and on late-added elements, and re-layout on invalidation, are pure-only, and the
+  ten mixed-mode titles' composite/no-composite split depends on them staying off.
+  `SilverlightGame.NamesSharedGraphicsDeviceManager(assemblyPath)` is the old detector's test (a
+  `SharedGraphicsDeviceManager` type reference in the main assembly), now over
+  `System.Reflection.Metadata`. Log: `[wpr-silverlight] pure Silverlight title …` /
+  `… mixed-mode title (SharedGraphicsDeviceManager)`.
+- **GameMaker exports have their own launch path.** They only ever reached YoYo's Runner.exe
+  from inside `SilverlightLauncher`. The desktop now asks `GameMakerLauncher.TryLaunchAsync`
+  (WPR.Runtime) after `UnityPortLauncher` and before `XnaLauncher`; it answers false when there is
+  no `Assets/game.win` or no Runner, and the title then goes to `SilverlightGame`. `RequestExit`
+  kills the Runner when WPR closes. Reported to the hub as runtime path `other` (the hub's list has
+  no GameMaker value). **Unverified**: no GameMaker title or runtime is installed here.
+- `DrawingSurfaceBackgroundGrid` is a plain Grid (background + children); `BingWallpaper` keeps only
+  the file the rasteriser decodes. A Silverlight install now reports runtime path `xna-fna`.
+- No patcher change (still v42): nothing renamed is bound by game IL.
+
+Measured on the headless harness against the scratch data root, `combine` vs this change, same
+scripts: the ten mixed-mode titles keep their split exactly (Carcassonne, Galactic Reign and The
+Game of Life composite in an idle run; the other seven do not), with pixel-identical frames for the
+static ones; Flowerz (menu → board → pieces placed) and Minesweeper (dashboard → panorama → classic)
+reach the same screens on D1, and on D2–D4 after the change. Android was not run (no emulator free).
 
 ### When I touch a shim type
 
@@ -4862,14 +5034,14 @@ which upstream type the file shadows, and tooling can grep for it.
 
 Files at the project root are **not** type shims — they're WPR-internal
 runtime/helper code that doesn't shadow any upstream type:
-- Renderers (`SilverlightRenderer.cs`, `BrandedSplashRenderer.cs`, …). The **D3D11**
-  renderers are gone: Stage 5e (2026-08-29) moved them into `Src/Backends/WPR.Backend.Direct3D11`
-  behind an `ISurfaceRendererBackend` seam + `SilverlightBackend` registry, and on **2026-10-12**
-  that backend, seam and registry were retired (Plans/RUNTIME-CONVERGENCE.md 2a), because all
-  they drew was a splash image or test pattern for titles WPR cannot host.
-  `DrawingSurfaceBackgroundGrid` now shows `BrandedSplashRenderer` or the placeholder.
-  **Do not add a graphics package reference to `WPR.Framework.Silverlight`** —
-  `BackendIsolationTests` fails if you do.
+- The CPU renderer (`SoftwareVisualRasteriser*.cs`, `TextRasteriser.cs`, `TrueTypeFont.cs`,
+  `WpChrome.cs`, `UIElementRenderer.cs`, `SilverlightImageDecoder.cs`). It is the only one: the
+  **D3D11** renderers were retired on 2026-10-12 (Plans/RUNTIME-CONVERGENCE.md 2a) and the
+  Avalonia ones (`SilverlightRenderer`, `BrandedSplashRenderer`, `IBackgroundRenderer`) on
+  2026-10-13 (2b, Stage D). `DrawingSurfaceBackgroundGrid` is a plain Grid now.
+  **Do not add a graphics or UI package reference to `WPR.Framework.Silverlight`** —
+  `BackendIsolationTests` fails on a graphics one, and the project has no Avalonia reference
+  since Stage D; keep it that way.
 - Pointer-to-gesture bridge (`Gestures.cs`, `PanoramaState.cs`,
   `PanoramaStateTable.cs`, `PanoramaSelectedItemSync.cs`)
 - XAML helpers (`XamlTypeConverter.cs`, `MarkupExtensionParser.cs`)
@@ -4943,8 +5115,8 @@ dir wasn't cleared.
 
 There is no shared UI project any more. `Src/UI/WPR.UI` was dissolved on
 2026-08-29: the Avalonia UI (`Pages/`, `ViewModels/`, `Views/`, `Themes/`,
-`ViewLocator`), the three launchers (`SilverlightLauncher`, `XnaLauncher`,
-`UnityPortLauncher`), the tilt stack (`KeyboardTiltBindings`, `TiltOverlay`,
+`ViewLocator`), the three launchers (`SilverlightLauncher` — deleted 2026-10-13 with the Avalonia
+Silverlight host — `XnaLauncher`, `UnityPortLauncher`), the tilt stack (`KeyboardTiltBindings`, `TiltOverlay`,
 `KeyboardAccelerometerHost` — since 2026-08-30 under `Input/`, namespace
 `WPR.Platform.Windows.Input`) and `PhoneHardwareButtons` /
 `WP7AccentColors` all went to `WPR.Platform.Windows`, because the Android shell is
@@ -5180,8 +5352,8 @@ Consequences to remember:
 - `build-android.ps1` / `build-android.sh` / `release.yml` all pass
   `-p:IncludeAndroidTargets=true`, so CI never depends on detection.
 - Desktop-only contributors should open `Src/WPR.Windows.slnf`, not `WPR.sln` —
-  the filter drops `WPR.Platform.Android`, `WPR.Audio.AndroidMediaPlayer`, the Java bindings and
-  `assembly-store-reader`, which are android-only and can't be TFM-stripped.
+  the filter drops `WPR.Platform.Android`, `WPR.Audio.AndroidMediaPlayer`, and the Java
+  bindings, which are android-only and can't be TFM-stripped.
 - The announce line (`WPR: .NET Android workload for API 34 ...`) only fires on
   `WPR.Platform.Windows`'s `Build`, so it does **not** print when a dependency's
   android inner build fails first — don't read its absence as "gating didn't run".

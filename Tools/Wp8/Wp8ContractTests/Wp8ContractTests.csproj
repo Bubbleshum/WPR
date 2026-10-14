@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Contract tests for the WP8 host imports: each suite calls import handlers exactly as a trap
+    would - registers and guest memory in, r0 and guest memory out - with no guest code running.
+
+      run Tools/Wp8/Wp8ContractTests (dotnet run, double-dash project option) with arguments: [<arm exe>] [<suite filter>]
+
+    Not part of WPR.sln; built against the engine project, which compiles the Runtime/
+    sources. Add a family's checks as a new Suites/*.cs implementing IContractSuite - suites are
+    found by reflection, so parallel work never edits a shared file.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.17763.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Src\Engine\WPR.Engine.Wp8Native\WPR.Engine.Wp8Native.csproj" />
+  </ItemGroup>
+
+</Project>

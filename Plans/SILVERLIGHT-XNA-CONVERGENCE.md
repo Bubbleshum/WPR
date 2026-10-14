@@ -1,5 +1,13 @@
 # Collapsing the Silverlight host into the XNA host
 
+**Status (2026-10-13): all four stages are done.** Stage D deleted the Avalonia host the same day
+Stage C shipped (the user chose not to wait the one release §5 suggested), so every
+`ApplicationType.Silverlight` title runs on one host, `SilverlightGame` (renamed from
+`MixedModeGame`), on both heads, and there is no flag. Results in the Stage C and Stage D entries
+of §4 and in CLAUDE.md ("Pure Silverlight titles run on the XNA host", "One Silverlight host"). The §5 gate (`IBackgroundRenderer`) was settled
+by retiring the D3D11 backend on 2026-10-12 (RUNTIME-CONVERGENCE §2a). Results in the Stage C entry
+of §4 and in CLAUDE.md, "Pure Silverlight titles run on the XNA host".
+
 **Status (2026-09-25): Stages A and B are built.** Gaps 1, 2, 3 and 5 are done; gap 4 turned out
 not to be needed (see below). Stage C has not started and is still gated on the
 `IBackgroundRenderer` decision in §5. What each stage actually delivered, and where it stopped:
@@ -182,6 +190,26 @@ runtime is not yet implemented" throw beneath it) and the `IsMixedMode` helper i
 **and reach them on Android.** This is the gate; if the rasteriser is not at parity, Stage C
 does not start.
 
+**Done 2026-10-13, with two deviations from the text above.** The `isMixedMode` branch was not
+deleted but widened (every Silverlight title takes it; the detector only logs and sets
+`isPureSilverlight`), and `MixedModeGame` was not renamed — both wait for Stage D, so that the flag
+can still route a title back to Avalonia for one release. Measured with both hosts driven by one
+script against scratch copies (`scratchpad/gamerun`, `scratchpad/slav` = Avalonia host headless):
+
+| title | desktop Avalonia | desktop XNA host | Android emulator (XNA host) |
+| --- | --- | --- | --- |
+| Flowerz | text-only menus; board reachable, not playable | menus with art, board playable (D1–D4) | board playable, GLES 3.1 and Vulkan |
+| Minesweeper | dashboard + panorama pages | identical (D1–D4) | dashboard + panorama pages, GLES 3.1 and Vulkan |
+| What In The World? | dies at start (WinRT `VoiceCommandService`) | same | not run |
+
+The XNA host at least matches the Avalonia host on both gate titles, so it is the default. Neither
+host gets *into* a Minesweeper game: the title's own tap guard swallows every tap on both. What it
+took is in CLAUDE.md — mostly framework fixes both hosts share (`GetResourceStream` file pass,
+Loaded for late-added elements, `Frame.Content` as a ContentControl, off-thread
+`FrameworkDispatcher.Update`, `ListBox : Selector`, panorama paging in the router, patcher v42 for
+the mouse delegates). Text is the rasteriser's own and is not visibly worse than Avalonia's in
+either title (the §5 "text quality" worry did not materialise at this size).
+
 ### Stage D — delete the Avalonia renderer
 
 | file | lines |
@@ -196,6 +224,28 @@ Plus the `Avalonia` package reference in `WPR.Framework.Silverlight.csproj` — 
 in the APK today** (the android leg pulls Avalonia 12.1.3 while the desktop leg stays on 11.3.9,
 a split the csproj comment explains and apologises for). Removing it deletes that split and
 shrinks the APK by an amount not yet measured.
+
+**Done 2026-10-13.** Deleted the four files above plus `IBackgroundRenderer`, `PhoneHardwareButtons`
+(the desktop bezel, used only by the launcher), `SilverlightHostChoice` and the
+`SilverlightAvaloniaHost` setting, `MixedModeDetection` and the `isMixedMode` routing in
+`ApplicationLaunch` and `MainWindowDesktop`, and the Avalonia package in
+`WPR.Framework.Silverlight`: about 2,430 lines net (`git diff --shortstat` over `Src`: 300
+insertions, 2,728 deletions). Three things the table above did not foresee:
+
+- **The mixed/pure distinction could not simply go.** It is behaviour inside the host (Loaded and
+  re-layout for pure titles only, which the mixed-mode composite split depends on), so the
+  detector's test moved into `SilverlightGame` (`NamesSharedGraphicsDeviceManager`) rather than
+  being deleted.
+- **GameMaker exports** were routed to YoYo's Runner from inside `SilverlightLauncher`; they now
+  have their own step (`GameMakerLauncher.TryLaunchAsync`, desktop only, falling back to
+  `SilverlightGame`). Unverified: no GameMaker title is installed here.
+- **The APK did not shrink**: the Android head still references `Avalonia.Android` 12.1.3 for its
+  AppCompat theme resources, so Avalonia ships regardless. The split is now between the two heads
+  only.
+
+Measured on the desktop harness, `combine` against this change: the ten mixed-mode titles keep
+their composite/no-composite split exactly, Flowerz and Minesweeper reach the same screens (D1–D4).
+Android not run.
 
 ---
 

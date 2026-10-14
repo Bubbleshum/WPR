@@ -494,6 +494,20 @@ namespace WPR.Wp8Native
             return effect;
         }
 
+        /// <summary>
+        /// A NaN constant as a large negative number, so a <c>cmp</c> picks the same side on every driver.
+        /// </summary>
+        /// <remarks>
+        /// Level-9 shaders test a flag with <c>cmp dst, c, a, b</c> (c &gt;= 0 ? a : b), and a game
+        /// writes its bool "true" into the constant buffer as 0xFFFFFFFF, a NaN. Direct3D compares
+        /// ordered, so NaN &gt;= 0 is false and it takes <c>b</c>; MojoShader's SPIR-V uses an unordered
+        /// compare and its GLSL took <c>a</c> too. MONOPOLY Millionaire is the case: its sprite shader
+        /// picks texture x colour on D3D11 and the bare vertex colour on Vulkan and GLES, so every
+        /// sprite was white (Android: a white screen; desktop GL: only the text, which uses another
+        /// shader). -MaxValue is what D3D's answer amounts to for cmp and sge; a NaN carried no number.
+        /// </remarks>
+        private static float Ordered(float value) => float.IsNaN(value) ? -float.MaxValue : value;
+
         private static void SetConstants(Effect effect, Aon9Shader shader, IReadOnlyDictionary<int, byte[]> buffers)
         {
             if (shader.ConstantRegisters == 0 || shader.ConstantArrays.Count == 0)
@@ -518,10 +532,10 @@ namespace WPR.Wp8Native
                     if (source + 16 <= data.Length && target < registers.Length)
                     {
                         registers[target] = new Vector4(
-                            BitConverter.ToSingle(data, source),
-                            BitConverter.ToSingle(data, source + 4),
-                            BitConverter.ToSingle(data, source + 8),
-                            BitConverter.ToSingle(data, source + 12));
+                            Ordered(BitConverter.ToSingle(data, source)),
+                            Ordered(BitConverter.ToSingle(data, source + 4)),
+                            Ordered(BitConverter.ToSingle(data, source + 8)),
+                            Ordered(BitConverter.ToSingle(data, source + 12)));
                     }
                 }
             }

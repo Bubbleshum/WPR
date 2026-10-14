@@ -97,8 +97,9 @@ namespace WPR.Wp8Native
         }
 
         /// <summary>
-        /// Nothing to do here: FAudio's device is paused with the app by SDL, and Android's
-        /// AudioTrack voices are paused by the backend itself
+        /// Nothing to do here: FAudio's output is paused with the app (by SDL for SDL's device, by
+        /// FAudio's own SDL event watch for its AAudio stream on Android), and Android's AudioTrack
+        /// voices are paused by the backend itself
         /// (<c>AudioBackendRegistry.SuspendForBackground</c>, from <c>GameActivity.OnPause</c>).
         /// </summary>
         public void Suspend(bool suspended)

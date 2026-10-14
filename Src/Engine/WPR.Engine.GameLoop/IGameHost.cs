@@ -65,9 +65,9 @@ public interface IGameHost
     /// Thread-safe.
     ///
     /// <para><b>Back only, deliberately.</b> WP7's bezel also has Start and Search, but on real
-    /// hardware those deactivate the app rather than reaching the game — which is why the
-    /// Silverlight bezel (<c>PhoneHardwareButtons</c>) wires them as no-ops, and why adding them
-    /// here would be two members no host could implement. A "Start button means Back" input
+    /// hardware those deactivate the app rather than reaching the game — which is why the old
+    /// desktop Silverlight bezel (deleted with the Avalonia host, 2026-10-13) wired them as no-ops,
+    /// and why adding them here would be two members no host could implement. A "Start button means Back" input
     /// binding is still expressible: it calls this.</para>
     /// </summary>
     void PressBackButton();

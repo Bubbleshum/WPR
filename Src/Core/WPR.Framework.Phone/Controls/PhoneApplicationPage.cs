@@ -14,8 +14,9 @@ namespace Microsoft.Phone.Controls
         /// Raised when the user presses the hardware Back key. Real WP7 routes the
         /// capacitive back-button press here; user code sets <c>e.Cancel = true</c>
         /// to swallow it (e.g. close an in-page popup instead of navigating back).
-        /// The desktop bezel's Back button (<c>PhoneHardwareButtons</c>) is the
-        /// only source of this event on our host.
+        /// On our host the source is the hardware Back key as the XNA loop sees it
+        /// (Esc / Android Back / a pad's Back), which <c>SilverlightGame</c> routes into
+        /// <see cref="PhoneApplicationFrame.HandleBackKey"/>.
         /// </summary>
         public event EventHandler<CancelEventArgs>? BackKeyPress;
 
@@ -25,10 +26,10 @@ namespace Microsoft.Phone.Controls
         }
 
         /// <summary>
-        /// Internal entry point for the host's bezel/back-button: invoke the page's
+        /// Internal entry point for the host's back key: invoke the page's
         /// virtual <see cref="OnBackKeyPress"/> and report whether user code asked
         /// to cancel default navigation. Wrapping the user invocation here keeps a
-        /// thrown handler from propagating into the Avalonia UI thread.
+        /// thrown handler from propagating into the game loop.
         /// </summary>
         internal bool RaiseBackKeyPress()
         {

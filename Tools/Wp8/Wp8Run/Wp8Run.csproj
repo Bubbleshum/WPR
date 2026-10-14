@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Runs a WP8 ARM executable's entry point on the shipping CPU (dynarmic, through wprcpu) for a
+    bounded instruction budget, with no window and no graphics device, and prints how it ended.
+    For CPU-level bugs - a native abort inside the JIT, a fault that should have been a
+    StopReason - that need the real runtime but not the game harness.
+
+      Wp8Run <arm exe> [budget, default 2e9] [sandbox folder]
+
+    Not part of WPR.sln; built against the engine project like Wp8ContractTests.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.17763.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Src\Engine\WPR.Engine.Wp8Native\WPR.Engine.Wp8Native.csproj" />
+  </ItemGroup>
+
+</Project>

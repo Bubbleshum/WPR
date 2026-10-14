@@ -347,6 +347,23 @@ namespace WPR.WindowsCompability
                 if (inner != null) return MakeInfo(inner, path);
             }
 
+            // Pass 3: a file in the XAP. On the phone a relative URI with no ";component/" names
+            // a file in the application package (the "Content" build action), and that is where
+            // most titles keep their data — Flowerz loads every string table and image this way
+            // (Content/Strings/<culture>/Flowerz.xml, Content/Images/*.png). With no file pass
+            // every one came back null, the localiser NRE'd, and the loading page sat black on
+            // both hosts. Last, so an embedded resource of the same name still wins as before.
+            if (compIdx < 0 && HostContext.CurrentInstallFolder is { Length: > 0 } install)
+            {
+                try
+                {
+                    string relative = normalized.Replace('/', System.IO.Path.DirectorySeparatorChar);
+                    string full = System.IO.Path.Combine(install, relative);
+                    if (File.Exists(full)) return MakeInfo(File.OpenRead(full), path);
+                }
+                catch (Exception) { /* unreadable is the same as absent */ }
+            }
+
             return null;
         }
 

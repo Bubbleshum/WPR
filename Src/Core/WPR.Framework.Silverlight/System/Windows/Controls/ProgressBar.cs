@@ -12,10 +12,8 @@ namespace WPR.SilverlightCompability
     /// <c>TypeLoadException</c> out of the game's own <c>GameTimer</c> update, the screen was
     /// never added, and the menu simply sat there. Nothing on screen said so.</para>
     ///
-    /// <para>The software rasteriser paints its <c>Background</c> like any other control; the
-    /// Avalonia renderer has drawn a WP7-style indeterminate bar for
-    /// <c>Microsoft.Phone.Controls.PerformanceProgressBar</c> for a while and now recognises this
-    /// type too, so a pure-Silverlight title gets the animated dots.</para>
+    /// <para>The software rasteriser draws the WP7 bar or indeterminate dots through
+    /// <c>WpChrome</c>, for this type and for <c>Microsoft.Phone.Controls.PerformanceProgressBar</c>.</para>
     ///
     /// <para><b>The properties live on <see cref="RangeBase"/></b>, as Silverlight declares them —
     /// see the remarks there for why the hierarchy has to match rather than merely the member

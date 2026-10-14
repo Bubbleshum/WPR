@@ -239,8 +239,7 @@
          .NET 10 that packaging is lib/<abi>/libassembly-store.so and the reader found
          nothing, which silently broke on-device patching. FNA.dll is now shipped as a plain
          asset (see _WprStageFnaAssetForCecil at the end of this file), so nothing needs to
-         parse the APK's internals. The project is still in the tree and the solution; delete
-         it once it is clear nothing wants it back. -->
+         parse the APK's internals. The project itself was deleted on 2026-10-13. -->
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Runtime\WPR.Runtime.csproj" />
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Loader\WPR.Loader.csproj" />
     <!-- FNA game-loop host driver (ApplicationLaunch + FnaGameHost/IGameHost) — Stage 4. -->
@@ -269,7 +268,7 @@
          change: ACTION_VIEW needs no permission. -->
     <ProjectReference Include="..\..\Modules\Launchers\WPR.Launchers.AndroidIntent\WPR.Launchers.AndroidIntent.csproj" />
     <!-- libwprcpu.so (Libraries/<abi>/) is the dynarmic CPU behind WPR.Engine.Wp8Native, which
-         runs WP8 "Modern Native" titles as an XNA Game. Built from Research/Wp8Native/Native/android. -->
+         runs WP8 "Modern Native" titles as an XNA Game. Built from Src/Engine/WPR.Engine.Wp8Native/Native/android. -->
   </ItemGroup>
 
   <!--

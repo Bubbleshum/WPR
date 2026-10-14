@@ -2,9 +2,7 @@ namespace WPR.SilverlightCompability
 {
     /// <summary>Shim for <c>System.Windows.Media.RadialGradientBrush</c>.</summary>
     /// <remarks>
-    /// <para>Holds its geometry and paints nothing, like the other gradient brushes —
-    /// the software rasteriser does not draw gradients and the Avalonia renderer converts only
-    /// the brushes it knows.</para>
+    /// <para>Holds its geometry; the software rasteriser paints it (see <c>GradientBrush</c>).</para>
     ///
     /// <para><b>It exists because a missing brush costs a whole subtree, not one fill.</b> The
     /// XAML reader resolves types by name, so a <c>RadialGradientBrush</c> it cannot find throws

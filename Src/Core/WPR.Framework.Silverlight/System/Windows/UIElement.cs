@@ -18,12 +18,13 @@ namespace WPR.SilverlightCompability
                     "Element already has a parent. Remove it from its current parent before re-attaching.");
             }
             Parent = newParent;
+            if (newParent != null) FrameworkElement.NoteAttached(this, newParent);
         }
 
         /// <summary>
         /// Fires when this element transitions from measure-valid to measure-invalid.
-        /// The host (PhoneApplicationFrameView) listens on the root page so any descendant
-        /// invalidation triggers a repaint.
+        /// Raised on the root a descendant's invalidation bubbles to. (The deleted Avalonia host
+        /// repainted on it; <c>SilverlightGame</c> polls the root's measure validity instead.)
         /// </summary>
         internal event EventHandler? MeasureInvalidatedEvent;
 
@@ -34,7 +35,7 @@ namespace WPR.SilverlightCompability
         /// / <c>add_LostFocus</c> accessors. We do not currently raise these — WPR's host
         /// has no focus-tracking model — so handlers stay registered but never fire.
         /// Adding real focus dispatch would mean threading it through the input pipeline
-        /// in <see cref="PhoneApplicationFrameView"/>; left as a future enhancement.
+        /// in <c>SilverlightTouchRouter</c>; left as a future enhancement.
         /// </summary>
 #pragma warning disable CS0067 // intentionally never raised; see XML comment above
         public event RoutedEventHandler? GotFocus;
@@ -153,6 +154,28 @@ namespace WPR.SilverlightCompability
             if (handler == null) return false;
 
             var args = new MouseButtonEventArgs { OriginalSource = this, PagePosition = pagePosition };
+            try { handler(this, args); }
+            catch { return false; }
+            return args.Handled;
+        }
+
+        /// <summary>The pointer moved over (or, while pressed, away from) this element.</summary>
+        public event MouseEventHandler? MouseMove;
+
+#pragma warning disable CS0067
+        // Hover has no meaning on a touchscreen, and WP7 raises these only around a press. Declared
+        // so the add_/remove_ accessors a page or toolkit control names resolve.
+        public event MouseEventHandler? MouseEnter;
+        public event MouseEventHandler? MouseLeave;
+#pragma warning restore CS0067
+
+        /// <summary>Delivers a move to this element. Returns true if a handler marked it handled.</summary>
+        internal bool RaiseMouseMove(Point pagePosition)
+        {
+            MouseEventHandler? handler = MouseMove;
+            if (handler == null) return false;
+
+            var args = new MouseEventArgs { OriginalSource = this, PagePosition = pagePosition };
             try { handler(this, args); }
             catch { return false; }
             return args.Handled;

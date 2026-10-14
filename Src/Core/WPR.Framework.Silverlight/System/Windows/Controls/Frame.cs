@@ -52,6 +52,38 @@ namespace WPR.SilverlightCompability
 
         public object? Content => _currentPage;
 
+        /// <summary>
+        /// Raised when the displayed page was replaced by writing <c>ContentControl.Content</c>
+        /// on the frame rather than by navigating, so a host can lay the new page out exactly as
+        /// it does after <see cref="Navigated"/>. WPR-only; <see cref="Navigated"/> is NOT raised
+        /// for such a swap, because Silverlight does not raise it either and games react to it.
+        /// </summary>
+        public event EventHandler? WprContentReplaced;
+
+        /// <summary>
+        /// The <c>Frame.Content = page</c> path: a page swap with no journal entry, no navigation
+        /// events and no URI. Silverlight's Frame inherits this from ContentControl. The game
+        /// raises the page's own OnNavigatedTo/From itself if it wants them (Flowerz's
+        /// NavigationManager does); Loaded is raised here, as entering the tree would.
+        /// </summary>
+        internal void ReplaceContentDirectly(object? content)
+        {
+            if (ReferenceEquals(content, _currentPage)) return;
+            if (content != null && content is not Page)
+            {
+                System.Diagnostics.Trace.WriteLine(
+                    $"[wpr-frame] Content set to a {content.GetType().Name}, not a Page — ignored");
+                return;
+            }
+
+            // No SetParent: DoNavigate does not parent its pages either, and the two must agree.
+            _currentPage = (Page?)content;
+            if (_currentPage != null) _currentPage.NavigationService = NavigationService;
+            InvalidateMeasure();
+            WprContentReplaced?.Invoke(this, EventArgs.Empty);
+            FrameworkElement.RaiseLoadedTree(_currentPage);
+        }
+
         public bool CanGoBack => _backStack.Count > 0;
         public bool CanGoForward => _forwardStack.Count > 0;
 

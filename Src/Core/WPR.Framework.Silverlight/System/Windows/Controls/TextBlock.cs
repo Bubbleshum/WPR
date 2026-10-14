@@ -1,8 +1,5 @@
 using System;
 using System.Globalization;
-using AvFormattedText = Avalonia.Media.FormattedText;
-using AvTypeface = Avalonia.Media.Typeface;
-using AvFlowDirection = Avalonia.Media.FlowDirection;
 
 namespace WPR.SilverlightCompability
 {
@@ -88,8 +85,7 @@ namespace WPR.SilverlightCompability
 
             // WPR's own rasteriser first, because on the mixed-mode host it is what actually draws
             // this text — measuring with anything else guarantees layout and rendering disagree.
-            // It also works where Avalonia does not (the Android head initialises none), which is
-            // where the heuristic below used to be silently in charge of every WP7 page.
+            // The heuristic below is only for a machine with no usable system font.
             if (TextRasteriser.IsAvailable)
             {
                 double wrapWidth = TextWrapping == TextWrapping.Wrap
@@ -100,25 +96,7 @@ namespace WPR.SilverlightCompability
                 if (th > 0) return new Size(tw, th);
             }
 
-            // Avalonia's measurement, for the Avalonia-hosted Silverlight renderer when no system
-            // font was found; then a crude heuristic if its font subsystem is not initialised.
-            try
-            {
-                var typeface = new AvTypeface(FontFamily ?? "Segoe UI");
-                var ft = new AvFormattedText(
-                    text,
-                    CultureInfo.CurrentUICulture,
-                    AvFlowDirection.LeftToRight,
-                    typeface,
-                    FontSize,
-                    foreground: null);
-
-                if (TextWrapping == TextWrapping.Wrap && !double.IsInfinity(availableSize.Width))
-                    ft.MaxTextWidth = availableSize.Width;
-
-                return new Size(ft.Width, ft.Height);
-            }
-            catch
+            // No system font found: a crude heuristic.
             {
                 double w = text.Length * FontSize * 0.55;
                 double h = FontSize * 1.2;

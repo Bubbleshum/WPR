@@ -39,14 +39,17 @@ namespace WPR.SilverlightCompability.Tests
         }
 
         [Fact]
-        public void Load_DirectChild_OnTypeWithoutContentProperty_Throws()
+        public void Load_DirectChild_OnTypeWithoutContentProperty_IsSkipped()
         {
-            // ColumnDefinition has no [ContentProperty]; direct children should fail loudly.
+            // ColumnDefinition has no [ContentProperty], so the child has nowhere to go.
+            // The reader is lenient by design (XamlReader pass 1/2): one bad attribute or child is logged
+            // and skipped rather than losing the whole page, so a game whose XAML names something WPR
+            // has not shimmed still gets the rest of its tree.
             string xaml = $@"
 <ColumnDefinition {PresentationXmlns}>
   <StackPanel />
 </ColumnDefinition>";
-            Assert.Throws<XamlParseException>(() => XamlReader.Load(xaml));
+            Assert.IsType<ColumnDefinition>(XamlReader.Load(xaml));
         }
 
         [Fact]

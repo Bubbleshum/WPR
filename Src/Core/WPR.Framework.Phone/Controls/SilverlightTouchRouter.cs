@@ -10,11 +10,10 @@ namespace Microsoft.Phone.Controls
     /// events, toolkit gestures and <c>Button.Click</c>.
     /// </summary>
     /// <remarks>
-    /// <para><b>Host-neutral on purpose.</b> It takes plain coordinates and a page root, so the
-    /// mixed-mode XNA host can drive it from <c>TouchPanel</c> exactly as
-    /// <see cref="PhoneApplicationFrameView"/> drives the same logic from Avalonia pointer events.
-    /// Before this, a mixed-mode title's Silverlight page rendered and could not be touched at all:
-    /// the only pointer pipeline WPR had ran on Avalonia, which that host never initialises.</para>
+    /// <para><b>Host-neutral on purpose.</b> It takes plain coordinates and a page root, and the
+    /// Silverlight host (<c>SilverlightGame</c>) drives it from <c>TouchPanel</c>. It is the only
+    /// Silverlight pointer pipeline since the Avalonia host (and its
+    /// <c>PhoneApplicationFrameView</c>) was deleted on 2026-10-13.</para>
     ///
     /// <para><b>It lives in this assembly rather than beside the rasteriser</b> because dispatching
     /// a tap means knowing about <see cref="GestureService"/> and <see cref="GestureListener"/>,
@@ -46,10 +45,29 @@ namespace Microsoft.Phone.Controls
         // or as soon as the interaction becomes a drag, which is when WP7 un-presses it too.
         private static ButtonBase? _pressed;
 
+        /// <summary>The Panorama or Pivot under the live interaction, if any (see Move/Release).</summary>
+        private static UIElement? _panorama;
+
+        /// <summary>
+        /// The innermost Panorama or Pivot in the hit chain. Matched by type name because both
+        /// come from the game's own Microsoft.Phone.Controls.dll, not from a WPR assembly.
+        /// </summary>
+        private static UIElement? FindPanorama(IReadOnlyList<UIElement> chain)
+        {
+            foreach (UIElement element in chain)
+            {
+                string? name = element.GetType().FullName;
+                if (name == "Microsoft.Phone.Controls.Panorama" || name == "Microsoft.Phone.Controls.Pivot")
+                    return element;
+            }
+            return null;
+        }
+
         /// <summary>Forgets any in-flight interaction. Called at teardown.</summary>
         public static void ResetForNewLaunch()
         {
             _interaction = null;
+            _panorama = null;
             _scroller = null;
             _coasting = null;
         }
@@ -158,6 +176,7 @@ namespace Microsoft.Phone.Controls
 
             // A touch takes control of a coasting list immediately, which is what makes a flick
             // feel catchable rather than something you have to wait out.
+            _panorama = FindPanorama(chain);
             _scroller = FindScroller(chain);
             _scroller?.StopFlick();
 
@@ -201,14 +220,33 @@ namespace Microsoft.Phone.Controls
                 SetPressed(null);
             }
 
+            // A horizontal drag over a Panorama or Pivot pans it, live. Decided on the gesture's TOTAL travel, so a
+            // drag that starts sideways stays a pan and the list inside does not scroll as well.
+            if (interaction.IsDragging && _panorama != null && Math.Abs(totalX) > Math.Abs(totalY))
+            {
+                PanoramaState state = PanoramaStateTable.GetOrCreate(_panorama);
+                state.IsDragging = true;
+                state.DragOffset = totalX;
+            }
             // The content follows the finger, so the viewport moves the OTHER way — drag down and
             // the offset decreases. Getting this sign wrong produces a list that scrolls away from
             // the finger, which reads as broken rather than inverted.
-            if (interaction.IsDragging && _scroller != null)
+            else if (interaction.IsDragging && _scroller != null)
             {
                 _scroller.ScrollBy(
                     interaction.LastPos.X - position.X,
                     interaction.LastPos.Y - position.Y);
+            }
+
+            // MouseMove to the elements the press went to, innermost first: a finger behaves as
+            // if it captured what it touched, and a game dragging something (a slider, a piece)
+            // listens on that element, not on whatever happens to be under the finger now.
+            if (interaction.HitChain != null)
+            {
+                foreach (UIElement element in interaction.HitChain)
+                {
+                    if (element.RaiseMouseMove(position)) break;
+                }
             }
 
             interaction.LastPos = position;
@@ -234,9 +272,38 @@ namespace Microsoft.Phone.Controls
                 if (element.RaiseMouseLeftButtonUp(position)) break;
             }
 
-            // A drag is not a tap. Panorama/Pivot paging is deliberately NOT handled here: that
-            // needs the live drag offset the Avalonia view repaints against, and no mixed-mode
-            // title uses a panorama. It belongs with whatever hosts those next.
+            UIElement? panorama = _panorama;
+            _panorama = null;
+
+            // A drag is not a tap. A horizontal one over a Panorama/Pivot commits a page turn when
+            // it was a flick or crossed a third of the control, and springs back otherwise — the
+            // Avalonia host's rule, ported when pure Silverlight titles moved to this router
+            // (Minesweeper's whole main menu is a panorama; its game modes are on pages 3 and 4).
+            if (interaction.IsDragging && panorama != null)
+            {
+                double dx = position.X - interaction.StartPos.X;
+                double dy = position.Y - interaction.StartPos.Y;
+                PanoramaState? state = PanoramaStateTable.TryGet(panorama);
+                if (state != null && Math.Abs(dx) > Math.Abs(dy) && panorama is Panel panel)
+                {
+                    double seconds = Math.Max(0.001, (DateTime.UtcNow - interaction.StartTime).TotalSeconds);
+                    bool flick = Math.Abs(dx / seconds) > PointerInteraction.FlickVelocity;
+                    double width = panorama.ArrangedRect.Width > 0 ? panorama.ArrangedRect.Width : 480;
+                    bool farEnough = Math.Abs(dx) > width / 3;
+                    if ((flick || farEnough) && panel.Children.Count > 0)
+                    {
+                        state.Advance(dx < 0 ? +1 : -1, panel.Children.Count);
+                    }
+                    else
+                    {
+                        state.DragOffset = 0;
+                        state.IsDragging = false;
+                    }
+                    _scroller = null;
+                    return;
+                }
+            }
+
             if (interaction.IsDragging)
             {
                 HandOffFlick(interaction, position);
@@ -244,7 +311,31 @@ namespace Microsoft.Phone.Controls
             }
 
             _scroller = null;
+            SelectTappedRow(chain);
             DispatchTap(chain, position);
+        }
+
+        /// <summary>
+        /// A tap on a list row selects it, before anything hears the tap — on the phone the
+        /// ListBoxItem takes the selection on the press, and a Tap handler on the list reads
+        /// <c>SelectedItem</c> expecting the row that was touched (Minesweeper's mode lists do
+        /// exactly that, and do nothing when it is null).
+        /// </summary>
+        private static void SelectTappedRow(IReadOnlyList<UIElement> chain)
+        {
+            for (int i = 0; i + 1 < chain.Count; i++)
+            {
+                if (chain[i + 1] is Selector selector && ReferenceEquals(chain[i].Parent, selector))
+                {
+                    try { selector.SelectContainer(chain[i]); }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Trace.WriteLine(
+                            $"[wpr-tap] selecting a row threw {ex.GetType().Name}: {ex.Message}");
+                    }
+                    return;
+                }
+            }
         }
 
         /// <summary>
@@ -262,6 +353,8 @@ namespace Microsoft.Phone.Controls
                 GestureListener? listener = GestureService.GetGestureListener(element);
                 if (listener != null)
                 {
+                    System.Diagnostics.Trace.WriteLine(
+                        $"[wpr-tap] GestureListener.Tap on {element.GetType().Name}");
                     try { listener.RaiseTap(position, attachedTo: element, origin: element); }
                     catch (Exception ex)
                     {

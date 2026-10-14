@@ -44,6 +44,16 @@ namespace WPR.SilverlightCompability
                 cc._presenter?.SetParent(cc);
                 cc.InvalidateMeasure();
             }
+            else if (d is Frame frame)
+            {
+                // Silverlight's Frame IS a ContentControl, so a game may swap its page by writing
+                // Content directly rather than navigating — Flowerz's AppFrame does exactly that
+                // (`((ContentControl)this).Content = page`) for every screen change, which compiles
+                // to a call to this property on a Frame instance. Our Frame derives from
+                // FrameworkElement, so the value used to land in the property store and nothing
+                // read it: the loading page stayed on screen for ever.
+                frame.ReplaceContentDirectly(e.NewValue);
+            }
         }
 
         private UIElement? BuildPresenter(object? content)

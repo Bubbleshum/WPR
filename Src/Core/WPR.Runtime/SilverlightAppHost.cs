@@ -46,7 +46,7 @@ namespace WPR
             EnsureXnaSettingsFiles(installFolder);
 
             // Make the install folder available to renderers / asset-loading code paths.
-            // Image.GetAvaloniaBitmap and ImageBrush resolution use this to convert
+            // SilverlightImageDecoder (Image and ImageBrush) uses this to convert
             // app-relative paths like "/Resources/silver.png" into absolute on-disk paths.
             WPR.SilverlightCompability.HostContext.CurrentInstallFolder = installFolder;
 

@@ -3,7 +3,7 @@
 **Status (2026-10-12):** Track 1 done (1a-1f; 1e's removal of `ConstructShapedObject` still waits on
 activation through generated class info). 2a, 2c, 3a, 3c, 3d, 3e done; Track 4 spike done (Spark2 go,
 Unity no-go). WP8 native now has one render path: every title replays on the GPU (the per-title allow-list is
-gone; `WPR_WP8_GPU=0` keeps the 2D draw list as a diagnostic). Track 5 done. 3b done but scoped to WP8 until the phone measurement (see 3b). Open: 2b.
+gone; `WPR_WP8_GPU=0` keeps the 2D draw list as a diagnostic). Track 5 done. 2b done (2026-10-13: one Silverlight host, the Avalonia one deleted). 3b done but scoped to WP8 until the phone measurement (see 3b).
 **Written against:** `f58fa86`.
 **Prompted by:** Angry Birds Go! (WP8 native) dying on its first frame with `null call to 0x00000000`,
 and the question of how much of WPR's runtime is per-game and how much could be shared.
@@ -96,7 +96,7 @@ the first unimplemented import instead of a null call several frames later.
 ### 1b. A regression run across the library
 
 Before changing anything else, run every installed WP8 native title headless for a fixed
-instruction budget (the `Research/Wp8Native` probe already does single titles) and record:
+instruction budget (the `Src/Engine/WPR.Engine.Wp8Native/Runtime` probe already does single titles) and record:
 frames presented, the first trap, and its import name. Keep the table in this file or next to
 it, and diff it after every change in this track.
 
@@ -263,7 +263,7 @@ reasons still hold.
 ### 2a. Decide `IBackgroundRenderer`: retire the D3D11 backend
 
 `Plans/SILVERLIGHT-XNA-CONVERGENCE.md` §5 gates Stage C on this. Since that plan was written,
-`Research/Wp8Native/XamlInterop.cs` implements `IDrawingSurfaceBackgroundContentProviderNative`
+`Src/Engine/WPR.Engine.Wp8Native/Runtime/XamlInterop.cs` implements `IDrawingSurfaceBackgroundContentProviderNative`
 and replays native `DrawingSurfaceBackgroundGrid` content through the shared device. The D3D11
 backend now draws only `D3D11ImageSplashRenderer` and `D3D11TestPatternRenderer`.
 
@@ -289,13 +289,35 @@ that plan says.
 
 **Exit:** every in-process game draws through `GraphicsDevice` and reads touch through `TouchPanel`.
 
+**Stage C done 2026-10-13** (branch `worktree-agent-a9bcbea36f8932402`): pure Silverlight titles
+are hosted by `MixedModeGame` by default on both heads, which is what makes them launchable on
+Android at all. The Avalonia host is still reachable on the desktop for one release
+(`WPR_SILVERLIGHT_AVALONIA=1` / `"SilverlightAvaloniaHost": true`, `WPR.Common.SilverlightHostChoice`).
+Patcher v42. Per-title results are in SILVERLIGHT-XNA-CONVERGENCE.md §4.
+
+**Stage D done 2026-10-13**, without waiting the release: every item below is gone, and
+`MixedModeGame` is `SilverlightGame`. The mixed/pure test survives inside that host
+(`NamesSharedGraphicsDeviceManager`), because it gates behaviour, not routing; GameMaker exports
+go through `GameMakerLauncher.TryLaunchAsync` on the desktop. The APK does not shrink (the Android
+head's own `Avalonia.Android` reference still ships Avalonia). Details in
+SILVERLIGHT-XNA-CONVERGENCE.md §4 Stage D. What the list said remained:
+
+**What remained for Stage D**: delete `SilverlightLauncher`, `PhoneApplicationFrameView`,
+`SilverlightRenderer`, `BrandedSplashRenderer` + `IBackgroundRenderer`, `SilverlightHostChoice` and
+the `SilverlightAvaloniaHost` setting, the Avalonia branch in `MainWindowDesktop` (GameMaker apps
+need a new home: call `GameMakerLauncher` directly), `MixedModeDetection` (keep only if the log line
+is wanted), the `isMixedMode` plumbing in `ApplicationLaunch`, and the `Avalonia` package in
+`WPR.Framework.Silverlight` (and with it the 11.3.9/12.1.3 split for that project); rename
+`MixedModeGame`. `scratchpad/slav` stops building at that point, which is fine — it exists only for
+the Stage C comparison.
+
 ### 2c. WP8 native keyboard
 
 `ICoreWindow` `add_KeyDown` / `add_KeyUp` are reached by Angry Birds Go! and unimplemented.
 Raise them from `Keyboard.GetState()` edges in `Wp8NativeGame`, alongside the existing pointer
 injection. Low priority: few WP8 titles used a keyboard. Easier after 1d names the slots.
 
-**Done 2026-10-12** (`Research/Wp8Native/Keyboard.cs`): `add_`/`remove_` for `KeyDown`, `KeyUp`
+**Done 2026-10-12** (`Src/Engine/WPR.Engine.Wp8Native/Runtime/Keyboard.cs`): `add_`/`remove_` for `KeyDown`, `KeyUp`
 and `CharacterReceived` keep every handler with a distinct token, AddRef on add and Release on
 remove; events go out at the next `ProcessEvents` or XAML frame with a `KeyEventArgs`
 (`VirtualKey`, `KeyStatus`, `Handled`). `GetKeyState`/`GetAsyncKeyState` answer real state.
@@ -305,7 +327,7 @@ auto-repeat.
 
 ### Not merged, on purpose
 
-- `Research/Wp8Native/Direct3DRuntime.cs` translates guest D3D11 into XNA draws. It is a
+- `Src/Engine/WPR.Engine.Wp8Native/Runtime/Direct3DRuntime.cs` translates guest D3D11 into XNA draws. It is a
   translator, not a second renderer.
 - Unity ports and GameMaker run as separate processes.
 - The launcher UI (Avalonia on Windows, native views on Android) is not game rendering.
@@ -377,7 +399,7 @@ Monopoly) with it absent and `off`. If `all` is no worse and FAudio underruns, c
 games subscribe to `VisibilityChanged` (slot 56, confirmed in `WinRtRuntime`). Raise them from the
 same `Game.Activated` / `Deactivated` the WP7 path turns into `PhoneApplicationService` events.
 
-**Done 2026-10-11** (`Research/Wp8Native/AppLifecycle.cs`): `OnDeactivated` raises
+**Done 2026-10-11** (`Src/Engine/WPR.Engine.Wp8Native/Runtime/AppLifecycle.cs`): `OnDeactivated` raises
 `CoreWindow.Activated(Deactivated)`, `VisibilityChanged(false)`, then `Suspending` with a working
 deferral (held until `Complete()` or a 5 s deadline); `OnActivated` raises `Resuming`,
 `VisibilityChanged(true)`, `Activated(CodeActivated)`. Delivered on the guest's thread at its next

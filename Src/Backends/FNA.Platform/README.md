@@ -6,8 +6,7 @@ A vendored, WPR-modified fork of [FNA](https://github.com/FNA-XNA/FNA). It build
 It used to live at `Src/ThirdParty/fna`. It moved here after Stage 5c because that name had
 stopped being true: most of the XNA type system is now WPR-owned, and what is left is either
 WPR-authored or a native binding — none of it is third-party code we merely consume.
-`Src/ThirdParty` still exists for genuinely-vendored dependencies (Icons.Avalonia,
-assembly-store-reader).
+`Src/ThirdParty` still exists for genuinely-vendored dependencies (Icons.Avalonia).
 
 ## Three names, on purpose
 

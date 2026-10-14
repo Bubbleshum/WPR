@@ -111,10 +111,13 @@ namespace WPR.SilverlightCompability.Tests
         }
 
         [Fact]
-        public void Load_UnknownProperty_Throws()
+        public void Load_UnknownProperty_IsSkipped()
         {
+            // The reader is lenient by design (XamlReader pass 1/2): one bad attribute or child is logged
+            // and skipped rather than losing the whole page, so a game whose XAML names something WPR
+            // has not shimmed still gets the rest of its tree.
             string xaml = $"<PhoneApplicationPage {PresentationXmlns} NotAProperty=\"x\" />";
-            Assert.Throws<XamlParseException>(() => XamlReader.Load(xaml));
+            Assert.IsType<PhoneApplicationPage>(XamlReader.Load(xaml));
         }
 
         [Fact]
@@ -125,14 +128,17 @@ namespace WPR.SilverlightCompability.Tests
         }
 
         [Fact]
-        public void Load_DirectChildElementOnNonContentControl_Throws()
+        public void Load_DirectChildElementOnNonContentControl_IsSkipped()
         {
-            // ColumnDefinition has no [ContentProperty]; direct children should fail loudly.
+            // ColumnDefinition has no [ContentProperty], so the child has nowhere to go.
+            // The reader is lenient by design (XamlReader pass 1/2): one bad attribute or child is logged
+            // and skipped rather than losing the whole page, so a game whose XAML names something WPR
+            // has not shimmed still gets the rest of its tree.
             string xaml = $@"
 <ColumnDefinition {PresentationXmlns}>
   <SolidColorBrush Color=""Red"" />
 </ColumnDefinition>";
-            Assert.Throws<XamlParseException>(() => XamlReader.Load(xaml));
+            Assert.IsType<ColumnDefinition>(XamlReader.Load(xaml));
         }
 
         [Fact]

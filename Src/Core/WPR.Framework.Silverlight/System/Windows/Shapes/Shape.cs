@@ -9,8 +9,7 @@ namespace WPR.SilverlightCompability
     /// </summary>
     /// <remarks>
     /// <para>Painted by <c>SoftwareVisualRasteriser</c> (Shapes partial), which builds the outline
-    /// through <see cref="ShapeGeometry"/>. The Avalonia <c>SilverlightRenderer</c> still draws only
-    /// rectangles; every other shape is its bounding box there.</para>
+    /// through <see cref="ShapeGeometry"/>.</para>
     ///
     /// <para><b>Measuring.</b> <see cref="Rectangle"/> and <see cref="Ellipse"/> have no natural
     /// size (they fill the slot they are given), so they measure as zero exactly as they did before

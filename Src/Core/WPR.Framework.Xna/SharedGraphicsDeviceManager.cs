@@ -14,7 +14,7 @@ namespace Microsoft.Xna.Framework
     /// <see cref="Graphics.GraphicsDeviceExtensions.SetSharingMode"/> deciding which of the two
     /// owns the backbuffer at any moment.</para>
     ///
-    /// <para>Under WPR there is a real <see cref="Game"/> underneath (<c>MixedModeGame</c>) and
+    /// <para>Under WPR there is a real <see cref="Game"/> underneath (<c>SilverlightGame</c>) and
     /// XNA owns the screen outright, so this is a facade over that game's ordinary
     /// <see cref="GraphicsDeviceManager"/>. Nothing here creates or owns a device.</para>
     /// </summary>

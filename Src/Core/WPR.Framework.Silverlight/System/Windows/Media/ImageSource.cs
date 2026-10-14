@@ -1,5 +1,3 @@
-using AvBitmap = Avalonia.Media.Imaging.Bitmap;
-
 namespace WPR.SilverlightCompability
 {
     /// <summary>
@@ -9,9 +7,8 @@ namespace WPR.SilverlightCompability
     /// <c>Source="foo.png"</c>) without an explicit subclass, and so user assemblies
     /// that hold the type by reference but never actually instantiate it still load.
     ///
-    /// <para>The renderer (see <see cref="Image.GetAvaloniaBitmap"/>) reads either
-    /// <see cref="Path"/> (resolved lazily via <c>File.Exists</c>) or
-    /// <see cref="NativeBitmap"/> (already-loaded Avalonia bitmap).</para>
+    /// <para><see cref="SilverlightImageDecoder"/> resolves <see cref="Path"/> lazily: as a file,
+    /// under the install folder, or as an entry in the app's resource bundle.</para>
     ///
     /// <para>The WindowsCompability shims <c>BitmapSource</c>, <c>BitmapImage</c>,
     /// <c>WriteableBitmap</c> derive from this type so that
@@ -20,12 +17,9 @@ namespace WPR.SilverlightCompability
     public class ImageSource
     {
         internal string? Path;
-        internal AvBitmap? NativeBitmap;
 
         public ImageSource() { }
 
         public ImageSource(string path) { Path = path; }
-
-        public ImageSource(AvBitmap bitmap) { NativeBitmap = bitmap; }
     }
 }

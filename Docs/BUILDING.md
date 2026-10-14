@@ -51,7 +51,7 @@ for you:
 
 **In an IDE, open [`Src/WPR.Windows.slnf`](../Src/WPR.Windows.slnf)** — a solution
 filter over `WPR.sln` holding the 19 projects the desktop app needs. It leaves out
-`WPR.Platform.Android`, the four Java-binding projects and `assembly-store-reader`,
+`WPR.Platform.Android` and the four Java-binding projects,
 all of which require the Android toolchain. Build → run `WPR.Platform.Windows`.
 For Android, open [`Src/WPR.Android.slnf`](../Src/WPR.Android.slnf) instead.
 
