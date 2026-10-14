@@ -326,6 +326,7 @@ namespace WPR.Wp8Native
                     ("get_FileType", c => c.RetStr(Path.GetExtension(Item(c).Name))),
                     ("get_ContentType", c => c.RetStr(ContentType(Item(c).Name))),
                     ("OpenAsync", c => c.RetObj(Open(Item(c), (int)c.P(0)))),
+                    ("OpenTransactedWriteAsync", c => c.RetObj(OpenTransactedWrite(Item(c)))),
                     ("CopyAsync", c => c.RetObj(Copy(Item(c), c.P(0), null, 2))),
                     ("CopyAsync/2", c => c.RetObj(Copy(Item(c), c.P(0), c.Str(1), 2))),
                     ("CopyAsync/3", c => c.RetObj(Copy(Item(c), c.P(0), c.Str(1), (int)c.P(2)))),
@@ -655,6 +656,79 @@ namespace WPR.Wp8Native
                     FileShare.ReadWrite | FileShare.Delete);
                 return OperationOfObject(RandomAccessStreamSig, RandomAccessStream(new SharedStream(stream), canRead: true, canWrite: write, ContentType(file.Name)).Primary);
             }
+
+            private static readonly string TransactionSig = Sig.Rc("Windows.Storage.StorageStreamTransaction", "Windows.Storage.IStorageStreamTransaction");
+
+            /// <summary>An open StorageStreamTransaction: writes go to memory, CommitAsync replaces the file.</summary>
+            private sealed class TransactionState
+            {
+                public required ItemState File { get; init; }
+
+                public required SharedStream Shared { get; init; }
+
+                public long Stream { get; set; }
+
+                public bool Closed { get; set; }
+            }
+
+            private ComClass? _transactionClass;
+
+            /// <summary>
+            /// IStorageFile::OpenTransactedWriteAsync: a stream holding the file's current contents
+            /// whose writes reach the file only on CommitAsync, all at once, so a save cut short
+            /// leaves the old one whole. Halo: Spartan Assault saves this way; answered with a
+            /// placeholder, its first write failed and it reported "an unexpected save data error".
+            /// </summary>
+            private long OpenTransactedWrite(ItemState file)
+            {
+                if (file.ReadOnly)
+                {
+                    return FailedOperation(TransactionSig, E_ACCESSDENIED);
+                }
+
+                if (!System.IO.File.Exists(file.HostPath))
+                {
+                    return FailedOperation(TransactionSig, FileNotFound);
+                }
+
+                MemoryStream data = new();
+                data.Write(System.IO.File.ReadAllBytes(file.HostPath));
+                data.Position = 0;
+                SharedStream shared = new(data);
+                TransactionState state = new() { File = file, Shared = shared };
+                state.Stream = RandomAccessStream(shared, canRead: true, canWrite: true, ContentType(file.Name)).Primary;
+                return OperationOfObject(TransactionSig, New(_transactionClass ??= TransactionClass(), state).Primary);
+            }
+
+            private ComClass TransactionClass() => Class("Windows.Storage.StorageStreamTransaction", [
+                I(
+                    Meta("Windows.Storage.IStorageStreamTransaction"),
+                    ("get_Stream", c => c.RetObj(c.State<TransactionState>().Stream)),
+                    ("CommitAsync", c =>
+                    {
+                        TransactionState t = c.State<TransactionState>();
+                        if (t.Closed)
+                        {
+                            c.RetObj(AsyncAction(RO_E_CLOSED));
+                            return;
+                        }
+
+                        try
+                        {
+                            System.IO.File.WriteAllBytes(t.File.HostPath, ((MemoryStream)t.Shared.Data).ToArray());
+                            c.RetObj(AsyncAction());
+                        }
+                        catch (IOException)
+                        {
+                            c.RetObj(AsyncAction(E_ACCESSDENIED));
+                        }
+                    })),
+                I(Closable, ("Close", c =>
+                {
+                    c.State<TransactionState>().Closed = true;
+                    c.Ok();
+                })),
+            ]);
 
             private long OpenRead(ItemState file, bool withContentType)
             {

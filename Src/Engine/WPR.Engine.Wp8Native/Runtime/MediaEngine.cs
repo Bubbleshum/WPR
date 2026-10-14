@@ -56,6 +56,15 @@ namespace WPR.Wp8Native
         /// <summary>Sources decoded by the platform decoder - for the report and the tests.</summary>
         public List<string> Decoded { get; } = new();
 
+        /// <summary>
+        /// The platform's movie decoder, read when a source loads; null (the default) plays no video,
+        /// and a source with video then fails as one the platform cannot play.
+        /// </summary>
+        public Func<IMediaVideoDecoder?> VideoDecoder { get; init; } = () => null;
+
+        /// <summary>How long a load may wait for a movie's soundtrack to finish decoding.</summary>
+        public TimeSpan SoundtrackTimeout { get; init; } = TimeSpan.FromSeconds(30);
+
         private long Arg(int i) => _com.Arg(i);
 
         private void Return(long v) => _com.Return(v);
@@ -164,10 +173,21 @@ namespace WPR.Wp8Native
             public double SimulatedTime;
             public double LastTimeUpdate;
 
+            // A movie: its frames come from here, its soundtrack is Wave like any other source.
+            public IMediaVideoStream? Video;
+            public byte[]? Frame;
+            public bool HaveFrame;
+            public string? TemporaryFile;
+
+            // The voice's clock only moves a chunk at a time (~90 ms); a movie's frames need finer.
+            public int ClockChunks = -1;
+            public long ClockStamp;
+
             public override IEnumerable<long> Destroy()
             {
                 Voice?.Dispose();
                 Voice = null;
+                CloseVideo(this);
                 return Notify == 0 ? [] : [Notify];
             }
         }
@@ -314,13 +334,14 @@ namespace WPR.Wp8Native
             [11] = ("GetBuffered", () => With(e => OutRange(e.Wave is null ? [] : [(0, e.Wave.Duration)]))),
             [12] = ("Load", () => With(e => { SetSource(e, e.Source, data: null); Return(MediaCom.SOk); })),
 
-            // CanPlayType(BSTR type, MF_MEDIA_ENGINE_CANPLAY*): WAVE, and audio the platform decoder
-            // takes. Video is never playable here, whatever its codec.
+            // CanPlayType(BSTR type, MF_MEDIA_ENGINE_CANPLAY*): WAVE, audio the platform decoder
+            // takes, and the movie containers WP8 titles ship when the platform decodes video.
             [13] = ("CanPlayType", () => With(e =>
             {
                 string type = MediaContainer.MimeBase(_com.ReadWide(Arg(1)));
                 bool playable = MediaContainer.IsWaveMime(type) ||
-                                (type.StartsWith("audio/", StringComparison.Ordinal) && _decoder()?.CanDecode(type) == true);
+                                (type.StartsWith("audio/", StringComparison.Ordinal) && _decoder()?.CanDecode(type) == true) ||
+                                (type is "video/mp4" or "video/x-ms-wmv" or "video/x-ms-asf" && VideoDecoder() is not null);
                 _com.W32(Arg(2), playable ? 1 /* MAYBE */ : 0 /* NOT_SUPPORTED */);
                 Return(Arg(2) == 0 ? MediaCom.EPointer : MediaCom.SOk);
             })),
@@ -367,20 +388,67 @@ namespace WPR.Wp8Native
                 Fire(e, EventVolumeChange);
                 Return(MediaCom.SOk);
             })),
-            [38] = ("HasVideo", () => Value(_ => 0)),
-            [39] = ("HasAudio", () => Value(e => e.Wave is null ? 0 : 1)),
+            [38] = ("HasVideo", () => Value(e => e.Video is null ? 0 : 1)),
+            [39] = ("HasAudio", () => Value(e => e.Wave is null || (e.Video is not null && e.Video.AudioChannels == 0) ? 0 : 1)),
 
-            // No video stream exists, so there is no size, no aspect ratio and no frame.
-            [40] = ("GetNativeVideoSize", () => With(e => { _com.W32(Arg(1), 0); _com.W32(Arg(2), 0); Return(MediaFoundation.MfEInvalidRequest); })),
-            [41] = ("GetVideoAspectRatio", () => With(e => { _com.W32(Arg(1), 0); _com.W32(Arg(2), 0); Return(MediaFoundation.MfEInvalidRequest); })),
+            // GetNativeVideoSize(DWORD* cx, DWORD* cy) / GetVideoAspectRatio(DWORD* cx, DWORD* cy):
+            // the movie's frame size, and its picture aspect reduced; without video there is none.
+            [40] = ("GetNativeVideoSize", () => With(e => VideoSize(e, reduce: false))),
+            [41] = ("GetVideoAspectRatio", () => With(e => VideoSize(e, reduce: true))),
             [42] = ("Shutdown", () => With(e =>
             {
                 StopVoice(e);
+                CloseVideo(e);
                 e.Shut = true;
                 Return(MediaCom.SOk);
             })),
-            [43] = ("TransferVideoFrame", () => With(_ => Return(MediaFoundation.MfEInvalidRequest))),
-            [44] = ("OnVideoStreamTick", () => With(_ => Return(MediaCom.SFalse))),
+
+            // TransferVideoFrame(IUnknown* pDstSurf, const MFVideoNormalizedRect* pSrc,
+            // const RECT* pDst, const MFARGB* pBorderClr): the current frame, scaled into the game's
+            // texture.
+            [43] = ("TransferVideoFrame", () => With(e =>
+            {
+                if (e.Video is null || e.Frame is null)
+                {
+                    Return(MediaFoundation.MfEInvalidRequest);
+                    return;
+                }
+
+                if (Arg(1) == 0)
+                {
+                    Return(MediaCom.EPointer);
+                    return;
+                }
+
+                bool written = _e.Direct3D.WriteVideoFrame(Arg(1), e.Frame, e.Video.Width, e.Video.Height, Arg(2), Arg(3), Arg(4));
+                Return(written ? MediaCom.SOk : MediaCom.EInvalidArg);
+            })),
+
+            // OnVideoStreamTick(LONGLONG* pPts): S_OK and the frame's time (100 ns) when a new frame
+            // is ready for TransferVideoFrame, S_FALSE when there is none yet.
+            [44] = ("OnVideoStreamTick", () => With(e =>
+            {
+                if (e.Video is null || e.Frame is null)
+                {
+                    Return(MediaCom.SFalse);
+                    return;
+                }
+
+                double at = Position(e);
+                if (!e.Video.TryGetFrame(at, e.Frame))
+                {
+                    Return(MediaCom.SFalse);
+                    return;
+                }
+
+                e.HaveFrame = true;
+                if (Arg(1) != 0)
+                {
+                    _com.W64(Arg(1), (ulong)(long)(at * 10_000_000));
+                }
+
+                Return(MediaCom.SOk);
+            })),
 
             // IMFMediaEngineEx.
             // SetSourceFromByteStream(IMFByteStream*, BSTR pURL): the stream is read whole, then
@@ -458,13 +526,13 @@ namespace WPR.Wp8Native
                     return;
                 }
 
-                _com.W32(Arg(1), 1);
+                _com.W32(Arg(1), StreamCount(e));
                 Return(MediaCom.SOk);
             })),
             [55] = ("GetStreamAttribute", () => With(_ => Return(MfAttributeMethods.MfEAttributeNotFound))),
             [56] = ("GetStreamSelection", () => With(e =>
             {
-                if (e.Wave is null || Arg(1) != 0)
+                if (e.Wave is null || Arg(1) >= StreamCount(e))
                 {
                     Return(MediaCom.EInvalidArg);
                     return;
@@ -473,7 +541,7 @@ namespace WPR.Wp8Native
                 _com.W32(Arg(2), 1);
                 Return(MediaCom.SOk);
             })),
-            [57] = ("SetStreamSelection", () => With(e => Return(e.Wave is null || Arg(1) != 0 ? MediaCom.EInvalidArg : MediaCom.SOk))),
+            [57] = ("SetStreamSelection", () => With(e => Return(e.Wave is null || Arg(1) >= StreamCount(e) ? MediaCom.EInvalidArg : MediaCom.SOk))),
             [58] = ("ApplyStreamSelections", () => With(_ => Return(MediaCom.SOk))),
             [59] = ("IsProtected", () => With(_ => { _com.W32(Arg(1), 0); Return(MediaCom.SOk); })),
             [60] = ("InsertVideoEffect", () => With(_ => { _com.Record("IMFMediaEngineEx::InsertVideoEffect -> E_NOTIMPL"); Return(MediaCom.ENotImpl); })),
@@ -567,6 +635,7 @@ namespace WPR.Wp8Native
             }
 
             StopVoice(e);
+            CloseVideo(e);
             e.Wave = null;
             e.ReadyState = 0;
             e.Paused = true;
@@ -594,7 +663,7 @@ namespace WPR.Wp8Native
 
             byte[] bytes = data ?? File.ReadAllBytes(file!);
             string name = Path.GetFileName(file ?? url);
-            PcmAudio.Wave? wave = PcmAudio.ReadWave(bytes) ?? Decode(bytes, name);
+            PcmAudio.Wave? wave = PcmAudio.ReadWave(bytes) ?? OpenMovie(e, file, bytes, name) ?? Decode(bytes, name);
             if (wave is null)
             {
                 FailLoad(e, url, MediaFoundation.MfEUnsupportedByteStreamType);
@@ -613,6 +682,160 @@ namespace WPR.Wp8Native
             {
                 Play(e);
             }
+        }
+
+        /// <summary>
+        /// A movie (an ASF or MP4 container the platform's video decoder opens): its frames are
+        /// served through OnVideoStreamTick/TransferVideoFrame, and its soundtrack - decoded whole,
+        /// padded with silence to the movie's length so the one clock covers both - is returned as
+        /// the source's Wave. Null when there is no video decoder or it cannot open this, and the
+        /// audio path then decides.
+        /// </summary>
+        /// <remarks>
+        /// Refusing every movie, as this engine did, is correct for a game that skips an intro it
+        /// cannot play - and wrong for one that cannot: Halo: Spartan Assault starts its logo movie,
+        /// logs the error event and waits for ENDED or PAUSE, for ever.
+        /// </remarks>
+        private PcmAudio.Wave? OpenMovie(Engine e, string? file, byte[] bytes, string name)
+        {
+            string container = MediaContainer.Sniff(bytes);
+            if (container is not ("ASF (WMA/WMV)" or "MP4") || VideoDecoder() is not { } decoder)
+            {
+                return null;
+            }
+
+            string? temporary = null;
+            if (file is null)
+            {
+                // A byte-stream source: the decoder reads paths, so it gets one.
+                temporary = Path.Combine(Path.GetTempPath(), "wpr-wp8-media", $"{Guid.NewGuid():N}{(container == "MP4" ? ".mp4" : ".wmv")}");
+                Directory.CreateDirectory(Path.GetDirectoryName(temporary)!);
+                File.WriteAllBytes(temporary, bytes);
+                file = temporary;
+            }
+
+            IMediaVideoStream? video = decoder.Open(file);
+            if (video is null || video.Width <= 0 || video.Height <= 0)
+            {
+                video?.Dispose();
+                DeleteQuietly(temporary);
+                return null;
+            }
+
+            int channels = video.AudioChannels is 1 or 2 && video.AudioSampleRate > 0 ? video.AudioChannels : 0;
+            int rate = channels > 0 ? video.AudioSampleRate : 44100;
+            byte[] soundtrack = channels > 0 ? DrainSoundtrack(video) : [];
+            int frameBytes = Math.Max(channels, 1) * 2;
+            double audioSeconds = (double)(soundtrack.Length / frameBytes) / rate;
+
+            // The clock runs to whichever is longer. A container that gives no length and a movie
+            // with no sound still needs an end: the decoder's own end-of-video stops it (Tick).
+            double seconds = Math.Max(video.DurationSeconds, audioSeconds);
+            bool unknownLength = seconds <= 0;
+            if (unknownLength)
+            {
+                seconds = 600;
+            }
+
+            long frames = (long)Math.Ceiling(seconds * rate);
+            byte[] pcm = new byte[frames * frameBytes];
+            Array.Copy(soundtrack, pcm, Math.Min(soundtrack.Length, pcm.Length));
+
+            e.Video = video;
+            e.TemporaryFile = temporary;
+            e.Frame = new byte[video.Width * video.Height * 4];
+            for (int i = 3; i < e.Frame.Length; i += 4)
+            {
+                e.Frame[i] = 0xFF;   // opaque black until the first frame arrives
+            }
+
+            e.HaveFrame = false;
+            Decoded.Add($"{name} ({container}, video {video.Width}x{video.Height}, {seconds:0.0} s{(unknownLength ? " (length unknown)" : string.Empty)}, " +
+                        $"{(channels == 0 ? "no sound" : $"{rate} Hz, {channels} ch")}, {decoder.Name})");
+            return new PcmAudio.Wave(rate, Math.Max(channels, 1), pcm);
+        }
+
+        /// <summary>The whole soundtrack, waiting for the decoder (bounded) as it fills.</summary>
+        private byte[] DrainSoundtrack(IMediaVideoStream video)
+        {
+            using MemoryStream all = new();
+            byte[] buffer = new byte[64 * 1024];
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            while (clock.Elapsed < SoundtrackTimeout)
+            {
+                int read = video.ReadAudio(buffer, 0, buffer.Length);
+                if (read < 0)
+                {
+                    break;
+                }
+
+                if (read == 0)
+                {
+                    Thread.Sleep(1);
+                    continue;
+                }
+
+                all.Write(buffer, 0, read);
+            }
+
+            return all.ToArray();
+        }
+
+        private static void CloseVideo(Engine e)
+        {
+            e.Video?.Dispose();
+            e.Video = null;
+            e.Frame = null;
+            e.HaveFrame = false;
+            DeleteQuietly(e.TemporaryFile);
+            e.TemporaryFile = null;
+        }
+
+        private static void DeleteQuietly(string? path)
+        {
+            if (path is null)
+            {
+                return;
+            }
+
+            try
+            {
+                File.Delete(path);
+            }
+            catch (Exception)
+            {
+                // A temporary copy; the OS temp folder gets it eventually.
+            }
+        }
+
+        private static long StreamCount(Engine e) => e.Video is null ? 1 : e.Video.AudioChannels > 0 ? 2 : 1;
+
+        private void VideoSize(Engine e, bool reduce)
+        {
+            if (e.Video is null)
+            {
+                _com.W32(Arg(1), 0);
+                _com.W32(Arg(2), 0);
+                Return(MediaFoundation.MfEInvalidRequest);
+                return;
+            }
+
+            long cx = e.Video.Width, cy = e.Video.Height;
+            if (reduce)
+            {
+                long a = cx, b = cy;
+                while (b != 0)
+                {
+                    (a, b) = (b, a % b);
+                }
+
+                cx /= a;
+                cy /= a;
+            }
+
+            _com.W32(Arg(1), cx);
+            _com.W32(Arg(2), cy);
+            Return(MediaCom.SOk);
         }
 
         /// <summary>
@@ -700,7 +923,24 @@ namespace WPR.Wp8Native
                     frames += e.Chunks[i];
                 }
 
-                return Math.Min((double)frames / e.Wave.SampleRate, e.Wave.Duration);
+                double seconds = (double)frames / e.Wave.SampleRate;
+
+                // A movie's frames need a finer clock than a chunk (~90 ms): interpolate across the
+                // chunk now playing by real time, never past its end.
+                if (e.Video is not null && !e.Paused && done < e.Chunks.Count)
+                {
+                    long now = System.Diagnostics.Stopwatch.GetTimestamp();
+                    if (done != e.ClockChunks)
+                    {
+                        e.ClockChunks = done;
+                        e.ClockStamp = now;
+                    }
+
+                    double into = (double)(now - e.ClockStamp) / System.Diagnostics.Stopwatch.Frequency;
+                    seconds += Math.Min(into, (double)e.Chunks[done] / e.Wave.SampleRate);
+                }
+
+                return Math.Min(seconds, e.Wave.Duration);
             }
 
             return Math.Min(e.SimulatedTime, e.Wave.Duration);
@@ -799,6 +1039,7 @@ namespace WPR.Wp8Native
             PcmAudio.Wave wave = e.Wave!;
             frame = Math.Clamp(frame, 0, wave.Frames);
             e.StartFrame = frame;
+            e.ClockChunks = -1;
             e.SimulatedTime = (double)frame / wave.SampleRate;
             e.LastTimeUpdate = e.SimulatedTime;
             e.Chunks.Clear();
@@ -861,7 +1102,7 @@ namespace WPR.Wp8Native
                 }
 
                 double position = Position(e);
-                if (position >= e.Wave.Duration - 1e-9)
+                if (position >= e.Wave.Duration - 1e-9 || e.Video is { DurationSeconds: <= 0, VideoEnded: true })
                 {
                     if (e.Loop)
                     {

@@ -1283,8 +1283,14 @@ namespace WPR.Wp8Native
                 ? string.Empty
                 : " " + string.Join(" | ", ThrownText.Take(3));
 
+            // Where it was thrown from: the first frame or two, as absolute addresses. The catch
+            // alone says who swallowed it, which rarely names what went wrong.
+            string from = ThrowStack.Count == 0
+                ? string.Empty
+                : " from " + string.Join(" < ", ThrowStack.Take(3).Select(f => $"0x{f.Address & ~1L:X8}"));
+
             ThrowHistory.Add(
-                $"frame {_winRt.ProcessEventsCalls,5}  {Thrown.TypeName}  {caught}{carried}");
+                $"frame {_winRt.ProcessEventsCalls,5}  {Thrown.TypeName}  {caught}{from}{carried}");
         }
 
         /// <summary>
@@ -1632,15 +1638,23 @@ namespace WPR.Wp8Native
         /// emulated code. Each initialiser is a separate call that has to complete before
         /// the next begins, so this is another continuation chain.
         /// </remarks>
+        /// <summary>How many per-initialiser lines <see cref="InitialiserLog"/> keeps; the count is always exact.</summary>
+        private const int InitialiserLogLimit = 2000;
+
         private void RunStaticInitialisers(bool stopOnError)
         {
             long cursor = Arg(0);
             long end = Arg(1);
             long callerReturn = _emulator.ReturnAddress;
 
-            // A garbage table would otherwise walk the address space forever.
-            const long tableLimit = 64 * 1024;
-            if (cursor == 0 || end <= cursor || end - cursor > tableLimit)
+            // A garbage table would otherwise walk the address space forever. The bound is
+            // generous on purpose: Halo: Spartan Assault's __xc_a..__xc_z holds 37,303
+            // initialisers (146 KB), and the old 64 KB cap rejected the whole table, so not one
+            // of its globals was constructed and the game died on the first null singleton.
+            // What actually guards against garbage is that both ends must be mapped.
+            const long tableLimit = 16 * 1024 * 1024;
+            if (cursor == 0 || end <= cursor || end - cursor > tableLimit
+                || !_emulator.Cpu.IsMapped(cursor) || !_emulator.Cpu.IsMapped(end - 4))
             {
                 InitialiserLog.Add($"table 0x{cursor:X8}..0x{end:X8} REJECTED as implausible");
                 Return(0);
@@ -1662,8 +1676,14 @@ namespace WPR.Wp8Native
                     }
 
                     StaticInitialisersRun++;
-                    InitialiserLog.Add($"  init 0x{initialiser:X8}");
-                    _emulator.CallEmulated("static initialiser", initialiser, [], onReturn: () =>
+                    if (InitialiserLog.Count < InitialiserLogLimit)
+                    {
+                        InitialiserLog.Add($"  init 0x{initialiser:X8}");
+                    }
+
+                    // Recycled: the return trap is never referred to again, and a table of tens
+                    // of thousands of initialisers would otherwise fill the 64 KB trap page.
+                    _emulator.CallEmulated("static initialiser", initialiser, [], recycle: true, onReturn: () =>
                     {
                         if (stopOnError && Arg(0) != 0)
                         {

@@ -532,6 +532,9 @@ namespace WPR.Wp8Native
         /// <summary>The finger the event being delivered belongs to: get_PointerId.</summary>
         private uint _pointerId = 1;
 
+        /// <summary>Which event is being delivered (pressed, moved, released): PointerUpdateKind.</summary>
+        private int _pointerSlot;
+
         /// <summary>
         /// The gesture script, from <c>WPR_INPUT</c>, as a list of already-expanded steps.
         /// </summary>
@@ -761,6 +764,7 @@ namespace WPR.Wp8Native
             _pointerY = next.Y;
             _pointerInContact = next.Slot != SlotAddPointerReleased;
             _pointerId = next.Id;
+            _pointerSlot = next.Slot;
 
             int slot = next.Slot;
             if (!_windowHandlers.TryGetValue(slot, out long handler) || handler == 0)
@@ -1099,6 +1103,75 @@ namespace WPR.Wp8Native
                 Return(HResultOk);
             };
 
+            // Windows.UI.Input.IPointerPointProperties, for a finger on a touch screen: no
+            // pressure sensor, no pen, the contact as a point, "left button" while in contact.
+            // Halo: Spartan Assault reads these on every press; answered with a null object they
+            // were recorded as defaulted.
+            Action single(Func<float> value) => () =>
+            {
+                if (ArmEmulator.IsStackAddress(Arg(1)))
+                {
+                    _emulator.WriteSingle(Arg(1), value());
+                }
+
+                Return(HResultOk);
+            };
+            Action flag(Func<bool> value) => () =>
+            {
+                if (ArmEmulator.IsStackAddress(Arg(1)))
+                {
+                    _emulator.WriteBoolean(Arg(1), value());
+                }
+
+                Return(HResultOk);
+            };
+            Action contact = () =>
+            {
+                if (ArmEmulator.IsStackAddress(Arg(1)))
+                {
+                    (float x, float y) = ToWindow(_pointerX, _pointerY);
+                    _emulator.WriteSingle(Arg(1) + 0, x);
+                    _emulator.WriteSingle(Arg(1) + 4, y);
+                    _emulator.WriteSingle(Arg(1) + 8, 0f);
+                    _emulator.WriteSingle(Arg(1) + 12, 0f);
+                }
+
+                Return(HResultOk);
+            };
+            long properties = CreateDiscoveryObject(
+                "IPointerPointProperties",
+                slotCount: 30,
+                known: new Dictionary<int, (string, Action)>
+                {
+                    [InspectableSlots + 0] = ("get_Pressure", single(() => _pointerInContact ? 0.5f : 0f)),
+                    [InspectableSlots + 1] = ("get_IsInverted", flag(() => false)),
+                    [InspectableSlots + 2] = ("get_IsEraser", flag(() => false)),
+                    [InspectableSlots + 3] = ("get_Orientation", single(() => 0f)),
+                    [InspectableSlots + 4] = ("get_XTilt", single(() => 0f)),
+                    [InspectableSlots + 5] = ("get_YTilt", single(() => 0f)),
+                    [InspectableSlots + 6] = ("get_Twist", single(() => 0f)),
+                    [InspectableSlots + 7] = ("get_ContactRect", contact),
+                    [InspectableSlots + 8] = ("get_ContactRectRaw", contact),
+                    [InspectableSlots + 9] = ("get_TouchConfidence", flag(() => true)),
+                    [InspectableSlots + 10] = ("get_IsLeftButtonPressed", flag(() => _pointerInContact)),
+                    [InspectableSlots + 11] = ("get_IsRightButtonPressed", flag(() => false)),
+                    [InspectableSlots + 12] = ("get_IsMiddleButtonPressed", flag(() => false)),
+                    [InspectableSlots + 13] = ("get_MouseWheelDelta", () => ReturnUInt32(0)),
+                    [InspectableSlots + 14] = ("get_IsHorizontalMouseWheel", flag(() => false)),
+                    [InspectableSlots + 15] = ("get_IsPrimary", flag(() => _pointerId == 1)),
+                    [InspectableSlots + 16] = ("get_IsInRange", flag(() => _pointerInContact)),
+                    [InspectableSlots + 17] = ("get_IsCanceled", flag(() => false)),
+                    [InspectableSlots + 18] = ("get_IsBarrelButtonPressed", flag(() => false)),
+                    [InspectableSlots + 19] = ("get_IsXButton1Pressed", flag(() => false)),
+                    [InspectableSlots + 20] = ("get_IsXButton2Pressed", flag(() => false)),
+
+                    // PointerUpdateKind: Other 0, LeftButtonPressed 1, LeftButtonReleased 2.
+                    [InspectableSlots + 21] = ("get_PointerUpdateKind", () => ReturnUInt32(
+                        _pointerSlot == SlotAddPointerPressed ? 1u : _pointerSlot == SlotAddPointerReleased ? 2u : 0u)),
+                    [InspectableSlots + 22] = ("HasUsage", () => { if (ArmEmulator.IsStackAddress(Arg(3))) { _emulator.WriteBoolean(Arg(3), false); } Return(HResultOk); }),
+                    [InspectableSlots + 23] = ("GetUsageValue", () => Return(unchecked((int)0x80070057))),
+                });
+
             long point = CreateDiscoveryObject(
                 "IPointerPoint",
                 slotCount: 16,
@@ -1125,6 +1198,7 @@ namespace WPR.Wp8Native
 
                         Return(HResultOk);
                     }),
+                    [InspectableSlots + 7] = ("get_Properties", () => ReturnObject(properties)),
                     [InspectableSlots + 6] = ("get_IsInContact", () =>
                     {
                         if (ArmEmulator.IsStackAddress(Arg(1)))

@@ -375,6 +375,7 @@ namespace WPR.Wp8Native
             [new Guid("9d8e1289-d7b3-465f-8126-250e349af85d")] = "IDXGIKeyedMutex",
             [new Guid("035f3ab4-482e-4e50-b41f-8a7f8bd8960b")] = "IDXGIResource",
             [new Guid("30961379-4609-4a41-998e-54fe567ee0c1")] = "IDXGIResource1",
+            [new Guid("9b7e4e00-342c-4106-a19f-4f2704f689f0")] = "ID3D10Multithread",
         };
 
         /// <summary>
@@ -498,9 +499,77 @@ namespace WPR.Wp8Native
                     => CreateDxgiResource(owner),
                 "IDXGIKeyedMutex" when owner.Name == "Texture2D_BackBuffer" || _keyedMutexOwners.Contains(owner)
                     => CreateKeyedMutex(owner),
+                "ID3D10Multithread" when owner.Name is "Device" or "Context"
+                    => CreateInterface(owner, wanted, 7, MultithreadMethods()),
                 _ => 0,
             };
         }
+
+        // -------------------------------------------------------------------
+        // ID3D10Multithread
+        //
+        // IUnknown 0-2, Enter 3, Leave 4, SetMultithreadProtected 5, GetMultithreadProtected 6.
+        // One per device, shared by the device and its immediate context, as on Windows. Halo:
+        // Spartan Assault asks the device for it on its render thread and turns protection on;
+        // refused, it called through the null it got back.
+        // -------------------------------------------------------------------
+
+        /// <summary>The guest thread holding the device's ID3D10Multithread lock, and how deep.</summary>
+        private int _multithreadOwner;
+        private int _multithreadDepth;
+        private bool _multithreadProtected = true;   // D3D11 devices are created thread safe
+
+        private Dictionary<int, (string, Action)> MultithreadMethods() => new()
+        {
+            // void Enter(): a recursive lock - re-entry by the holder nests, anyone else waits.
+            [3] = ("Enter", () =>
+            {
+                Return(0);
+                int me = _emulator.CurrentThreadId;
+                if (_multithreadDepth == 0 || _multithreadOwner == me)
+                {
+                    _multithreadOwner = me;
+                    _multithreadDepth++;
+                    return;
+                }
+
+                bool switched = _emulator.BlockCurrentThread(
+                    () => _multithreadDepth == 0,
+                    () => { _multithreadOwner = me; _multithreadDepth = 1; },
+                    why: $"ID3D10Multithread held by thread {_multithreadOwner}");
+                if (!switched)
+                {
+                    // Nothing else can run, so nobody will leave it: take it rather than hang.
+                    _multithreadOwner = me;
+                    _multithreadDepth = 1;
+                }
+            }),
+
+            // void Leave(): only the holder's leave counts.
+            [4] = ("Leave", () =>
+            {
+                if (_multithreadDepth > 0 && _multithreadOwner == _emulator.CurrentThreadId)
+                {
+                    _multithreadDepth--;
+                }
+
+                Return(0);
+            }),
+
+            // BOOL SetMultithreadProtected(BOOL): the previous setting.
+            [5] = ("SetMultithreadProtected", () =>
+            {
+                bool previous = _multithreadProtected;
+                _multithreadProtected = Arg(1) != 0;
+                Return(previous ? 1 : 0);
+            }),
+
+            // BOOL GetMultithreadProtected()
+            [6] = ("GetMultithreadProtected", () => Return(_multithreadProtected ? 1 : 0)),
+        };
+
+        /// <summary>Whether the device's ID3D10Multithread lock is held, and by which guest thread.</summary>
+        public (int Owner, int Depth) MultithreadLock => (_multithreadOwner, _multithreadDepth);
 
         // -------------------------------------------------------------------
         // D3D11CreateDevice
@@ -763,6 +832,7 @@ namespace WPR.Wp8Native
 
             FrameCapture.Resource resource = new() { Name = created.Name };
             _resources[pointer] = resource;
+            RecordResourceDesc(pointer, kind, Arg(1));
 
             if (kind == "Texture2D")
             {
@@ -920,6 +990,97 @@ namespace WPR.Wp8Native
             }
         }
 
+        /// <summary>CopyResource on the resources' memory: row by row for textures, bytes for buffers.</summary>
+        private void CopyResourceMemory(FrameCapture.Resource destination, FrameCapture.Resource source)
+        {
+            if (destination.Rows > 0 && source.Rows > 0)
+            {
+                int rows = Math.Min(destination.Rows, source.Rows);
+                int bytes = Math.Min(destination.RowPitch, source.RowPitch);
+                for (int y = 0; y < rows; y++)
+                {
+                    _emulator.WriteMemory(destination.Storage + ((long)y * destination.RowPitch), _emulator.ReadMemory(source.Storage + ((long)y * source.RowPitch), bytes));
+                }
+            }
+            else
+            {
+                int bytes = (int)Math.Min(destination.StorageSize, source.StorageSize);
+                if (bytes > 0)
+                {
+                    _emulator.WriteMemory(destination.Storage, _emulator.ReadMemory(source.Storage, bytes));
+                }
+            }
+
+            destination.HasContent |= source.HasContent || source.Rows > 0;
+            destination.Version++;
+        }
+
+        /// <summary>
+        /// CopySubresourceRegion on the resources' memory: the source box (all of the source when
+        /// null) to (x, y) in the destination, in 4x4 blocks for a block-compressed pair; a buffer's
+        /// box and x are byte offsets.
+        /// </summary>
+        private void CopyRegionMemory(FrameCapture.Resource destination, int x, int y, FrameCapture.Resource source, long box)
+        {
+            if (destination.Rows <= 0 || source.Rows <= 0)
+            {
+                // Buffers.
+                int left = box != 0 ? (int)_emulator.ReadUInt32(box + 0, 0) : 0;
+                int right = box != 0 ? (int)_emulator.ReadUInt32(box + 12, 0) : (int)source.StorageSize;
+                int count = (int)Math.Min(right - left, destination.StorageSize - x);
+                if (left >= 0 && x >= 0 && count > 0 && right <= source.StorageSize)
+                {
+                    _emulator.WriteMemory(destination.Storage + x, _emulator.ReadMemory(source.Storage + left, count));
+                    destination.HasContent = true;
+                    destination.Version++;
+                }
+
+                return;
+            }
+
+            if (destination.BlockBytes != source.BlockBytes || destination.PixelBytes != source.PixelBytes)
+            {
+                return;   // a format pair D3D11 only copies between when it reinterprets; not kept here
+            }
+
+            int sl = 0, st = 0, sr = source.PixelWidth, sb = source.PixelHeight;
+            if (box != 0)
+            {
+                sl = (int)_emulator.ReadUInt32(box + 0, 0);
+                st = (int)_emulator.ReadUInt32(box + 4, 0);
+                sr = (int)_emulator.ReadUInt32(box + 12, 0);
+                sb = (int)_emulator.ReadUInt32(box + 16, 0);
+            }
+
+            int unit = 1, unitBytes = Math.Max(1, destination.PixelBytes);
+            if (destination.BlockBytes > 0)
+            {
+                unit = 4;
+                unitBytes = destination.BlockBytes;
+            }
+
+            int sx0 = sl / unit, sy0 = st / unit, sx1 = (sr + unit - 1) / unit, sy1 = (sb + unit - 1) / unit;
+            int dx0 = x / unit, dy0 = y / unit;
+            int sourceUnits = source.RowPitch / unitBytes, destinationUnits = destination.RowPitch / unitBytes;
+            sx1 = Math.Min(sx1, sourceUnits);
+            sy1 = Math.Min(sy1, source.Rows);
+            int width = Math.Min(sx1 - sx0, destinationUnits - dx0);
+            int height = Math.Min(sy1 - sy0, destination.Rows - dy0);
+            if (sx0 < 0 || sy0 < 0 || dx0 < 0 || dy0 < 0 || width <= 0 || height <= 0)
+            {
+                return;
+            }
+
+            for (int row = 0; row < height; row++)
+            {
+                byte[] bytes = _emulator.ReadMemory(source.Storage + ((long)(sy0 + row) * source.RowPitch) + ((long)sx0 * unitBytes), width * unitBytes);
+                _emulator.WriteMemory(destination.Storage + ((long)(dy0 + row) * destination.RowPitch) + ((long)dx0 * unitBytes), bytes);
+            }
+
+            destination.HasContent = true;
+            destination.Version++;
+        }
+
         /// <summary>
         /// UpdateSubresource with a D3D11_BOX (left, top, front, right, bottom, back, in texels):
         /// the source rows land inside that rectangle of level 0, not at its origin. A texture
@@ -1060,9 +1221,41 @@ namespace WPR.Wp8Native
             }),
         };
 
+        /// <summary>
+        /// Each created resource's D3D11_RESOURCE_DIMENSION and the description it was created
+        /// with, which GetType and GetDesc hand back. Anything not here (the swap chain's back
+        /// buffer) answers as the back buffer.
+        /// </summary>
+        private readonly Dictionary<long, (int Dimension, byte[] Desc)> _resourceDescs = new();
+
+        private void RecordResourceDesc(long pointer, string kind, long desc)
+        {
+            (int dimension, int bytes) = kind switch
+            {
+                "Buffer" => (1, 24),      // D3D11_BUFFER_DESC
+                "Texture3D" => (4, 36),   // D3D11_TEXTURE3D_DESC
+                _ => (3, 44),             // D3D11_TEXTURE2D_DESC
+            };
+
+            if (desc != 0)
+            {
+                _resourceDescs[pointer] = (dimension, _emulator.ReadMemory(desc, bytes));
+            }
+        }
+
         private Dictionary<int, (string, Action)> ResourceMethods() => new()
         {
-            [7] = ("GetType", () => Return(3)), // D3D11_RESOURCE_DIMENSION_TEXTURE2D
+            // void GetType(D3D11_RESOURCE_DIMENSION*)
+            [7] = ("GetType", () =>
+            {
+                int dimension = _resourceDescs.TryGetValue(Arg(0), out var known) ? known.Dimension : 3;
+                if (Arg(1) != 0)
+                {
+                    _emulator.WriteUInt32(Arg(1), (uint)dimension);
+                }
+
+                Return(dimension);
+            }),
             [10] = ("GetDesc", () =>
             {
                 // D3D11_TEXTURE2D_DESC: Width, Height, MipLevels, ArraySize, Format,
@@ -1070,6 +1263,16 @@ namespace WPR.Wp8Native
                 long desc = Arg(1);
                 if (desc == 0)
                 {
+                    return;
+                }
+
+                // The description the resource was created with. Every texture used to answer
+                // with the back buffer's: Scaleform (Halo: Spartan Assault) sizes the staging
+                // copy of each texture it uploads from GetDesc, so a 680x68 BC3 texture got a
+                // 480x800 BGRA staging twin and the upload never matched.
+                if (_resourceDescs.TryGetValue(Arg(0), out var created))
+                {
+                    _emulator.WriteMemory(desc, created.Desc);
                     return;
                 }
 
@@ -1095,6 +1298,163 @@ namespace WPR.Wp8Native
         // -------------------------------------------------------------------
 
         private const int ContextSlots = 135;
+
+        /// <summary>
+        /// The media engine's TransferVideoFrame: scales an RGBA frame into a game's texture, as the
+        /// video processor does - the source rectangle (normalised, null for all of it) into the
+        /// destination rectangle (pixels, null for the whole texture), the rest filled with the
+        /// border colour when one is given. 32-bit RGBA and BGRA targets only; false for anything
+        /// else, which the caller reports as E_INVALIDARG.
+        /// </summary>
+        public bool WriteVideoFrame(long surface, byte[] rgba, int width, int height, long sourceRect, long destRect, long borderColour)
+        {
+            FrameCapture.Resource? target = ResourceAt(surface);
+            if (target is null || target.Storage == 0 || target.BlockBytes != 0 || target.PixelBytes != 4 ||
+                target.PixelWidth <= 0 || target.PixelHeight <= 0 || width <= 0 || height <= 0 || rgba.Length < width * height * 4)
+            {
+                return false;
+            }
+
+            bool? order = target.Format switch
+            {
+                87 or 88 or 90 or 91 or 92 or 93 => true,    // B8G8R8A8 / B8G8R8X8 families
+                27 or 28 or 29 or 30 or 31 or 32 => false,   // R8G8B8A8 family
+                _ => null,
+            };
+            if (order is not bool bgra)
+            {
+                return false;
+            }
+
+            int tw = target.PixelWidth, th = target.PixelHeight;
+
+            // MFVideoNormalizedRect: left, top, right, bottom as floats in [0, 1].
+            float sl = 0, st = 0, sr = 1, sb = 1;
+            if (sourceRect != 0)
+            {
+                byte[] raw = _emulator.ReadMemory(sourceRect, 16);
+                sl = Math.Clamp(BitConverter.ToSingle(raw, 0), 0, 1);
+                st = Math.Clamp(BitConverter.ToSingle(raw, 4), 0, 1);
+                sr = Math.Clamp(BitConverter.ToSingle(raw, 8), 0, 1);
+                sb = Math.Clamp(BitConverter.ToSingle(raw, 12), 0, 1);
+            }
+
+            // RECT: left, top, right, bottom in pixels of the destination.
+            int dl = 0, dt = 0, dr = tw, db = th;
+            if (destRect != 0)
+            {
+                dl = Math.Clamp((int)_emulator.ReadUInt32(destRect + 0, 0), 0, tw);
+                dt = Math.Clamp((int)_emulator.ReadUInt32(destRect + 4, 0), 0, th);
+                dr = Math.Clamp((int)_emulator.ReadUInt32(destRect + 8, 0), 0, tw);
+                db = Math.Clamp((int)_emulator.ReadUInt32(destRect + 12, 0), 0, th);
+            }
+
+            if (sr <= sl || sb <= st || dr <= dl || db <= dt)
+            {
+                return true;   // nothing to draw, which is not an error
+            }
+
+            int pitch = target.RowPitch;
+            byte[] pixels = _emulator.ReadMemory(target.Storage, pitch * th);
+
+            // MFARGB: rgbBlue, rgbGreen, rgbRed, rgbAlpha.
+            if (borderColour != 0)
+            {
+                byte[] c = _emulator.ReadMemory(borderColour, 4);
+                for (int y = 0; y < th; y++)
+                {
+                    for (int x = 0; x < tw; x++)
+                    {
+                        if (x >= dl && x < dr && y >= dt && y < db)
+                        {
+                            continue;
+                        }
+
+                        int o = (y * pitch) + (x * 4);
+                        pixels[o + 0] = bgra ? c[0] : c[2];
+                        pixels[o + 1] = c[1];
+                        pixels[o + 2] = bgra ? c[2] : c[0];
+                        pixels[o + 3] = c[3];
+                    }
+                }
+            }
+
+            double sx0 = sl * width, sy0 = st * height;
+            double xScale = (sr - sl) * width / (dr - dl), yScale = (sb - st) * height / (db - dt);
+            for (int y = dt; y < db; y++)
+            {
+                int sy = Math.Clamp((int)(sy0 + ((y - dt + 0.5) * yScale)), 0, height - 1);
+                for (int x = dl; x < dr; x++)
+                {
+                    int sx = Math.Clamp((int)(sx0 + ((x - dl + 0.5) * xScale)), 0, width - 1);
+                    int s = ((sy * width) + sx) * 4, o = (y * pitch) + (x * 4);
+                    pixels[o + 0] = bgra ? rgba[s + 2] : rgba[s + 0];
+                    pixels[o + 1] = rgba[s + 1];
+                    pixels[o + 2] = bgra ? rgba[s + 0] : rgba[s + 2];
+                    pixels[o + 3] = rgba[s + 3];
+                }
+            }
+
+            _emulator.WriteMemory(target.Storage, pixels);
+            target.HasContent = true;
+            target.Version++;
+            TextureUploads++;
+            return true;
+        }
+
+        /// <summary>D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT.</summary>
+        private const int MaxRenderTargets = 8;
+
+        /// <summary>The render target views bound by OMSetRenderTargets, by slot; 0 is unbound.</summary>
+        private readonly long[] _boundRenderTargetViews = new long[MaxRenderTargets];
+
+        /// <summary>The depth-stencil view bound by OMSetRenderTargets; 0 is unbound.</summary>
+        private long _boundDepthStencilView;
+
+        /// <summary>
+        /// Records OMSetRenderTargets: slots past <paramref name="count"/> are unbound, as D3D11
+        /// does, and a null array binds nothing.
+        /// </summary>
+        private void BindOutputMerger(int count, long views, long depthStencil)
+        {
+            for (int i = 0; i < MaxRenderTargets; i++)
+            {
+                _boundRenderTargetViews[i] = views != 0 && i < count ? _emulator.ReadUInt32(views + (i * 4), 0) : 0;
+            }
+
+            _boundDepthStencilView = depthStencil;
+        }
+
+        /// <summary>
+        /// OMGetRenderTargets' out-parameters: what is bound, each AddRef'd as D3D11 hands back
+        /// every interface from a Get* call (the caller releases them), null where nothing is.
+        /// </summary>
+        private void WriteBoundRenderTargets(long count, long views, long depthStencil)
+        {
+            if (views != 0 && count is > 0 and <= MaxRenderTargets)
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    long view = _boundRenderTargetViews[i];
+                    AddRefPointer(view);
+                    _emulator.WriteUInt32(views + (i * 4), (uint)view);
+                }
+            }
+
+            if (depthStencil != 0)
+            {
+                AddRefPointer(_boundDepthStencilView);
+                _emulator.WriteUInt32(depthStencil, (uint)_boundDepthStencilView);
+            }
+        }
+
+        private void AddRefPointer(long pointer)
+        {
+            if (pointer != 0 && _byPointer.TryGetValue(pointer, out ComObject? owner))
+            {
+                owner.RefCount++;
+            }
+        }
 
         private Dictionary<int, (string, Action)> ContextMethods()
         {
@@ -1161,14 +1521,20 @@ namespace WPR.Wp8Native
             // (ID3D11Predicate**, BOOL*)
             methods[86] = ("GetPredication", () => { Zero(Arg(1), 1); Zero(Arg(2), 1); Return(0); });
 
-            // (NumViews, ID3D11RenderTargetView**, ID3D11DepthStencilView**)
-            methods[89] = ("OMGetRenderTargets", () => { Zero(Arg(2), Arg(1)); Zero(Arg(3), 1); Return(0); });
+            // (NumViews, ID3D11RenderTargetView**, ID3D11DepthStencilView**). The output merger
+            // is the one piece of state these answer for real: Halo: Spartan Assault sizes its
+            // frame by asking the bound render target for its texture's description, and a null
+            // view sent it through a null vtable on its first frame.
+            methods[89] = ("OMGetRenderTargets", () =>
+            {
+                WriteBoundRenderTargets(Arg(1), Arg(2), Arg(3));
+                Return(0);
+            });
 
             // (NumRTVs, RTV**, DSV**, UAVStart, NumUAVs, UAV**)
             methods[90] = ("OMGetRenderTargetsAndUnorderedAccessViews", () =>
             {
-                Zero(Arg(2), Arg(1));
-                Zero(Arg(3), 1);
+                WriteBoundRenderTargets(Arg(1), Arg(2), Arg(3));
                 Zero(Arg(6), Arg(5));
                 Return(0);
             });
@@ -1297,7 +1663,21 @@ namespace WPR.Wp8Native
             [21] = ("DrawInstanced", CountDraw("DrawInstanced")),
             [33] = ("OMSetRenderTargets", () =>
             {
+                // (NumViews, ID3D11RenderTargetView* const*, ID3D11DepthStencilView*)
                 RenderTargetsBound = (int)Arg(1);
+                BindOutputMerger((int)Arg(1), Arg(2), Arg(3));
+                Return(HResultOk);
+            }),
+            [34] = ("OMSetRenderTargetsAndUnorderedAccessViews", () =>
+            {
+                // (NumRTVs, RTV* const*, DSV*, UAVStartSlot, NumUAVs, ...). NumRTVs of
+                // D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL (0xFFFFFFFF) leaves them as they are.
+                if (Arg(1) != 0xFFFFFFFF)
+                {
+                    RenderTargetsBound = (int)Arg(1);
+                    BindOutputMerger((int)Arg(1), Arg(2), Arg(3));
+                }
+
                 Return(HResultOk);
             }),
             [44] = ("RSSetViewports", () =>
@@ -1324,6 +1704,32 @@ namespace WPR.Wp8Native
                     {
                         Note(described);
                     }
+                }
+
+                Return(HResultOk);
+            }),
+            // void CopyResource(pDstResource, pSrcResource): the whole contents, same size and
+            // format. Done here on the resources' memory, so a texture filled through a staging
+            // copy (Map the staging texture, write, CopyResource) has its pixels where a draw reads
+            // them. The GPU replay additionally copies between render targets (Direct3DGpu).
+            [47] = ("CopyResource", () =>
+            {
+                if (ResourceAt(Arg(1)) is { Storage: not 0 } destination && ResourceAt(Arg(2)) is { Storage: not 0 } source && destination != source)
+                {
+                    CopyResourceMemory(destination, source);
+                }
+
+                Return(HResultOk);
+            }),
+
+            // void CopySubresourceRegion(pDst, DstSubresource, DstX, DstY, DstZ, pSrc,
+            // SrcSubresource, const D3D11_BOX* pSrcBox): level 0 to level 0, as everything here keeps.
+            [46] = ("CopySubresourceRegion", () =>
+            {
+                if (Arg(2) == 0 && Arg(7) == 0 &&
+                    ResourceAt(Arg(1)) is { Storage: not 0 } destination && ResourceAt(Arg(6)) is { Storage: not 0 } source && destination != source)
+                {
+                    CopyRegionMemory(destination, (int)Arg(3), (int)Arg(4), source, Arg(8));
                 }
 
                 Return(HResultOk);
