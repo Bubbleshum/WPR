@@ -815,13 +815,66 @@ The WP8 runtime's Media Foundation (`Src/Engine/WPR.Engine.Wp8Native/Runtime/Med
 the library): the media engine's users (Assassin's Creed Pirates, Doodle God Blitz, FIFA 14/15,
 GameMaker and Unity runners) feed it MP3; the same library ships thousands of MP3s their own code
 decodes (Angry Birds), so transcoding by extension would break those; and byte-stream sources never
-touch the disk. **Video is never decoded**: a source whose container has a video stream (FIFA's
+touch the disk. **Video is never decoded without a platform video decoder** (see the Halo section below for movies with one): a source whose container has a video stream (FIFA's
 `ealogo.mp4`, Halo: Spartan Assault's `.wmv`) is refused even though its audio decodes, because a
 game handed its intro's soundtrack with no picture waits for frames that never come.
 
 **Chaining guest calls: use `MediaCom.Run` with an iterator script.** A `finish` of `Then`/`Sequence`
 must never start more guest calls - the original caller is resumed straight after it, so a nested
 call silently never happens. Contract tests are `Suites/MediaStreamsSuite.cs`.
+
+### Halo: Spartan Assault runs to its mission screen (2026-10-14)
+
+Halo (`8e162189-…`, `Game.exe`, Scaleform + FMOD + Xbox Live over D3D11) used to stop after
+0 frames with `CPU exception 12 at 0xFFFFFFFE`. It now plays its four logo movies and the intro
+cutscene, saves, and runs main menu → START → operation movie → operation and mission select →
+armory → the "place thumbs as indicated to start" mission screen on D3D11, forced Vulkan and
+forced GLES 3.0 + no DXT (that last one washed out, as D4 always is). **Gameplay needs two fingers
+down at once**, which the harness cannot inject (its synthetic finger is one slot), so the mission
+itself is untested. Not run on a phone or the emulator. Eight separate runtime defects, each hiding
+the next:
+
+| defect | symptom | fix |
+| --- | --- | --- |
+| `_initterm` rejected any table over 64 KB | Halo's `__xc_a..__xc_z` has **37,303** initialisers (146 KB); none ran, and a singleton at `0x01C1A998` was called through null | cap 16 MB, both ends must be mapped; the return trap is **recycled** (37k calls fill the 64 KB trap page otherwise) |
+| `OMGetRenderTargets` answered "nothing bound" | it sizes its frame from the bound target: null call at frame 244 | the context records `OMSetRenderTargets` (and `...AndUnorderedAccessViews`, GPU replay too); Get hands them back AddRef'd |
+| no `ID3D10Multithread` | QI null, called anyway | on device and immediate context: Enter/Leave a recursive lock over guest threads, Set/GetMultithreadProtected |
+| `IsStackAddress` knew only the main stack | `Microsoft.Xbox.User` activated on a ConcRT worker: the factory took ActivateInstance for CreateUser and wrote to address 1 | guest thread stacks are recorded at `CreateGuestThread` (static list, cleared per emulator) |
+| the media engine refused every movie | **it waits for ENDED/PAUSE after an ERROR, for ever** (its EventNotify switch only logs ERROR) | movies play: see below |
+| `ID3D11Texture2D::GetDesc` answered the back buffer's desc for every texture; `GetType` returned in r0 | Scaleform made a 480x800 BGRA staging twin for a 680x68 BC3 texture | resources keep their creation desc (2D/3D/buffer); GetType writes its out-parameter |
+| `CopyResource`/`CopySubresourceRegion` did nothing on the context; the GPU replay turned both ends into render targets | every UI texture sampled an empty target: all-black menus with 31 draws a frame | the context copies memory (rows / 4x4 blocks / bytes); the replay copies only from a source the GPU drew into |
+| `StorageFile.OpenTransactedWriteAsync` was a placeholder | "An unexpected save data error occurred", and a **0-byte savedata.bin that then fails every read** (E_BOUNDS from `DataReader.ReadUInt32`) | a `StorageStreamTransaction`: a stream over the file's contents in memory, written on `CommitAsync` |
+
+Also `IPointerPoint.Properties` (it was a defaulted slot: touch answers, `PointerUpdateKind` from the
+event). **The tell for the static-initialiser bug** is a global that `grep` cannot find a writer
+for: the store sits in a dynamic initialiser the linear objdump sweep desynced past. Search the raw
+`.text` bytes for the `movw` encoding instead (`4a f6 98 1?` for `#0xa998`), then find the
+initialiser's address in `.rdata`.
+
+**Movies in the media engine** (reverses "Video is never decoded" above, which stays true when no
+decoder is registered). An ASF or MP4 source is offered to the platform's `IVideoDecoder`
+(`VideoDecoderBackend`, bridged as the runtime's `IMediaVideoDecoder` by `Wp8NativeVideoDecoder`):
+the soundtrack is drained whole (bounded 30 s) and padded with silence to the movie's length so one
+clock drives both; `OnVideoStreamTick` hands out the frame due at that clock (interpolated within
+the voice's ~90 ms chunk, or a movie's frames step at 11 fps); `TransferVideoFrame` scales it into
+the game's B8G8R8A8/R8G8B8A8 texture through `Direct3DRuntime.WriteVideoFrame` (source and
+destination rectangles, border colour). A byte-stream source goes through a temp file. Windows
+plays them through ffmpeg.exe. **Android has a decoder only for sidecars**, so a WP8 movie there
+still fails as before unless install writes `<movie>.wpr.mp4`, which it does not do for WP8 yet:
+that is the next step for Halo on a phone, and why it would sit on its first logo there.
+
+Diagnostics added on the way, all opt-in: `WPR_WP8_IMPORT_TRACE=N` (first N imports, critical
+sections skipped), `WPR_WP8_METHOD_TRACE=<text>` (host vtable calls whose name contains it,
+AddRef/Release skipped, first 20,000), a wild branch's report now unwinds from lr, every throw in
+the history says where it came from, and the run summary lists where each live guest thread is
+parked (`threads:`) - a stall without a failure leaves nothing else. The harness registers the
+desktop video decoder with the audio one when `WPR_FFMPEG` is set.
+
+Regression, D3D11, combine 7985de7a vs this branch (11 titles, `wp8-shots.ps1`): no screen got
+worse; MC4 now reaches its "touch the screen" title (was the Havok logo at 30 s), Star Wars its
+daily-reward menu, AC Pirates further into its intro. Runs where the harness window lost focus
+(`lifecycle: suspended`) were repeated. Contract tests 2214/2214 (`StartupAndStacksSuite`,
+`Direct3DStateSuite`, transacted writes in `WinRtClassesSuite`).
 
 ### The WP8 runtime must not allocate per guest call (2026-10-14)
 
