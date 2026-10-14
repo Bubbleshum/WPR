@@ -793,8 +793,32 @@ namespace WPR.Wp8Native
                 // no input reaches a page that is not on screen. The loop still turns - paced by
                 // the host's tick, so it does not spin - because a Suspending deferral and the
                 // return to the foreground are only delivered from here.
+                // A turn that draws nothing usually comes straight back here without going through
+                // the guest, so the turns are run as a loop, not by recursion: one turn per host tick
+                // grew the stack for the whole time the app was away, and once the host stopped
+                // pacing it (closing) it overflowed in a moment (Amazing Alex, suspended at exit).
                 IdleTurn?.Invoke();
-                NextFrame();
+                if (_inIdleTurn)
+                {
+                    _idleTurnAgain = true;
+                    return;
+                }
+
+                _inIdleTurn = true;
+                try
+                {
+                    do
+                    {
+                        _idleTurnAgain = false;
+                        NextFrame();
+                    }
+                    while (_idleTurnAgain);
+                }
+                finally
+                {
+                    _inIdleTurn = false;
+                }
+
                 return;
             }
 
@@ -820,6 +844,12 @@ namespace WPR.Wp8Native
         public bool ProviderDisconnected => _providerDisconnected;
 
         private bool _providerDisconnected;
+
+        /// <summary>The idle-turn loop in <see cref="InputThenDraw"/> is on the stack.</summary>
+        private bool _inIdleTurn;
+
+        /// <summary>A turn re-entered the idle path synchronously: the loop runs another.</summary>
+        private bool _idleTurnAgain;
         private long _runtimeHost;
 
         // IDrawingSurfaceBackgroundContentProviderNative::Disconnect.
