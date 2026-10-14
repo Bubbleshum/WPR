@@ -11,47 +11,42 @@ using WPR.SilverlightCompability;
 namespace WPR
 {
     /// <summary>
-    /// Hosts a WP7.1 Silverlight/XNA <em>mixed-mode</em> application as an ordinary
-    /// <see cref="Game"/>.
+    /// The Silverlight host: runs any WP7 Silverlight application as an ordinary
+    /// <see cref="Game"/>, on both heads. It is the only one since 2026-10-13 — the Avalonia
+    /// host (<c>SilverlightLauncher</c>/<c>SilverlightRenderer</c>) was deleted in Stage D of
+    /// <c>Plans/SILVERLIGHT-XNA-CONVERGENCE.md</c>, and this class was called
+    /// <c>MixedModeGame</c> until then.
     ///
-    /// <para>A mixed-mode title has no <c>Game</c> subclass of its own. Its App.xaml declares a
-    /// <see cref="SharedGraphicsDeviceManager"/>, its <c>PhoneApplicationPage</c> owns a
-    /// <see cref="GameTimer"/>, and the phone's Silverlight compositor drives that timer's
-    /// <c>Update</c>/<c>Draw</c> events. WPR has no Silverlight compositor, so this class
-    /// supplies the missing half: it IS the <c>Game</c>, and it pumps the timers the page
-    /// registers.</para>
+    /// <para>Two kinds of title come through here, and they differ only in who draws:</para>
+    /// <list type="bullet">
+    /// <item><b>Mixed mode</b> (WP7.1 Silverlight/XNA): no <c>Game</c> subclass of its own. Its
+    /// App.xaml declares a <see cref="SharedGraphicsDeviceManager"/>, its
+    /// <c>PhoneApplicationPage</c> owns a <see cref="GameTimer"/>, and the phone's compositor
+    /// drove that timer's <c>Update</c>/<c>Draw</c>. This class supplies the missing half: it IS
+    /// the <c>Game</c>, and it pumps the timers the page registers.</item>
+    /// <item><b>Pure Silverlight UI</b>: the page is all there is, so the host composites it
+    /// every frame (<see cref="CompositeSilverlightPage"/>). Three things switch on that a
+    /// mixed-mode title has never had — Loaded on the root visual tree and on elements added
+    /// later, and a re-layout whenever the page's measure is invalidated. Which kind a title is
+    /// is read from its main assembly (<see cref="NamesSharedGraphicsDeviceManager"/>).</item>
+    /// </list>
     ///
     /// <para><b>How much Silverlight a mixed-mode title renders is a SPECTRUM, not a property of
-    /// the category.</b> An earlier version of this comment asserted that nothing Silverlight is
-    /// ever rendered — that every such title carries the same page-XAML comment, <i>"No XAML
-    /// content is required as the page is rendered entirely with the XNA Framework"</i>. That is
-    /// true of the smallest members and false of the largest. Measured over each title's own main
-    /// assembly (the bundled toolkit DLLs inflate the count several-fold, so do not count those):
-    /// Little Acorns names 16 Silverlight types and needs no rendering at all; Cut the Rope 21;
-    /// Pirates 32, whose main menu <em>is</em> a rasterised Silverlight tree; Galactic Reign 117;
-    /// and <b>Carcassonne 139, which is more Silverlight-dependent than Flowerz — a title WPR
-    /// classifies as a pure Silverlight app and hosts on the Avalonia renderer instead.</b> There
-    /// is no threshold separating the two groups.</para>
-    ///
-    /// <para>So this host does need a visual tree and a renderer, and it has both: layout runs
-    /// per navigation (see <c>OnFrameNavigated</c>) and <c>UIElementRenderer</c> rasterises the
-    /// tree on the CPU through <c>SoftwareVisualRasteriser</c>. What it still needs no part of is
-    /// <b>Avalonia</b> — which is what lets it run on the Android head, where there is no
-    /// Silverlight host at all, and which is why the rasteriser exists as a second renderer
-    /// beside <c>SilverlightRenderer</c> rather than reusing it.</para>
+    /// the category.</b> Measured over each title's own main assembly (the bundled toolkit DLLs
+    /// inflate the count several-fold, so do not count those): Little Acorns names 16 Silverlight
+    /// types and needs no rendering at all; Cut the Rope 21; Pirates 32, whose main menu
+    /// <em>is</em> a rasterised Silverlight tree; Galactic Reign 117; and Carcassonne 139, more
+    /// Silverlight-dependent than the pure UI app Flowerz. So the host always has a visual tree
+    /// and a renderer: layout runs per navigation (see <c>OnFrameNavigated</c>) and
+    /// <c>UIElementRenderer</c> rasterises the tree on the CPU through
+    /// <c>SoftwareVisualRasteriser</c>. No UI framework is involved, which is what lets it run on
+    /// Android.</para>
     ///
     /// <para>The renderer is deliberately composited in whichever direction the game asks for:
     /// Rabbids draws the overlay <em>before</em> its scene, making it the background, while
     /// Pirates draws it as the whole screen. Do not assume either.</para>
-    ///
-    /// <para>See <c>Plans/SILVERLIGHT-XNA-CONVERGENCE.md</c> for the full measurement. <b>Since
-    /// Stage C (2026-10-13) it hosts the pure Silverlight titles too</b> (constructed with
-    /// <c>isPureSilverlight: true</c>): their page is all there is, so the host composites it
-    /// every frame, and three things switch on that a mixed-mode title has never had — Loaded on
-    /// the root visual tree and on elements added later, and a re-layout whenever the page's
-    /// measure is invalidated. The name is kept until Stage D deletes the Avalonia host.</para>
     /// </summary>
-    internal sealed class MixedModeGame : Game
+    internal sealed class SilverlightGame : Game
     {
         // WP7's screen, matching GameWindow.ClientBounds and SilverlightHost.Content — a page
         // laid out against anything else would place its controls where the game does not expect.
@@ -64,8 +59,8 @@ namespace WPR
         private readonly Action<object> _onAppCreated;
         private readonly Action<string> _trace;
 
-        // A pure Silverlight UI app (no SharedGraphicsDeviceManager): the page is all there is.
-        // See the Loaded walk in LoadContent for the one thing that changes.
+        // A pure Silverlight UI app (its main assembly names no SharedGraphicsDeviceManager):
+        // the page is all there is. See the Loaded walk in LoadContent for what changes.
         private readonly bool _isPureSilverlight;
 
         private readonly GraphicsDeviceManager _graphics;
@@ -102,20 +97,26 @@ namespace WPR
         /// Raised once the game's <c>Application</c> subclass exists and before the first
         /// navigation — where <c>ApplicationLaunch</c> fires the WP7 cold-start lifecycle.
         /// </param>
-        public MixedModeGame(
+        /// <param name="assemblyPath">
+        /// The main assembly's file, read once for <see cref="NamesSharedGraphicsDeviceManager"/>.
+        /// </param>
+        public SilverlightGame(
             string installFolder,
+            string assemblyPath,
             Assembly userAssembly,
             string entryPointTypeName,
             Action<object> onAppCreated,
-            Action<string> trace,
-            bool isPureSilverlight = false)
+            Action<string> trace)
         {
-            _isPureSilverlight = isPureSilverlight;
+            _trace = trace ?? (_ => { });
+            _isPureSilverlight = !NamesSharedGraphicsDeviceManager(assemblyPath, _trace);
+            System.Diagnostics.Trace.WriteLine(_isPureSilverlight
+                ? "[wpr-silverlight] pure Silverlight title — page rasterised on the CPU"
+                : "[wpr-silverlight] mixed-mode title (SharedGraphicsDeviceManager)");
             _installFolder = installFolder ?? throw new ArgumentNullException(nameof(installFolder));
             _userAssembly = userAssembly ?? throw new ArgumentNullException(nameof(userAssembly));
             _entryPointTypeName = entryPointTypeName ?? throw new ArgumentNullException(nameof(entryPointTypeName));
             _onAppCreated = onAppCreated ?? (_ => { });
-            _trace = trace ?? (_ => { });
 
             // Built here, in the ctor, because Game.Run creates the device from whatever
             // IGraphicsDeviceManager is registered by the time DoInitialize runs — the same
@@ -146,6 +147,53 @@ namespace WPR
         /// the boot looks at.
         /// </summary>
         public PhoneApplicationFrame? RootFrame { get; private set; }
+
+        /// <summary>
+        /// Whether the main assembly names <c>SharedGraphicsDeviceManager</c>, i.e. is a
+        /// Silverlight/XNA mixed-mode title rather than a pure Silverlight UI app.
+        /// </summary>
+        /// <remarks>
+        /// <para><b>Why not <c>ApplicationType</c>.</b> Both kinds declare
+        /// <c>RuntimeType="Silverlight"</c> in <c>WMAppManifest.xml</c>; the manifest does not
+        /// distinguish them.</para>
+        /// <para><b>Why a type reference and not an assembly reference.</b> Before patching, the
+        /// giveaway is a reference to <c>Microsoft.Xna.Framework.Interop</c>; after patching the
+        /// patcher has rescoped those types into <c>WPR.Framework.Xna</c>, so an assembly test
+        /// would change its answer at the first repatch. The TYPE name survives both.</para>
+        /// <para>Any failure answers false (pure): the ten mixed-mode titles were measured
+        /// against this exact test, so a title it cannot read gets the pure-UI behaviour.</para>
+        /// <para>This was <c>WPR.MixedModeDetection</c>, consulted by both launch paths to choose a
+        /// host. Since there is one host it only chooses behaviour inside it.</para>
+        /// </remarks>
+        internal static bool NamesSharedGraphicsDeviceManager(string assemblyPath, Action<string>? trace = null)
+        {
+            const string SharedManagerNamespace = "Microsoft.Xna.Framework";
+            const string SharedManagerName = "SharedGraphicsDeviceManager";
+            try
+            {
+                if (string.IsNullOrEmpty(assemblyPath) || !System.IO.File.Exists(assemblyPath)) return false;
+                using var stream = System.IO.File.OpenRead(assemblyPath);
+                using var pe = new System.Reflection.PortableExecutable.PEReader(stream);
+                System.Reflection.Metadata.MetadataReader md =
+                    System.Reflection.Metadata.PEReaderExtensions.GetMetadataReader(pe);
+                foreach (System.Reflection.Metadata.TypeReferenceHandle h in md.TypeReferences)
+                {
+                    System.Reflection.Metadata.TypeReference t = md.GetTypeReference(h);
+                    if (md.StringComparer.Equals(t.Name, SharedManagerName) &&
+                        md.StringComparer.Equals(t.Namespace, SharedManagerNamespace))
+                    {
+                        trace?.Invoke($"[wpr-mixed] {System.IO.Path.GetFileName(assemblyPath)} references " +
+                                      $"{SharedManagerNamespace}.{SharedManagerName} — mixed-mode app.");
+                        return true;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                trace?.Invoke("[wpr-mixed] mixed-mode probe failed (treating as pure Silverlight): " + ex.Message);
+            }
+            return false;
+        }
 
         protected override void LoadContent()
         {
@@ -471,8 +519,8 @@ namespace WPR
         /// <para><b>This is the one place WPR's two Back paths meet, and they were separated on
         /// purpose.</b> The XNA path is a level-sampled <c>GamePad.Buttons.Back</c> held for
         /// exactly one frame; the Silverlight path is a routed event a page can cancel before
-        /// <c>GoBack()</c> runs. The note on <c>PhoneHardwareButtons</c> records that they have
-        /// disjoint hosts and so need no common interface — true of every title until mixed mode,
+        /// <c>GoBack()</c> runs. They once had disjoint hosts (the Avalonia Silverlight host had its
+        /// own bezel) and so need no common interface — true of every title until mixed mode,
         /// which is driven by <c>IGameHost</c> (so it gets the gamepad press) <i>and</i> has real
         /// Silverlight pages (so that is where its Back handler lives). Nothing called
         /// <c>HandleBackKey</c> here, so Back did nothing at all in these games.</para>

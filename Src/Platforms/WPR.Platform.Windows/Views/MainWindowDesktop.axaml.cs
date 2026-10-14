@@ -17,38 +17,6 @@ namespace WPR.Platform.Windows.Views
         private MainViewNavigator _Navigator;
 
         /// <summary>
-        /// Whether a title recorded as Silverlight is really a Silverlight/XNA mixed-mode app,
-        /// and so belongs on the XNA host. Any failure answers false, which lands the title on
-        /// the Silverlight host — the behaviour it had before this existed.
-        /// </summary>
-        /// <summary>
-        /// Queues a WPR Hub crash report for a Silverlight UI app, which runs in the Avalonia host
-        /// rather than through ApplicationLaunch (whose own filter covers every XNA and
-        /// mixed-mode title). Always returns false, so it can sit in an exception filter.
-        /// </summary>
-        private static bool ReportSilverlightCrash(WPR.Models.Application app, Exception ex)
-        {
-            try
-            {
-                if (WPR.Engine.Online.OnlineBackend.Crashes is { } reporter)
-                {
-                    var report = WPR.Engine.Online.CrashReport.FromException(ex, WPR.Engine.Online.CrashReport.Sources.GameRun);
-                    report.TitleId = app.ProductId;
-                    report.TitleName = app.Name;
-                    report.InstallFolder = System.IO.Path.Combine(
-                        Configuration.Current!.DataPath(WPR.Models.Application.DataStoreFolder), app.ProductId!);
-                    report.RuntimePath = WPR.Engine.Online.CrashReport.RuntimePaths.SilverlightAvalonia;
-                    reporter.Report(report);
-                }
-            }
-            catch (Exception reportEx)
-            {
-                Log.Warn(LogCategory.AppList, $"Could not queue a crash report: {reportEx.Message}");
-            }
-            return false;
-        }
-
-        /// <summary>
         /// The logging window's stop button: record the request and close whichever game is running.
         /// A game that has hung does not come back from that, and the launch awaits it, so if it has
         /// not gone within a few seconds the report is sent from here instead.
@@ -57,7 +25,7 @@ namespace WPR.Platform.Windows.Views
         {
             WPR.Shell.DiagnosticRun.MarkStopRequested();
             WPR.ApplicationLaunch.RequestExit();
-            SilverlightLauncher.RequestExit();
+            GameMakerLauncher.RequestExit();
             UnityPortLauncher.RequestExit();
 
             _ = Task.Run(async () =>
@@ -120,37 +88,6 @@ namespace WPR.Platform.Windows.Views
             await MessageBoxUtils.ShowSelectableErrorAsync(title, body);
         }
 
-        private static bool IsGameMakerApp(WPR.Models.Application app)
-        {
-            try
-            {
-                return GameMakerLauncher.LooksLikeGameMakerApp(System.IO.Path.Combine(
-                    Configuration.Current!.DataPath(WPR.Models.Application.DataStoreFolder),
-                    app.ProductId!));
-            }
-            catch (Exception)
-            {
-                return false;
-            }
-        }
-
-        private static bool IsMixedMode(WPR.Models.Application app)
-        {
-            try
-            {
-                string installFolder = System.IO.Path.Combine(
-                    Configuration.Current!.DataPath(WPR.Models.Application.DataStoreFolder),
-                    app.ProductId!);
-                return WPR.MixedModeDetection.IsMixedMode(
-                    installFolder, app.Assembly, msg => Log.Info(LogCategory.AppList, msg));
-            }
-            catch (Exception ex)
-            {
-                Log.Warn(LogCategory.AppList, $"mixed-mode probe threw: {ex.Message}");
-                return false;
-            }
-        }
-
         public MainWindowDesktop()
         {
             InitializeComponent();
@@ -164,7 +101,7 @@ namespace WPR.Platform.Windows.Views
             Closing += (_, _) =>
             {
                 WPR.ApplicationLaunch.RequestExit();
-                SilverlightLauncher.RequestExit();
+                GameMakerLauncher.RequestExit();
                 UnityPortLauncher.RequestExit();
             };
 
@@ -244,53 +181,28 @@ namespace WPR.Platform.Windows.Views
 
                 try
                 {
-                    // Externally-built native ports (Unity rebuilds, etc.) are launched as a
-                    // standalone process rather than hosted in-process. Detected by a
-                    // wpr-port.json in the install folder; returns false for normal titles so
-                    // they fall through to the Silverlight / XNA hosts below.
+                    // Externally-built native ports (Unity rebuilds, etc.) and GameMaker exports
+                    // are launched as standalone processes rather than hosted in-process. Each
+                    // answers false for a title that is not one of its own (and GameMaker also
+                    // when Runner.exe is unavailable), which falls through to ApplicationLaunch.
+                    // That hosts every remaining kind, Silverlight included: SilverlightGame is
+                    // the one Silverlight host on both heads since 2026-10-13 (the Avalonia host
+                    // was deleted in Stage D of Plans/SILVERLIGHT-XNA-CONVERGENCE.md).
+                    string installFolder = System.IO.Path.Combine(
+                        Configuration.Current!.DataPath(WPR.Models.Application.DataStoreFolder),
+                        args.Target.ProductId!);
                     if (await UnityPortLauncher.TryLaunchAsync(args.Target))
                     {
                         runtimePath = WPR.Online.Hub.Client.RuntimePaths.UnitySwap;
                     }
+                    else if (args.Target.ApplicationType == ApplicationType.Silverlight &&
+                             await GameMakerLauncher.TryLaunchAsync(installFolder, args.Target.ProductId ?? "", args.Target.Name ?? ""))
+                    {
+                        runtimePath = WPR.Online.Hub.Client.RuntimePaths.Other; // the hub has no GameMaker path
+                    }
                     else
                     {
-                        // A Silverlight/XNA MIXED-MODE title declares RuntimeType="Silverlight"
-                        // in its manifest and is recorded as ApplicationType.Silverlight, but it
-                        // has no Silverlight UI to host: its page is empty and the game draws
-                        // into it through a SharedGraphicsDeviceManager. Sending one to the
-                        // Silverlight host fails at the first navigation, which is what all ten
-                        // of them did here until 2026-09-23.
-                        //
-                        // Android never had this bug because it has no Silverlight host at all —
-                        // every title goes to FnaGameHost and ApplicationLaunch's own mixed-mode
-                        // gate picks MixedModeGame. This is the desktop's equivalent of that
-                        // gate, and it deliberately asks the SAME detector rather than a second
-                        // rule, so the two heads cannot disagree about what a game is.
-                        //
-                        // Since Stage C of the convergence plan a pure Silverlight title goes
-                        // to the XNA host as well (ApplicationLaunch hosts it in MixedModeGame).
-                        // The Avalonia host stays reachable for one release through
-                        // SilverlightHostChoice (WPR_SILVERLIGHT_AVALONIA=1, or
-                        // "SilverlightAvaloniaHost": true in config.json), and still takes a
-                        // GameMaker app, which it hands to YoYo's Runner rather than hosting.
-                        if (args.Target.ApplicationType == ApplicationType.Silverlight &&
-                            (WPR.Common.SilverlightHostChoice.UseAvaloniaHost || IsGameMakerApp(args.Target)) &&
-                            !IsMixedMode(args.Target))
-                        {
-                            runtimePath = WPR.Online.Hub.Client.RuntimePaths.SilverlightAvalonia;
-                            try
-                            {
-                                await SilverlightLauncher.LaunchAsync(args.Target);
-                            }
-                            catch (Exception ex) when (ReportSilverlightCrash(args.Target, ex))
-                            {
-                                throw; // unreachable: the filter only records
-                            }
-                        }
-                        else
-                        {
-                            await XnaLauncher.LaunchAsync(args.Target);
-                        }
+                        await XnaLauncher.LaunchAsync(args.Target);
                     }
                 }
                 catch (Exception ex)
@@ -310,7 +222,7 @@ namespace WPR.Platform.Windows.Views
                 Show();
 
                 // The game is gone, so this is the moment to send what it left behind: a crash
-                // report (queued by ApplicationLaunch, or above for the Silverlight host) and any
+                // report (queued by ApplicationLaunch) and any
                 // leaderboard scores it posted.
                 _ = WPR.Engine.Online.OnlineBackend.FlushAsync();
 

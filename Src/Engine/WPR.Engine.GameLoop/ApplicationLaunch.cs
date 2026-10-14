@@ -318,42 +318,18 @@ namespace WPR
             if (hooks == null) throw new ArgumentNullException(nameof(hooks));
 
             // Every Silverlight title — mixed-mode (a GameTimer on its page drawing with XNA) and
-            // pure UI alike — is hosted by MixedModeGame: the page is laid out and rasterised on
+            // pure UI alike — is hosted by SilverlightGame: the page is laid out and rasterised on
             // the CPU (SoftwareVisualRasteriser) and composited whenever the game itself paints
-            // nothing, and TouchPanel samples are routed into its visual tree. That is Stage C of
-            // Plans/SILVERLIGHT-XNA-CONVERGENCE.md. Before it, a pure UI app was refused here,
-            // which is why none could run on Android. (The desktop can still send one to the old
-            // Avalonia host for one release — see WPR.Common.SilverlightHostChoice; such a launch
-            // never reaches this method.)
-            //
-            // The detector is still asked, only to say which kind this is in the log: the hosting
-            // is identical, and MixedModeGame decides per frame whether the page or the game draws.
-            bool isMixedMode = false;
-            bool isPureSilverlight = false;
-            if (app.ApplicationType == ApplicationType.Silverlight)
-            {
-                bool hasSharedDevice = MixedModeDetection.IsMixedMode(
-                    Path.Combine(
-                        Configuration.Current!.DataPath(Application.DataStoreFolder),
-                        app.ProductId!),
-                    app.Assembly,
-                    // Lambda, not a method group: WprTrace is [Conditional("DEBUG")] and cannot
-                    // be converted to a delegate. Wrapping it keeps the Debug-only behaviour —
-                    // in Release the call inside the lambda is erased and this is a no-op.
-                    msg => WprTrace(msg));
-                Trace.WriteLine(hasSharedDevice
-                    ? "[wpr-silverlight] mixed-mode title (SharedGraphicsDeviceManager) — XNA host"
-                    : "[wpr-silverlight] pure Silverlight title — XNA host, page rasterised on the CPU");
-                isMixedMode = true;
-                isPureSilverlight = !hasSharedDevice;
-            }
+            // nothing, and TouchPanel samples are routed into its visual tree. There is no other
+            // Silverlight host on either head since 2026-10-13 (Plans/RUNTIME-CONVERGENCE.md 2b).
+            bool isSilverlight = app.ApplicationType == ApplicationType.Silverlight;
 
             // WP8 "Modern Native": an ARMv7 PE against WinRT. It runs on the dynarmic JIT inside
             // Wp8NativeGame, which is an ordinary XNA Game - same window, graphics and input as
             // every XNA title - so it takes the XNA path below with no managed assembly to load.
             bool isNative = app.ApplicationType == ApplicationType.ModernNative;
 
-            if (app.ApplicationType != ApplicationType.XNA && !isMixedMode && !isNative)
+            if (app.ApplicationType != ApplicationType.XNA && !isSilverlight && !isNative)
             {
                 throw new NotSupportedException(
                     $"Application runtime type '{app.ApplicationType}' is not supported.");
@@ -371,7 +347,7 @@ namespace WPR
             PlaytimeTracker.Begin(app.ProductId, app.Name);
             try
             {
-                await StartCore(app, hooks, isMixedMode, isNative, isPureSilverlight);
+                await StartCore(app, hooks, isSilverlight, isNative);
             }
             catch (Exception ex) when (ReportCrash(app, ex, CrashReport.Sources.GameRun))
             {
@@ -487,7 +463,7 @@ namespace WPR
             };
         }
 
-        private static async Task StartCore(Application app, IGameLaunchHooks hooks, bool isMixedMode, bool isNative = false, bool isPureSilverlight = false)
+        private static async Task StartCore(Application app, IGameLaunchHooks hooks, bool isSilverlight, bool isNative = false)
         {
             // Framework-side per-launch hooks. The FNA host used to register these before calling
             // in here, but every one of them names only WPR.Framework.Xna types, so they are launch
@@ -779,13 +755,14 @@ namespace WPR
                 Game? obj = null;
                 try
                 {
-                    if (isMixedMode)
+                    if (isSilverlight)
                     {
                         // No Game to instantiate: mainType is the game's Silverlight Application
-                        // subclass. MixedModeGame owns it — it builds the device first, then boots
+                        // subclass. SilverlightGame owns it — it builds the device first, then boots
                         // the app and navigates to its page, which is what starts the GameTimer.
-                        obj = new MixedModeGame(
+                        obj = new SilverlightGame(
                             folderPath,
+                            asmPath,
                             assem,
                             app.EntryPoint,
                             appInstance =>
@@ -807,9 +784,9 @@ namespace WPR
                                     WprTrace("[wpr-ex] mixed-mode HandleApplicationStart threw: " + ex);
                                 }
                             },
-                            // See the IsMixedMode call above: WprTrace is [Conditional("DEBUG")].
-                            msg => WprTrace(msg),
-                            isPureSilverlight);
+                            // Lambda, not a method group: WprTrace is [Conditional("DEBUG")] and
+                            // cannot be converted to a delegate; in Release the call is erased.
+                            msg => WprTrace(msg));
                     }
                     else if (isNative)
                     {
@@ -1567,8 +1544,8 @@ namespace WPR
         }
 
         /// <summary>
-        /// Mirror of the singleton reset that <c>SilverlightLauncher</c> performs on window
-        /// close. The XNA path historically skipped this, so the second launch of an XNA game
+        /// The Silverlight singleton reset (the deleted Avalonia <c>SilverlightLauncher</c> did
+        /// the same on window close). The XNA path historically skipped this, so the second launch of an XNA game
         /// inherited launch-1's <c>Application.Current</c>, <c>PhoneApplicationService.Current</c>,
         /// and <c>HostContext</c> state — including event subscribers pinned to types in the
         /// previous (unloaded) ALC. Best-effort; any single failure is logged and skipped.

@@ -122,6 +122,13 @@ namespace WPR.Wp8Native
 
                 byte[] code = aon9.AsSpan(codeOffset, codeSize).ToArray();
                 int droppedOutputs = isPixel ? DropExtraColourOutputs(code) : 0;
+                // Read before CompactVertexInputs renumbers them: the replay speaks original registers.
+                Dictionary<int, (int, int)> declaredInputs = isPixel ? [] : DeclaredInputRegisters(code);
+                if (!isPixel)
+                {
+                    CompactVertexInputs(code);
+                }
+
                 List<Aon9ConstantArray> arrays = ConstantArraysFor(code, isPixel, registers, maps);
                 Dictionary<(string, int), int> inputs = chunks.TryGetValue("ISGN", out ReadOnlyMemory<byte> isgn)
                     ? InputSignature(isgn.Span)
@@ -137,7 +144,7 @@ namespace WPR.Wp8Native
                     Samplers = samplers,
                     InputRegisters = inputs,
                     DroppedColourOutputs = droppedOutputs,
-                    DeclaredInputs = isPixel ? new Dictionary<int, (int, int)>() : DeclaredInputRegisters(code),
+                    DeclaredInputs = declaredInputs,
                 };
             }
             catch (Exception ex)
@@ -210,6 +217,80 @@ namespace WPR.Wp8Native
             }
 
             return dropped;
+        }
+
+        /// <summary>
+        /// Renumbers a vertex program's input registers to v0, v1, ... in register order, keeping
+        /// each one's <c>dcl</c> usage. Returns how many moved.
+        /// </summary>
+        /// <remarks>
+        /// <para>MojoShader's SPIR-V gives a vertex input the location of its register number
+        /// (<c>emit_SPIRV_attribute</c>: <c>spv_output_location(ctx, iddecl, regnum)</c>), while
+        /// <c>MOJOSHADER_vkGetVertexAttribLocation</c>, which FNA3D's Vulkan driver binds by, answers
+        /// the input's position in the shader's attribute list. The two agree only while the declared
+        /// registers are v0..vN-1. MONOPOLY Millionaire's text shader declares v0 and v2, so on Vulkan
+        /// TEXCOORD2 went to location 1, the position read nothing, and every label and the "?" glyph
+        /// vanished (Direct3D 11 and OpenGL match inputs by semantic and drew them).</para>
+        /// <para>Every driver matches a vertex element to an input by its usage, which the dcl keeps,
+        /// so the number itself is free to change; doing it everywhere keeps one bytecode for all of
+        /// them. MojoShader lists attributes sorted by register, so compact numbering is enough.
+        /// Register tokens are recognised by bit 31; <c>def</c>s carry literal values and are skipped,
+        /// as is the usage token of a <c>dcl</c>.</para>
+        /// </remarks>
+        internal static int CompactVertexInputs(byte[] code)
+        {
+            const int Input = 1;
+            SortedSet<int> used = [.. DeclaredInputRegisters(code).Keys];
+            var renumber = new Dictionary<int, int>();
+            foreach (int register in used)
+            {
+                renumber[register] = renumber.Count;
+            }
+
+            if (renumber.All(r => r.Key == r.Value))
+            {
+                return 0;
+            }
+
+            int at = 4;
+            while (at + 4 <= code.Length)
+            {
+                uint token = U32(code, at);
+                if (token == 0x0000FFFF)
+                {
+                    break;
+                }
+
+                uint opcode = token & 0xFFFF;
+                if (opcode == 0xFFFE)
+                {
+                    at += 4 + (int)(((token >> 16) & 0x7FFF) * 4);
+                    continue;
+                }
+
+                int length = (int)((token >> 24) & 0xF);
+                bool literal = opcode is 81 or 47 or 48;   // def, defb, defi
+                for (int i = opcode == 31 ? 1 : 0; !literal && i < length; i++)
+                {
+                    int position = at + 4 + (i * 4);
+                    if (position + 4 > code.Length)
+                    {
+                        break;
+                    }
+
+                    uint parameter = U32(code, position);
+                    int type = (int)(((parameter >> 28) & 0x7) | ((parameter >> 8) & 0x18));
+                    int number = (int)(parameter & 0x7FF);
+                    if ((parameter & 0x80000000) != 0 && type == Input && renumber.TryGetValue(number, out int moved) && moved != number)
+                    {
+                        BinaryPrimitives.WriteUInt32LittleEndian(code.AsSpan(position), (parameter & ~0x7FFu) | (uint)moved);
+                    }
+                }
+
+                at += 4 + (length * 4);
+            }
+
+            return renumber.Count(r => r.Key != r.Value);
         }
 
         /// <summary>

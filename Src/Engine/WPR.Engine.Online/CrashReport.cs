@@ -14,7 +14,6 @@ namespace WPR.Engine.Online
         public static class RuntimePaths
         {
             public const string XnaFna = "xna-fna";
-            public const string SilverlightAvalonia = "silverlight-avalonia";
             public const string UnitySwap = "unity-swap";
             public const string Other = "other";
         }

@@ -10,7 +10,7 @@ feasibility studies — see [`Plans/`](../Plans/README.md).
 
 | Doc | What it covers |
 | --- | --- |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | How WPR runs a game: the install/patch pipeline, the package types, the four in-process runtimes (XNA, mixed-mode Silverlight, WP8 native, pure Silverlight), the project layout, reinstall-vs-rebuild, where runtime data lives |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | How WPR runs a game: the install/patch pipeline, the package types, the three in-process runtimes (XNA, Silverlight, WP8 native), the project layout, reinstall-vs-rebuild, where runtime data lives |
 | [BUILDING.md](BUILDING.md) | Prerequisites, desktop and Android builds, run configurations, the Android TFM gating, packaging scripts, tests, troubleshooting a fresh clone |
 | [RELEASING.md](RELEASING.md) | The manual-dispatch release workflow, what it produces, and Android signing secrets |
 

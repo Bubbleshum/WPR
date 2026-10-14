@@ -21,6 +21,28 @@
     <InformationalVersion>$(WprVersion)</InformationalVersion>
     <Nullable>enable</Nullable>
     <AvaloniaVersion>11.3.9</AvaloniaVersion>
+    <!-- The Android head references Avalonia.Android 12.1.3 (11.x ships no net10.0-android asset);
+         this head stays on 11.3.9. Until 2026-10-13 WPR.Framework.Silverlight carried the same
+         split inside one project; it has no Avalonia reference at all since the Avalonia
+         Silverlight host was deleted, so this head is the only thing left to move.
+
+         THE COST OF MOVING THIS HEAD TO 12 WAS MEASURED ON 2026-09-25, so it does not have to be
+         guessed again. It is not a version bump; it is four migrations:
+           * Avalonia.ReactiveUI STOPS AT 11.3.9. Avalonia 12 moved the integration out of the
+             Avalonia repo and it is now ReactiveUI.Avalonia (namespace ReactiveUI.Avalonia).
+           * That package pulls REACTIVEUI 24.2.0, which replaced System.Reactive.Unit with its
+             own RxVoid, so every ReactiveCommand<Unit, Unit> in the head changes type. 5 files,
+             ~25 sites, two of which are the view-models most often under edit.
+           * Avalonia.Diagnostics also stops at 11.3.x (it can simply go: nothing ever called
+             AttachDevTools).
+           * Avalonia 12 DROPPED netstandard2.0, so the vendored Projektanker.Icons.Avalonia
+             projects must retarget; MessageBox.Avalonia becomes 12.0.0 with the namespace
+             MsBox.Avalonia and GetMessageBoxStandardWindow -> GetMessageBoxStandard returning a
+             box with ShowWindowDialogAsync/ShowWindowAsync; DialogHost.Avalonia needs 0.12.3;
+             and Tmds.DBus.Protocol's security pin has to rise from 0.21.3 to 0.94.1.
+         A trial run reached 84 compile errors with more behind them, and XAML/theme breaks in
+         Avalonia 12 do not surface at compile time at all. Worth doing deliberately, not
+         alongside other work. -->
     <TrimMode>copyused</TrimMode>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <OutputType>WinExe</OutputType>
@@ -184,7 +206,7 @@
          implementer rather than an accidental consumer. -->
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Framework.Devices.Sensors\WPR.Framework.Devices.Sensors.csproj" />
     <!-- FNA game-loop host driver (ApplicationLaunch + FnaGameHost/IGameHost), used by
-         SilverlightLauncher / XnaLauncher. -->
+         XnaLauncher. -->
     <ProjectReference Include="$(SolutionDir)\Backends\WPR.Backend.FNA\WPR.Backend.FNA.csproj" />
     <!-- WPR.Backend.Direct3D11 (Vortice) was referenced here until 2026-10-12, when it was
          retired: it only drew splash / test-pattern placeholders behind DrawingSurfaceBackgroundGrid
