@@ -785,8 +785,8 @@ namespace WPR.Wp8Native
         }
 
         /// <summary>
-        /// Whether an import has a real implementation, as opposed to reaching the shaped
-        /// constructor stand-in or the default "return 0". Static: it answers for imports the
+        /// Whether an import has a real implementation, as opposed to reaching the default
+        /// (0, or <c>this</c> for a constructor - see <see cref="IsCxxConstructor"/>). Static: it answers for imports the
         /// run never reached, which is the point - a gap found before it is executed.
         /// </summary>
         public bool IsImplemented(string function) =>
@@ -872,12 +872,6 @@ namespace WPR.Wp8Native
                 return;
             }
 
-            // An MSVC C++ constructor returns `this` in r0, and the caller relies on it -
-            // `Foo* f = new Foo()` uses the constructor's return value, not the operator
-            // new result. Returning 0 from an unimplemented constructor therefore hands
-            // back a null object, and the caller dereferences it a few instructions later
-            // with nothing in the trace to explain why. Preserving r0 costs nothing and
-            // makes an unimplemented constructor merely uninitialised rather than fatal.
             // A constructor of any Platform exception type: vccorlib's layout (vptrs at 0..0xC,
             // the HRESULT at 0x20), the host's record of it, and `this` back - see
             // ConstructPlatformException. Returning zero from a constructor is what turned a
@@ -886,12 +880,6 @@ namespace WPR.Wp8Native
                 function.Contains("Exception@Platform@@", StringComparison.Ordinal))
             {
                 ConstructPlatformException(function);
-                return;
-            }
-
-            if (function.StartsWith("??0", StringComparison.Ordinal))
-            {
-                ConstructShapedObject(function);
                 return;
             }
 
@@ -940,8 +928,36 @@ namespace WPR.Wp8Native
             // the order first met) goes to WPR Hub with the crash, which is how the list of imports
             // to implement gets built from real play rather than guessed.
             DefaultedCalls[function] = DefaultedCalls.GetValueOrDefault(function) + 1;
-            Return(0);
+            Return(IsCxxConstructor(function) ? Arg(0) : 0);
         }
+
+        /// <summary>
+        /// Whether an import is an MSVC C++ constructor (<c>??0Class@…</c>).
+        /// </summary>
+        /// <remarks>
+        /// An unimplemented one is defaulted like any other import, with one difference: its
+        /// contract returns <c>this</c> in r0 and the caller relies on it (<c>Foo* f = new Foo()</c>
+        /// uses the constructor's return value, not operator new's), so the default is <c>this</c>,
+        /// not 0. Returning 0 hands back a null object the caller dereferences a few instructions
+        /// later with nothing in the trace to explain why.
+        ///
+        /// The object itself is left exactly as the caller handed it over. This used to be
+        /// <c>ConstructShapedObject</c>, which wrote a synthetic vtable into it whenever
+        /// <c>LooksLikeVtable</c> - a probe of guest memory - decided its first word was not already
+        /// one (Plans/RUNTIME-CONVERGENCE.md, 1e). It was retired on 2026-10-14 after a run of all
+        /// 11 in-scope WP8 titles reached it zero times: every constructor they import from a
+        /// system DLL has a handler (the contract suite checks that statically), and the classes
+        /// that reach this path are C++ classes from MSVC's runtime DLLs, which no .winmd
+        /// describes, so there is no metadata to build a "real" vtable from either. Guessing one
+        /// cost a probe of guest memory per object, and the guess had already been wrong once
+        /// (an earlier "non-zero first word" test took a recycled block's stale word for a vptr,
+        /// and a Platform::Exception throw branched into the heap). A constructor that does arrive here now shows up in
+        /// <see cref="DefaultedCalls"/> (and so in the <c>[wpr-wp8] summary:</c> line and the hub
+        /// report) and traps under <see cref="TrapUnknownImports"/>, which the shaped stand-in
+        /// silently did neither of. The fix for one is to implement it.
+        /// </remarks>
+        public static bool IsCxxConstructor(string function) =>
+            function.StartsWith("??0", StringComparison.Ordinal);
 
         /// <summary>
         /// WPR_WP8_TRAP_IMPORTS=1: stop the guest at the first unimplemented import instead of
@@ -1134,69 +1150,6 @@ namespace WPR.Wp8Native
 
         /// <summary>Runtime classes the image tried to activate, in order.</summary>
         public List<string> RequestedClasses { get; } = new();
-
-        private readonly Dictionary<string, long> _constructorVtables = new(StringComparer.Ordinal);
-
-        /// <summary>
-        /// Stands in for an unimplemented C++ constructor.
-        /// </summary>
-        /// <remarks>
-        /// Returning <c>this</c> is necessary but not sufficient. The object is exactly as
-        /// the allocator handed it over - all zeros - so the first virtual call on it goes
-        /// through a null vtable, a long way from here and with nothing to explain it.
-        /// Giving it a shaped vtable turns that into a named call instead.
-        ///
-        /// Only a zeroed first word is replaced: an object whose vtable is already set was
-        /// constructed by real code, and overwriting it would be the bug rather than the fix.
-        /// </remarks>
-        private void ConstructShapedObject(string constructor)
-        {
-            long instance = Arg(0);
-            Return(instance);
-
-            // Leave an existing vtable alone - a derived constructor in the image sets it
-            // before calling this base constructor - but only if it is one. The old test was
-            // "non-zero", and an object carved out of a recycled heap block is non-zero at
-            // offset 0 whatever it used to be. A Platform::Exception was built in a block whose
-            // first word was its own address (a dead list sentinel); the guard skipped the
-            // vtable, the throw read that word as a vptr, read the same word again as the
-            // method, and the CPU branched into the object. A vtable's first slot is code.
-            if (instance == 0 || LooksLikeVtable(_emulator.ReadUInt32(instance)))
-            {
-                return;
-            }
-
-            if (!_constructorVtables.TryGetValue(constructor, out long vtable))
-            {
-                vtable = _emulator.CreateShapedVtable(constructor);
-                _constructorVtables[constructor] = vtable;
-            }
-
-            _emulator.WriteUInt32(instance, (uint)vtable);
-        }
-
-        /// <summary>Whether a word could be a vtable pointer: it points at a slot holding code.</summary>
-        private bool LooksLikeVtable(long candidate)
-        {
-            // Ask before reading. A recycled block's first word is often string data (0x42413938,
-            // "89AB", on Angry Birds Go!), and reading it through the exception path cost a
-            // first-chance CpuMemoryException in the log for every such object. MSVC vtables are
-            // word aligned, and both ends are checked because a word can straddle a page.
-            if (candidate == 0 || (candidate & 3) != 0
-                || !_emulator.Cpu.IsMapped(candidate) || !_emulator.Cpu.IsMapped(candidate + 3))
-            {
-                return false;
-            }
-
-            try
-            {
-                return _emulator.IsExecutableCode(_emulator.ReadUInt32(candidate, 0));
-            }
-            catch (Exception)
-            {
-                return false;
-            }
-        }
 
         /// <summary>File I/O, backed by real files.</summary>
         public FileLibrary Files { get; }

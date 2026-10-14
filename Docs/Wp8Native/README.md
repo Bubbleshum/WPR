@@ -469,6 +469,10 @@ Three things came out of writing it, generalised so they apply beyond PPL:
   necessary but not sufficient: the object is still exactly as the allocator handed it
   over, all zeros, so the first virtual call goes through a null vtable a long way away.
   A shaped vtable is written into any object whose first word is still zero.
+  *(Both retired 2026-10-14, Plans/RUNTIME-CONVERGENCE.md 1e: no in-scope title reached the
+  constructor stand-in any more, so an unimplemented constructor is now an ordinary defaulted
+  import that returns `this`, is listed in `defaulted=[…]` and traps under
+  `WPR_WP8_TRAP_IMPORTS=1`. See `HostStubs.IsCxxConstructor`.)*
 - **A stand-in object is 256 bytes, not 8.** The image believes it holds a real class and
   reads and writes members at that class's offsets — `[this + 0x18]` and beyond. A small
   stand-in sends those reads into the *next* allocation, which returns a neighbour's data
