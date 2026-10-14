@@ -83,6 +83,21 @@ namespace WPR.Wp8Native
         /// <summary>The page's back-key handler; null when it has none, so a press closes the app.</summary>
         public XamlBackKey? BackKey { get; init; }
 
+        /// <summary>
+        /// What the managed shell calls on the component when the app is deactivated:
+        /// <c>Application_Deactivated</c>, then the page's <c>OnNavigatedFrom</c>. The host runs
+        /// them before the grid disconnects the content provider (<c>WinRtRuntime.DeliverLifecycle</c>,
+        /// AppLifecycle.cs).
+        /// </summary>
+        public IReadOnlyList<XamlShellStep> Deactivated { get; init; } = [];
+
+        /// <summary>
+        /// What the managed shell calls on the component when the app comes back with its instance
+        /// preserved (a fast app switch): <c>Application_Activated</c> with
+        /// <c>IsApplicationInstancePreserved</c> true, then the page's <c>OnNavigatedTo</c>
+        /// (NavigationMode.Back). Run before the grid reconnects the content provider.
+        /// </summary>
+        public IReadOnlyList<XamlShellStep> Activated { get; init; } = [];
     }
 
     public sealed partial class WinRtRuntime
@@ -258,7 +273,14 @@ namespace WPR.Wp8Native
             }
 
             string className = _shell!.ClassId;
-            var found = _metadata!.FindMethod(className, method);
+            if (_metadata is null)
+            {
+                Log($"{method}: no component metadata; skipped");
+                then(0);
+                return;
+            }
+
+            var found = _metadata.FindMethod(className, method);
             if (found is null && method == "SetManipulationHost")
             {
                 // Windows.Phone.Input.Interop.IDrawingSurfaceManipulationHandler is a Windows
@@ -719,9 +741,9 @@ namespace WPR.Wp8Native
 
                 (_hostDevice, _hostContext) = _emulator.Direct3D.CreateHostDevice();
                 _hostTarget = _emulator.Direct3D.CreateHostRenderTargetView();
-                long runtimeHost = RuntimeHostObject();
+                _runtimeHost = RuntimeHostObject();
 
-                CallSlot("Provider::Connect", _providerNative, SlotProviderConnect, [runtimeHost, _hostDevice], [], hr =>
+                CallSlot("Provider::Connect", _providerNative, SlotProviderConnect, [_runtimeHost, _hostDevice], [], hr =>
                 {
                     Log($"Connect = 0x{hr:X8}; drawing");
                     NextFrame();
@@ -760,8 +782,23 @@ namespace WPR.Wp8Native
                 return;
             }
 
+            if (DeliverLifecycle(InputThenDraw))
+            {
+                return;
+            }
+
+            if (_providerDisconnected)
+            {
+                // In the background the grid has disconnected the provider: nothing is drawn and
+                // no input reaches a page that is not on screen. The loop still turns - paced by
+                // the host's tick, so it does not spin - because a Suspending deferral and the
+                // return to the foreground are only delivered from here.
+                IdleTurn?.Invoke();
+                NextFrame();
+                return;
+            }
+
             if (DeliverBack(PrepareAndDraw) ||
-                DeliverLifecycle(InputThenDraw) ||
                 DeliverSensors(InputThenDraw) ||
                 DeliverKeys(InputThenDraw) ||
                 (_manipulationHost != 0 && DeliverInput(PrepareAndDraw, _manipulationHost)))
@@ -770,6 +807,74 @@ namespace WPR.Wp8Native
             }
 
             PrepareAndDraw();
+        }
+
+        /// <summary>
+        /// Raised on the guest's thread for each turn of a XAML title's frame loop that draws nothing
+        /// (the provider is disconnected while the app is in the background). The host waits for its
+        /// next tick here, as it does after a frame, so the loop is paced rather than spinning.
+        /// </summary>
+        public event Action? IdleTurn;
+
+        /// <summary>Whether the grid has disconnected the content provider (the app is in the background).</summary>
+        public bool ProviderDisconnected => _providerDisconnected;
+
+        private bool _providerDisconnected;
+        private long _runtimeHost;
+
+        // IDrawingSurfaceBackgroundContentProviderNative::Disconnect.
+        private const int SlotProviderDisconnect = 4;
+
+        /// <summary>A XAML component is hosted and its provider connected, so the lifecycle has page and grid steps to add.</summary>
+        private bool HostsXamlComponent => _shell is not null && _providerNative != 0;
+
+        /// <summary>
+        /// The grid leaving the screen: <c>IDrawingSurfaceBackgroundContentProviderNative::Disconnect()</c>.
+        /// No frame is drawn until <see cref="ReconnectProvider"/>.
+        /// </summary>
+        private void DisconnectProvider(Action then)
+        {
+            _providerDisconnected = true;
+            CallProviderSlot("Provider::Disconnect", SlotProviderDisconnect, [], then);
+        }
+
+        /// <summary>
+        /// The grid back on screen: <c>Connect(host, device)</c> again. WP8 handed over a new device
+        /// here, because the old one was lost; the host's device never is, so the same one goes back.
+        /// A component that recreates its resources on Connect does so against a device that still
+        /// works, and one that compares pointers keeps what it has. Both are right here.
+        /// </summary>
+        private void ReconnectProvider(Action then) =>
+            CallProviderSlot("Provider::Connect", SlotProviderConnect, [_runtimeHost, _hostDevice], () =>
+            {
+                _providerDisconnected = false;
+                then();
+            });
+
+        /// <summary>One provider call made from the lifecycle. A slot with no code is logged and skipped rather than stopping the guest.</summary>
+        private void CallProviderSlot(string name, int slot, IReadOnlyList<long> core, Action then)
+        {
+            long function = _emulator.ReadUInt32(_emulator.ReadUInt32(_providerNative, 0) + (slot * 4), 0);
+            if (!_emulator.IsExecutableCode(function))
+            {
+                Log($"{name}: 0x{function:X8} is not code; skipped");
+                _appLifecycleLog.Add($"   {name}: no code");
+                then();
+                return;
+            }
+
+            _appLifecycleLog.Add($"   {name}");
+            _emulator.CallEmulated(name, function, [_providerNative, .. core], onReturn: () =>
+            {
+                long hr = Arg(0) & 0xFFFFFFFFL;
+                Log($"{name} = 0x{hr:X8}");
+                if (hr != HResultOk && (hr & 0x80000000L) != 0)
+                {
+                    _appLifecycleLog.Add($"   {name} returned 0x{hr:X8}");
+                }
+
+                then();
+            }, recycle: true);
         }
 
         private void PrepareAndDraw()

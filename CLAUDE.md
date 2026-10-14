@@ -727,6 +727,43 @@ no XNA reference (and with the GPL Unicorn CPU, which is why it never ships). XN
 in the project root beside `Wp8NativeGame.cs`. Contract tests: `dotnet run --project
 Tools/Wp8/Wp8ContractTests`.
 
+### WP8 lifecycle reaches a XAML title's page and grid; a held key repeats (2026-10-14)
+
+**Lifecycle** (`Runtime/AppLifecycle.cs`). Every WP8 title gets `CoreWindow.Activated`,
+`VisibilityChanged` and `CoreApplication.Suspending`/`Resuming` from `Game.Deactivated`/`Activated`.
+A Direct3D/XAML title (Amazing Alex, MC4, AC Pirates) also gets what its managed shell and the
+`DrawingSurfaceBackgroundGrid` did on WP8, in this order:
+
+| leaving | coming back |
+| --- | --- |
+| `Activated(Deactivated)`, `VisibilityChanged(false)` | `Resuming` |
+| the shell's `XamlShell.Deactivated` calls | `VisibilityChanged(true)` |
+| `IDrawingSurfaceBackgroundContentProviderNative::Disconnect` | the shell's `XamlShell.Activated` calls |
+| `Suspending` | `Connect(runtime host, device)`, then `Activated(CodeActivated)` |
+
+The shell calls come from each title's decompiled `App`/`MainPage`: Alex `FusionMain.Deactivate` /
+`Activate`; MC4 `SetFullVersion(true, false)` on activation only (its deactivation work is managed);
+AC Pirates nothing (empty handlers). WP8 gave `Connect` a new device because the old one was lost;
+the host's device never is, so the same one goes back. While disconnected the frame loop draws
+nothing and takes no input, and paces itself on the host tick through `WinRtRuntime.IdleTurn`
+(without that it would spin). **`Obscured`/`Unobscured` (lock screen, calls) are not raised**; MC4
+pauses its game only on those, so it comes back unpaused. Log: `[wpr-wp8] lifecycle:` lines and
+`[xaml] Provider::Disconnect`/`Connect`. `Disconnect` is `void`, so the r0 it logs is noise.
+
+**Key repeat** (`Runtime/Keyboard.cs`). The host samples keys once a frame, so the runtime times
+repeats: the last key pressed repeats `KeyDown` after `KeyRepeatDelay`, every `KeyRepeatInterval`,
+with `WasKeyDown` true; repeats due between two frames are one event with `RepeatCount` = how many.
+Another key takes the repeat over; releasing it stops repeat for good, as on Windows.
+`Wp8NativeGame` reads the Windows keyboard settings (`SystemParametersInfo`), else 500 ms / 33 ms,
+and calls `PumpKeyRepeat()` each frame. `CharacterReceived` is not synthesised (SDL text input
+repeats on its own); a character arriving once the key has been held half the delay is marked
+`WasKeyDown`.
+
+Harness: a deactivate/activate cycle is two script verbs that set `Game.IsActive` false/true by
+reflection (what `--focus-blip` does); `Script.cs` is untracked, so add them locally. Measured on
+D1: all three XAML titles disconnect, draw nothing while away, reconnect and draw at 60 fps, and
+Alex's Play button works after the return. Contract tests: `Suites/HostWiringSuite.cs` (XAML lifecycle) and `Suites/KeyboardSuite.cs`.
+
 ### WP8 media: byte streams, property stores, and decoding through the platform (2026-10-11)
 
 The WP8 runtime's Media Foundation (`Src/Engine/WPR.Engine.Wp8Native/Runtime/Media*.cs`) gained three things:

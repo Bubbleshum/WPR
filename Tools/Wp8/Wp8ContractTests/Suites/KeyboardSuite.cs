@@ -148,6 +148,8 @@ public sealed class KeyboardSuite : IContractSuite
         Invoke(window, Slot("GetKeyState"), 0x14, down);
         h.Check("Caps Lock pressed and released is Locked, not Down", _h.U32(down) == 2);
 
+        AutoRepeat(h, rt, window, first.Invoke, chars.Invoke);
+
         // ---- remove: released, and no longer called ----
         ulong token = _h.U64(firstToken);
         Invoke(window, Slot("remove_KeyDown"), 0, (long)(token & 0xFFFFFFFF), (long)(token >> 32));
@@ -190,6 +192,120 @@ public sealed class KeyboardSuite : IContractSuite
         // ---- the scan-code table ----
         h.Check("scan codes: Escape 0x01, Enter 0x1C, Space 0x39, Q 0x10, Z 0x2C, 0 0x0B, F12 0x58",
             Scan(0x1B) == 0x01 && Scan(0x0D) == 0x1C && Scan(0x20) == 0x39 && Scan('Q') == 0x10 && Scan('Z') == 0x2C && Scan('0') == 0x0B && Scan(0x7B) == 0x58);
+    }
+
+    /// <summary>
+    /// Auto-repeat on a controlled clock: the delay, the interval, coalescing into RepeatCount,
+    /// WasKeyDown on repeats, the last-pressed key taking the repeat over, release ending it for good,
+    /// and characters marked as repeats only once the key has been held. Expects two KeyDown handlers,
+    /// one KeyUp and one CharacterReceived, and leaves every key up.
+    /// </summary>
+    private void AutoRepeat(Harness h, WinRtRuntime rt, long window, long firstKeyDown, long characterHandler)
+    {
+        const uint B = 0x42, C = 0x43;
+        Func<TimeSpan> savedClock = rt.KeyClock;
+        (TimeSpan savedDelay, TimeSpan savedInterval) = (rt.KeyRepeatDelay, rt.KeyRepeatInterval);
+        long ms = 0;
+        rt.KeyClock = () => TimeSpan.FromMilliseconds(ms);
+        rt.KeyRepeatDelay = TimeSpan.FromMilliseconds(500);
+        rt.KeyRepeatInterval = TimeSpan.FromMilliseconds(50);
+        long status = _h.Buffer(12);
+        try
+        {
+            // One KeyDown event: both handlers, returning the status the first one saw.
+            (uint Key, uint Repeat, bool WasDown, bool Released) KeyDown()
+            {
+                var call = Called();
+                uint key = (uint)Ret(call.Args, MemberSlot("Windows.UI.Core.IKeyEventArgs", "get_VirtualKey"));
+                Invoke(call.Args, MemberSlot("Windows.UI.Core.IKeyEventArgs", "get_KeyStatus"), status);
+                var seen = (key, (uint)_h.U32(status), E.ReadMemory(status + 10, 1)[0] == 1, E.ReadMemory(status + 11, 1)[0] == 1);
+                bool firstHandler = call.Target == firstKeyDown;
+                ReturnFromHandler();
+                ReturnFromHandler();
+                return firstHandler ? seen : default;
+            }
+
+            rt.InjectKey(B, down: true);
+            Deliver(() => { });
+            var press = KeyDown();
+            h.Check("auto-repeat: the press itself is RepeatCount 1, WasKeyDown false", press is { Key: B, Repeat: 1, WasDown: false }, $"{press}");
+
+            ms = 499;
+            h.Check("   no repeat before the delay", rt.PumpKeyRepeat() == 0 && !Deliver(() => { }));
+
+            ms = 500;
+            h.Check("   at the delay one repeat is queued", rt.PumpKeyRepeat() == 1);
+            bool continued = false;
+            h.Check("   and delivered as a KeyDown", Deliver(() => continued = true));
+            var repeat = KeyDown();
+            h.Check("   for the held key, RepeatCount 1, WasKeyDown true, not released", repeat is { Key: B, Repeat: 1, WasDown: true, Released: false }, $"{repeat}");
+            h.Check("   and the loop continues", continued);
+            long state = _h.Buffer(4);
+            Invoke(window, Slot("GetKeyState"), B, state);
+            h.Check("   GetKeyState is still Down, not toggled", _h.U32(state) == 1);
+
+            ms = 540;
+            h.Check("   nothing between repeats", rt.PumpKeyRepeat() == 0 && !Deliver(() => { }));
+            ms = 660;   // due at 550, 600, 650: three, coalesced
+            h.Check("   repeats due since the last pump are coalesced", rt.PumpKeyRepeat() == 3);
+            Deliver(() => { });
+            repeat = KeyDown();
+            h.Check("   into one KeyDown with RepeatCount 3", repeat is { Key: B, Repeat: 3, WasDown: true }, $"{repeat}");
+            ms = 699;
+            h.Check("   and the next is due on the original cadence (700)", rt.PumpKeyRepeat() == 0);
+
+            // A character from the host's own repeat, once the key has been held.
+            rt.InjectCharacter('b');
+            Deliver(() => { });
+            var call = Called();
+            Invoke(call.Args, MemberSlot("Windows.UI.Core.ICharacterReceivedEventArgs", "get_KeyStatus"), status);
+            h.Check("a character while the key repeats is CharacterReceived with WasKeyDown true",
+                call.Target == characterHandler && E.ReadMemory(status + 10, 1)[0] == 1);
+            ReturnFromHandler();
+
+            // Another key takes the repeat over.
+            ms = 700;
+            rt.InjectKey(C, down: true);
+            h.Check("pressing another key moves the repeat to it: nothing at once", rt.PumpKeyRepeat() == 0);
+            Deliver(() => { });
+            KeyDown();
+            ms = 1199;
+            h.Check("   B no longer repeats and C has its own delay", rt.PumpKeyRepeat() == 0);
+            ms = 1200;
+            h.Check("   then C repeats", rt.PumpKeyRepeat() == 1);
+            Deliver(() => { });
+            repeat = KeyDown();
+            h.Check("   with C's VirtualKey", repeat is { Key: C, Repeat: 1, WasDown: true }, $"{repeat}");
+
+            rt.InjectKey(C, down: false);
+            Deliver(() => { });
+            ReturnFromHandler();   // KeyUp
+            ms = 3000;
+            h.Check("releasing the repeating key ends it; B, still held, does not start again", rt.PumpKeyRepeat() == 0 && !Deliver(() => { }));
+
+            rt.InjectKey(C, down: true);
+            ms = 3010;
+            rt.InjectCharacter('c');
+            Deliver(() => { });
+            KeyDown();
+            call = Called();
+            Invoke(call.Args, MemberSlot("Windows.UI.Core.ICharacterReceivedEventArgs", "get_KeyStatus"), status);
+            h.Check("a character just after a press is not a repeat", call.Target == characterHandler && E.ReadMemory(status + 10, 1)[0] == 0);
+            ReturnFromHandler();
+
+            rt.InjectKey(C, down: false);
+            rt.InjectKey(B, down: false);
+            ms = 9000;
+            h.Check("with every key up nothing repeats", rt.PumpKeyRepeat() == 0);
+            Deliver(() => { });
+            ReturnFromHandler();
+            ReturnFromHandler();
+        }
+        finally
+        {
+            rt.KeyClock = savedClock;
+            (rt.KeyRepeatDelay, rt.KeyRepeatInterval) = (savedDelay, savedInterval);
+        }
     }
 
     private static uint Scan(uint vk) => (uint)typeof(WinRtRuntime).GetMethod("ScanCodeFor", BindingFlags.NonPublic | BindingFlags.Static)!.Invoke(null, [vk])!;
