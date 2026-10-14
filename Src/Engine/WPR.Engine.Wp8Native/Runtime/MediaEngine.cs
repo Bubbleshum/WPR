@@ -10,7 +10,9 @@ namespace WPR.Wp8Native
     /// audio (MP3 above all - what the library's media-engine users ship) through the platform's
     /// <see cref="IMediaDecoder"/> when the host has one. Sources come from a URL or from an
     /// IMFByteStream made by <c>MFCreateMFByteStreamOnStream(Ex)</c>.</para>
-    /// <para>Video is never decoded, so a source with a video stream (MP4/H.264, WMV), and any
+    /// <para>Movies (ASF or MP4 containers) play when the host registers a video decoder
+    /// (<see cref="VideoDecoder"/>): frames through OnVideoStreamTick/TransferVideoFrame, the
+    /// soundtrack as the source's audio. Without one, a source with a video stream, and any
     /// audio no decoder takes, fails as the element does when it cannot play a source:
     /// MF_MEDIA_ENGINE_EVENT_ERROR with MF_MEDIA_ENGINE_ERR_SRC_NOT_SUPPORTED and the HRESULT,
     /// delivered asynchronously through the game's IMFMediaEngineNotify. A game written for a
