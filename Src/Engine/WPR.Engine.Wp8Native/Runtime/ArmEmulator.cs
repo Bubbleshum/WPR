@@ -1836,6 +1836,7 @@ namespace WPR.Wp8Native
 
                 case TrapKind.VtableMethod:
                     if (MethodTraceFilter is not null && slot.Name.Contains(MethodTraceFilter, StringComparison.OrdinalIgnoreCase)
+                        && !slot.Name.EndsWith("::AddRef", StringComparison.Ordinal) && !slot.Name.EndsWith("::Release", StringComparison.Ordinal)
                         && _methodsTraced++ < 20000)
                     {
                         System.Diagnostics.Trace.WriteLine(
