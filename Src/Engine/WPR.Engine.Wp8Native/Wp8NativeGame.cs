@@ -169,6 +169,7 @@ namespace WPR.Wp8Native
 
                 _emulator.XAudio2.Output = _audio;
                 _emulator.Stubs.MediaDecoder = new Wp8NativeMediaDecoder(Log);
+                _emulator.Stubs.VideoDecoder = new Wp8NativeVideoDecoder(Log);
                 _emulator.WinRt.BackPressDelivered += handled =>
                 {
                     Log($"back press {(handled ? "kept by the game" : "let through: closing")}");
@@ -305,6 +306,21 @@ namespace WPR.Wp8Native
                 $"raised=[{string.Join("; ", stubs.RaiseLog)}] " +
                 $"slottrap={_emulator!.WinRt.FirstUnanswerableSlot ?? "none"} " +
                 $"defaultedslots=[{string.Join(", ", _emulator.WinRt.DefaultedSlots.Select(p => $"{p.Key} x{p.Value}"))}]");
+
+            // Where every live guest thread was parked when the run ended: a title that stalls
+            // without failing (waiting on a movie, a lock, a signal) leaves no post-mortem, and
+            // this is the only record of what it was waiting for.
+            try
+            {
+                foreach (string line in _emulator.DescribeThreads().Where(l => !l.Contains(": finished", StringComparison.Ordinal)))
+                {
+                    Log("threads: " + line);
+                }
+            }
+            catch (Exception)
+            {
+                // Diagnostics only.
+            }
         }
 
         /// <summary>

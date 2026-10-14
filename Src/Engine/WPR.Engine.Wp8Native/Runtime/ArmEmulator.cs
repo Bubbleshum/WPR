@@ -57,6 +57,14 @@ namespace WPR.Wp8Native
         /// WPR_WP8_IMPORT_TRACE=N: log the first N import calls (name, thread, lr, r0-r2) to the
         /// per-game log. A diagnostic: what led up to a failure, when the last-calls ring is too short.
         /// </summary>
+        /// <summary>
+        /// WPR_WP8_METHOD_TRACE=&lt;text&gt;: log host vtable method calls whose name contains the
+        /// text ("" for all), the first 20,000 of them. The import trace's counterpart for COM/WinRT.
+        /// </summary>
+        private static readonly string? MethodTraceFilter = Environment.GetEnvironmentVariable("WPR_WP8_METHOD_TRACE");
+
+        private int _methodsTraced;
+
         private static readonly long ImportTraceLimit =
             long.TryParse(Environment.GetEnvironmentVariable("WPR_WP8_IMPORT_TRACE"), out long n) ? n : 0;
 
@@ -103,6 +111,11 @@ namespace WPR.Wp8Native
         /// </param>
         public ArmEmulator(PeImage image, string imageDirectory, bool collectBlockStats = true)
         {
+            lock (GuestThreadStacks)
+            {
+                GuestThreadStacks.Clear();
+            }
+
             if (image.Machine != PeImage.MachineArmNt)
             {
                 throw new NotSupportedException(
@@ -1620,8 +1633,46 @@ namespace WPR.Wp8Native
         /// True when an address is a stack slot. Used to tell a caller's scratch local from
         /// a pointer to a live object, so an unknown method can safely blank an out-parameter.
         /// </summary>
+        /// <remarks>
+        /// Every guest thread's stack counts, not only the main one: a background thread's locals
+        /// live in a heap block. Halo: Spartan Assault activates Microsoft.Xbox.User on a ConcRT
+        /// worker, and with only the main stack known its out-parameter read as an object
+        /// pointer, so the factory took ActivateInstance for CreateUser and wrote to address 1.
+        /// </remarks>
         public static bool IsStackAddress(long address)
-            => address >= StackBase && address < StackBase + StackSize;
+        {
+            if (address >= StackBase && address < StackBase + StackSize)
+            {
+                return true;
+            }
+
+            lock (GuestThreadStacks)
+            {
+                foreach ((long low, long high) in GuestThreadStacks)
+                {
+                    if (address >= low && address < high)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// The stacks of the current run's guest threads. Static because <see cref="IsStackAddress"/>
+        /// is; a process runs one emulator at a time, and each new one starts the list afresh.
+        /// </summary>
+        private static readonly List<(long Low, long High)> GuestThreadStacks = new();
+
+        private static void RecordGuestThreadStack(long low, long high)
+        {
+            lock (GuestThreadStacks)
+            {
+                GuestThreadStacks.Add((low, high));
+            }
+        }
 
         /// <summary>
         /// Sends the CPU to <paramref name="address"/> when the current trap finishes,
@@ -1849,6 +1900,14 @@ namespace WPR.Wp8Native
                     break;
 
                 case TrapKind.VtableMethod:
+                    if (MethodTraceFilter is not null && slot.Name.Contains(MethodTraceFilter, StringComparison.OrdinalIgnoreCase)
+                        && _methodsTraced++ < 20000)
+                    {
+                        System.Diagnostics.Trace.WriteLine(
+                            $"[wpr-wp8-method] t{CurrentThreadId} {slot.Name} lr=0x{_cpu.RegRead(Arm.UC_ARM_REG_LR):X8} " +
+                            $"r0=0x{_cpu.RegRead(Arm.UC_ARM_REG_R0):X8} r1=0x{_cpu.RegRead(Arm.UC_ARM_REG_R1):X8} r2=0x{_cpu.RegRead(Arm.UC_ARM_REG_R2):X8}");
+                    }
+
                     _vtableCalls.Add(slot.Name);
                     if (_vtableCalls.Count > 4096)
                     {

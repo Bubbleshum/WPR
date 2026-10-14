@@ -1165,6 +1165,109 @@ namespace WPR.Wp8Native
 
         private const int ContextSlots = 135;
 
+        /// <summary>
+        /// The media engine's TransferVideoFrame: scales an RGBA frame into a game's texture, as the
+        /// video processor does - the source rectangle (normalised, null for all of it) into the
+        /// destination rectangle (pixels, null for the whole texture), the rest filled with the
+        /// border colour when one is given. 32-bit RGBA and BGRA targets only; false for anything
+        /// else, which the caller reports as E_INVALIDARG.
+        /// </summary>
+        public bool WriteVideoFrame(long surface, byte[] rgba, int width, int height, long sourceRect, long destRect, long borderColour)
+        {
+            FrameCapture.Resource? target = ResourceAt(surface);
+            if (target is null || target.Storage == 0 || target.BlockBytes != 0 || target.PixelBytes != 4 ||
+                target.PixelWidth <= 0 || target.PixelHeight <= 0 || width <= 0 || height <= 0 || rgba.Length < width * height * 4)
+            {
+                return false;
+            }
+
+            bool? order = target.Format switch
+            {
+                87 or 88 or 90 or 91 or 92 or 93 => true,    // B8G8R8A8 / B8G8R8X8 families
+                27 or 28 or 29 or 30 or 31 or 32 => false,   // R8G8B8A8 family
+                _ => null,
+            };
+            if (order is not bool bgra)
+            {
+                return false;
+            }
+
+            int tw = target.PixelWidth, th = target.PixelHeight;
+
+            // MFVideoNormalizedRect: left, top, right, bottom as floats in [0, 1].
+            float sl = 0, st = 0, sr = 1, sb = 1;
+            if (sourceRect != 0)
+            {
+                byte[] raw = _emulator.ReadMemory(sourceRect, 16);
+                sl = Math.Clamp(BitConverter.ToSingle(raw, 0), 0, 1);
+                st = Math.Clamp(BitConverter.ToSingle(raw, 4), 0, 1);
+                sr = Math.Clamp(BitConverter.ToSingle(raw, 8), 0, 1);
+                sb = Math.Clamp(BitConverter.ToSingle(raw, 12), 0, 1);
+            }
+
+            // RECT: left, top, right, bottom in pixels of the destination.
+            int dl = 0, dt = 0, dr = tw, db = th;
+            if (destRect != 0)
+            {
+                dl = Math.Clamp((int)_emulator.ReadUInt32(destRect + 0, 0), 0, tw);
+                dt = Math.Clamp((int)_emulator.ReadUInt32(destRect + 4, 0), 0, th);
+                dr = Math.Clamp((int)_emulator.ReadUInt32(destRect + 8, 0), 0, tw);
+                db = Math.Clamp((int)_emulator.ReadUInt32(destRect + 12, 0), 0, th);
+            }
+
+            if (sr <= sl || sb <= st || dr <= dl || db <= dt)
+            {
+                return true;   // nothing to draw, which is not an error
+            }
+
+            int pitch = target.RowPitch;
+            byte[] pixels = _emulator.ReadMemory(target.Storage, pitch * th);
+
+            // MFARGB: rgbBlue, rgbGreen, rgbRed, rgbAlpha.
+            if (borderColour != 0)
+            {
+                byte[] c = _emulator.ReadMemory(borderColour, 4);
+                for (int y = 0; y < th; y++)
+                {
+                    for (int x = 0; x < tw; x++)
+                    {
+                        if (x >= dl && x < dr && y >= dt && y < db)
+                        {
+                            continue;
+                        }
+
+                        int o = (y * pitch) + (x * 4);
+                        pixels[o + 0] = bgra ? c[0] : c[2];
+                        pixels[o + 1] = c[1];
+                        pixels[o + 2] = bgra ? c[2] : c[0];
+                        pixels[o + 3] = c[3];
+                    }
+                }
+            }
+
+            double sx0 = sl * width, sy0 = st * height;
+            double xScale = (sr - sl) * width / (dr - dl), yScale = (sb - st) * height / (db - dt);
+            for (int y = dt; y < db; y++)
+            {
+                int sy = Math.Clamp((int)(sy0 + ((y - dt + 0.5) * yScale)), 0, height - 1);
+                for (int x = dl; x < dr; x++)
+                {
+                    int sx = Math.Clamp((int)(sx0 + ((x - dl + 0.5) * xScale)), 0, width - 1);
+                    int s = ((sy * width) + sx) * 4, o = (y * pitch) + (x * 4);
+                    pixels[o + 0] = bgra ? rgba[s + 2] : rgba[s + 0];
+                    pixels[o + 1] = rgba[s + 1];
+                    pixels[o + 2] = bgra ? rgba[s + 0] : rgba[s + 2];
+                    pixels[o + 3] = rgba[s + 3];
+                }
+            }
+
+            _emulator.WriteMemory(target.Storage, pixels);
+            target.HasContent = true;
+            target.Version++;
+            TextureUploads++;
+            return true;
+        }
+
         /// <summary>D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT.</summary>
         private const int MaxRenderTargets = 8;
 

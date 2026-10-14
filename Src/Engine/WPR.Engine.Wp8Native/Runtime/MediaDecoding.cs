@@ -31,6 +31,50 @@ namespace WPR.Wp8Native
         DecodedAudio? Decode(byte[] container, string? nameHint);
     }
 
+    /// <summary>
+    /// A host-provided movie decoder for the media engine's video sources (WMV and MP4 intros and
+    /// cutscenes): RGBA frames plus the soundtrack. The platform head fills it through the engine
+    /// tier's <c>VideoDecoderBackend</c> - ffmpeg.exe on the desktop, MediaCodec over sidecars on
+    /// Android. Absent, or unable to open a file, a source with video fails to load as before.
+    /// </summary>
+    /// <remarks>Paths, bytes and numbers only, so the runtime stays free of platform and engine types.</remarks>
+    public interface IMediaVideoDecoder
+    {
+        /// <summary>For the report: what decodes.</summary>
+        string Name { get; }
+
+        /// <summary>Opens a movie file; null when this platform cannot play it. Must not throw.</summary>
+        IMediaVideoStream? Open(string path);
+    }
+
+    /// <summary>One open movie: frames pulled by presentation time, audio pulled as 16-bit PCM.</summary>
+    public interface IMediaVideoStream : IDisposable
+    {
+        int Width { get; }
+
+        int Height { get; }
+
+        /// <summary>Length in seconds, or 0 when the container does not say.</summary>
+        double DurationSeconds { get; }
+
+        /// <summary>0 when the movie has no sound.</summary>
+        int AudioChannels { get; }
+
+        int AudioSampleRate { get; }
+
+        /// <summary>
+        /// Copies the newest frame due at <paramref name="seconds"/> into <paramref name="rgba"/>
+        /// (<c>Width * Height * 4</c> bytes, R G B A); false when nothing newer than the last one is due.
+        /// </summary>
+        bool TryGetFrame(double seconds, byte[] rgba);
+
+        /// <summary>True once the last frame has been handed out.</summary>
+        bool VideoEnded { get; }
+
+        /// <summary>Interleaved little-endian 16-bit PCM: bytes copied, 0 when none is ready yet, -1 at the end.</summary>
+        int ReadAudio(byte[] buffer, int offset, int count);
+    }
+
     /// <summary>What a media file's first bytes say it is - for the report and the failure records.</summary>
     internal static class MediaContainer
     {

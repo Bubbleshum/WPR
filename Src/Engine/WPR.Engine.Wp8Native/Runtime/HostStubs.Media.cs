@@ -19,6 +19,13 @@ namespace WPR.Wp8Native
         /// </summary>
         public IMediaDecoder? MediaDecoder { get; set; }
 
+        /// <summary>
+        /// Decodes the movies the media engine is given (WMV and MP4 intros and cutscenes) into
+        /// frames for TransferVideoFrame and PCM for the soundtrack. Set by the host from the
+        /// platform's video decoder; null leaves every source with video unplayable.
+        /// </summary>
+        public IMediaVideoDecoder? VideoDecoder { get; set; }
+
         /// <summary>Media calls answered with a documented failure because nothing behind them exists here.</summary>
         public IReadOnlyList<string> MediaUnimplemented => _mediaCom?.Unimplemented ?? [];
 
@@ -37,7 +44,10 @@ namespace WPR.Wp8Native
             _mediaCom = new MediaCom(_emulator, _frame);
             _mediaFoundation = new MediaFoundation(_mediaCom, imageDirectory) { HostStreams = new MediaStreams(this) };
             _mediaFoundation.RegisterInto(_handlers);
-            _mediaEngine = new MediaEngine(_mediaCom, imageDirectory, () => XAudio2.Output, () => MediaDecoder, _mediaFoundation);
+            _mediaEngine = new MediaEngine(_mediaCom, imageDirectory, () => XAudio2.Output, () => MediaDecoder, _mediaFoundation)
+            {
+                VideoDecoder = () => VideoDecoder,
+            };
             _phoneAudio = new PhoneAudio(_mediaCom, () => XAudio2.Output, SignalEvent);
             _phoneAudio.RegisterInto(_handlers);
             new X3DAudioLibrary(_mediaCom).RegisterInto(_handlers);

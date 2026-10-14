@@ -115,6 +115,7 @@ namespace WPR.Wp8Native
 
             long stack = AllocateHeap(GuestThreadStackBytes);
             long top = (stack + GuestThreadStackBytes - 64) & ~7L;
+            RecordGuestThreadStack(stack, stack + GuestThreadStackBytes);
 
             long[] registers = CaptureRegisters();
             for (int i = 0; i < registers.Length; i++)
