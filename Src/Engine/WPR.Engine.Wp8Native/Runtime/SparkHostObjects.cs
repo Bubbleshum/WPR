@@ -342,16 +342,20 @@ namespace WPR.Wp8Native
                             c.Ok();
                         }),
 
-                        // bool IsInternetAvailable(): DeviceNetworkInformation.IsNetworkAvailable. False:
-                        // this runtime has no network (HTTP is answered offline, and
-                        // NetworkInformation.GetInternetConnectionProfile answers null), so saying
-                        // otherwise would send the game to services that can never answer.
+                        // bool IsInternetAvailable(): DeviceNetworkInformation.IsNetworkAvailable.
+                        // Without an Xbox Live host: false. This runtime has no network (HTTP is
+                        // answered offline, and NetworkInformation.GetInternetConnectionProfile answers
+                        // null), so saying otherwise would send the game to services that can never
+                        // answer. With one (WPR's game host, over the achievement store and WPR Hub):
+                        // true, because Assassin's Creed Pirates gates its Achievements and Leaderboard
+                        // menus on this and nothing else ("Check your internet connection to access
+                        // this menu"), and those menus are served by the host.
                         ("IsInternetAvailable", c =>
                         {
                             SparkCount($"{Face}::IsInternetAvailable");
                             if (SparkResult(c, 1))
                             {
-                                c.RetBool(false);
+                                c.RetBool(_rt.XboxHost is not null);
                             }
                         })),
                 ]);
