@@ -40,11 +40,11 @@ namespace WPR.Engine.Online
             public const string Install = "install";
 
             /// <summary>
-            /// Not a crash: the problems a game run met and carried on past - unknown types and
-            /// members it caught, exceptions thrown out of its Update/Draw every frame, Silverlight
-            /// features the rasteriser cannot draw. One per run, sent only when there were any and
-            /// the run did not also crash (a crash report carries them itself). See
-            /// <see cref="CompatibilityProblems"/>.
+            /// Not a crash: one problem a game run met and carried on past - an unknown type or
+            /// member it caught, an exception thrown out of its Update/Draw every frame, a
+            /// Silverlight feature the rasteriser cannot draw. One report per distinct problem
+            /// (capped per run, deduplicated per title and WPR version), sent as hub kind
+            /// <c>crash</c> so it is grouped across titles. See <see cref="CompatibilityProblems"/>.
             /// </summary>
             public const string Compatibility = "compat";
 
@@ -60,8 +60,19 @@ namespace WPR.Engine.Online
             /// </summary>
             public const string InstallProblem = "install-problem";
 
-            /// <summary>True for the sources that are not crashes and must never be grouped as one.</summary>
+            /// <summary>
+            /// True for the sources that are not the game crashing. All but <see cref="Install"/>
+            /// are still sent as hub kind <c>crash</c>, to be grouped on the crash page; the hub
+            /// keeps them out of a game's crash count by this same <c>extra.source</c> list
+            /// (<c>DiagnosticReport::NOT_CRASH_SOURCES</c>).
+            /// </summary>
             public static bool IsNotACrash(string? source) => source is Install or Compatibility or Refused or InstallProblem;
+
+            /// <summary>
+            /// True for the one source sent as a hub <c>manual</c> report: an install receipt, which
+            /// carries no exception and exists only to offer the package.
+            /// </summary>
+            public static bool SentAsManual(string? source) => source is Install;
 
             /// <summary>True for the sources that carry a managed exception from inside a game run.</summary>
             public static bool IsManagedCrash(string? source) => source is GameRun or Unhandled;

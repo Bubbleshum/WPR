@@ -78,6 +78,7 @@ namespace WPR.Wp8Native
             "Microsoft.Xbox.Foundation.UserIdentity" => UserIdentityFactory(),
             "Microsoft.Xbox.User" => XboxUserFactory(),
             "Microsoft.Xbox.Leaderboards.LeaderboardService" => LeaderboardServiceFactory(),
+            "Microsoft.Xbox.Leaderboards.LeaderboardAttribute" => LeaderboardAttributeFactory(),
             "Microsoft.Xbox.Marketplace.MarketplaceService" => MarketplaceService(),
             _ => null,
         };
@@ -206,7 +207,10 @@ namespace WPR.Wp8Native
             {
                 // IAsyncOperation<UserIdentity> SignInAsync()
                 [InspectableSlots + 0] = ("SignInAsync", () =>
-                    ReturnObject(AsyncOperation("SignInAsync", UserIdentity()))),
+                {
+                    XboxCalls.Add("SignInAsync");
+                    ReturnObject(AsyncOperation("SignInAsync", UserIdentity()));
+                }),
 
                 // IAsyncAction SignOutAsync()
                 [InspectableSlots + 1] = ("SignOutAsync", () => ReturnObject(AsyncOperation("SignOutAsync", 0))),
@@ -379,8 +383,7 @@ namespace WPR.Wp8Native
             known: new Dictionary<int, (string, Action)>
             {
                 [InspectableSlots + 0] = ("GetLeaderboardsAsync", () =>
-                    ReturnObject(AsyncOperation(
-                        "GetLeaderboardsAsync", Collection("LeaderboardMetadataCollection")))),
+                    ReturnObject(AsyncOperation("GetLeaderboardsAsync", LeaderboardMetadataCollection()))),
 
                 // GetLeaderboardAsync(UInt32, UInt32, UInt32, Boolean, IReadOnlyList<UInt32>,
                 // Leaderboard) - six arguments, out-parameter seventh.
@@ -397,9 +400,11 @@ namespace WPR.Wp8Native
                     Return(HResultOk);
                 }),
 
-                // GetSystemLeaderboardAsync(UInt32, UInt32, String, Leaderboard) - four in.
+                // GetSystemLeaderboardAsync(UInt32, UInt32, String, Leaderboard) - four in. A system
+                // board is Xbox Live's own (gamerscore and the like), which WPR Hub does not keep.
                 [InspectableSlots + 2] = ("GetSystemLeaderboardAsync", () =>
                 {
+                    XboxCalls.Add($"GetSystemLeaderboardAsync({(Arg(3) == 0 ? "" : _strings.ReadText(Arg(3)))}) -> empty");
                     WriteOut(5, AsyncOperation("GetSystemLeaderboardAsync", Leaderboard(0, null)));
                     Return(HResultOk);
                 }),
@@ -422,12 +427,9 @@ namespace WPR.Wp8Native
                     Return(HResultOk);
                 }),
 
-                // PostResultsAsync(UInt32, IReadOnlyList<LeaderboardAttribute>)
-                [InspectableSlots + 4] = ("PostResultsAsync", () =>
-                {
-                    WriteOut(3, AsyncOperation("PostResultsAsync", 0));
-                    Return(HResultOk);
-                }),
+                // PostResultsAsync(UInt32, IReadOnlyList<LeaderboardAttribute>): the list is the
+                // game's own vector, read through its methods. See XboxAttributes.cs.
+                [InspectableSlots + 4] = ("PostResultsAsync", PostResultsAsync),
             });
 
         /// <summary>

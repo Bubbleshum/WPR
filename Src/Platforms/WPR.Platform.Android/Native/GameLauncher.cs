@@ -165,6 +165,10 @@ namespace WPR.Platform.Android.Native
 
             if (resultCode == Result.Ok)
             {
+                // The run ended normally, so :game queued its own reports and dropped its problem
+                // file. One still here means :game was killed between the two; send its problems
+                // (no crash: the game did end).
+                ReportLeftoverProblems();
                 FlushOnline();
                 if (logging != null)
                 {
@@ -188,6 +192,12 @@ namespace WPR.Platform.Android.Native
                 // This one had no managed exception at all - SIGSEGV, abort, the OOM killer, or a
                 // force-close - so only this process can report it.
                 ReportNativeCrash(ranApp);
+            }
+            else
+            {
+                // A managed failure: :game queued it with the problem list and dropped the file, so
+                // normally there is nothing here. Anything left is sent as plain problems.
+                ReportLeftoverProblems();
             }
 
             FlushOnline();
@@ -232,21 +242,56 @@ namespace WPR.Platform.Android.Native
 
         private static void ReportNativeCrash(WprApplication? app)
         {
-            if (app == null || WPR.Engine.Online.OnlineBackend.Crashes is not { } reporter) return;
+            // Taken whatever happens next: the :game process is gone, so the file is this run's or
+            // an older leftover, and either way it must not be reported twice.
+            WPR.Engine.Online.PersistedRun? run = WPR.Engine.Online.CompatibilityProblems.TakeRunFile(force: true);
+            if (WPR.Engine.Online.OnlineBackend.Crashes is not { } reporter) return;
 
-            reporter.Report(new WPR.Engine.Online.CrashReport
+            if (run != null && (app == null || SameProduct(run.Run.ProductId, app.ProductId)))
             {
-                Source = WPR.Engine.Online.CrashReport.Sources.NativeCrash,
-                TitleId = app.ProductId,
-                TitleName = app.Name,
-                InstallFolder = Path.Combine(Configuration.Current!.DataPath(WprApplication.DataStoreFolder), app.ProductId!),
-                GraphicsBackend = WPR.Engine.Graphics.GraphicsDriverPreference.ResolveDriverName(),
-                // No managed exception to name. A fixed type is what lets the hub group these by
-                // game and driver rather than filing each one as unique.
-                ExceptionType = "NativeCrash",
-                ExceptionMessage = "The game process exited without a managed exception (native crash, abort, or killed by the system).",
-            });
+                // The :game process persisted its compatibility problems as it met them: the
+                // native-crash report carries them, and each goes up as its own report too. The
+                // list is all that survives a SIGSEGV, and often names what led to it.
+                WPR.Engine.Online.CompatibilityProblems.ReportNativeCrash(reporter, run, "native crash", recovered: false);
+                return;
+            }
+
+            if (run != null)
+            {
+                // A different game's leftover (a run nobody saw end): report it as its own.
+                WPR.Engine.Online.CompatibilityProblems.ReportNativeCrash(reporter, run,
+                    "the run ended without WPR seeing it end (native crash, or the process was killed)", recovered: true);
+            }
+            if (app == null) return;
+
+            reporter.Report(WPR.Engine.Online.CompatibilityProblems.NativeCrashReport(
+                app.ProductId, app.Name,
+                Path.Combine(Configuration.Current!.DataPath(WprApplication.DataStoreFolder), app.ProductId!),
+                WPR.Engine.Graphics.GraphicsDriverPreference.ResolveDriverName()));
         }
+
+        /// <summary>
+        /// A problem file left by a run that did not die natively (see the two call sites): its
+        /// problems as compatibility reports only. Never throws.
+        /// </summary>
+        private static void ReportLeftoverProblems()
+        {
+            try
+            {
+                if (WPR.Engine.Online.CompatibilityProblems.TakeRunFile(force: true) is not { } run) return;
+                if (WPR.Engine.Online.OnlineBackend.Crashes is not { } reporter || run.Problems.Count == 0) return;
+                WPR.Engine.Online.CompatibilityProblems.ReportProblems(reporter, run.Problems, 0,
+                    "ended (recovered by the launcher)", run.Age,
+                    r => WPR.Engine.Online.CompatibilityProblems.FillFrom(r, run.Run), excludeKey: null);
+            }
+            catch (Exception)
+            {
+                // Diagnostics only.
+            }
+        }
+
+        private static bool SameProduct(string? a, string? b) =>
+            string.Equals(a?.Trim('{', '}'), b?.Trim('{', '}'), StringComparison.OrdinalIgnoreCase);
 
         /// <summary>
         /// Sends what the game left behind: its crash report, if any, and the scores it posted.

@@ -39,6 +39,12 @@ public sealed class HubCrashReporter : ICrashReporter
 
     private readonly HubConnection _connection;
     private readonly DiskQueue<CrashReport> _reports;
+    /// <summary>
+    /// Per-problem compatibility reports, in their own queue: a run sends up to ten, and in the
+    /// crash queue (capacity 20, oldest dropped) they would push out the crash that matters.
+    /// </summary>
+    private readonly DiskQueue<CrashReport> _compat;
+    private readonly CompatibilitySentLog _compatSent;
     private readonly DiskQueue<PendingUpload> _uploads;
     private readonly string _installIdPath;
     private readonly SemaphoreSlim _flushGate = new(1, 1);
@@ -53,6 +59,8 @@ public sealed class HubCrashReporter : ICrashReporter
         _connection = connection;
         string root = connection.Settings.DataDirectory;
         _reports = new DiskQueue<CrashReport>(Path.Combine(root, "reports"), capacity: 20);
+        _compat = new DiskQueue<CrashReport>(Path.Combine(root, "compat-reports"), capacity: 50);
+        _compatSent = new CompatibilitySentLog(Path.Combine(root, "compat-sent.txt"));
         // Generous: every install can queue one, and the hub allows only a few upload starts per
         // hour per IP (WPR_GAME_FILES_STARTS_PER_HOUR, default 6), so installing a library's worth
         // of new games drains this over several flushes. Each item is a few hundred bytes.
@@ -88,6 +96,43 @@ public sealed class HubCrashReporter : ICrashReporter
         {
             // Never let crash reporting become a second crash.
             _connection.Log("could not queue a crash report: " + e.Message);
+        }
+    }
+
+    /// <summary>
+    /// One run's per-problem compatibility reports. Drops what this install already sent for the
+    /// same title, problem and WPR version (<c>compat-sent.txt</c>) or still has queued, then caps
+    /// the rest at <see cref="CompatibilityProblems.MaxReportsPerRun"/>, the last one summarising
+    /// what did not fit. Same consent gate as <see cref="Report"/>.
+    /// </summary>
+    public int ReportCompatibility(IReadOnlyList<CrashReport> reports)
+    {
+        try
+        {
+            if (!_connection.ServerLogging || reports.Count == 0) return 0;
+
+            string version = _connection.Settings.WprVersion;
+            HashSet<string> queued = new(_compat.ReadAll()
+                .Select(r => CompatibilityProblems.SentId(r.Item, version)).OfType<string>(), StringComparer.Ordinal);
+            List<CrashReport> picked = CompatibilityProblems.SelectForSending(reports, r =>
+                CompatibilityProblems.SentId(r, version) is not { } id || queued.Contains(id) || _compatSent.Contains(id));
+
+            // The log tail is the same for every problem of the run, and the admin page shows it
+            // on each report; read it once.
+            string? tail = picked.Count == 0 ? null : ReadLogTail(picked[0].InstallFolder) ?? RecentSessionLog();
+            foreach (CrashReport report in picked)
+            {
+                report.LogTail ??= tail;
+                _compat.Enqueue(report);
+            }
+            _connection.Log($"compatibility problems queued: {picked.Count} of {reports.Count} for {reports[0].TitleName ?? reports[0].TitleId}"
+                + (picked.Count < reports.Count ? " (the rest already sent, queued, or over the per-run cap)" : ""));
+            return picked.Count;
+        }
+        catch (Exception e)
+        {
+            _connection.Log("could not queue compatibility reports: " + e.Message);
+            return 0;
         }
     }
 
@@ -178,6 +223,7 @@ public sealed class HubCrashReporter : ICrashReporter
             {
                 // Consent withdrawn: forget everything, including uploads that were half done.
                 _reports.Clear();
+                _compat.Clear();
                 _uploads.Clear();
                 return;
             }
@@ -185,7 +231,11 @@ public sealed class HubCrashReporter : ICrashReporter
             HubClient? hub = _connection.Client();
             if (hub is null) return; // no hub configured: keep the queue, capped, for when there is one
 
-            await SendReportsAsync(hub).ConfigureAwait(false);
+            // Crashes first: if the hub starts throttling, they are the ones that matter.
+            if (await SendReportsAsync(hub, _reports).ConfigureAwait(false))
+            {
+                await SendReportsAsync(hub, _compat).ConfigureAwait(false);
+            }
             await SendUploadsAsync(hub).ConfigureAwait(false);
         }
         catch (Exception e)
@@ -198,9 +248,10 @@ public sealed class HubCrashReporter : ICrashReporter
         }
     }
 
-    private async Task SendReportsAsync(HubClient hub)
+    /// <returns>False when it stopped early (offline or throttled), so the caller stops too.</returns>
+    private async Task<bool> SendReportsAsync(HubClient hub, DiskQueue<CrashReport> queue)
     {
-        foreach ((string path, CrashReport crash) in _reports.ReadAll())
+        foreach ((string path, CrashReport crash) in queue.ReadAll())
         {
             if (crash.OccurredAt < DateTimeOffset.UtcNow - MaxAge)
             {
@@ -233,10 +284,11 @@ public sealed class HubCrashReporter : ICrashReporter
             {
                 _connection.Observe(e);
                 _connection.Log("crash report not sent, will retry: " + e.Message);
-                return; // offline or throttled: stop, keep the rest queued in order
+                return false; // offline or throttled: stop, keep the rest queued in order
             }
 
             DiskQueue<CrashReport>.Delete(path);
+            if (CompatibilityProblems.SentId(crash, _connection.Settings.WprVersion) is { } sentId) _compatSent.Add(sentId);
             _connection.Log($"crash report sent: {receipt.Code} ({crash.TitleName ?? crash.TitleId})"
                 + (receipt.GameFile.Wanted ? " - the hub asked for the game package" : receipt.GameFile.Reason is { } why ? $" - package not wanted: {why}" : ""));
 
@@ -246,6 +298,7 @@ public sealed class HubCrashReporter : ICrashReporter
                     prefix: package.Sha256 + "-");
             }
         }
+        return true;
     }
 
     private async Task SendUploadsAsync(HubClient hub)
@@ -324,9 +377,12 @@ public sealed class HubCrashReporter : ICrashReporter
 
         return new DiagnosticReport
         {
-            // An install, a refusal or a list of compatibility problems is not a crash, and must
-            // not be grouped or counted as one: the hub fingerprints only kind "crash".
-            Kind = CrashReport.Sources.IsNotACrash(crash.Source) ? "manual" : "crash",
+            // Everything but an install receipt is kind "crash", so the hub fingerprints it and the
+            // admin crash page groups it: a compatibility problem across every title that meets
+            // it, a refusal by its reason. extra.source tells the hub which of them are not the
+            // game crashing (CrashReport.Sources.IsNotACrash), and it leaves those out of a game's
+            // crash count on the compatibility pages. An install carries no exception at all.
+            Kind = CrashReport.Sources.SentAsManual(crash.Source) ? "manual" : "crash",
             InstallId = Diagnostics.GetOrCreateInstallId(_installIdPath),
             WprVersion = Truncate(_connection.Settings.WprVersion, 32)!,
             Platform = _connection.Settings.Platform,

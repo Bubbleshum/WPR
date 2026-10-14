@@ -63,6 +63,10 @@ namespace WPR.Engine.Online
         /// </summary>
         public static Task FlushAsync()
         {
+            // A game run that died before it could report (a native crash; on the desktop that
+            // takes the whole process) left its problem list on disk: queue it before sending.
+            CompatibilityProblems.RecoverAbandonedRun(Crashes);
+
             Task crashes = Crashes?.FlushAsync() ?? Task.CompletedTask;
             Task scores = Leaderboards?.FlushAsync() ?? Task.CompletedTask;
             Task progress = Progress?.FlushAsync() ?? Task.CompletedTask;
