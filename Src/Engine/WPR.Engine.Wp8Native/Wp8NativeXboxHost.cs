@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using Microsoft.Xna.Framework.GamerServices;
 using WPR.Common;
@@ -28,7 +27,10 @@ namespace WPR.Wp8Native
     ///
     /// <para><b>Leaderboards</b> are keyed <c>BestScore&lt;id&gt;:0</c>, or <c>BestTime&lt;id&gt;:0</c>
     /// for a board the game posts to with the Min aggregation, because the hub guesses a board's
-    /// sort order from that prefix. Reads block the guest for at most
+    /// sort order from that prefix. An Add board is a running total, kept here because the hub
+    /// keeps only a player's best. <c>PostResultsAsync</c>'s columns arrive through
+    /// <see cref="PostResults"/>: the rating is posted, the rest ride along as columns.
+    /// Reads block the guest for at most
     /// <see cref="ReadTimeout"/>: the image waits for the operation either way, and it is only
     /// ever asked for on a leaderboard screen.</para>
     /// </remarks>
@@ -38,7 +40,6 @@ namespace WPR.Wp8Native
 
         private readonly string _productId;
         private readonly string? _titleName;
-        private readonly ConcurrentDictionary<uint, bool> _lowerIsBetter = new();
         private readonly object _cacheLock = new();
         private IReadOnlyList<XboxAchievement>? _cache;
 
@@ -170,17 +171,80 @@ namespace WPR.Wp8Native
             });
         }
 
-        public void PostResult(uint leaderboardId, int aggregation, long value)
+        public IReadOnlyList<uint> KnownLeaderboards()
         {
-            // LeaderboardAggregation: Add=0, Replace=1, Min=2, Max=3.
-            bool lowerIsBetter = aggregation == 2;
-            _lowerIsBetter[leaderboardId] = lowerIsBetter;
+            lock (_boardLock)
+            {
+                return Boards.Keys.OrderBy(id => id).ToList();
+            }
+        }
+
+        public void PostResult(uint leaderboardId, int aggregation, long value) =>
+            Post(leaderboardId, aggregation, value, null);
+
+        public void PostResults(uint leaderboardId, IReadOnlyList<XboxLeaderboardAttribute> attributes)
+        {
+            if (XboxLeaderboardAttribute.PickRating(attributes) is not { } rating || !rating.TryGetInt64(out long value))
+            {
+                Trace.WriteLine($"[wpr-xbox] leaderboard {leaderboardId}: {attributes.Count} column(s), none numeric - nothing posted");
+                return;
+            }
+
+            // The other columns travel with the score, as an XNA title's extra columns do.
+            Dictionary<string, string>? columns = attributes.Count > 1
+                ? attributes.Where(a => a != rating)
+                    .GroupBy(a => "Attribute" + a.AttributeId)
+                    .ToDictionary(g => g.Key, g => g.Last().Value)
+                : null;
+            Post(leaderboardId, rating.Verb, value, columns);
+        }
+
+        private void Post(uint leaderboardId, int aggregation, long value, IReadOnlyDictionary<string, string>? columns)
+        {
+            // LeaderboardAggregation: Add=0, Replace=1, Min=2, Max=3. The hub keeps each player's
+            // best per board, so Max and Replace are sent as they come and Min goes to a
+            // lower-is-better board. Add was a running total the service kept: it is summed here
+            // and the total sent.
+            //
+            // Nothing scored is not a score. Angry Birds Star Wars II posts 0 to all sixteen of its
+            // boards at every start from a fresh save; sent, each would rank the player on every
+            // board with nothing - and on a Min board 0 would be the unbeatable best time. The
+            // board's aggregation is still remembered, so a read names the right board.
+            bool nothing = (value == 0 && aggregation != 1) || (aggregation == 2 && value < 0);
+            long sent = value;
+            lock (_boardLock)
+            {
+                BoardState state = Boards.TryGetValue(leaderboardId, out BoardState? known) ? known : new BoardState();
+                bool changed = state.Aggregation != aggregation || !Boards.ContainsKey(leaderboardId);
+                state.Aggregation = aggregation;
+                if (aggregation == 0 && !nothing)
+                {
+                    state.Total += value;
+                    sent = state.Total;
+                    changed = true;
+                }
+
+                Boards[leaderboardId] = state;
+                if (changed)
+                {
+                    SaveBoards();
+                }
+            }
+
+            if (nothing)
+            {
+                Trace.WriteLine($"[wpr-xbox] leaderboard {leaderboardId} <- {value} (aggregation {aggregation}) ignored: nothing scored");
+                return;
+            }
+
             string board = BoardKey(leaderboardId);
-            Trace.WriteLine($"[wpr-xbox] leaderboard {board} <- {value} (aggregation {aggregation})");
+            Trace.WriteLine($"[wpr-xbox] leaderboard {board} <- {sent} (aggregation {aggregation}" +
+                            (aggregation == 0 ? $", +{value}" : string.Empty) +
+                            (columns is null ? string.Empty : $", {columns.Count} more column(s)") + ")");
 
             try
             {
-                OnlineBackend.Leaderboards?.Submit(_productId, _titleName, board, value);
+                OnlineBackend.Leaderboards?.Submit(_productId, _titleName, board, sent, columns);
             }
             catch (Exception ex)
             {
@@ -228,9 +292,77 @@ namespace WPR.Wp8Native
             }
         }
 
-        private string BoardKey(uint leaderboardId) =>
-            (_lowerIsBetter.TryGetValue(leaderboardId, out bool lower) && lower ? "BestTime" : "BestScore") +
-            leaderboardId + ":0";
+        /// <summary>
+        /// <c>BestTime&lt;id&gt;:0</c> for a board the game posts to with Min, else
+        /// <c>BestScore&lt;id&gt;:0</c>: the hub sorts an undefined board by that prefix. The
+        /// aggregation is remembered across runs, so a board read before anything is posted to it
+        /// in this run still names the right one.
+        /// </summary>
+        private string BoardKey(uint leaderboardId)
+        {
+            bool lower;
+            lock (_boardLock)
+            {
+                lower = Boards.TryGetValue(leaderboardId, out BoardState? state) && state.Aggregation == 2;
+            }
+
+            return (lower ? "BestTime" : "BestScore") + leaderboardId + ":0";
+        }
+
+        // -------------------------------------------------------------------------------------
+        // What WPR remembers per board, in <DataStore>/Online/wp8-leaderboards/<productId>.json:
+        // its aggregation (for the key) and, for an Add board, the running total.
+        // -------------------------------------------------------------------------------------
+
+        private sealed class BoardState
+        {
+            public int Aggregation { get; set; } = 3;
+
+            public long Total { get; set; }
+        }
+
+        private readonly object _boardLock = new();
+        private Dictionary<uint, BoardState>? _boards;
+
+        private Dictionary<uint, BoardState> Boards => _boards ??= LoadBoards();
+
+        private string? BoardsPath =>
+            Configuration.Current is { } config
+                ? Path.Combine(config.DataPath("Online"), "wp8-leaderboards", _productId + ".json")
+                : null;
+
+        private Dictionary<uint, BoardState> LoadBoards()
+        {
+            try
+            {
+                if (BoardsPath is { } path && File.Exists(path))
+                {
+                    return System.Text.Json.JsonSerializer.Deserialize<Dictionary<uint, BoardState>>(File.ReadAllText(path)) ?? new();
+                }
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"[wpr-xbox] leaderboard state unreadable, starting over: {ex.Message}");
+            }
+
+            return new();
+        }
+
+        private void SaveBoards()
+        {
+            try
+            {
+                if (BoardsPath is { } path)
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                    File.WriteAllText(path, System.Text.Json.JsonSerializer.Serialize(Boards));
+                }
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"[wpr-xbox] leaderboard state not saved: {ex.Message}");
+            }
+        }
     }
 
     internal static class TaskWaitExtensions

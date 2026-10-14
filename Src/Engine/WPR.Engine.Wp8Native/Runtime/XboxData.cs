@@ -105,16 +105,55 @@ namespace WPR.Wp8Native
                 });
         }
 
-        /// <summary><c>ILeaderboardMetadata</c>: LeaderboardId, LeaderboardName, RatingColumnName.</summary>
-        private long LeaderboardMetadata(uint leaderboardId) => CreateDiscoveryObject(
-            "LeaderboardMetadata",
-            slotCount: 8,
-            known: new Dictionary<int, (string, Action)>
+        private XboxTitleConfig? _titleConfig;
+
+        /// <summary>The title's own Xbox configuration (its SPA), read the first time a board is asked about.</summary>
+        public XboxTitleConfig TitleConfig => _titleConfig ??= XboxTitleConfig.Load(_emulator.PackageRoot);
+
+        /// <summary>
+        /// <c>ILeaderboardMetadataCollection</c> (get_Items) for <c>GetLeaderboardsAsync</c>: the
+        /// boards the title's SPA defines, or - for a title whose boards lived on the service - the
+        /// ones the host has seen it post to.
+        /// </summary>
+        private long LeaderboardMetadataCollection()
+        {
+            IReadOnlyList<uint> ids = TitleConfig.Boards.Select(b => b.Id).ToList();
+            string source = TitleConfig.Source ?? "no SPA";
+            if (ids.Count == 0)
             {
-                [InspectableSlots + 0] = ("get_LeaderboardId", () => ReturnUInt32(leaderboardId)),
-                [InspectableSlots + 1] = ("get_LeaderboardName", () => ReturnString(leaderboardId.ToString())),
-                [InspectableSlots + 2] = ("get_RatingColumnName", () => ReturnString("Score")),
-            });
+                try { ids = XboxHost?.KnownLeaderboards() ?? []; }
+                catch (Exception ex) { XboxCalls.Add($"  host threw {ex.GetType().Name}: {ex.Message}"); }
+
+                source = $"{source}, none defined; {ids.Count} posted to before";
+            }
+
+            long[] items = ids.Select(LeaderboardMetadata).ToArray();
+            XboxCalls.Add($"GetLeaderboardsAsync -> {items.Length} board(s) ({source}): {string.Join(", ", ids)}");
+            return CreateDiscoveryObject(
+                "LeaderboardMetadataCollection",
+                slotCount: 8,
+                known: new Dictionary<int, (string, Action)>
+                {
+                    [InspectableSlots + 0] = ("get_Items", () => ReturnObject(ObjectVectorView("IVectorView<LeaderboardMetadata>", items))),
+                });
+        }
+
+        /// <summary><c>ILeaderboardMetadata</c>: LeaderboardId, LeaderboardName, RatingColumnName.</summary>
+        private long LeaderboardMetadata(uint leaderboardId)
+        {
+            XboxTitleConfig.Board? board = TitleConfig.Find(leaderboardId);
+            string name = board?.DisplayName ?? leaderboardId.ToString();
+            string column = board?.RatingColumn ?? "Score";
+            return CreateDiscoveryObject(
+                "LeaderboardMetadata",
+                slotCount: 8,
+                known: new Dictionary<int, (string, Action)>
+                {
+                    [InspectableSlots + 0] = ("get_LeaderboardId", () => ReturnUInt32(leaderboardId)),
+                    [InspectableSlots + 1] = ("get_LeaderboardName", () => ReturnString(name)),
+                    [InspectableSlots + 2] = ("get_RatingColumnName", () => ReturnString(column)),
+                });
+        }
 
         /// <summary><c>ILeaderboardRow</c>: Gamertag, Rank, Rating (a string), Xuid, Attributes.</summary>
         private long LeaderboardRowObject(XboxLeaderboardRow row) => CreateDiscoveryObject(

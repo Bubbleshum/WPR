@@ -149,6 +149,12 @@ public sealed class SparkHostObjectsSuite : IContractSuite
         long online = Out(4);
         E.WriteMemory(online, [0xAA]);
         _h.Check("IsInternetAvailable: S_OK, false (this runtime is offline)", Invoke(f, IsInternetAvailable, online) == SOk && E.ReadMemory(online, 1)[0] == 0);
+        IXboxLiveHost? previousHost = E.WinRt.XboxHost;
+        E.WinRt.XboxHost = new OnlineHost();
+        E.WriteMemory(online, [0xAA]);
+        _h.Check("IsInternetAvailable: true once an Xbox Live host serves the game's online menus",
+            Invoke(f, IsInternetAvailable, online) == SOk && E.ReadMemory(online, 1)[0] == 1);
+        E.WinRt.XboxHost = previousHost;
         _h.Check("IsInternetAvailable: null out-pointer is E_POINTER", Invoke(f, IsInternetAvailable, 0) == EPointer);
 
         _h.Check("GetResponse: 0 before any popup", Ret(f, GetResponse) == 0);
@@ -379,5 +385,15 @@ public sealed class SparkHostObjectsSuite : IContractSuite
         long length = Out(4);
         long chars = _h.Call("WindowsGetStringRawBuffer", hstring, length);
         return Encoding.Unicode.GetString(E.ReadMemory(chars, (int)E.ReadUInt32(length) * 2));
+    }
+
+    /// <summary>The smallest Xbox Live host: its presence is all IsInternetAvailable asks about.</summary>
+    private sealed class OnlineHost : IXboxLiveHost
+    {
+        public string Gamertag => "Tester";
+        public IReadOnlyList<XboxAchievement> GetAchievements() => [];
+        public void UnlockAchievement(uint achievementId) { }
+        public void PostResult(uint leaderboardId, int aggregation, long value) { }
+        public XboxLeaderboardPage? ReadLeaderboard(uint leaderboardId, uint skip, uint max, bool titleView) => null;
     }
 }
