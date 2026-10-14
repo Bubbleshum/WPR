@@ -380,6 +380,111 @@ public sealed class HostWiringSuite : IContractSuite
         h.Check("after removal VisibilityChanged is skipped: Activated follows Resuming", call.Target == activated.Invoke);
         ReturnFromHandler();
         h.Check("the lifecycle log names every step", rt.AppLifecycleLog.Count(l => l.Contains("CoreApplication::Suspending", StringComparison.Ordinal)) == 2, string.Join(" | ", rt.AppLifecycleLog));
+
+        XamlLifecycle(h, activated.Invoke, suspending.Invoke, resuming.Invoke);
+    }
+
+    /// <summary>
+    /// A Direct3D/XAML title's half of the lifecycle: the managed shell's Application_Deactivated
+    /// calls and the grid's Disconnect between VisibilityChanged and Suspending; on the way back
+    /// Application_Activated and Connect(host, device) after Resuming and before Activated. Runs on
+    /// the state <see cref="Lifecycle"/> leaves: in the foreground, with Activated, Suspending and
+    /// Resuming subscribed (VisibilityChanged removed).
+    /// </summary>
+    private void XamlLifecycle(Harness h, long activated, long suspending, long resuming)
+    {
+        WinRtRuntime rt = E.WinRt;
+        FieldInfo Field(string name) => typeof(WinRtRuntime).GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)!;
+
+        PeImage pe = PeImage.Load(_h.Image);
+        long text = pe.ImageBase + pe.Sections.First(s => s.Name.StartsWith(".text", StringComparison.Ordinal)).VirtualAddress;
+        long connect = (text + 0x10 + (7 * 0x10)) | 1;
+        long disconnect = (text + 0x10 + (8 * 0x10)) | 1;
+        long vtable = _h.Buffer(7 * 4);
+        E.WriteUInt32(vtable + (3 * 4), (uint)connect);
+        E.WriteUInt32(vtable + (4 * 4), (uint)disconnect);
+        long provider = _h.Buffer(8);
+        E.WriteUInt32(provider, (uint)vtable);
+        long device = _h.Buffer(8), runtimeHost = _h.Buffer(8);
+
+        XamlShell alex = XamlShells.ForComponent("AlexXamlComponent.dll")!;
+        h.Check("Amazing Alex's shell deactivates and activates FusionMain",
+            alex.Deactivated.Select(s => s.Method).SequenceEqual(["Deactivate"]) && alex.Activated.Select(s => s.Method).SequenceEqual(["Activate"]));
+        XamlShell mc4 = XamlShells.ForComponent("MC4HybridComponent.dll")!;
+        h.Check("Modern Combat 4's shell re-reads the licence on activation and calls nothing on deactivation",
+            mc4.Deactivated.Count == 0 && mc4.Activated.Select(s => s.Method).SequenceEqual(["SetFullVersion"]));
+        XamlShell spark = XamlShells.ForComponent("SparkApp.dll")!;
+        h.Check("AC Pirates' shell calls nothing (empty Application_Deactivated/Activated)", spark.Deactivated.Count == 0 && spark.Activated.Count == 0);
+
+        Field("_shell").SetValue(rt, alex);
+        Field("_providerNative").SetValue(rt, provider);
+        Field("_hostDevice").SetValue(rt, device);
+        Field("_runtimeHost").SetValue(rt, runtimeHost);
+        try
+        {
+            bool continued = false;
+            rt.InjectVisibility(false);
+            h.Check("XAML title, to the background: delivered", Deliver(() => continued = true));
+            var call = Called();
+            h.Check("1. CoreWindow.Activated(Deactivated) first, as for any title", call.Target == activated);
+            ReturnFromHandler();
+
+            call = Called();
+            h.Check("2. then the grid's Disconnect on the content provider", call.Target == disconnect && call.Handler == provider, $"0x{call.Target:X}");
+            h.Check("   after the shell's Application_Deactivated calls (Deactivate)",
+                rt.AppLifecycleLog.Any(l => l.Contains("XamlShell::Application_Deactivated (1 call(s))", StringComparison.Ordinal)) &&
+                rt.ComponentLog.Any(l => l.StartsWith("Deactivate:", StringComparison.Ordinal)), string.Join(" | ", rt.ComponentLog.TakeLast(3)));
+            h.Check("   and from then on nothing is drawn", rt.ProviderDisconnected);
+            ReturnFromHandler();
+
+            call = Called();
+            h.Check("3. Suspending still comes last", call.Target == suspending);
+            ReturnFromHandler();
+            h.Check("   the loop continues, suspended, provider disconnected", continued && rt.IsSuspended && rt.ProviderDisconnected);
+
+            continued = false;
+            rt.InjectVisibility(true);
+            h.Check("XAML title, back to the foreground: delivered", Deliver(() => continued = true));
+            call = Called();
+            h.Check("1. Resuming first", call.Target == resuming);
+            ReturnFromHandler();
+
+            call = Called();
+            h.Check("2. then Connect(runtime host, device) on the provider", call.Target == connect && call.Handler == provider && call.Sender == runtimeHost && call.Args == device,
+                $"0x{call.Target:X} r1=0x{call.Sender:X} r2=0x{call.Args:X}");
+            h.Check("   after the shell's Application_Activated calls (Activate)",
+                rt.AppLifecycleLog.Any(l => l.Contains("XamlShell::Application_Activated (1 call(s))", StringComparison.Ordinal)) &&
+                rt.ComponentLog.Any(l => l.StartsWith("Activate:", StringComparison.Ordinal)));
+            h.Check("   still not drawing until Connect returns", rt.ProviderDisconnected);
+            ReturnFromHandler();
+            h.Check("   and drawing again once it has", !rt.ProviderDisconnected);
+
+            call = Called();
+            h.Check("3. Activated(CodeActivated) last", call.Target == activated &&
+                Ret(call.Args, WinRtSystemInterfaces.Slot("Windows.UI.Core.IWindowActivatedEventArgs", "get_WindowActivationState")) == 0);
+            ReturnFromHandler();
+            h.Check("   and the loop continues, visible and running", continued && rt.WindowVisible && !rt.IsSuspended);
+
+            // A provider whose Disconnect has no code is skipped, not fatal.
+            E.WriteUInt32(vtable + (4 * 4), 0);
+            rt.InjectVisibility(false);
+            Deliver(() => { });
+            ReturnFromHandler();   // Activated(Deactivated)
+            call = Called();
+            h.Check("a Disconnect with no code is skipped: Suspending follows", call.Target == suspending &&
+                rt.AppLifecycleLog.Any(l => l.Contains("Provider::Disconnect: no code", StringComparison.Ordinal)));
+            ReturnFromHandler();
+            rt.InjectVisibility(true);
+            Deliver(() => { });
+            ReturnFromHandler();   // Resuming
+            ReturnFromHandler();   // Connect
+            ReturnFromHandler();   // Activated
+        }
+        finally
+        {
+            Field("_shell").SetValue(rt, null);
+            Field("_providerNative").SetValue(rt, 0L);
+        }
     }
 
     // -------------------------------------------------------------------------------------------

@@ -49,7 +49,7 @@ namespace WPR
             foreach (XmlNode node in paths)
             {
                 string path = node.InnerText.Trim();
-                if (path.Length == 0 || path.Equals("Microsoft.Xbox.dll", StringComparison.OrdinalIgnoreCase))
+                if (path.Length == 0 || IsMiddleware(path))
                 {
                     continue;
                 }
@@ -68,7 +68,39 @@ namespace WPR
                 }
             }
 
+            // No component draws. That is a Direct3D/XAML game only if the manifest says so (the
+            // PhoneDirect3DXamlAppInteropToken template); otherwise it is a managed game using a
+            // native helper library - What In The World? registers Lumia.Imaging.dll, Nokia's
+            // image filters - and installing it as native handed the WP8 host a library with no
+            // game in it, which stopped at frame 0 ("no page description"). Managed, it is
+            // attempted on SilverlightGame like any Silverlight title.
+            if (first != null && !DeclaresDirect3DXamlTemplate(appNode))
+            {
+                return null;
+            }
+
             return first;
+        }
+
+        /// <summary>
+        /// Native components that are third-party libraries a MANAGED game calls, never the game:
+        /// Xbox Live's own, SharpDX's WP8 interop (Microsoft Minesweeper draws with SharpDX from
+        /// C#, and SharpDX.WP8.dll imports d3d11, so it looked exactly like a Direct3D/XAML game
+        /// and was handed to the WP8 host, which stopped at frame 0), and Nokia's imaging SDK.
+        /// </summary>
+        private static bool IsMiddleware(string path)
+        {
+            string name = Path.GetFileName(path);
+            return name.Equals("Microsoft.Xbox.dll", StringComparison.OrdinalIgnoreCase)
+                || name.StartsWith("SharpDX", StringComparison.OrdinalIgnoreCase)
+                || name.StartsWith("Lumia.", StringComparison.OrdinalIgnoreCase)
+                || name.StartsWith("Nokia.Graphics", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool DeclaresDirect3DXamlTemplate(XmlNode appNode)
+        {
+            string? xml = appNode.OwnerDocument?.OuterXml ?? appNode.OuterXml;
+            return xml != null && xml.Contains("Direct3DXaml", StringComparison.OrdinalIgnoreCase);
         }
 
         private static readonly byte[] CreateContentProviderName = System.Text.Encoding.ASCII.GetBytes("CreateContentProvider");

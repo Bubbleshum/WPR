@@ -530,9 +530,10 @@ namespace WPR.Platform.Windows.ViewModels
                         // Recorded so WPR Hub can ask for this exact package after a crash.
                         packageSource: (stream as FileStream)?.Name);
 
-                    // The installer queued an "installed" report for WPR Hub; send it now so a
-                    // build the hub has never seen starts uploading in the background.
-                    if (result == ApplicationInstallError.None) _ = WPR.Engine.Online.OnlineBackend.FlushAsync();
+                    // The installer queued an "installed" report for WPR Hub (or, for a package it
+                    // refused, a refusal); send it now so a build the hub has never seen starts
+                    // uploading in the background.
+                    if (result != ApplicationInstallError.Canceled) _ = WPR.Engine.Online.OnlineBackend.FlushAsync();
                     return result;
                 }
                 finally

@@ -155,6 +155,9 @@ namespace WPR.SilverlightCompability
                     System.Diagnostics.Trace.WriteLine(
                         "[wpr-uirender] could not resolve image '" + path + "' as a file or an " +
                         "embedded resource; it will not be painted.");
+                    WPR.Engine.Online.CompatibilityProblems.Note(
+                        WPR.Engine.Online.CompatibilityProblems.Categories.UiRender,
+                        "image not found: " + path, "could not resolve image '" + path + "' as a file or an embedded resource");
                     return result;
                 }
 

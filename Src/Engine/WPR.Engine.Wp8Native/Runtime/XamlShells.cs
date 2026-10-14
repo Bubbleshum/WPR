@@ -52,6 +52,13 @@ namespace WPR.Wp8Native
                     "IsSafeToQuit",
                     Otherwise: [new("set_m_backPressed", true)],
                     BeforeQuit: [new("Closing")]),
+
+                // App.Application_Deactivated -> MainPage.Deactivate -> FusionMain.Deactivate, and
+                // Application_Activated with the instance preserved (no new FusionMain) ->
+                // MainPage.Activate -> FusionMain.Activate. The page overrides neither OnNavigatedFrom
+                // nor OnNavigatedTo. (Obscured/Unobscured, the lock screen and calls, are not raised.)
+                Deactivated = [new("Deactivate")],
+                Activated = [new("Activate")],
             },
 
             // Modern Combat 4 (Gameloft). The component is a singleton (Direct3DBackground.GetInstance);
@@ -111,6 +118,13 @@ namespace WPR.Wp8Native
                     Otherwise: [],
                     BeforeQuit: [],
                     QuitWhen: false),
+
+                // App.Application_Deactivated only schedules the periodic push-notification agent
+                // (managed, nothing on the component). Application_Activated re-reads the licence -
+                // SetFullVersion(!IsTrial, false) - and removes that agent; OnNavigatedTo then asks
+                // the component nothing unless it was opened from a notification, which never
+                // happens here. RequestPauseGame/RequestResumeGame are Obscured/Unobscured only.
+                Activated = [new("SetFullVersion", true, false)],
             },
 
             // Assassin's Creed Pirates (Ubisoft, Spark2 engine). SparkApplicationXaml.MainPage builds
@@ -149,6 +163,11 @@ namespace WPR.Wp8Native
                     Otherwise: [],
                     BeforeQuit: [],
                     QuitWhen: true),
+
+                // Application_Deactivated/Activated are empty and OnNavigatedTo only keeps a Facebook
+                // deep link, so on a deactivation the component hears only the grid's
+                // Disconnect/Connect (and its own CoreApplication events). OnObscured/OnUnObscured
+                // are the lock screen's, not raised here.
             },
         };
 

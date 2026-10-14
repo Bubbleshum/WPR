@@ -25,9 +25,16 @@ namespace WPR.Wp8Native
     /// one handler is seen by the next). A handler that a previous handler removed during the same
     /// event is skipped rather than called: its reference has been released, so calling it would be
     /// a use-after-free, where WinRT's own snapshot would still hold one.</para>
-    /// <para><b>Not modelled:</b> auto-repeat. The host samples key state once a frame, so a held key
-    /// is one <c>KeyDown</c> and one <c>KeyUp</c>; WinRT would repeat <c>KeyDown</c> with
-    /// <c>WasKeyDown</c> set. <c>CharacterReceived</c> does repeat, because SDL's text input does.</para>
+    /// <para><b>Auto-repeat</b> is modelled here, because the host only sees key state once a frame.
+    /// As on Windows, the key pressed last repeats: after <see cref="KeyRepeatDelay"/> it raises
+    /// <c>KeyDown</c> again every <see cref="KeyRepeatInterval"/>, with <c>WasKeyDown</c> true. Pressing
+    /// another key moves the repeat to it, and releasing the repeating key stops it (a key still held
+    /// from before does not start again). Repeats come from <see cref="PumpKeyRepeat"/>, which the host
+    /// calls once a frame; repeats that fell due between two calls are one <c>KeyDown</c> whose
+    /// <c>RepeatCount</c> says how many, as Windows coalesces them for a slow app. GetKeyState and the
+    /// lock keys are unchanged by a repeat. <c>CharacterReceived</c> is not synthesised: the host's text
+    /// input repeats on its own (SDL, at the same platform rate), so a character that arrives once the
+    /// repeating key has been held for half the delay is marked a repeat (<c>WasKeyDown</c> true).</para>
     /// </remarks>
     public sealed partial class WinRtRuntime
     {
@@ -63,7 +70,32 @@ namespace WPR.Wp8Native
         /// <param name="Code">The VirtualKey for Down/Up, the UTF-16 code unit for Character.</param>
         /// <param name="Extended">CorePhysicalKeyStatus.IsExtendedKey.</param>
         /// <param name="MenuDown">CorePhysicalKeyStatus.IsMenuKeyDown: Alt was held when it happened.</param>
-        private readonly record struct KeyEvent(KeyEventKind Kind, uint Code, bool Extended, bool MenuDown);
+        /// <param name="RepeatCount">CorePhysicalKeyStatus.RepeatCount: 1, or the auto-repeats coalesced into this event.</param>
+        /// <param name="Repeat">An auto-repeat: CorePhysicalKeyStatus.WasKeyDown is true.</param>
+        private readonly record struct KeyEvent(KeyEventKind Kind, uint Code, bool Extended, bool MenuDown, uint RepeatCount = 1, bool Repeat = false);
+
+        /// <summary>How long a key is held before it starts repeating. The host sets the platform's.</summary>
+        public TimeSpan KeyRepeatDelay { get; set; } = TimeSpan.FromMilliseconds(500);
+
+        /// <summary>The time between repeats once a held key has started. The host sets the platform's.</summary>
+        public TimeSpan KeyRepeatInterval { get; set; } = TimeSpan.FromMilliseconds(33);
+
+        /// <summary>The clock key presses and repeats are timed by. Replaceable for tests.</summary>
+        public Func<TimeSpan> KeyClock { get; set; } = () => KeyWatch.Elapsed;
+
+        private static readonly System.Diagnostics.Stopwatch KeyWatch = System.Diagnostics.Stopwatch.StartNew();
+
+        /// <summary>The key that repeats (the last pressed, still held), or 0. Under <see cref="_keyGate"/>.</summary>
+        private uint _repeatKey;
+        private bool _repeatExtended;
+        private TimeSpan _repeatDue;
+
+        /// <summary>
+        /// When <see cref="_repeatKey"/> went down. A character typed while it has been held for half
+        /// the repeat delay or more is the host's own repeat; timing rather than counting, because the
+        /// first character of a press can arrive before the frame that sees the key go down.
+        /// </summary>
+        private TimeSpan _repeatPressedAt;
 
         private readonly ConcurrentQueue<KeyEvent> _keyEvents = new();
 
@@ -111,33 +143,70 @@ namespace WPR.Wp8Native
         public void InjectKey(uint virtualKey, bool down, bool extended = false)
         {
             bool menu;
+            extended = extended || IsAlwaysExtended(virtualKey);
             lock (_keyGate)
             {
                 if (down)
                 {
                     _keysInjected.Add(virtualKey);
+                    _repeatKey = virtualKey;
+                    _repeatExtended = extended;
+                    _repeatPressedAt = KeyClock();
+                    _repeatDue = _repeatPressedAt + KeyRepeatDelay;
                 }
                 else
                 {
                     _keysInjected.Remove(virtualKey);
+                    if (_repeatKey == virtualKey)
+                    {
+                        _repeatKey = 0;
+                    }
                 }
 
                 menu = _keysInjected.Contains(VirtualKeyMenu);
+                _keyEvents.Enqueue(new KeyEvent(down ? KeyEventKind.Down : KeyEventKind.Up, virtualKey, extended, menu));
             }
+        }
 
-            _keyEvents.Enqueue(new KeyEvent(down ? KeyEventKind.Down : KeyEventKind.Up, virtualKey, extended || IsAlwaysExtended(virtualKey), menu));
+        /// <summary>
+        /// Queues the auto-repeat that has fallen due for the held key, if any: one <c>KeyDown</c> with
+        /// <c>WasKeyDown</c> set and <c>RepeatCount</c> the number of repeats since the last call. The
+        /// host calls it once a frame, after injecting that frame's key edges. Safe from any thread.
+        /// </summary>
+        /// <returns>The repeats queued (0 when none was due).</returns>
+        public uint PumpKeyRepeat()
+        {
+            lock (_keyGate)
+            {
+                if (_repeatKey == 0)
+                {
+                    return 0;
+                }
+
+                TimeSpan now = KeyClock();
+                if (now < _repeatDue)
+                {
+                    return 0;
+                }
+
+                TimeSpan interval = KeyRepeatInterval > TimeSpan.Zero ? KeyRepeatInterval : TimeSpan.FromMilliseconds(1);
+                long count = 1 + ((now - _repeatDue).Ticks / interval.Ticks);
+                _repeatDue += TimeSpan.FromTicks(interval.Ticks * count);
+                uint repeats = (uint)Math.Min(count, 0xFFFF);
+                _keyEvents.Enqueue(new KeyEvent(KeyEventKind.Down, _repeatKey, _repeatExtended, _keysInjected.Contains(VirtualKeyMenu), repeats, Repeat: true));
+                return repeats;
+            }
         }
 
         /// <summary>Queues a typed character (one UTF-16 code unit). Safe from any thread.</summary>
         public void InjectCharacter(uint code)
         {
-            bool menu;
             lock (_keyGate)
             {
-                menu = _keysInjected.Contains(VirtualKeyMenu);
+                bool menu = _keysInjected.Contains(VirtualKeyMenu);
+                bool repeat = _repeatKey != 0 && KeyClock() - _repeatPressedAt >= KeyRepeatDelay / 2;
+                _keyEvents.Enqueue(new KeyEvent(KeyEventKind.Character, code, false, menu, Repeat: repeat));
             }
-
-            _keyEvents.Enqueue(new KeyEvent(KeyEventKind.Character, code, false, menu));
         }
 
         private string KeyEventName(int slot) => slot switch
@@ -353,11 +422,11 @@ namespace WPR.Wp8Native
         private static byte[] PhysicalKeyStatus(KeyEvent key, uint scanCode)
         {
             byte[] status = new byte[12];
-            BitConverter.GetBytes(1u).CopyTo(status, 0);              // no auto-repeat: see the remarks
+            BitConverter.GetBytes(key.RepeatCount).CopyTo(status, 0);
             BitConverter.GetBytes(scanCode).CopyTo(status, 4);
             status[8] = key.Extended ? (byte)1 : (byte)0;
             status[9] = key.MenuDown ? (byte)1 : (byte)0;
-            status[10] = key.Kind == KeyEventKind.Up ? (byte)1 : (byte)0;   // a key going up was down
+            status[10] = key.Kind == KeyEventKind.Up || key.Repeat ? (byte)1 : (byte)0;   // a key going up, or repeating, was down
             status[11] = key.Kind == KeyEventKind.Up ? (byte)1 : (byte)0;
             return status;
         }

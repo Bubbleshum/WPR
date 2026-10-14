@@ -727,6 +727,69 @@ no XNA reference (and with the GPL Unicorn CPU, which is why it never ships). XN
 in the project root beside `Wp8NativeGame.cs`. Contract tests: `dotnet run --project
 Tools/Wp8/Wp8ContractTests`.
 
+### WP8 lifecycle reaches a XAML title's page and grid; a held key repeats (2026-10-14)
+
+**Lifecycle** (`Runtime/AppLifecycle.cs`). Every WP8 title gets `CoreWindow.Activated`,
+`VisibilityChanged` and `CoreApplication.Suspending`/`Resuming` from `Game.Deactivated`/`Activated`.
+A Direct3D/XAML title (Amazing Alex, MC4, AC Pirates) also gets what its managed shell and the
+`DrawingSurfaceBackgroundGrid` did on WP8, in this order:
+
+| leaving | coming back |
+| --- | --- |
+| `Activated(Deactivated)`, `VisibilityChanged(false)` | `Resuming` |
+| the shell's `XamlShell.Deactivated` calls | `VisibilityChanged(true)` |
+| `IDrawingSurfaceBackgroundContentProviderNative::Disconnect` | the shell's `XamlShell.Activated` calls |
+| `Suspending` | `Connect(runtime host, device)`, then `Activated(CodeActivated)` |
+
+The shell calls come from each title's decompiled `App`/`MainPage`: Alex `FusionMain.Deactivate` /
+`Activate`; MC4 `SetFullVersion(true, false)` on activation only (its deactivation work is managed);
+AC Pirates nothing (empty handlers). WP8 gave `Connect` a new device because the old one was lost;
+the host's device never is, so the same one goes back. While disconnected the frame loop draws
+nothing and takes no input, and paces itself on the host tick through `WinRtRuntime.IdleTurn`
+(without that it would spin). **`Obscured`/`Unobscured` (lock screen, calls) are not raised**; MC4
+pauses its game only on those, so it comes back unpaused. Log: `[wpr-wp8] lifecycle:` lines and
+`[xaml] Provider::Disconnect`/`Connect`. `Disconnect` is `void`, so the r0 it logs is noise.
+
+**Key repeat** (`Runtime/Keyboard.cs`). The host samples keys once a frame, so the runtime times
+repeats: the last key pressed repeats `KeyDown` after `KeyRepeatDelay`, every `KeyRepeatInterval`,
+with `WasKeyDown` true; repeats due between two frames are one event with `RepeatCount` = how many.
+Another key takes the repeat over; releasing it stops repeat for good, as on Windows.
+`Wp8NativeGame` reads the Windows keyboard settings (`SystemParametersInfo`), else 500 ms / 33 ms,
+and calls `PumpKeyRepeat()` each frame. `CharacterReceived` is not synthesised (SDL text input
+repeats on its own); a character arriving once the key has been held half the delay is marked
+`WasKeyDown`.
+
+Harness: a deactivate/activate cycle is two script verbs that set `Game.IsActive` false/true by
+reflection (what `--focus-blip` does); `Script.cs` is untracked, so add them locally. Measured on
+D1: all three XAML titles disconnect, draw nothing while away, reconnect and draw at 60 fps, and
+Alex's Play button works after the return. Contract tests: `Suites/HostWiringSuite.cs` (XAML lifecycle) and `Suites/KeyboardSuite.cs`.
+
+### An unimplemented C++ constructor is a defaulted import, not a shaped object (2026-10-14)
+
+`ConstructShapedObject` and `LooksLikeVtable` are gone (Plans/RUNTIME-CONVERGENCE.md 1e). They
+served one path: an imported `??0…` (an MSVC constructor from MSVCR110/MSVCP110/vccorlib/ConcRT)
+with no handler, where they wrote a synthetic trap vtable into the object unless a memory probe
+decided its first word was already a vptr. **It was never on the WinRT activation path**, and
+those C++ classes have no `.winmd`, so 1d's generated interface table could not have replaced it.
+Measured instead: zero calls across all 11 in-scope titles on D3D11 and Vulkan, and all 322 system
+`??0` imports they make have handlers (the `C++ constructors` contract suite re-checks that against
+whatever is installed).
+
+Now `HostStubs.IsCxxConstructor` routes one to the ordinary default: it returns **`this`** (callers
+use the constructor's return value, so 0 would be a null object), leaves the object untouched, is
+counted in `DefaultedCalls` (so it is in the `summary:` line's `defaulted=[…]` and the hub report)
+and traps under `WPR_WP8_TRAP_IMPORTS=1`. The old stand-in did neither of the last two. **If one
+shows up, implement it** — do not bring a guessed vtable back.
+
+The remaining shape-guessing is the WinRT stand-in for an unknown class (`CreateDiscoveryObject`):
+members 1d's metadata does not describe are answered by out-parameter heuristics. Those calls are
+now counted as `guessedslots=[…]` on the `summary:` line.
+
+**Harness trap:** `gamerun`'s `WPR_DATA_ROOT` only moves where `config.json` is read from. If the
+copied `config.json` still carries `DataStorePath` pointing at `%LOCALAPPDATA%\WPR`, the game runs
+from the real installs and writes the **real** isolated store (whose saves the scripts did not move
+aside, because they moved the scratch root's). Rewrite `DataStorePath` in the scratch copy first.
+
 ### WP8 media: byte streams, property stores, and decoding through the platform (2026-10-11)
 
 The WP8 runtime's Media Foundation (`Src/Engine/WPR.Engine.Wp8Native/Runtime/Media*.cs`) gained three things:
@@ -800,7 +863,7 @@ are three capture sites:
 
 | site | catches |
 | --- | --- |
-| exception filter on `ApplicationLaunch.Start` | anything escaping a game run, XNA and mixed-mode. The filter returns false, so the stack and teardown are untouched. The unsupported-runtime refusals are excluded |
+| exception filter on `ApplicationLaunch.Start` | anything escaping a game run, XNA and mixed-mode. The filter returns false, so the stack and teardown are untouched. The one remaining unsupported-runtime refusal is sent as a `refused` report instead (2026-10-14) |
 | `InstallCrashReportHook` (AppDomain unhandled, **Release too**) | a worker thread killing the process. `InstallCrashHooks` is `#if DEBUG` and was not enough |
 | `GameLauncher.HandleGameResult` (Android launcher) | a `:game` death with no managed exception, reported as `NativeCrash`. It is dropped if a managed report for that title landed within 2 minutes |
 
@@ -1045,6 +1108,96 @@ trimming) builds fine.
 
 No `ApplicationPatcher.Version` bump. Nothing needs a repatch; only a reinstall writes the package
 record.
+
+### Every game is attempted; what it carries on past reaches WPR Hub (2026-10-14)
+
+Two halves, one policy (the "run unknown games until they fail" rule): WPR refuses a game up front
+only when there is genuinely nothing to run, and everything a run meets, crash or not, is told to
+the hub. All of it goes through the existing `ICrashReporter` disk queue, so it is **gated on
+server logging exactly like a crash report** (off: `Report` is a no-op, nothing is queued or sent)
+and sent by the launcher's usual `OnlineBackend.FlushAsync()` after the run.
+
+**Refusals removed** (each now attempts the game instead):
+
+| was refused | now |
+| --- | --- |
+| unknown `RuntimeType` (`NotSupportedAppType`) | guessed: a `.exe` default task is native, anything else goes to `SilverlightGame` (which hosts mixed-mode XNA too) |
+| native package whose default task names no image in the package (`ModernNativeUnsupported`) | the package's one `.exe` if it has exactly one; refused (and reported) only when there is none |
+| patcher threw at install (`PatchFailed`) | installed anyway with `PatchedVersion = 0` (Android repatches next launch, desktop offers Repatch); `install-problem` report |
+| audio transcode failed at install (`ConvertFailed`) | installed anyway; `install-problem` report. Supersedes the "missing transcoder fails the install" note below |
+| Android repatch-before-launch threw: error dialog, no launch | launches what is on disk, `PatchedVersion` left behind so the next launch retries; `install-problem` report |
+| Unity port with no build for this platform: error (desktop threw, Android dialog) | falls through to the original package in-process. Android still asks the player to install a bundled port APK that is sitting right there |
+| WP8 managed title registering a native helper library | `NativeXamlComponent` treated any native ARM `InProcessServer` as a Direct3D/XAML game, so the WP8 host got a library with no game in it and stopped at frame 0 ("no page description"). Now skipped: `SharpDX*`, `Lumia.*`, `Nokia.Graphics*`, `Microsoft.Xbox.dll`, and a non-drawing component unless the manifest names the `Direct3DXaml` template. **What In The World?** (Lumia.Imaging) and **Microsoft Minesweeper** 1.1.41016 (SharpDX.WP8) now run on `SilverlightGame` and report what they miss. Installed copies keep their old type until reinstalled |
+
+**Real refusals that stay, and are now reported** (`refused` source): no `WMAppManifest.xml`,
+an invalid manifest, a DRM-wrapped Marketplace download (now detected by its `PRE\x07` magic and
+reported as `NotDecrypted` rather than "unexpected error" - BBB: App-ocalypse and Sonic Dash), a
+native package with nothing executable, an installer that threw, and `ApplicationLaunch`'s
+"no host for this runtime type". `ApplicationInstaller.Install` reports its own refusals;
+`ApplicationInstaller.ReportRefusedPackage` is what both heads call when `ReadPreview` cannot even
+read the manifest. A refusal carries the package's SHA-256 (`CrashReport.Package`, used when there
+is no install folder), so the hub can ask for a package it has never seen. `LibraryScanner` still
+silently skips unreadable packages: a scan is not an attempt to play, and reporting it would send a
+library's worth of reports. Still refused at run time, already reported as a guest failure: a
+Direct3D/XAML component with no `XamlShells` description.
+
+**One compatibility report per run** (`compat` source), from
+`WPR.Engine.Online.CompatibilityProblems`, begun and ended by `ApplicationLaunch.Start`:
+
+- **A first-chance observer, live in Release.** Every exception in the process pays a null check
+  (no game running) and a type test; only an allow-list is looked at further: `TypeLoadException`
+  (missing type), `MissingMemberException` (method/field), `FileNotFoundException`/`FileLoadException`
+  **only for an assembly load** (a save probe is not one), `EntryPointNotFound`/`DllNotFound`,
+  `BadImageFormat`/`InvalidProgram`, `NotImplemented`/`PlatformNotSupported`, and the loader
+  exceptions inside a `ReflectionTypeLoadException`. The runtime's own `.resources` and
+  `.XmlSerializers` probes are excluded; dead online services are never on the list. This is not
+  the verbose `[wpr-fce]` logger, which stays Debug / logging-run only.
+- **Frame exceptions**: `Game.Update`/`Draw` and `GameTimer` catches call
+  `NoteFrameException` (keyed by type + throwing method, so 7,874 identical NREs are one line with a
+  count). A Silverlight quit (`GameUnhandledException` declined) is not a problem.
+- **`[wpr-uirender]`**: unsupported rasteriser features, unresolvable images, rasteriser throws.
+- **Deduplicated and bounded**: 40 distinct problems (then a dropped count), every string truncated,
+  only a new key pays for a stack walk (16 frames, taken on the throwing thread).
+- **Only when there is something to say**, and **never two reports for one run**: if the run
+  crashed (managed or WP8 guest failure), the problems are attached to that crash report's `extra`
+  and stack instead. WP8 defaulted imports/slots were already in the guest-failure report.
+
+Hub shape: **kind `manual`** (so the hub never fingerprints these as crashes or counts them in its
+compatibility verdicts), no hub change needed. `exception_type` is the title
+(`WPR.CompatibilityProblems`, `WPR.Refused.<reason>`, `WPR.InstallProblem.<reason>`),
+`exception_message` the headline, `stack_trace` the structured body, `extra.source` = `compat` /
+`refused` / `install-problem`, `extra.pNN` one line per problem. Keys leave assembly versions out
+on purpose: the hub's scrubber reads `4.0.0.0` as an IP address. Example (Carcassonne, a run that
+plays fine):
+
+```
+exception_type    WPR.CompatibilityProblems
+exception_message 2 compatibility problem(s): missing-type System.Windows.Controls.RichTextBox [System.Windows] x24; missing-type System.Windows.Data.BindingExpression [System.Windows]
+extra             source=compat problem_count=2 outcome="ended normally" run_seconds=25
+                  p01="[missing-type] x24 @0.7s System.Windows.Controls.RichTextBox [System.Windows]"
+                  p02="[missing-type] x1 @10.4s System.Windows.Data.BindingExpression [System.Windows]"
+stack_trace       WPR compatibility problems: 2 distinct, run 25 s, ended normally
+                  [missing-type] x24 @0.7s System.Windows.Controls.RichTextBox [System.Windows]
+                     Could not load type 'System.Windows.Controls.RichTextBox' from assembly ...
+                     at System.Reflection.RuntimeAssembly.GetExportedTypes
+                     at WPR.SilverlightCompability.XamlTypeConverter.ResolveTypeByName ...
+```
+
+`HubCrashReporter`'s "native crash already covered by a managed report" check now looks at managed
+crash reports only; a compat or install report for the same title must not swallow a native crash.
+
+**Verified on the desktop harness against a scratch data root and a local hub**: Carcassonne, one
+compat report (above); Microsoft Minesweeper, one compat report naming missing WPR members
+(`ResourceDictionary.get_Keys`, `IAsyncAction.put_Completed`); What In The World?, an unhandled
+`MissingMethodException` crash report carrying its three swallowed missing members; Angry Birds,
+Flowerz, Big Buck Hunter Pro, Chickens Can't Fly (25 first-chance online/serializer exceptions, all
+filtered) and Fast & Furious: none; BBB: App-ocalypse refused as `NotDecrypted`, reported; with
+server logging off, nothing reached the hub. Unit tests: `CompatibilityProblemsTests`. **Not run
+on Android** (build only): the `:game` process queues the report at the end of `Start` and the
+launcher flushes it, the crash path's shape; a native crash still loses that run's list.
+
+No `ApplicationPatcher.Version` bump and no reinstall, except that a WP8 managed title installed as
+native needs a reinstall to move to `SilverlightGame`.
 
 ### Update checks and the About page's "what's new" (2026-09-29, Android)
 
@@ -4296,6 +4449,11 @@ swallowed per file, the install still reported success, and the game was silentl
 effects worked, because those are XNB `SoundEffect` and need no conversion. This is the same mistake
 the sensors split fixed: a desktop-only implementation on a shared Core project, also shipped inside
 the APK for nothing.
+
+> **Superseded 2026-10-14** (see "Every game is attempted; what it carries on past reaches WPR
+> Hub"): a failed transcode no longer fails the install. The game installs, the failure goes to WPR
+> Hub as an `install-problem` report, and the reasoning below (a mute game nobody can see) is why
+> the report exists. The old early return also left a half-installed row behind the error dialog.
 
 **A missing transcoder now fails the install** (`ApplicationInstallError.ConvertFailed`) rather than
 degrading. That is the deliberate difference from `SensorBackend`, where "no provider" means "no

@@ -158,6 +158,16 @@ namespace WPR.Wp8Native
                     _emulator.Direct3D.GpuFrameBuilt += OnGpuFrameBuilt;
                     Log("rendering with the game's shaders on the GPU");
                 }
+                // A XAML title in the background draws nothing (its provider is disconnected), so
+                // its loop waits for the tick here instead of after a frame.
+                _emulator.WinRt.IdleTurn += () =>
+                {
+                    if (!_closing)
+                    {
+                        _tick.Wait(250);
+                    }
+                };
+                (_emulator.WinRt.KeyRepeatDelay, _emulator.WinRt.KeyRepeatInterval) = PlatformKeyRepeat();
                 _emulator.WinRt.XboxHost = _xboxHost;
                 _emulator.WinRt.Sensors = new Wp8NativeSensorHost();
                 _services = Wp8HostServices.Attach(_emulator.WinRt, Log);
@@ -305,7 +315,8 @@ namespace WPR.Wp8Native
                 $"allowed=[{string.Join(", ", stubs.AllowedDefaults.Select(p => $"{p.Key} x{p.Value}"))}] " +
                 $"raised=[{string.Join("; ", stubs.RaiseLog)}] " +
                 $"slottrap={_emulator!.WinRt.FirstUnanswerableSlot ?? "none"} " +
-                $"defaultedslots=[{string.Join(", ", _emulator.WinRt.DefaultedSlots.Select(p => $"{p.Key} x{p.Value}"))}]");
+                $"defaultedslots=[{string.Join(", ", _emulator.WinRt.DefaultedSlots.Select(p => $"{p.Key} x{p.Value}"))}] " +
+                $"guessedslots=[{string.Join(", ", _emulator.WinRt.GuessedSlots.Select(p => $"{p.Key} x{p.Value}"))}]");
 
             // Where every live guest thread was parked when the run ended: a title that stalls
             // without failing (waiting on a movie, a lock, a signal) leaves no post-mortem, and
@@ -729,7 +740,46 @@ namespace WPR.Wp8Native
             }
 
             _keysDown = now;
+
+            // A held key repeats KeyDown, as WinRT's did (Keyboard.cs times it).
+            emulator.WinRt.PumpKeyRepeat();
         }
+
+        /// <summary>
+        /// The platform's keyboard repeat delay and interval: the Windows settings (Control Panel,
+        /// Keyboard) on the desktop, read once at start; elsewhere Windows' defaults, 500 ms and
+        /// about 30 a second, which are also Android's (ViewConfiguration's 500 ms timeout).
+        /// </summary>
+        internal static (TimeSpan Delay, TimeSpan Interval) PlatformKeyRepeat()
+        {
+            var fallback = (TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(33));
+            if (!OperatingSystem.IsWindows())
+            {
+                return fallback;
+            }
+
+            try
+            {
+                // SPI_GETKEYBOARDDELAY: 0-3, i.e. 250 ms steps from 250 ms. SPI_GETKEYBOARDSPEED: 0-31,
+                // roughly 2.5 to 30 repeats a second.
+                uint delay = 0, speed = 0;
+                if (!SystemParametersInfo(0x0016, 0, ref delay, 0) || !SystemParametersInfo(0x000A, 0, ref speed, 0))
+                {
+                    return fallback;
+                }
+
+                double perSecond = 2.5 + (Math.Min(speed, 31u) * 27.5 / 31);
+                return (TimeSpan.FromMilliseconds(250 * (Math.Min(delay, 3u) + 1)), TimeSpan.FromSeconds(1 / perSecond));
+            }
+            catch (Exception)
+            {
+                return fallback;
+            }
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+        [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+        private static extern bool SystemParametersInfo(uint action, uint param, ref uint value, uint winIni);
 
         /// <summary>
         /// The <c>Windows.System.VirtualKey</c> for an XNA key, or 0 for none. Both are the Win32 VK

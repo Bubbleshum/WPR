@@ -324,7 +324,7 @@ foreach (var (name, calls) in emulator.Stubs.AllowedDefaults.OrderByDescending(p
     Console.WriteLine($"  allowed 0     {calls,8:N0}  {name}");
 }
 
-Console.WriteLine($"  DEFAULTED     {emulator.Stubs.DefaultedCalls.Count} import(s) reached no handler and were answered with 0, in the order first met:");
+Console.WriteLine($"  DEFAULTED     {emulator.Stubs.DefaultedCalls.Count} import(s) reached no handler and were answered with 0 (a constructor with this), in the order first met:");
 foreach (var (name, calls) in emulator.Stubs.DefaultedCalls.OrderByDescending(p => p.Value))
 {
     Console.WriteLine($"       {calls,8:N0}  {name}");
@@ -625,16 +625,6 @@ if (emulator.TaskCollectionLog.Count > 0)
     Console.WriteLine();
     Console.WriteLine("  PPL task machinery:");
     foreach (string entry in emulator.TaskCollectionLog.Take(10))
-    {
-        Console.WriteLine($"    {entry}");
-    }
-}
-
-if (emulator.ShapedObjectCalls.Count > 0)
-{
-    Console.WriteLine();
-    Console.WriteLine($"  calls on shaped stand-in objects ({emulator.ShapedObjectCalls.Count}):");
-    foreach (string entry in emulator.ShapedObjectCalls.Take(10))
     {
         Console.WriteLine($"    {entry}");
     }

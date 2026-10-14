@@ -2173,6 +2173,8 @@ namespace WPR.Wp8Native
                         return;
                     }
 
+                    _guessedSlots[described] = _guessedSlots.GetValueOrDefault(described) + 1;
+
                     // A class this runtime cannot honestly stand in for answers failure - but
                     // still fills the out-parameter, which is the one place this probe
                     // deliberately breaks its own rule that a stub either writes its

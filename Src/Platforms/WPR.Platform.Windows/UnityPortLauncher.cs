@@ -36,8 +36,8 @@ namespace WPR.Platform.Windows
         /// If <paramref name="app"/> is a port (its install folder has a <c>wpr-port.json</c>),
         /// launch its Windows binary and await exit, returning true. Returns false when the title
         /// is not a port, so the caller falls through to the normal Silverlight / XNA hosts.
-        /// Throws if the title <em>is</em> a port but has no usable Windows build — the desktop
-        /// host surfaces that as an error dialog.
+        /// A port with no usable Windows build also returns false, so the original package is
+        /// attempted in-process rather than refused.
         /// </summary>
         public static async Task<bool> TryLaunchAsync(WPRModel app)
         {
@@ -50,16 +50,20 @@ namespace WPR.Platform.Windows
             var manifest = WPR.UnityPortManifest.TryLoad(installFolder);
             if (manifest == null) return false; // not a port — let normal dispatch handle it
 
-            app.ApplicationType = ApplicationType.UnityPort;
-
             string? exe = manifest.ResolveWindowsExe(installFolder);
             if (exe == null)
-                throw new InvalidOperationException(
-                    $"'{app.Name}' is a Unity port but has no Windows build. Expected the executable named " +
-                    $"by \"windows\" in {WPR.UnityPortManifest.FileName} to exist under '{installFolder}'. " +
-                    "Rebuild the Unity project for the Windows Standalone target and place the binary in the " +
-                    "install folder (see Plans/Unity_WP8_Feasibility.md).");
+            {
+                // Not a reason to refuse the game: fall through and attempt the original package
+                // in-process, as for any title. If that fails, the run reports it to WPR Hub.
+                // (This used to throw "a Unity port but has no Windows build", which nobody heard
+                // about but the player.)
+                Log.Warn(LogCategory.AppLaunch,
+                    $"UnityPortLauncher: '{app.Name}' has a {WPR.UnityPortManifest.FileName} but no Windows build " +
+                    $"under '{installFolder}'; attempting the original package in-process instead.");
+                return false;
+            }
 
+            app.ApplicationType = ApplicationType.UnityPort;
             Log.Info(LogCategory.AppLaunch, $"UnityPortLauncher: spawning port '{exe}' for {app.Name}");
 
             await LaunchAndAwaitAsync(exe);

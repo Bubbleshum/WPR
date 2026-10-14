@@ -234,6 +234,7 @@ namespace WPR.Platform.Windows.Pages
             using (var previewStream = await file.OpenReadAsync())
             {
                 preview = ApplicationInstaller.ReadPreview(previewStream);
+                if (preview == null) ReportRefusedPreview(previewStream, file.TryGetLocalPath());
             }
 
             if (preview == null)
@@ -265,6 +266,7 @@ namespace WPR.Platform.Windows.Pages
             {
                 using FileStream previewStream = new FileStream(xapPath, FileMode.Open, FileAccess.Read, FileShare.Read);
                 preview = ApplicationInstaller.ReadPreview(previewStream);
+                if (preview == null) ReportRefusedPreview(previewStream, xapPath);
             }
 
             if (preview == null)
@@ -279,6 +281,17 @@ namespace WPR.Platform.Windows.Pages
             await RunInstallAsync(
                 () => Task.FromResult<Stream>(new FileStream(xapPath, FileMode.Open, FileAccess.Read, FileShare.Read)),
                 preview);
+        }
+
+        /// <summary>
+        /// A package whose manifest cannot even be read is refused before the installer runs;
+        /// WPR Hub still hears about it (a no-op with server logging off).
+        /// </summary>
+        private static void ReportRefusedPreview(Stream stream, string? path)
+        {
+            if (!stream.CanSeek) return; // a forward-only stream has been read once already
+            ApplicationInstaller.ReportRefusedPackage(stream, ApplicationInstallError.InvalidManifestFiles, packageSource: path);
+            _ = WPR.Engine.Online.OnlineBackend.FlushAsync();
         }
 
         private async Task RunInstallAsync(Func<Task<Stream>> openStream, ApplicationPreview preview)

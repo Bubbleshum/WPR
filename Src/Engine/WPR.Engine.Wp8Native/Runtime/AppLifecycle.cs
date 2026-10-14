@@ -13,6 +13,19 @@ namespace WPR.Wp8Native
     /// (<c>VisibilityChanged</c>, false), and then the app is suspended (<c>Suspending</c>). Coming
     /// back: <c>Resuming</c> (only if the app was suspended), <c>VisibilityChanged</c> true, then
     /// <c>Activated</c> with <c>CodeActivated</c>.</para>
+    /// <para><b>A Direct3D/XAML title also gets its managed shell's half</b> (XamlInterop.cs). On WP8
+    /// the Silverlight page ran <c>Application_Deactivated</c> and <c>OnNavigatedFrom</c>, and the
+    /// <c>DrawingSurfaceBackgroundGrid</c> left the screen: it called
+    /// <c>IDrawingSurfaceBackgroundContentProviderNative::Disconnect</c> and drew nothing more. Coming
+    /// back with the instance preserved, <c>Application_Activated</c> and <c>OnNavigatedTo</c> ran,
+    /// and the grid called <c>Connect</c> again (with a new device: the old one was lost) before the
+    /// next <c>PrepareResources</c>/<c>Draw</c>. Here that is, leaving: <c>Activated(Deactivated)</c>,
+    /// <c>VisibilityChanged(false)</c>, the shell's <see cref="XamlShell.Deactivated"/> calls,
+    /// <c>Disconnect</c>, then <c>Suspending</c> last as ever; and coming back: <c>Resuming</c>,
+    /// <c>VisibilityChanged(true)</c>, the shell's <see cref="XamlShell.Activated"/> calls,
+    /// <c>Connect</c> (the same device: the host's is never lost), then <c>Activated(CodeActivated)</c>.
+    /// While disconnected the frame loop draws nothing and takes no input, but keeps turning, paced by
+    /// the host (<c>IdleTurn</c>), so a deferral and the return can be delivered.</para>
     /// <para><b>Suspending deferrals are honoured.</b> A handler that takes
     /// <c>args.SuspendingOperation.GetDeferral()</c> keeps the app "suspending" until it calls
     /// <c>Complete()</c> or the deadline passes, as on the device; a return to the foreground in the
@@ -115,21 +128,61 @@ namespace WPR.Wp8Native
             }
             while (visible == WindowVisible);
 
-            var steps = new List<(string Name, long Handler, long[] Arguments)>();
+            // Each step runs and then calls its continuation: a guest delegate, or (for a XAML
+            // component) the page's own calls and the grid's Disconnect/Connect.
+            var steps = new List<(string Name, Action<Action> Run)>();
+            void Raise(string name, long handler, long[] arguments) => steps.Add((name, next =>
+            {
+                long invoke = _emulator.ReadUInt32(_emulator.ReadUInt32(handler, 0) + (SlotDelegateInvoke * 4), 0);
+                if (!_emulator.IsExecutableCode(invoke))
+                {
+                    _appLifecycleLog.Add($"   {name}: handler 0x{handler:X8} has no Invoke");
+                    next();
+                    return;
+                }
+
+                _appLifecycleLog.Add($"   {name}");
+                _emulator.CallEmulated(name, invoke, arguments, onReturn: () =>
+                {
+                    if ((Arg(0) & 0xFFFFFFFFL) != HResultOk)
+                    {
+                        _appLifecycleLog.Add($"   {name} returned 0x{Arg(0):X8}");
+                    }
+
+                    next();
+                }, recycle: true);
+            }));
+
             void Window(int slot, string name, long args)
             {
                 if (_windowHandlers.TryGetValue(slot, out long handler) && handler != 0)
                 {
-                    steps.Add(($"CoreWindow::{name}", handler, [handler, _coreWindow, args]));
+                    Raise($"CoreWindow::{name}", handler, [handler, _coreWindow, args]);
                 }
             }
 
+            // A Direct3D/XAML title's managed shell: the page's Application_Deactivated/Activated
+            // calls on the component (XamlShell.Deactivated/Activated), and the
+            // DrawingSurfaceBackgroundGrid disconnecting and reconnecting the content provider.
+            void Page(string name, IReadOnlyList<XamlShellStep> calls) => steps.Add((name, next =>
+            {
+                _appLifecycleLog.Add($"   {name} ({calls.Count} call(s))");
+                RunSteps(calls, 0, next);
+            }));
+
+            bool xaml = HostsXamlComponent;
             WindowVisible = visible;
             Action finished;
             if (!visible)
             {
                 Window(SlotAddWindowActivated, "Activated(Deactivated)", Classes.WindowActivatedEventArgs(Deactivated));
                 Window(SlotAddVisibilityChanged, "VisibilityChanged(false)", Classes.VisibilityChangedEventArgs(false));
+                if (xaml)
+                {
+                    Page("XamlShell::Application_Deactivated", _shell!.Deactivated);
+                    steps.Add(("DrawingSurfaceBackgroundGrid::Disconnect", DisconnectProvider));
+                }
+
                 if (_suspendingHandlers.Count > 0)
                 {
                     _suspendDeadline = DateTime.UtcNow + SuspendingDeadline;
@@ -137,7 +190,7 @@ namespace WPR.Wp8Native
                     long args = Classes.SuspendingEventArgs(_suspendDeadline);
                     foreach (long handler in _suspendingHandlers.Values)
                     {
-                        steps.Add(("CoreApplication::Suspending", handler, [handler, 0, args]));
+                        Raise("CoreApplication::Suspending", handler, [handler, 0, args]);
                     }
                 }
 
@@ -161,12 +214,18 @@ namespace WPR.Wp8Native
                 {
                     foreach (long handler in _resumingHandlers.Values)
                     {
-                        steps.Add(("CoreApplication::Resuming", handler, [handler, 0, 0]));
+                        Raise("CoreApplication::Resuming", handler, [handler, 0, 0]);
                     }
                 }
 
                 _suspended = false;
                 Window(SlotAddVisibilityChanged, "VisibilityChanged(true)", Classes.VisibilityChangedEventArgs(true));
+                if (xaml && _providerDisconnected)
+                {
+                    Page("XamlShell::Application_Activated", _shell!.Activated);
+                    steps.Add(("DrawingSurfaceBackgroundGrid::Connect", ReconnectProvider));
+                }
+
                 Window(SlotAddWindowActivated, "Activated(CodeActivated)", Classes.WindowActivatedEventArgs(CodeActivated));
                 finished = () => _appLifecycleLog.Add("resumed");
             }
@@ -175,26 +234,9 @@ namespace WPR.Wp8Native
             int next = 0;
             void RaiseNext()
             {
-                while (next < steps.Count)
+                if (next < steps.Count)
                 {
-                    (string name, long handler, long[] arguments) = steps[next++];
-                    long invoke = _emulator.ReadUInt32(_emulator.ReadUInt32(handler, 0) + (SlotDelegateInvoke * 4), 0);
-                    if (!_emulator.IsExecutableCode(invoke))
-                    {
-                        _appLifecycleLog.Add($"   {name}: handler 0x{handler:X8} has no Invoke");
-                        continue;
-                    }
-
-                    _appLifecycleLog.Add($"   {name}");
-                    _emulator.CallEmulated(name, invoke, arguments, onReturn: () =>
-                    {
-                        if ((Arg(0) & 0xFFFFFFFFL) != HResultOk)
-                        {
-                            _appLifecycleLog.Add($"   {name} returned 0x{Arg(0):X8}");
-                        }
-
-                        RaiseNext();
-                    }, recycle: true);
+                    steps[next++].Run(RaiseNext);
                     return;
                 }
 
