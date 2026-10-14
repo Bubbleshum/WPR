@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Audio.AudioTrack - streaming (DynamicSoundEffectInstance) voices played through Android's
+    own android.media.AudioTrack, one track per voice, instead of FAudio.
+
+    A PARTIAL audio implementation, the same shape as WPR.Audio.AndroidMediaPlayer: it claims the
+    dynamic-voice half of IAudioBackend (16-bit PCM voices made by CreateSourceVoice) and forwards
+    every other call - the device, static sound effects, 3D maths, the microphone - to the module
+    below it in AudioBackendRegistry's stack (FAudio). See AudioTrackModule.
+
+    Why it exists: FAudio on a phone runs dry when a game keeps only a couple of short buffers
+    queued. Android's output pulls bigger, burstier periods than the desktop's, so a WP8 title
+    double-buffering ~30 ms chunks underran several times a second. An AudioTrack in stream mode
+    goes straight to the platform mixer, and "buffer finished" is read off its playback head, so
+    the game is paced by what has actually been heard. This was WPR.Engine.Wp8Native's
+    AudioTrackOutput until 2026-10-13 (Plans/RUNTIME-CONVERGENCE.md 3b); it moved here so it
+    shows in the [wpr-audio] line and so WP8 sound goes through DynamicSoundEffectInstance on
+    both heads.
+
+    Android-only, so the TFM is singular <TargetFramework> and the project is listed in
+    WPR.Android.slnf only.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <AssemblyName>WPR.Audio.AudioTrack</AssemblyName>
+    <RootNamespace>WPR.Audio.AudioTrack</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The seam (IAudioBackend) and AudioModule. Deliberately NO reference to WPR.Audio.FAudio or
+         the head: everything this module does not implement is handed to it as `next`. -->
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Audio\WPR.Engine.Audio.csproj" />
+  </ItemGroup>
+
+</Project>

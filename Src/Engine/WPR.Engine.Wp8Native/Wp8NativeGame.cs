@@ -992,8 +992,9 @@ namespace WPR.Wp8Native
         /// <summary>While set, every logged line is also kept, to become <see cref="Failure"/>.</summary>
         private List<string>? _capture;
 
-        // Android's AudioTrack, unlike FAudio's device, is not paused with the app: without this
-        // the buffered tail plays over the home screen. The guest is told too, as WP8 told it:
+        // The sound itself is paused by the audio backend (Android's AudioTrack voices through
+        // AudioBackendRegistry.SuspendForBackground from GameActivity.OnPause; FAudio by SDL), so
+        // _audio.Suspend is a no-op kept for the IHostAudio contract. The guest is told, as WP8 told it:
         // CoreWindow.Activated/VisibilityChanged and CoreApplication.Suspending/Resuming, raised on
         // its own thread at its next turn round the main loop (Src/Engine/WPR.Engine.Wp8Native/Runtime/AppLifecycle.cs).
         // The motor is ours alone, so a buzz in flight is stopped here, as GameActivity.OnPause does.

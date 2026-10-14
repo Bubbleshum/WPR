@@ -106,6 +106,21 @@ namespace WPR.Platform.Android
             // MediaPlayer needed hand-written hooks for. The module is kept, unregistered, as a
             // fallback: re-adding caps.Audio(new AndroidMediaPlayerModule()) restores it.
 
+            // Streaming voices (DynamicSoundEffectInstance) on Android's own AudioTrack, everything
+            // else forwarded to FAudio below it. FAudio runs dry on a phone when a game keeps only a
+            // couple of ~30 ms buffers queued, which is how every WP8 title drives XAudio2; the WP8
+            // host asks for it through AudioBackendRegistry.LowLatencyStreaming. Scoped to those
+            // requests, so XNA titles' dynamic instances stay on FAudio: see the measurement in
+            // CLAUDE.md ("WP8 sound goes through the registry").
+            // audiotrack_scope.txt beside fna3d_driver.txt overrides it, for A/B on a device
+            // without a rebuild: "all" puts every XNA dynamic instance on AudioTrack too, "off"
+            // leaves everything on FAudio (WP8 titles included).
+            WPR.Audio.AudioTrack.AudioTrackScope? audioTrack = ChosenAudioTrackScope(_externalFilesDirectory);
+            if (audioTrack is { } scope)
+            {
+                caps.Audio(new WPR.Audio.AudioTrack.AudioTrackModule(scope));
+            }
+
             // Games' movies (MediaPlayerLauncher, MediaElement). MediaCodec has no WMV, so this reads
             // the MP4 + Ogg sidecars the installer writes beside each movie through the :transcode
             // process (FFmpegKitAudioTranscoder.TranscodeVideoAsync); a repatch writes them for a game
@@ -187,6 +202,45 @@ namespace WPR.Platform.Android
         {
             global::Android.Content.Context? context = _context ?? global::Android.App.Application.Context;
             return context == null ? "unknown" : Native.UpdateNotifier.InstalledVersion(context);
+        }
+
+        /// <summary>Diagnostic override for the AudioTrack module; see its registration.</summary>
+        internal const string AudioTrackScopeFileName = "audiotrack_scope.txt";
+
+        private static WPR.Audio.AudioTrack.AudioTrackScope? ChosenAudioTrackScope(string? directory)
+        {
+            const WPR.Audio.AudioTrack.AudioTrackScope fallback = WPR.Audio.AudioTrack.AudioTrackScope.LowLatencyRequests;
+            if (string.IsNullOrEmpty(directory))
+            {
+                return fallback;
+            }
+
+            try
+            {
+                string path = System.IO.Path.Combine(directory, AudioTrackScopeFileName);
+                if (!System.IO.File.Exists(path))
+                {
+                    return fallback;
+                }
+
+                string value = System.IO.File.ReadAllText(path).Trim();
+                System.Diagnostics.Trace.WriteLine($"[wpr-audiotrack] {AudioTrackScopeFileName} says '{value}'");
+                if (string.Equals(value, "off", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    return null;
+                }
+
+                if (string.Equals(value, "all", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    return WPR.Audio.AudioTrack.AudioTrackScope.AllDynamicVoices;
+                }
+            }
+            catch (System.Exception)
+            {
+                // An unreadable override is no override.
+            }
+
+            return fallback;
         }
 
         private static GraphicsDriver ChosenGraphicsDriver()

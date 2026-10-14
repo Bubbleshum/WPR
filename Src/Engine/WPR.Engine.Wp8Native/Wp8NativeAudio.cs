@@ -5,8 +5,9 @@ namespace WPR.Wp8Native
 {
     /// <summary>
     /// XAudio2's source voices, played as <see cref="DynamicSoundEffectInstance"/>s - so a WP8
-    /// native title's sound goes through the same audio stack as every XNA title (FAudio on both
-    /// heads).
+    /// native title's sound goes through the same audio stack as every XNA title, on both heads:
+    /// FAudio on the desktop, <c>WPR.Audio.AudioTrack</c> on Android (which claims streaming voices
+    /// from the registry; see <see cref="WPR.Engine.Audio.AudioBackendRegistry.LowLatencyStreaming"/>).
     /// </summary>
     /// <remarks>
     /// The runtime calls in on the guest thread, and the instance is driven right there, under
@@ -24,7 +25,14 @@ namespace WPR.Wp8Native
         private readonly Action<string>? _log;
         private bool _failed;
 
-        public Wp8NativeAudio(Action<string>? log) => _log = log;
+        public Wp8NativeAudio(Action<string>? log)
+        {
+            _log = log;
+
+            // WP8 games keep only a couple of ~30 ms buffers queued. Where the platform has a
+            // lower-latency output for streaming voices (AudioTrack on Android), ask for it.
+            WPR.Engine.Audio.AudioBackendRegistry.LowLatencyStreaming = true;
+        }
 
         public int VoicesCreated { get; private set; }
 
@@ -89,8 +97,10 @@ namespace WPR.Wp8Native
         }
 
         /// <summary>
-        /// Nothing to do: FAudio's output is paused with the app, by SDL for SDL's device and by
-        /// FAudio's own SDL event watch for its AAudio stream on Android.
+        /// Nothing to do here: FAudio's output is paused with the app (by SDL for SDL's device, by
+        /// FAudio's own SDL event watch for its AAudio stream on Android), and Android's AudioTrack
+        /// voices are paused by the backend itself
+        /// (<c>AudioBackendRegistry.SuspendForBackground</c>, from <c>GameActivity.OnPause</c>).
         /// </summary>
         public void Suspend(bool suspended)
         {
