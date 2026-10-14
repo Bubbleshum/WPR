@@ -1141,7 +1141,7 @@ silently skips unreadable packages: a scan is not an attempt to play, and report
 library's worth of reports. Still refused at run time, already reported as a guest failure: a
 Direct3D/XAML component with no `XamlShells` description.
 
-**One compatibility report per run** (`compat` source), from
+**The problems a run carries on past** (`compat` source), from
 `WPR.Engine.Online.CompatibilityProblems`, begun and ended by `ApplicationLaunch.Start`:
 
 - **A first-chance observer, live in Release.** Every exception in the process pays a null check
@@ -1158,43 +1158,98 @@ Direct3D/XAML component with no `XamlShells` description.
 - **`[wpr-uirender]`**: unsupported rasteriser features, unresolvable images, rasteriser throws.
 - **Deduplicated and bounded**: 40 distinct problems (then a dropped count), every string truncated,
   only a new key pays for a stack walk (16 frames, taken on the throwing thread).
-- **Only when there is something to say**, and **never two reports for one run**: if the run
-  crashed (managed or WP8 guest failure), the problems are attached to that crash report's `extra`
-  and stack instead. WP8 defaulted imports/slots were already in the guest-failure report.
 
-Hub shape: **kind `manual`** (so the hub never fingerprints these as crashes or counts them in its
-compatibility verdicts), no hub change needed. `exception_type` is the title
-(`WPR.CompatibilityProblems`, `WPR.Refused.<reason>`, `WPR.InstallProblem.<reason>`),
-`exception_message` the headline, `stack_trace` the structured body, `extra.source` = `compat` /
-`refused` / `install-problem`, `extra.pNN` one line per problem. Keys leave assembly versions out
-on purpose: the hub's scrubber reads `4.0.0.0` as an IP address. Example (Carcassonne, a run that
-plays fine):
+**One hub crash report per distinct problem (2026-10-14, supersedes "one `manual` report per run").**
+The first version sent each run's list as ONE kind-`manual` report titled
+`WPR.CompatibilityProblems`, which the hub never grouped, so "RichTextBox is missing" in ten games
+was ten unrelated rows. Now `CompatibilityProblems.BuildProblemReports` makes one kind-**`crash`**
+report per problem, shaped for the hub's `CrashFingerprinter` (exception type + top five `at` frames):
 
 ```
-exception_type    WPR.CompatibilityProblems
-exception_message 2 compatibility problem(s): missing-type System.Windows.Controls.RichTextBox [System.Windows] x24; missing-type System.Windows.Data.BindingExpression [System.Windows]
-extra             source=compat problem_count=2 outcome="ended normally" run_seconds=25
-                  p01="[missing-type] x24 @0.7s System.Windows.Controls.RichTextBox [System.Windows]"
-                  p02="[missing-type] x1 @10.4s System.Windows.Data.BindingExpression [System.Windows]"
-stack_trace       WPR compatibility problems: 2 distinct, run 25 s, ended normally
-                  [missing-type] x24 @0.7s System.Windows.Controls.RichTextBox [System.Windows]
-                     Could not load type 'System.Windows.Controls.RichTextBox' from assembly ...
-                     at System.Reflection.RuntimeAssembly.GetExportedTypes
-                     at WPR.SilverlightCompability.XamlTypeConverter.ResolveTypeByName ...
+exception_type    System.TypeLoadException          (WPR.Compatibility.<category> for a problem WPR noticed itself)
+exception_message missing-type: System.Windows.Controls.RichTextBox [System.Windows]  (+ the full message)
+stack_trace       at WPR.Compatibility.missing-type: System.Windows.Controls.RichTextBox [System.Windows]
+                  --- first seen 0.9 s into the run, x24 (not part of the fingerprint) ---
+                      from System.Reflection.RuntimeAssembly.GetExportedTypes
+                      from WPR.SilverlightCompability.XamlTypeConverter.ResolveTypeByName ...
+extra             source=compat problem_category problem_key problem_count first_seen_s outcome run_seconds run_problems
 ```
 
-`HubCrashReporter`'s "native crash already covered by a managed report" check now looks at managed
+- **Exactly one `at` line, the synthetic frame.** Where the problem was first seen is written as
+  `from` lines, because the fingerprinter reads every `at` line as a frame: kept as frames they
+  would split one problem into a group per game. The same rule applies to the list attached to a
+  real crash (`Describe`): a native crash has no frames of its own, so the problems' frames became
+  its fingerprint (measured: a `NativeCrash` group whose top frame was `GetExportedTypes`).
+- **Bounded and deduplicated, in the reporter** (`ICrashReporter.ReportCompatibility`;
+  `HubCrashReporter` implements it, the default just caps): at most **10 per run**
+  (`MaxReportsPerRun`), the last carrying `more_problems` + `mNN` lines for the rest
+  (`SelectForSending`); and a (title, problem, WPR version) already sent or still queued is not
+  sent again (`Online/compat-sent.txt`, 2,000 SHA-256 prefixes, `SentId`). So the second run of a
+  game sends nothing it sent before; a new WPR version or another title sends it once more. They
+  queue in `Online/compat-reports/` (capacity 50), separate from the crash queue (capacity 20)
+  so ten problems can never push out a crash, and flush after it.
+- **A crash still sends the crash first, with the list attached, AND the per-problem reports**,
+  minus the one that IS the crash (`KeyOf(exception)`, unwrapped like `CrashReport.FromException`).
+  Choice: each problem is its own group and the crash is another, so nothing is counted twice, and
+  a title that crashes still counts towards "RichTextBox is missing". Queued at crash time
+  (`QueueProblemsBeside`), not at the end of the run, because an unhandled exception on a worker
+  thread kills the process before the run's finally blocks.
+- **Refusals and install problems are kind `crash` too** (`refused` / `install-problem` sources),
+  so they group by reason on the crash page. Only the install receipt stays `manual`
+  (`CrashReport.Sources.SentAsManual`). `IsNotACrash` still names all four.
+
+**Hub side** (branch `compat-reports-as-crashes` in the hub repo): `DiagnosticReport::NOT_CRASH_SOURCES`
+(`compat`, `refused`, `install-problem`) and the `realCrashes()` scope (`kind = crash` and
+`extra->source` null or not in that list; a JSON path, which compiles on SQLite, MySQL and
+Postgres). `CompatibilityService::forTitle` counts only `realCrashes()`, so the compatibility
+page's crash evidence is unchanged by any of this. The admin crash list and crash page show the
+source as a badge. **Needs that hub branch deployed**: against an old hub these reports are grouped
+fine, but they count as crashes on the compatibility pages.
+
+**A native crash no longer loses the list (2026-10-14).** The list lived only in the game
+process, so a SIGSEGV on Android or `Fatal error. 0xC0000005` on the desktop (which takes all of
+WPR down) sent nothing. Now each NEW problem is appended to `<DataStore>/Online/compat-run.txt`
+(`CompatibilityProblems.RunFilePath`, set by `HubSetup.TryCreate`; null means nothing is
+persisted). Line-based: a `name\tvalue` header (product, title, folder, graphics, started, pid),
+then one `p\t...\t.` line per problem, escaped; a line without its closing `.` or a file without a
+product is ignored, so a torn write costs one line. Repeats are not written (a persisted count is 1).
+
+- **Who clears it**: the run itself once its reports are queued (`DiscardRunFile` in
+  `ReportCompatibilityProblems`' finally, and after a crash report in `QueueProblemsBeside`).
+- **Who reads it back** (`TakeRunFile` moves nothing: it reads, deletes, returns):
+  - **Android `GameLauncher.HandleGameResult`**, `force: true` (the `:game` process is gone): a
+    native death sends `NativeCrash` with the problems attached plus the per-problem reports
+    (`CompatibilityProblems.ReportNativeCrash`); a leftover after a normal or managed end sends the
+    per-problem reports only. The 2-minute "covered by a managed report" check still applies to the
+    `NativeCrash` report; the per-problem ones are deduplicated by the sent log.
+  - **Every `OnlineBackend.FlushAsync`** (`RecoverAbandonedRun`, `force: false`), which both
+    launchers call at start-up: a leftover whose pid is dead becomes a `NativeCrash` report with
+    `extra.recovered=next-start`. A pid that is alive (a `:game` still running; this process with a
+    run active) keeps its file. On Unix the check is `/proc/<pid>`.
+
+**Verified 2026-10-14** (desktop harness `gamerun` + `GAMERUN_HUB=1`, scratch data root, scratch
+hub on :8767): Carcassonne → two crash groups, `System.TypeLoadException` /
+`WPR.Compatibility.missing-type: System.Windows.Controls.RichTextBox [System.Windows]` and the same for
+`BindingExpression`; a second run sent nothing (`0 of 2`); a run killed with `Environment.FailFast`
+left `compat-run.txt`, and the next start's flush sent one `NativeCrash` (`recovered=next-start`, both
+problems attached, no frames, so grouped by message) and deleted the file; the compatibility API and
+`forTitle` counted only the native crashes. Cross-title grouping is the hub test
+`test_compat_problems_group_across_games_and_carry_a_source_badge` (same shape, two titles, one group).
+Unit tests: `CompatibilityProblemsTests` (persistence, torn writes, live-run protection, recovery,
+per-problem shape, cap and summary, sent-id dedupe). **Not run on Android** (Release build only):
+`HandleGameResult`'s read path is the same `ReportNativeCrash` the recovery test covers. Refusal and
+install-problem reports as kind `crash` were not sent end to end.
+
+Earlier verification of the collector itself, before the per-problem change: Microsoft Minesweeper
+named missing WPR members (`ResourceDictionary.get_Keys`, `IAsyncAction.put_Completed`); What In The
+World? crashed with an unhandled `MissingMethodException` carrying its three swallowed missing
+members; Angry Birds, Flowerz, Big Buck Hunter Pro, Chickens Can't Fly (25 first-chance
+online/serializer exceptions, all filtered) and Fast & Furious met none; BBB: App-ocalypse was
+refused as `NotDecrypted`; with server logging off nothing reached the hub (`Report` and
+`ReportCompatibility` are no-ops then; the run file is still written and read, but nothing is queued).
+
+`HubCrashReporter`'s "native crash already covered by a managed report" check looks at managed
 crash reports only; a compat or install report for the same title must not swallow a native crash.
-
-**Verified on the desktop harness against a scratch data root and a local hub**: Carcassonne, one
-compat report (above); Microsoft Minesweeper, one compat report naming missing WPR members
-(`ResourceDictionary.get_Keys`, `IAsyncAction.put_Completed`); What In The World?, an unhandled
-`MissingMethodException` crash report carrying its three swallowed missing members; Angry Birds,
-Flowerz, Big Buck Hunter Pro, Chickens Can't Fly (25 first-chance online/serializer exceptions, all
-filtered) and Fast & Furious: none; BBB: App-ocalypse refused as `NotDecrypted`, reported; with
-server logging off, nothing reached the hub. Unit tests: `CompatibilityProblemsTests`. **Not run
-on Android** (build only): the `:game` process queues the report at the end of `Start` and the
-launcher flushes it, the crash path's shape; a native crash still loses that run's list.
 
 No `ApplicationPatcher.Version` bump and no reinstall, except that a WP8 managed title installed as
 native needs a reinstall to move to `SilverlightGame`.

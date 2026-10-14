@@ -29,6 +29,12 @@ namespace WPR.Engine.Online
         /// <summary>Seconds into the run of the first occurrence.</summary>
         public double FirstSeenSeconds { get; set; }
 
+        /// <summary>
+        /// The exception's full type name (<c>System.TypeLoadException</c>), or null for a problem
+        /// WPR noticed itself. The hub groups the per-problem report under it.
+        /// </summary>
+        public string? ExceptionType { get; set; }
+
         /// <summary>One line: <c>[missing-type] x3 @1.2s System.Windows.Controls.RichTextBox [System.Windows]</c>.</summary>
         public string Summary => $"[{Category}] x{Count} @{FirstSeenSeconds:0.0}s {Key}";
     }
@@ -59,7 +65,7 @@ namespace WPR.Engine.Online
     /// <para>Process-wide static: one game runs at a time per process on both heads. Begun and
     /// ended by <c>ApplicationLaunch.Start</c>; while not begun, everything here is a no-op.</para>
     /// </remarks>
-    public static class CompatibilityProblems
+    public static partial class CompatibilityProblems
     {
         public const int MaxProblems = 40;
         private const int MaxDetailChars = 500;
@@ -94,8 +100,15 @@ namespace WPR.Engine.Online
         /// <summary>Distinct problems that did not fit under <see cref="MaxProblems"/>.</summary>
         public static int Dropped { get { lock (Gate) return _dropped; } }
 
-        /// <summary>Start collecting for a new run, forgetting the last one.</summary>
-        public static void Begin()
+        /// <summary>Start collecting for a new run, forgetting the last one. Nothing is persisted.</summary>
+        public static void Begin() => Begin(null);
+
+        /// <summary>
+        /// Start collecting for a new run, and persist every new problem to <see cref="RunFilePath"/>
+        /// under <paramref name="run"/>'s identity, so a run that dies natively does not take its list
+        /// with it (see <see cref="TakeRunFile"/>). Null <paramref name="run"/> persists nothing.
+        /// </summary>
+        public static void Begin(RunIdentity? run)
         {
             lock (Gate)
             {
@@ -104,6 +117,7 @@ namespace WPR.Engine.Online
                 Clock.Restart();
                 Volatile.Write(ref _problems, new Dictionary<string, CompatibilityProblem>(StringComparer.Ordinal));
             }
+            StartRunFile(run);
         }
 
         /// <summary>Stop collecting and hand back what the run met, in order of first sighting.</summary>
@@ -131,7 +145,7 @@ namespace WPR.Engine.Online
                     copy.Add(new CompatibilityProblem
                     {
                         Category = p.Category, Key = p.Key, Detail = p.Detail, Stack = p.Stack,
-                        Count = p.Count, FirstSeenSeconds = p.FirstSeenSeconds,
+                        Count = p.Count, FirstSeenSeconds = p.FirstSeenSeconds, ExceptionType = p.ExceptionType,
                     });
                 }
                 return copy;
@@ -187,7 +201,7 @@ namespace WPR.Engine.Online
             }
 
             if (Classify(ex) is not { } c) return;
-            Record(c.Category, c.Key, c.Detail, captureStack ? CaptureStack : null);
+            Record(c.Category, c.Key, c.Detail, captureStack ? CaptureStack : null, ex.GetType().FullName);
         }
 
         /// <summary>
@@ -280,7 +294,7 @@ namespace WPR.Engine.Online
                 string where = Thrower(ex);
                 Record(category, ex.GetType().FullName + " @ " + where,
                     ex.GetType().FullName + " in " + where + ": " + ex.Message,
-                    () => Truncate(ex.StackTrace, 2000));
+                    () => Truncate(ex.StackTrace, 2000), ex.GetType().FullName);
             }
             catch
             {
@@ -292,11 +306,11 @@ namespace WPR.Engine.Online
         public static void Note(string category, string key, string detail)
         {
             if (Volatile.Read(ref _problems) == null) return;
-            try { Record(category, key, detail, null); }
+            try { Record(category, key, detail, null, null); }
             catch { /* observation only */ }
         }
 
-        private static void Record(string category, string key, string detail, Func<string?>? stack)
+        private static void Record(string category, string key, string detail, Func<string?>? stack, string? exceptionType)
         {
             string full = category + "|" + key;
             lock (Gate)
@@ -307,6 +321,7 @@ namespace WPR.Engine.Online
             }
 
             // New: worth a stack, taken outside the lock.
+            CompatibilityProblem fresh;
             string? trace = null;
             try { trace = stack?.Invoke(); } catch { /* none */ }
 
@@ -323,10 +338,15 @@ namespace WPR.Engine.Online
                     Stack = trace,
                     Count = 1,
                     FirstSeenSeconds = Clock.Elapsed.TotalSeconds,
+                    ExceptionType = exceptionType,
                 };
                 _problems.Add(full, p);
                 _order!.Add(p);
+                fresh = p;
             }
+
+            // Only a new key gets here, so a run writes at most MaxProblems lines.
+            AppendToRunFile(fresh);
         }
 
         /// <summary>
@@ -371,25 +391,6 @@ namespace WPR.Engine.Online
         // ------------------------------------------------------------------------------------
 
         /// <summary>
-        /// The run's compatibility report, or null when it met nothing. One per run; the caller
-        /// fills in the title fields.
-        /// </summary>
-        public static CrashReport? BuildReport(IReadOnlyList<CompatibilityProblem> problems, int dropped, string outcome, TimeSpan ran)
-        {
-            if (problems.Count == 0) return null;
-
-            CrashReport report = new CrashReport
-            {
-                Source = CrashReport.Sources.Compatibility,
-                ExceptionType = "WPR.CompatibilityProblems",
-                ExceptionMessage = Headline(problems, dropped),
-            };
-            AttachTo(report, problems, dropped, outcome, ran);
-            report.StackTrace = Describe(problems, dropped, outcome, ran);
-            return report;
-        }
-
-        /// <summary>
         /// Adds the problems to a report that is about something else (a crash), so a run that
         /// crashes still sends exactly one report and the hub sees the problems that led up to it.
         /// </summary>
@@ -426,7 +427,10 @@ namespace WPR.Engine.Online
             return sb.ToString();
         }
 
-        /// <summary>The structured body: one block per problem, its message and first stack.</summary>
+        /// <summary>
+        /// The structured body attached to a crash report: one block per problem, its message and
+        /// where it was first seen (as <c>from</c> lines, see <see cref="AppendFromLines"/>).
+        /// </summary>
         public static string Describe(IReadOnlyList<CompatibilityProblem> problems, int dropped, string outcome, TimeSpan ran)
         {
             StringBuilder sb = new StringBuilder();
@@ -437,7 +441,10 @@ namespace WPR.Engine.Online
             {
                 sb.Append('\n').Append(p.Summary).Append('\n');
                 if (p.Detail != p.Key) sb.Append("   ").Append(p.Detail).Append('\n');
-                if (!string.IsNullOrEmpty(p.Stack)) sb.Append(p.Stack.TrimEnd()).Append('\n');
+                // As "from" lines, never "at": this body is appended to a crash's own stack, and
+                // the hub fingerprints the first "at" frames it finds. A native crash has none of
+                // its own, so these would become its fingerprint (one group per problem list).
+                AppendFromLines(sb, p.Stack);
             }
             return sb.ToString();
         }

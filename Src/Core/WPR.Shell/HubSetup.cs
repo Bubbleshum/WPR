@@ -29,6 +29,11 @@ namespace WPR.Shell
             if (Current != null) return Current;
             if (Configuration.Current is not { } config) return null;
 
+            // Where a game run persists its compatibility problems as it meets them, so a native
+            // crash does not lose them: in the data store, shared by Android's launcher (which
+            // reads it back after a :game death) and :game (which writes it).
+            CompatibilityProblems.RunFilePath = Path.Combine(config.DataPath("Online"), "compat-run.txt");
+
             return Current = new HubOnline(new HubSettings
             {
                 // Read live, so a changed setting applies without recomposing.

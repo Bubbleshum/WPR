@@ -22,6 +22,21 @@ namespace WPR.Engine.Online
         void Report(CrashReport report);
 
         /// <summary>
+        /// Queue one run's per-problem compatibility reports
+        /// (<see cref="CompatibilityProblems.BuildProblemReports"/>). An implementation drops the
+        /// ones it has already sent for that title and WPR version and caps the rest at
+        /// <see cref="CompatibilityProblems.MaxReportsPerRun"/>
+        /// (<see cref="CompatibilityProblems.SelectForSending"/>). Returns how many were queued.
+        /// Same rules as <see cref="Report"/>: synchronous, never throws, no network.
+        /// </summary>
+        int ReportCompatibility(System.Collections.Generic.IReadOnlyList<CrashReport> reports)
+        {
+            var picked = CompatibilityProblems.SelectForSending(reports, _ => false);
+            foreach (CrashReport r in picked) Report(r);
+            return picked.Count;
+        }
+
+        /// <summary>
         /// Send queued reports and upload any game package the hub asked for. Never throws; a
         /// failure leaves the item queued for the next flush.
         /// </summary>
