@@ -1025,7 +1025,7 @@ namespace WPR.Wp8Native
                 _constructedExceptions.Add($"{function} hr=0x{raise.HResult:X8} at 0x{_emulator.ReturnAddress:X8} (raised)");
             }
 
-            ThrowIntoImage(new ThrownException(self, raise.CatchableTypes));
+            ThrowIntoImage(new ThrownException(self, raise.CatchableTypes) { ObjectIsHandle = true });
             if (RaiseLog.Count < 24)
             {
                 RaiseLog.Add($"{raise.TypeName} from {string.Join(" <- ", ThrowStack.Take(8).Select(f => $"0x{f.Address:X8}"))}; " +
@@ -1232,6 +1232,11 @@ namespace WPR.Wp8Native
 
             RecordThrow();
 
+            if (CatchCandidates.Count == 0 && TryCatchAtChoreBoundary(thrown))
+            {
+                return;
+            }
+
             if (CatchCandidates.Count == 0)
             {
                 _unwindingThreads.Remove(_emulator.CurrentThreadId);
@@ -1289,8 +1294,23 @@ namespace WPR.Wp8Native
                 ? string.Empty
                 : " from " + string.Join(" < ", ThrowStack.Take(3).Select(f => $"0x{f.Address & ~1L:X8}"));
 
+            // A Platform exception's HRESULT says what failed; its text rarely does.
+            string hr = string.Empty;
+            if (Thrown.IsPointer && Thrown.TypeName.EndsWith("@Platform@@", StringComparison.Ordinal))
+            {
+                try
+                {
+                    long handle = Thrown.ObjectIsHandle ? Thrown.Object : _emulator.ReadUInt32(Thrown.Object);
+                    hr = $" hr=0x{ExceptionHResult(handle):X8}";
+                }
+                catch (CpuMemoryException)
+                {
+                    // Diagnostics only.
+                }
+            }
+
             ThrowHistory.Add(
-                $"frame {_winRt.ProcessEventsCalls,5}  {Thrown.TypeName}  {caught}{from}{carried}");
+                $"frame {_winRt.ProcessEventsCalls,5}  {Thrown.TypeName}{hr}  {caught}{from}{carried}");
         }
 
         /// <summary>
@@ -1330,7 +1350,7 @@ namespace WPR.Wp8Native
             if (candidate.CatchObjectOffset != 0)
             {
                 long entrySp = candidate.Frame.FramePointer + candidate.Frame.FrameBytes;
-                _emulator.WriteUInt32(entrySp + candidate.CatchObjectOffset, (uint)thrown.Object);
+                _emulator.WriteUInt32(entrySp + candidate.CatchObjectOffset, (uint)CatchObjectValue(candidate, thrown));
             }
 
             // Destructors first, innermost outwards, then the catch itself.
@@ -1342,6 +1362,101 @@ namespace WPR.Wp8Native
                 $"with frame 0x{frame:X8}, after {cleanups.Count} cleanup funclet(s)");
 
             RunCleanups(cleanups, 0, () => EnterCatchFunclet(candidate, frame, funclet, thrown));
+        }
+
+        /// <summary>
+        /// An exception no frame of a ConcRT chore caught is caught by the runtime that called the
+        /// chore, as MSVCR110's chore wrapper does with <c>catch (...)</c>: the chore's frames are
+        /// unwound (their destructors run), its collection is canceled, and control returns
+        /// through the chore's return trap as though it had finished.
+        /// See <see cref="ConcurrencyRuntime.RunningChoreTraps"/>.
+        /// </summary>
+        private bool TryCatchAtChoreBoundary(ThrownException thrown)
+        {
+            IReadOnlyList<UnwoundFrame> stack = ThrowStack;
+            foreach (long trap in Ppl.RunningChoreTraps())
+            {
+                int boundary = -1;
+                for (int i = 0; i < stack.Count; i++)
+                {
+                    if ((stack[i].Address & ~1L) == (trap & ~1L))
+                    {
+                        boundary = i;
+                        break;
+                    }
+                }
+
+                if (boundary < 0)
+                {
+                    continue;
+                }
+
+                // The stack as the chore's caller had it: above the chore function's frame, or
+                // where it is now if the throw came straight from the chore's own entry (a host body).
+                long sp = boundary == 0
+                    ? _emulator.ReadRegister(Arm.UC_ARM_REG_SP)
+                    : stack[boundary - 1].FramePointer + stack[boundary - 1].FrameBytes;
+                List<UnwoundFrame> unwound = stack.Take(boundary).ToList();
+
+                // A catch funclet the exception was rethrown from is over too.
+                _activeCatches.RemoveAll(c => stack.Any(f => (f.Address & ~1L) == (c.ReturnTrap & ~1L)));
+
+                // No frame is the catch, so every state of every frame is unwound.
+                CatchCandidate everything = new(new UnwoundFrame(0, 0, 0, false, "chore boundary"), 0, 0, "...", 0);
+                List<CxxExceptionModel.CleanupAction> cleanups = _emulator.ExceptionModel.CollectCleanups(unwound, everything);
+                TransferLog.Add($"{thrown.TypeName} left a ConcRT chore: caught by the runtime at 0x{trap:X8}, after {cleanups.Count} cleanup funclet(s)");
+                Ppl.ChoreRaised(trap, thrown.TypeName);
+                if (ThrowHistory.Count > 0 && ThrowHistory[^1].Contains("UNCAUGHT", StringComparison.Ordinal))
+                {
+                    ThrowHistory[^1] = ThrowHistory[^1].Replace("UNCAUGHT", "caught by the ConcRT chore wrapper", StringComparison.Ordinal);
+                }
+
+                _unwindingThreads.Add(_emulator.CurrentThreadId);
+                RunCleanups(cleanups, 0, () =>
+                {
+                    _unwindingThreads.Remove(_emulator.CurrentThreadId);
+                    _emulator.WriteRegister(Arm.UC_ARM_REG_SP, sp);
+                    Return(0);
+                    _emulator.ContinueAt(ArmEmulator.ThumbEntry(trap & ~1L));
+                });
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// What goes in a catch clause's object slot, as vcruntime's __BuildCatchObject decides.
+        /// </summary>
+        /// <remarks>
+        /// <c>_CxxThrowException</c> is handed the ADDRESS of the thrown value. A catch by
+        /// reference gets that address; a catch by value of a pointer type - every
+        /// <c>catch (Platform::Exception^ e)</c> - gets the pointer stored there. Writing the
+        /// address for both handed a by-value catch a pointer to the handle, and its first
+        /// AddRef called through the exception object's first word as though it were a vtable:
+        /// Halo: Spartan Assault, a guest <c>throw</c> of COMException(0x80070050) while it
+        /// created its save, executing heap at the exception's second vtable. Class types caught
+        /// by value would need the copy constructor and still get the address, as before.
+        /// A host-raised Platform exception carries the handle itself; a by-reference catch of
+        /// one gets a fresh word holding it.
+        /// </remarks>
+        public long CatchObjectValue(CatchCandidate candidate, ThrownException thrown)
+        {
+            if (thrown.ObjectIsHandle)
+            {
+                if (!candidate.ByReference)
+                {
+                    return thrown.Object;
+                }
+
+                long holder = _emulator.AllocateHeap(4);
+                _emulator.WriteUInt32(holder, (uint)thrown.Object);
+                return holder;
+            }
+
+            return !candidate.ByReference && thrown.IsPointer && !candidate.IsCatchAll
+                ? _emulator.ReadUInt32(thrown.Object)
+                : thrown.Object;
         }
 
         /// <summary>

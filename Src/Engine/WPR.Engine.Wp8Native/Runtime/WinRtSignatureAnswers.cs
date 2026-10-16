@@ -90,7 +90,8 @@ namespace WPR.Wp8Native
                 WriteZeros(Arg(layout.Result.Word), 8);   // a zero token is valid; it never matches a remove
                 if (interfaceName == "ICoreWindow")
                 {
-                    _windowHandlers[slot] = handler;
+                    // CoreWindow events keep every handler, so they hand out real tokens.
+                    _emulator.WriteUInt64(Arg(layout.Result.Word), (ulong)AddWindowHandler(slot, handler));
                 }
 
                 if (KeepAlive(handler))
@@ -104,6 +105,12 @@ namespace WPR.Wp8Native
 
             if (method.Name.StartsWith("remove_", StringComparison.Ordinal))
             {
+                // The 64-bit token is an even register pair: r2:r3 after `this` in r0.
+                if (interfaceName == "ICoreWindow")
+                {
+                    RemoveWindowHandler((Arg(3) << 32) | (Arg(2) & 0xFFFFFFFFL));
+                }
+
                 Return(HResultOk);
                 return true;
             }

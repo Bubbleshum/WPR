@@ -1129,7 +1129,7 @@ namespace WPR.Wp8Native
 
             Action Subscribe(int coreWindowSlot, string name) => () =>
             {
-                _windowHandlers[coreWindowSlot] = Arg(1);
+                AddWindowHandler(coreWindowSlot, Arg(1));
                 Log($"manipulation host: {name} subscribed, handler 0x{Arg(1):X8}");
                 if (Arg(2) != 0)
                 {

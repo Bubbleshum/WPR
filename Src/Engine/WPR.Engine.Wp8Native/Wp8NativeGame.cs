@@ -383,6 +383,13 @@ namespace WPR.Wp8Native
                 Log("network: " + string.Join("; ", stubs.Winsock.Log.Take(40)));
             }
 
+            if (_emulator.Direct3D.UnknownIids.Count > 0)
+            {
+                // A refused QueryInterface whose result the title never checked is a null call
+                // later, possibly thousands of frames on (Halo's ID3DUserDefinedAnnotation).
+                Log("d3d refused: " + string.Join("; ", _emulator.Direct3D.UnknownIids.Take(20)));
+            }
+
             List<string> xbox = _emulator.WinRt.XboxCalls;
             if (xbox.Count > 0)
             {
@@ -520,6 +527,12 @@ namespace WPR.Wp8Native
                 foreach (string line in emulator.Stubs.Files.Log.TakeLast(12))
                 {
                     Log("   file: " + line);
+                }
+
+                // The last pointer events and which handlers took them: "it ignores my taps".
+                foreach (string line in emulator.InputDelivered.TakeLast(8))
+                {
+                    Log("   input: " + line);
                 }
 
                 foreach (string line in emulator.Stubs.ThrowHistory.TakeLast(5))
