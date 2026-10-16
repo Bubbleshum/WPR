@@ -1646,6 +1646,26 @@ as native; it now activates, runs its page and connects. Not run on Android (the
 No `ApplicationPatcher.Version` bump: no patcher table changed. Reinstall to pick up the
 classification and title fixes; the inference and DrawingSurface host apply on next launch.
 
+### A WP8 thread waiting on itself is a Sleep (2026-10-16)
+
+**2020: My Country** (`40c1edab-…`, SDL for WinRT) presented 0 frames for ever on its inferred
+page, with ~20M `WaitForSingleObjectEx` + `GetCurrentThread` and ~10M `_Mtx_lock`/`_Mtx_unlock` per
+5 s. The store API has no `Sleep`, so SDL's `SDL_Delay` is `WaitForSingleObjectEx(GetCurrentThread(),
+ms, FALSE)`. `SyncLibrary.WaitAny` took the `(HANDLE)-2` pseudo-handle as "not a sync object, so
+signalled" and returned `WAIT_OBJECT_0` at once without switching. Guest threads are cooperative, so
+the `std::thread` worker the main thread had just launched (a 50 ms / 2 ms polling loop) never gave
+the CPU back: the main thread never ran again. The inferred page description was fine.
+
+A wait on the current-thread pseudo-handle is now a never-signalled thread object (a thread is
+signalled only when it ends): `WAIT_TIMEOUT`, after blocking to the deadline so other threads run.
+The `threads:` line shows such a thread as `blocked on thread itself (a sleep)`. **The tell** in an
+import trace (`WPR_WP8_IMPORT_TRACE`) is one thread alternating `GetCurrentThread` → `WaitForSingleObjectEx
+r0=0xFFFFFFFE r1=<ms>` with nothing else ever running. Desktop D1/D2: tutorial ("Chapter 1 - First
+Island"), taps advance it, 60 fps. None of the 11-title WP8 regression set waits on itself (same
+frames, same outcomes). Contract suite `SleepOnSelfSuite`. Inference gap seen on the way, not
+blocking: `SetViewDimensions` gets `(0,0,0,0)` because its arguments are computed from
+`Host.Content`, not literals (real: `0, 0, 768, 1280`).
+
 ### Update checks and the About page's "what's new" (2026-09-29, Android)
 
 `WPR.Shell.AppUpdates` asks GitHub's `/releases/latest` (drafts and pre-releases excluded) at most
