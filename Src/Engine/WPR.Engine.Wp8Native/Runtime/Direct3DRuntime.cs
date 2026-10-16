@@ -128,7 +128,11 @@ namespace WPR.Wp8Native
         /// <summary>Slots that were called and have no implementation behind them.</summary>
         public IReadOnlyList<string> Unimplemented => _unimplemented;
 
-        /// <summary>Interfaces the image asked for by IID that this layer does not know.</summary>
+        /// <summary>
+        /// Every QueryInterface this layer refused: IIDs it does not know, and known interfaces
+        /// it does not build on that object. A title that ignores the HRESULT calls through the
+        /// null it got back, possibly much later, so the run summary names them (<c>d3d refused:</c>).
+        /// </summary>
         public IReadOnlyList<string> UnknownIids => _unknownIids;
 
         /// <summary>True once the image has a device.</summary>
@@ -379,6 +383,7 @@ namespace WPR.Wp8Native
             [new Guid("035f3ab4-482e-4e50-b41f-8a7f8bd8960b")] = "IDXGIResource",
             [new Guid("30961379-4609-4a41-998e-54fe567ee0c1")] = "IDXGIResource1",
             [new Guid("9b7e4e00-342c-4106-a19f-4f2704f689f0")] = "ID3D10Multithread",
+            [new Guid("b2daad8b-03d4-4dbf-95eb-32ab4b63d0ab")] = "ID3DUserDefinedAnnotation",
         };
 
         /// <summary>
@@ -441,6 +446,12 @@ namespace WPR.Wp8Native
             long pointer = ResolveInterface(owner, wanted);
             if (pointer == 0)
             {
+                string entry = $"{owner.Name} asked for {wanted}";
+                if (!_unknownIids.Contains(entry, StringComparer.Ordinal))
+                {
+                    _unknownIids.Add(entry);
+                }
+
                 Fail(outPointer, $"{owner.Name}::QueryInterface({wanted}) -> E_NOINTERFACE");
                 return;
             }
@@ -504,6 +515,8 @@ namespace WPR.Wp8Native
                     => CreateKeyedMutex(owner),
                 "ID3D10Multithread" when owner.Name is "Device" or "Context"
                     => CreateInterface(owner, wanted, 7, MultithreadMethods()),
+                "ID3DUserDefinedAnnotation" when owner.Name == "Context"
+                    => CreateInterface(owner, wanted, 7, AnnotationMethods()),
                 _ => 0,
             };
         }
@@ -569,6 +582,25 @@ namespace WPR.Wp8Native
 
             // BOOL GetMultithreadProtected()
             [6] = ("GetMultithreadProtected", () => Return(_multithreadProtected ? 1 : 0)),
+        };
+
+        // -------------------------------------------------------------------
+        // ID3DUserDefinedAnnotation
+        //
+        // IUnknown 0-2, BeginEvent(LPCWSTR) 3, EndEvent 4, SetMarker(LPCWSTR) 5, GetStatus 6.
+        // D3D11.1's PIX event markers, queried off the immediate context. Answered as Windows
+        // answers with no profiler attached: BeginEvent/EndEvent -1, GetStatus FALSE. Halo:
+        // Spartan Assault queries it when it builds its renderer and never checks the result; its
+        // light pass brackets itself with BeginEvent(L"BeginLightPass"), so refused, the first
+        // frame of a mission called through the null it got back.
+        // -------------------------------------------------------------------
+
+        private Dictionary<int, (string, Action)> AnnotationMethods() => new()
+        {
+            [3] = ("BeginEvent", () => Return(0xFFFFFFFF)),
+            [4] = ("EndEvent", () => Return(0xFFFFFFFF)),
+            [5] = ("SetMarker", () => Return(0)),
+            [6] = ("GetStatus", () => Return(0)),
         };
 
         /// <summary>Whether the device's ID3D10Multithread lock is held, and by which guest thread.</summary>

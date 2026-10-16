@@ -380,6 +380,14 @@ namespace WPR.Wp8Native
 
                 ItemState item = ChildOf(parent, relative, folder);
                 bool taken = System.IO.File.Exists(item.HostPath) || Directory.Exists(item.HostPath);
+
+                // What a save path asked for and got, in the file log the post-mortem prints.
+                List<string> files = _e.Stubs.Files.Log;
+                if (files.Count < 4000)
+                {
+                    files.Add($"Create{(folder ? "Folder" : "File")}Async(\"{item.GuestPath}\", option {option}){(taken ? " - exists" : string.Empty)}");
+                }
+
                 if (taken)
                 {
                     switch (option)
@@ -561,6 +569,11 @@ namespace WPR.Wp8Native
                     {
                         return AsyncAction(AlreadyExists);
                     }
+                }
+
+                if (_e.Stubs.Files.Log.Count < 4000)
+                {
+                    _e.Stubs.Files.Log.Add($"RenameAsync(\"{item.GuestPath}\" -> \"{target.GuestPath}\", option {option})");
                 }
 
                 try

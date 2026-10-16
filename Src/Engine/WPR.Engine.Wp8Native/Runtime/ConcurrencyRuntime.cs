@@ -28,9 +28,11 @@ namespace WPR.Wp8Native
     /// </code>
     /// <para><c>_CancellationTokenState::_None()</c> is the pointer value 2; it and null are never
     /// canceled. A collection is canceled by its own <c>_Cancel</c> or by its token.</para>
-    /// <para>Exceptions: a chore that throws out of a worker ends that thread (the guest-thread
-    /// policy), which cancels its collection, so the wait reports <c>_Canceled</c> rather than
-    /// rethrowing - the one place this falls short of ConcRT, which carries the exception to wait().</para>
+    /// <para>Exceptions: an exception that leaves a chore is caught at the chore's return trap, as
+    /// MSVCR110's chore wrapper catches it (<see cref="RunningChoreTraps"/>): the chore's frames are
+    /// unwound, its collection is canceled and the worker carries on. The wait then reports
+    /// <c>_Canceled</c> rather than rethrowing - the one place this falls short of ConcRT, which
+    /// carries the exception to wait(); ppltasks has already given it to the task by then.</para>
     /// </remarks>
     public sealed class ConcurrencyRuntime
     {
@@ -100,7 +102,12 @@ namespace WPR.Wp8Native
             public bool Done { get; set; }
 
             public int Thread { get; set; }
+
+            /// <summary>The trap the chore's function returns to while it runs; 0 before it starts.</summary>
+            public long ReturnTrap { get; set; }
         }
+
+        private readonly List<Chore> _running = new();
 
         private sealed class Worker(int id)
         {
@@ -738,8 +745,11 @@ namespace WPR.Wp8Native
 
             Executing(Tid).Add(owner);
             long argument = chore.RawFunction != 0 ? chore.Argument : chore.Address;
-            _e.CallEmulated(chore.Name, function, [argument], () =>
+            _running.Add(chore);
+            chore.ReturnTrap = _e.CallEmulated(chore.Name, function, [argument], () =>
             {
+                _running.Remove(chore);
+                chore.ReturnTrap = 0;
                 List<Collection?> stack = Executing(chore.Thread);
                 if (stack.Count > 0)
                 {
@@ -1014,9 +1024,53 @@ namespace WPR.Wp8Native
             });
         }
 
+        /// <summary>
+        /// The return traps of the chores running on the current thread, innermost first: where an
+        /// exception nothing in a chore caught is caught by the runtime instead.
+        /// </summary>
+        /// <remarks>
+        /// MSVCR110 calls every chore inside <c>catch (...)</c> (<c>_UnrealizedChore</c>'s wrapper):
+        /// the collection records the exception (<c>_RaisedException</c>), is canceled, and the worker
+        /// goes on to its next chore. VC11's ppltasks relies on it - its task handle catches a
+        /// <c>Platform::Exception^</c>, hands it to the task (<c>_CancelWithException</c>) and then
+        /// rethrows it into that wrapper. Ending the worker instead (the old policy) left the
+        /// chore's own frames un-unwound and Halo: Spartan Assault waiting on its save for ever.
+        /// </remarks>
+        public IEnumerable<long> RunningChoreTraps()
+        {
+            int me = Tid;
+            for (int i = _running.Count - 1; i >= 0; i--)
+            {
+                if (_running[i].Thread == me && _running[i].ReturnTrap != 0)
+                {
+                    yield return _running[i].ReturnTrap;
+                }
+            }
+        }
+
+        /// <summary>
+        /// An exception escaped the chore returning to <paramref name="returnTrap"/>: its collection is
+        /// canceled, as ConcRT's <c>_RaisedException</c> does. The caller then returns through the trap.
+        /// </summary>
+        public void ChoreRaised(long returnTrap, string what)
+        {
+            Chore? chore = _running.Find(c => c.ReturnTrap == returnTrap);
+            if (chore?.Owner is { } owner)
+            {
+                Cancel(owner);
+            }
+
+            ChoresRaised++;
+            Note($"chore 0x{chore?.Address ?? 0:X8} raised {what}; caught by the runtime, its collection is canceled");
+        }
+
+        /// <summary>Chores an exception escaped from, caught by the runtime's chore wrapper.</summary>
+        public int ChoresRaised { get; private set; }
+
         /// <summary>A worker ended by an exception nothing caught: its chore counts as finished, and its collection canceled.</summary>
         private void OnThreadAbandoned(int thread)
         {
+            _running.RemoveAll(c => c.Thread == thread);
             if (!_workers.Remove(thread, out Worker? worker) || worker.Current is not { } chore)
             {
                 return;

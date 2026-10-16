@@ -139,6 +139,19 @@ public sealed class Direct3DStateSuite : IContractSuite
         M(mt, 4);
         Check("Leave releases it", e.Direct3D.MultithreadLock.Depth == 0);
 
+        // ---- ID3DUserDefinedAnnotation (Halo's light pass brackets itself with BeginEvent) ----
+        long aiid = h.Guid(new Guid("b2daad8b-03d4-4dbf-95eb-32ab4b63d0ab"));
+        long pann = Out();
+        Check("the immediate context answers ID3DUserDefinedAnnotation", M(context, 0, aiid, pann) == SOk && h.U32(pann) != 0);
+        long ann = h.U32(pann);
+        Check("BeginEvent/EndEvent answer -1 and GetStatus FALSE, as with no profiler attached",
+            (uint)M(ann, 3, h.Bstr("BeginLightPass")) == 0xFFFFFFFF && (uint)M(ann, 4) == 0xFFFFFFFF && M(ann, 6) == 0);
+        M(ann, 5, h.Bstr("marker"));
+        long pnone = Out();
+        e.WriteUInt32(pnone, 0xDEADBEEF);
+        Check("the device does not answer it (it is a context interface)", M(device, 0, aiid, pnone) != SOk && h.U32(pnone) == 0);
+        Check("and the refusal is named for the run summary", e.Direct3D.UnknownIids.Any(l => l.Contains("ID3DUserDefinedAnnotation")));
+
         // ---- WriteVideoFrame (TransferVideoFrame's target) ----
         byte[] frame = [255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255];   // 2x2 RGBA: red green / blue white
         Check("a frame scales into a BGRA texture with its channels swapped",

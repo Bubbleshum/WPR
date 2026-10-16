@@ -535,6 +535,45 @@ namespace WPR.Wp8Native
         /// <summary>Which event is being delivered (pressed, moved, released): PointerUpdateKind.</summary>
         private int _pointerSlot;
 
+        /// <summary>Pointers in contact now, and the primary one (0 when none is).</summary>
+        private readonly HashSet<uint> _contacts = new();
+        private uint _primaryPointer;
+
+        /// <summary>
+        /// get_IsPrimary: the pointer that went down while nothing else was in contact, for as long
+        /// as it stays down - as Windows decides it, whatever its id. It used to be "id 1", which
+        /// only Android's first finger has: the desktop's synthetic finger (and a second finger
+        /// pressed after the first lifted) was never primary, and Halo: Spartan Assault's
+        /// Scaleform menus ignore every pointer that is not.
+        /// </summary>
+        private bool IsPrimaryPointer => _pointerId == _primaryPointer;
+
+        private void TrackPrimary(int slot, uint id)
+        {
+            if (slot == SlotAddPointerPressed)
+            {
+                if (_contacts.Count == 0)
+                {
+                    _primaryPointer = id;
+                }
+
+                _contacts.Add(id);
+            }
+            else if (slot == SlotAddPointerReleased)
+            {
+                _contacts.Remove(id);
+                if (_contacts.Count == 0 && id != _primaryPointer)
+                {
+                    _primaryPointer = 0;
+                }
+            }
+            else if (slot == SlotAddPointerMoved && _contacts.Count == 0 && _primaryPointer == 0)
+            {
+                // A move with nothing down (a scripted drag's first step) is the primary's.
+                _primaryPointer = id;
+            }
+        }
+
         /// <summary>
         /// The gesture script, from <c>WPR_INPUT</c>, as a list of already-expanded steps.
         /// </summary>
@@ -765,9 +804,11 @@ namespace WPR.Wp8Native
             _pointerInContact = next.Slot != SlotAddPointerReleased;
             _pointerId = next.Id;
             _pointerSlot = next.Slot;
+            TrackPrimary(next.Slot, next.Id);
 
             int slot = next.Slot;
-            if (!_windowHandlers.TryGetValue(slot, out long handler) || handler == 0)
+            List<long> handlers = WindowHandlersFor(slot);
+            if (handlers.Count == 0)
             {
                 // A gesture step the image never subscribed to. Say so once rather than every
                 // frame of every drag, and keep spending the turn - the hold has to last.
@@ -780,26 +821,6 @@ namespace WPR.Wp8Native
             }
 
             string name = NameOf(slot);
-            long vtable = _emulator.ReadUInt32(handler);
-
-            // A WinRT delegate is IUnknown-based, so Invoke is slot 3 - not slot 6. This is
-            // the same trap the ThreadPool work item fell into.
-            long invoke = _emulator.ReadUInt32(vtable + (SlotDelegateInvoke * 4));
-            if (!_emulator.IsExecutableCode(invoke))
-            {
-                // Say what the vtable actually holds. "Not at slot 3" on its own cannot tell
-                // a delegate whose layout is different from a pointer that is not a delegate.
-                string slots = string.Join(" ", Enumerable.Range(0, 8).Select(i =>
-                {
-                    long entry = _emulator.ReadUInt32(vtable + (i * 4), 0);
-                    return $"{i}:{entry:X8}{(_emulator.IsExecutableCode(entry) ? "*" : "")}";
-                }));
-
-                InputDelivered.Add(
-                    $"{name}: handler 0x{handler:X8} vtable 0x{vtable:X8} has no Invoke at slot " +
-                    $"{SlotDelegateInvoke} - slots {slots} (* = code)");
-                return false;
-            }
 
             // A drag is a dozen of these; logging every one buries the run. The ends of a
             // gesture are what matter, so moves are counted rather than listed.
@@ -810,11 +831,11 @@ namespace WPR.Wp8Native
             else
             {
                 InputDelivered.Add(
-                    $"{name} at ({_pointerX:0}, {_pointerY:0}) -> handler 0x{handler:X8} " +
-                    $"invoke 0x{invoke:X8}");
+                    $"{name} at ({_pointerX:0}, {_pointerY:0}) -> {handlers.Count} handler(s): " +
+                    string.Join(", ", handlers.Select(h => $"0x{h:X8}")));
             }
 
-            // Record what the handler does with the event. A pointer event the image accepts
+            // Record what the handlers do with the event. A pointer event the image accepts
             // with S_OK and then ignores looks exactly like one it acted on; the calls it makes
             // in between - or fails to make - are the only difference visible from here.
             bool capture = slot != SlotAddPointerMoved;
@@ -823,34 +844,145 @@ namespace WPR.Wp8Native
                 _emulator.StartCallCapture();
             }
 
-            _emulator.CallEmulated(
-                $"CoreWindow::{name}",
-                invoke,
-                [handler, sender, PointerArgs()],
-                onReturn: () =>
+            InvokeWindowHandlers(handlers, 0, name, sender, () =>
+            {
+                if (capture)
                 {
-                    if (capture)
-                    {
-                        IReadOnlyList<string> made = _emulator.StopCallCapture();
-                        InputDelivered.Add(
-                            $"   {name} returned 0x{Arg(0):X8} after {made.Count} call(s): {Condense(made)}");
-                    }
+                    IReadOnlyList<string> made = _emulator.StopCallCapture();
+                    InputDelivered.Add(
+                        $"   {name} returned 0x{Arg(0):X8} after {made.Count} call(s): {Condense(made)}");
+                }
 
-                    // Every live event queued this frame goes out this frame. One a frame was
-                    // enough for one finger; with two moving, events arrived twice as fast as
-                    // they left and the controls fell further behind every frame.
-                    while (_pending.Count > 0 && _pending.Peek().Live)
+                // Every live event queued this frame goes out this frame. One a frame was
+                // enough for one finger; with two moving, events arrived twice as fast as
+                // they left and the controls fell further behind every frame.
+                while (_pending.Count > 0 && _pending.Peek().Live)
+                {
+                    if (DeliverInput(continueWith, sender))
                     {
-                        if (DeliverInput(continueWith, sender))
-                        {
-                            return;
-                        }
+                        return;
                     }
+                }
 
-                    continueWith();
-                });
+                continueWith();
+            });
 
             return true;
+        }
+
+        /// <summary>
+        /// Every handler subscribed to a CoreWindow event, in subscription order. An event has as
+        /// many handlers as <c>add_</c> calls: Halo: Spartan Assault subscribes PointerPressed,
+        /// Moved and Released twice (its Scaleform menus and its game input), and keeping only
+        /// the last made its menus deaf to every touch that came after the second subscription.
+        /// </summary>
+        private readonly Dictionary<int, List<long>> _windowHandlerLists = new();
+
+        /// <summary>Each subscription's EventRegistrationToken, so a remove_ can find it.</summary>
+        private readonly Dictionary<long, (int Slot, long Handler)> _windowTokens = new();
+        private long _nextWindowToken = 0x5750_0001;
+
+        /// <summary>
+        /// Records a subscription: <see cref="_windowHandlers"/> keeps the latest, the list all of them.
+        /// Returns its EventRegistrationToken (never 0, so an unsubscribed 0 never matches).
+        /// </summary>
+        private long AddWindowHandler(int slot, long handler)
+        {
+            _windowHandlers[slot] = handler;
+            if (handler == 0)
+            {
+                return 0;
+            }
+
+            if (!_windowHandlerLists.TryGetValue(slot, out List<long>? list))
+            {
+                _windowHandlerLists[slot] = list = new List<long>();
+            }
+
+            if (!list.Contains(handler))
+            {
+                list.Add(handler);
+            }
+
+            long token = _nextWindowToken++;
+            _windowTokens[token] = (slot, handler);
+            return token;
+        }
+
+        /// <summary>remove_X(EventRegistrationToken) on the CoreWindow: drops that one handler.</summary>
+        private void RemoveWindowHandler(long token)
+        {
+            if (!_windowTokens.Remove(token, out (int Slot, long Handler) entry))
+            {
+                return;
+            }
+
+            if (_windowHandlerLists.TryGetValue(entry.Slot, out List<long>? list))
+            {
+                list.Remove(entry.Handler);
+                if (_windowHandlers.TryGetValue(entry.Slot, out long latest) && latest == entry.Handler)
+                {
+                    if (list.Count > 0)
+                    {
+                        _windowHandlers[entry.Slot] = list[^1];
+                    }
+                    else
+                    {
+                        _windowHandlers.Remove(entry.Slot);
+                    }
+                }
+            }
+        }
+
+        private List<long> WindowHandlersFor(int slot)
+        {
+            if (_windowHandlerLists.TryGetValue(slot, out List<long>? list) && list.Count > 0)
+            {
+                return list.ToList();
+            }
+
+            // Registered by a path that sets the slot directly (a lifecycle event's own add_).
+            return _windowHandlers.TryGetValue(slot, out long handler) && handler != 0 ? [handler] : [];
+        }
+
+        /// <summary>Calls <paramref name="handlers"/>[<paramref name="index"/>..] one after another, then <paramref name="done"/>.</summary>
+        private void InvokeWindowHandlers(List<long> handlers, int index, string name, long sender, Action done)
+        {
+            for (; index < handlers.Count; index++)
+            {
+                long handler = handlers[index];
+                long vtable = _emulator.ReadUInt32(handler);
+
+                // A WinRT delegate is IUnknown-based, so Invoke is slot 3 - not slot 6. This is
+                // the same trap the ThreadPool work item fell into.
+                long invoke = _emulator.ReadUInt32(vtable + (SlotDelegateInvoke * 4));
+                if (!_emulator.IsExecutableCode(invoke))
+                {
+                    // Say what the vtable actually holds. "Not at slot 3" on its own cannot tell
+                    // a delegate whose layout is different from a pointer that is not a delegate.
+                    string slots = string.Join(" ", Enumerable.Range(0, 8).Select(i =>
+                    {
+                        long entry = _emulator.ReadUInt32(vtable + (i * 4), 0);
+                        return $"{i}:{entry:X8}{(_emulator.IsExecutableCode(entry) ? "*" : "")}";
+                    }));
+
+                    InputDelivered.Add(
+                        $"{name}: handler 0x{handler:X8} vtable 0x{vtable:X8} has no Invoke at slot " +
+                        $"{SlotDelegateInvoke} - slots {slots} (* = code)");
+                    continue;
+                }
+
+                int next = index + 1;
+                _emulator.CallEmulated(
+                    $"CoreWindow::{name}",
+                    invoke,
+                    [handler, sender, PointerArgs()],
+                    onReturn: () => InvokeWindowHandlers(handlers, next, name, sender, done),
+                    recycle: true);
+                return;
+            }
+
+            done();
         }
 
         /// <summary>Invoke on a WinRT delegate. See <see cref="SlotHandlerInvoke"/>.</summary>
@@ -1158,7 +1290,7 @@ namespace WPR.Wp8Native
                     [InspectableSlots + 12] = ("get_IsMiddleButtonPressed", flag(() => false)),
                     [InspectableSlots + 13] = ("get_MouseWheelDelta", () => ReturnUInt32(0)),
                     [InspectableSlots + 14] = ("get_IsHorizontalMouseWheel", flag(() => false)),
-                    [InspectableSlots + 15] = ("get_IsPrimary", flag(() => _pointerId == 1)),
+                    [InspectableSlots + 15] = ("get_IsPrimary", flag(() => IsPrimaryPointer)),
                     [InspectableSlots + 16] = ("get_IsInRange", flag(() => _pointerInContact)),
                     [InspectableSlots + 17] = ("get_IsCanceled", flag(() => false)),
                     [InspectableSlots + 18] = ("get_IsBarrelButtonPressed", flag(() => false)),
@@ -2306,16 +2438,12 @@ namespace WPR.Wp8Native
                         // Shaped like add_SomeEvent(handler, EventRegistrationToken* token):
                         // r1 is the handler object, so the scratch pointer is r2. A zero
                         // token is a valid one - it just never matches a remove.
-                        _emulator.WriteUInt64(Arg(2), 0);
-
                         // Keep the handler. Accepting a subscription and throwing the
                         // delegate away makes the event permanently unraisable, which is
                         // the difference between a game that can be played and one that
                         // can only be watched.
-                        if (interfaceName == "ICoreWindow")
-                        {
-                            _windowHandlers[slot] = Arg(1);
-                        }
+                        long token = interfaceName == "ICoreWindow" ? AddWindowHandler(slot, Arg(1)) : 0;
+                        _emulator.WriteUInt64(Arg(2), (ulong)token);
 
                         // And take a reference on it, because accepting a subscription is a
                         // promise to keep the delegate alive - the caller releases it the

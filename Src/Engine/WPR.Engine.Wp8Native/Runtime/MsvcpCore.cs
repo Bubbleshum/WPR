@@ -1165,7 +1165,9 @@ namespace WPR.Wp8Native
                 return;
             }
 
-            _throw(new ThrownException(capture.Object, capture.Types) { ThrowInfo = capture.ThrowInfo });
+            // A host-raised Platform exception has no ThrowInfo and was captured as its handle.
+            ThrownException again = new(capture.Object, capture.Types) { ThrowInfo = capture.ThrowInfo };
+            _throw(again with { ObjectIsHandle = capture.ThrowInfo == 0 && again.IsPointer });
         }
 
         // ------------------------------------------------------------------------------------

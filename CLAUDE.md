@@ -831,7 +831,7 @@ cutscene, saves, and runs main menu → START → operation movie → operation 
 armory → the "place thumbs as indicated to start" mission screen on D3D11, forced Vulkan and
 forced GLES 3.0 + no DXT (that last one washed out, as D4 always is). **Gameplay needs two fingers
 down at once**, which the harness cannot inject (its synthetic finger is one slot), so the mission
-itself is untested. Not run on a phone or the emulator. Eight separate runtime defects, each hiding
+itself was untested then (it plays now: see "Halo plays a mission" below). Not run on a phone or the emulator. Eight separate runtime defects, each hiding
 the next:
 
 | defect | symptom | fix |
@@ -895,7 +895,56 @@ Verified on `WPR_Verify` (Release APK, debug-signed): before the re-patch `no si
 movies, the 34 s intro cutscene (frames on screen) and the menus, on A2 Vulkan and A1 GLES 3.1.
 Once, on the very first run after the intro, a ConcRT worker stopped with `FetchProtected of 4
 byte(s)` near a `savedata.bin` / `0x80070050` (ERROR_FILE_EXISTS) structure; the next two runs did
-not repeat it. Not caused by this change, not chased. Not run: S24, Mali.
+not repeat it. Not caused by this change, not chased. Not run: S24, Mali. (Chased and fixed the
+same day: it is the by-value catch below.)
+
+### Halo plays a mission, from a save or a first run (2026-10-16)
+
+On the S24 Halo stopped as a mission loaded behind its operation movie: `CPU exception 12 at
+0x00000000`, `null call to 0x00000000 from 0x004EFA49`. A first run without a save showed "An
+unexpected save data error occurred", sat on CONNECTING for ever, or died with `FetchProtected`. Four
+host defects, all general:
+
+| defect | symptom | fix |
+| --- | --- | --- |
+| no `ID3DUserDefinedAnnotation` on the immediate context | the renderer QIs it once (unchecked) and its light pass calls `BeginEvent(L"BeginLightPass")` through the null: the stop at `0x004EFA49` (`0x4F3D78` tail-calls `this->+0x144->vtbl[3]`), on the first frame of a mission | answered as Windows does with no profiler: BeginEvent/EndEvent -1, SetMarker, GetStatus FALSE |
+| a catch slot always got the thrown value's ADDRESS | `catch (Platform::Exception^ e)` is by value, so it got a pointer to the handle; its AddRef ran the exception's second vtable as code (`FetchProtected`), or the save error dialog | `HostStubs.CatchObjectValue`, as `__BuildCatchObject`: by reference the address, by value of a pointer type (`.P…`) the pointer stored there. Host-raised Platform exceptions carry the handle itself (`ThrownException.ObjectIsHandle`) |
+| an exception leaving a ConcRT chore ended the worker thread | ppltasks hands a Platform exception to the task and then rethrows into MSVCR110's chore wrapper (`catch (...)`); with the worker ended, the chore's frames were never unwound and the first save's continuation chain stalled on CONNECTING | caught at the chore's return trap (`ConcurrencyRuntime.RunningChoreTraps`): cleanups run, collection canceled, the worker carries on. `throw:` lines say `caught by the ConcRT chore wrapper` |
+| one handler per CoreWindow event; `IsPrimary` was "pointer id 1" | Halo subscribes Pressed/Moved/Released twice (menus and game) and only the last one heard anything; the desktop's synthetic finger (id 0x7FFFFFFF) was never primary | every handler is raised in subscription order, add_ hands out real tokens and remove_ drops one; primary = the pointer that went down with nothing else in contact |
+
+The first save also throws `0x80070050` deliberately: it writes through
+`CreateFileAsync("savedata.bin", GenerateUniqueName)` and throws when the result kept its name
+(nothing to rename onto the target). That is the game's own control flow, not a host defect; it now
+runs through the two exception fixes above to the main menu.
+
+Diagnostics added: Platform exceptions in the throw history carry their HRESULT (`hr=0x80070050`);
+the summary has a `d3d refused:` line (every QueryInterface the Direct3D layer said no to: a title
+that ignores the HRESULT calls through the null later, possibly thousands of frames on); the file log
+records WinRT `CreateFileAsync`/`CreateFolderAsync`/`RenameAsync` with their collision option; the
+post-mortem lists the last `input:` deliveries and which handlers took them.
+
+**Reproducing it on the desktop**: the phone's save, pulled read-only, in a scratch `WPR_DATA_ROOT`
+whose `AppData\<id>` is a junction to the real install (`DataStorePath` rewritten, hub token
+removed). START is only live once the menu has finished building, ~45 s into a harness run; earlier
+taps are swallowed. Then SELECT (1140,712) twice, the mission loads ("initializing simulation"),
+"place thumbs" wants two fingers: the harness's `Script.cs` has local `down/move/up <id> x y` verbs
+that inject straight into the WP8 runtime (`WinRtRuntime.InjectPointer`, reflection), at
+(185,590) and (1095,590), pressed half a second apart. With the annotation refused (a temporary
+switch) the same run stops at exactly `null call to 0x00000000 from 0x004EFA49`.
+
+Contract tests: `Suites/CatchObjectSuite.cs`, `Suites/PointerSuite.cs`, the throwing chore in
+`ConcurrencyRuntimeSuite`, the annotation in `Direct3DStateSuite` (2244/2244).
+
+| cell | phone save: menu → operation A → mission A-1 → two thumbs → play | first run, no save |
+| --- | --- | --- |
+| D1 D3D11 | ✅ gameplay, Spartan moves with the left thumb, 2,300 BeginEvent calls | ✅ main menu, `savedata.bin` 2424 bytes |
+| D2 Vulkan | ✅ gameplay | not run |
+| D4 GLES 3.0 + no DXT | ✅ gameplay (washed out, as D4 always is) | not run |
+| A1/A2, P1–P3 | not run (coordinator tests the S24) | |
+
+**Open, seen on every driver:** in play some objects (crates, Covenant units, parts of the HUD
+weapon panel) draw as solid black silhouettes. Not chased. WP8 regression (11 titles, Terraria /
+Halo / GTA excluded, 32 s from clean saves, combine vs this change, D3D11): the same screens.
 
 Diagnostics added on the way, all opt-in: `WPR_WP8_IMPORT_TRACE=N` (first N imports, critical
 sections skipped), `WPR_WP8_METHOD_TRACE=<text>` (host vtable calls whose name contains it,

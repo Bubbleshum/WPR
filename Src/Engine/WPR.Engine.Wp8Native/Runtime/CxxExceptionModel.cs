@@ -8,6 +8,19 @@ namespace WPR.Wp8Native
 
         /// <summary>The guest ThrowInfo of a guest throw (size, copy constructor, destructor); 0 for an object the host built.</summary>
         public long ThrowInfo { get; init; }
+
+        /// <summary>
+        /// Whether what is thrown is a pointer (<c>.PAV…</c>, <c>.P$AAV…</c> for a C++/CX hat): a
+        /// by-value catch then receives the pointer stored at <see cref="Object"/>, not its address.
+        /// </summary>
+        public bool IsPointer => TypeName.StartsWith(".P", StringComparison.Ordinal);
+
+        /// <summary>
+        /// <see cref="Object"/> is the thrown handle itself rather than the address of the thrown
+        /// value: what the host's Platform exception raise hands over, having no thrower's stack
+        /// to keep the handle in.
+        /// </summary>
+        public bool ObjectIsHandle { get; init; }
     }
 
     /// <summary>A catch clause found during the search.</summary>
@@ -23,6 +36,12 @@ namespace WPR.Wp8Native
 
         /// <summary>Adjustment applied to the establisher frame on ARM and x64.</summary>
         public int FrameOffset { get; init; }
+
+        /// <summary>The HandlerType's adjectives (ehdata.h HT_*): const, reference, WinRT handle...</summary>
+        public uint Adjectives { get; init; }
+
+        /// <summary>HT_IsReference: the catch takes the thrown object by reference (<c>catch (T&amp;)</c>).</summary>
+        public bool ByReference => (Adjectives & 0x8) != 0;
 
         public bool IsCatchAll => CaughtType == "...";
 
@@ -350,6 +369,7 @@ namespace WPR.Wp8Native
                         yield return new CatchCandidate(frame, tryLow, tryHigh, caught, funcletRva)
                         {
                             CatchObjectOffset = catchObject,
+                            Adjectives = _emulator.ReadUInt32(handler, 0),
                         };
                     }
                 }

@@ -268,6 +268,27 @@ public sealed class ConcurrencyRuntimeSuite : IContractSuite
         status = Run(RunAndWait, async5 + 8, 0);
         Check("_RunAndWait blocks until a chore running on another thread has finished", status == 1 && lastFault is null && e.CurrentThreadId == 1, lastFault ?? "");
 
+        // An exception that leaves a chore is caught by the runtime (MSVCR110's chore wrapper):
+        // the collection is canceled and the worker goes on to its next chore. ppltasks rethrows
+        // into that wrapper on purpose; Halo: Spartan Assault's first save does exactly that.
+        long async6 = h.Call(NewCollection, 2), async7 = h.Call(NewCollection, 2);
+        long thrower = NewChore(), after = NewChore();
+        int raisedBefore = s.Ppl.ChoresRaised;
+        bodies[thrower] = () =>
+        {
+            long what = h.Buffer(12);
+            s.ThrowIntoGuest(new ThrownException(what, [".?AVruntime_error@std@@", ".?AVexception@std@@"]));
+        };
+        h.Call(Schedule, async6 + 8, thrower);
+        h.Call(Schedule, async7 + 8, after);
+        Run($"?_Yield@_Context{D}SAXXZ");
+        int throwerThread = ran.LastOrDefault(r => r.Chore == thrower).Thread;
+        Check("a chore that throws is caught by the runtime, not left to end its thread",
+            Runs(thrower) == 1 && s.Ppl.ChoresRaised == raisedBefore + 1, $"raised {s.Ppl.ChoresRaised - raisedBefore} {lastFault}");
+        Check("... and the same worker goes on to the next chore", Runs(after) == 1 && ran.Last(r => r.Chore == after).Thread == throwerThread && throwerThread != 1,
+            $"{throwerThread} / {ran.LastOrDefault(r => r.Chore == after).Thread} {lastFault}");
+        Check("... while the thrower's collection is canceled", Run(RunAndWait, async6 + 8, 0) == 2 && Run(RunAndWait, async7 + 8, 0) == 1, lastFault ?? "");
+
         var tasks = new List<long>();
         long proc = ArmEmulator.ThumbEntry(e.RegisterVtableMethod("test scheduled task", () => tasks.Add(Reg(R0))));
         h.Call($"?_ScheduleTask@_CurrentScheduler{D}SAXP6AXPAX@Z0@Z", proc, 0x7A5C);
