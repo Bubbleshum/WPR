@@ -13,6 +13,7 @@
     <Compile Include="..\..\Src\Platforms\WPR.Platform.Windows\Audio\FFmpegVideoDecoder.cs" Link="FFmpegVideoDecoder.cs" />
     <ProjectReference Include="..\..\Src\Backends\WPR.Backend.FNA\WPR.Backend.FNA.csproj" />
     <ProjectReference Include="..\..\Src\Core\WPR.Database\WPR.Database.csproj" />
+    <ProjectReference Include="..\..\Src\Core\WPR.Shell\WPR.Shell.csproj" />
     <!-- Mirror the WCF packages the two real heads carry. The Default ALC binds from THIS exe's
          deps.json, not from whatever happens to sit in the folder, so without these a game that
          touches System.ServiceModel fails here and succeeds in the app — a harness-only false

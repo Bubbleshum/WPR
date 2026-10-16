@@ -63,6 +63,10 @@ public sealed class XboxLiveSuite : IContractSuite
 
         public void PostResults(uint leaderboardId, IReadOnlyList<XboxLeaderboardAttribute> attributes) => MultiPosts.Add((leaderboardId, attributes));
 
+        public List<uint> Known { get; } = new();
+
+        public IReadOnlyList<uint> KnownLeaderboards() => Known;
+
         public XboxLeaderboardPage? ReadLeaderboard(uint leaderboardId, uint skip, uint max, bool titleView)
         {
             Reads.Add((leaderboardId, skip, max, titleView));
@@ -125,6 +129,19 @@ public sealed class XboxLiveSuite : IContractSuite
                 Scalar(meta, Slot6 + 0) == b.Id && Text(meta, Slot6 + 1) == b.DisplayName && b.DisplayName.Length > 0,
                 $"{Scalar(meta, Slot6 + 0)} '{Text(meta, Slot6 + 1)}'");
         }
+
+        // A board the title posted to that its configuration does not name is listed after the
+        // defined ones; one it does name is not listed twice.
+        uint firstDefined = expected > 0 ? E.WinRt.TitleConfig.Boards[0].Id : 1;
+        host.Known.AddRange([firstDefined, 9999u]);
+        long boardsOp2 = h.Buffer(8);
+        h.CallMethod(service, Slot6 + 0, boardsOp2);
+        long boardItems2 = Results(Results(h.U32(boardsOp2)), Slot6 + 0, direct: true);
+        long listed = Scalar(boardItems2, Slot6 + 1);
+        h.Check("...plus any other board the title has posted to, once",
+            listed == expected + 1 && Scalar(At(boardItems2, (uint)(listed - 1)), Slot6 + 0) == 9999,
+            $"listed={listed} expected={expected + 1}");
+        host.Known.Clear();
 
         long readOut = h.Buffer(8);
         h.CallMethod(service, Slot6 + 1, 0, 10, 1, 1, 0, 0, readOut);
@@ -217,6 +234,63 @@ public sealed class XboxLiveSuite : IContractSuite
         h.Check("FindGameConfig digs the document out of a module", XboxTitleConfig.FindGameConfig(module)?.Contains("TOTALSCORE") == true);
         h.Check("...and finds nothing in one without an XDBF table", XboxTitleConfig.FindGameConfig([.. gz.ToArray()]) is null);
         h.Check("a missing package folder is an empty configuration", XboxTitleConfig.Load(Path.Combine(h.Sandbox, "nope")).Boards.Count == 0);
+
+        ServiceBoards(h, Xml);
+    }
+
+    /// <summary>
+    /// Titles whose boards lived on the service: their SPA has no StatsViews, and the boards come
+    /// from XboxTitleConfig.ServiceBoards by the gameconfig's title id.
+    /// </summary>
+    private static void ServiceBoards(Harness h, string withViews)
+    {
+        // As an SPA carries it: GameConfigProject inside XboxLiveSubmissionProject, no boards.
+        static string Spa(string titleId) => $"""
+            <?xml version="1.0" encoding="utf-16"?>
+            <XboxLiveSubmissionProject Version="2.0.61025.01" xmlns="http://www.xboxlive.com/xlast">
+              <GameConfigProject name="t" titleId="{titleId}">
+                <StatsViewMasters />
+                <StatsViews nextViewId="1" />
+              </GameConfigProject>
+            </XboxLiveSubmissionProject>
+            """;
+
+        h.Check("the title id is read from a GameConfigProject nested in the submission project",
+            XboxTitleConfig.ParseTitleId(Spa("0x314C1392")) == 0x314C1392u);
+        h.Check("...and from one that is the root, in decimal too",
+            XboxTitleConfig.ParseTitleId("""<GameConfigProject titleId="826020754" />""") == 826020754u &&
+            XboxTitleConfig.ParseTitleId("""<GameConfigProject />""") is null);
+
+        XboxTitleConfig seasons = XboxTitleConfig.FromGameConfig(Spa("0x314C1392"), "xbl.dll");
+        h.Check("Angry Birds Seasons (no StatsViews) gets its 21 boards from the table",
+            seasons.Boards.Count == 21 && seasons.TitleId == 0x314C1392u && seasons.Source?.Contains("WPR's table") == true,
+            $"{seasons.Boards.Count} from {seasons.Source}");
+        h.Check("...TOTALSCORE is 0 and episode 19 is 304, the ids the game posts a level win to",
+            seasons.Find(0)?.FriendlyName == "TOTALSCORE" && seasons.Find(304)?.FriendlyName == "TOTALSCOREEPISODE19" &&
+            seasons.Boards.All(b => b.Aggregation == "Max"));
+
+        XboxTitleConfig starWars = XboxTitleConfig.FromGameConfig(Spa("0x314C138A"), "xbl.dll");
+        h.Check("Angry Birds Star Wars gets 9 boards, TOTALSCORE at 32",
+            starWars.Boards.Count == 9 && starWars.Find(32)?.FriendlyName == "TOTALSCORE", $"{starWars.Boards.Count}");
+
+        XboxTitleConfig starWars2 = XboxTitleConfig.FromGameConfig(Spa("0x314C1396"), "xbl.dll");
+        // Its menu labels a chapter button with string.sub(name, 1, -19) on the Bird Side (the
+        // even positions of leaderboardOrder) and -18 on the Pork Side.
+        // Lua: string.sub(s, 1, -n) keeps the first len - n + 1 characters.
+        static string Sub(string text, int n) => text.Length >= n - 1 ? text[..(text.Length - n + 1)] : string.Empty;
+        h.Check("Angry Birds Star Wars II gets 17 boards, TOTALSCORE at 0 named as it is drawn",
+            starWars2.Boards.Count == 17 && starWars2.Find(0)?.DisplayName == "Total Score");
+        h.Check("...and its chapter names survive the game cutting the side off them",
+            Sub(starWars2.Find(16)!.DisplayName, 19) == "Naboo Invasion" && Sub(starWars2.Find(32)!.DisplayName, 18) == "Naboo Invasion" &&
+            Sub(starWars2.Find(240)!.DisplayName, 19) == "Revenge of the Pork" && Sub(starWars2.Find(256)!.DisplayName, 18) == "Revenge of the Pork",
+            $"'{Sub(starWars2.Find(16)!.DisplayName, 19)}' '{Sub(starWars2.Find(32)!.DisplayName, 18)}'");
+
+        h.Check("every table lists each id once",
+            XboxTitleConfig.ServiceBoards.Values.All(list => list.Select(b => b.Id).Distinct().Count() == list.Count));
+        h.Check("a title the table does not know keeps an empty list",
+            XboxTitleConfig.FromGameConfig(Spa("0x12345678"), "xbl.dll").Boards.Count == 0);
+        h.Check("boards the SPA defines win over the table",
+            XboxTitleConfig.FromGameConfig(withViews.Replace("<GameConfigProject ", """<GameConfigProject titleId="0x314C1392" """), "x").Boards.Count == 2);
     }
 
     // -------------------------------------------------------------------------------------------

@@ -19,8 +19,9 @@ namespace WPR.Wp8Native
     ///
     /// <para>Without a board list the Angry Birds titles' leaderboard screens stop on "Sorry, we're
     /// not sure what happened" before asking for a single board. Some titles (Seasons, Star Wars,
-    /// Star Wars II, Amazing Alex) configured their boards on the service rather than in the SPA;
-    /// their gameconfig has no StatsViews and this answers nothing for them.</para>
+    /// Star Wars II) configured their boards on the service rather than in the SPA: their
+    /// gameconfig has no StatsViews. For those the boards come from <see cref="ServiceBoards"/>,
+    /// keyed by the gameconfig's Xbox title id, the same key the service used.</para>
     /// </remarks>
     public sealed class XboxTitleConfig
     {
@@ -28,15 +29,19 @@ namespace WPR.Wp8Native
         /// how its rating column aggregates (Max, Min, Sum, Last).</summary>
         public sealed record Board(uint Id, string FriendlyName, string DisplayName, string RatingColumn, string Aggregation);
 
-        public static readonly XboxTitleConfig Empty = new([], null);
+        public static readonly XboxTitleConfig Empty = new([], null, null);
 
-        private XboxTitleConfig(IReadOnlyList<Board> boards, string? source)
+        private XboxTitleConfig(IReadOnlyList<Board> boards, string? source, uint? titleId)
         {
             Boards = boards;
             Source = source;
+            TitleId = titleId;
         }
 
         public IReadOnlyList<Board> Boards { get; }
+
+        /// <summary>The gameconfig's Xbox title id (<c>titleId="0x314C1392"</c>), when it has one.</summary>
+        public uint? TitleId { get; }
 
         /// <summary>The file the configuration came from, or null when none was found.</summary>
         public string? Source { get; }
@@ -65,7 +70,7 @@ namespace WPR.Wp8Native
                     byte[] bytes = File.ReadAllBytes(file.FullName);
                     if (FindGameConfig(bytes) is { } xml)
                     {
-                        return new XboxTitleConfig(ParseBoards(xml), file.Name);
+                        return FromGameConfig(xml, file.Name);
                     }
                 }
             }
@@ -76,6 +81,111 @@ namespace WPR.Wp8Native
 
             return Empty;
         }
+
+        /// <summary>
+        /// The configuration a gameconfig describes: its own StatsViews, or, when it has none and
+        /// its title id is in <see cref="ServiceBoards"/>, the boards the service defined.
+        /// </summary>
+        public static XboxTitleConfig FromGameConfig(string xml, string? source)
+        {
+            uint? titleId = ParseTitleId(xml);
+            IReadOnlyList<Board> boards = ParseBoards(xml);
+            if (boards.Count == 0 && titleId is { } id && ServiceBoards.TryGetValue(id, out IReadOnlyList<Board>? known))
+            {
+                return new XboxTitleConfig(known, $"{source}, boards from WPR's table for title 0x{id:X8}", titleId);
+            }
+
+            return new XboxTitleConfig(boards, source, titleId);
+        }
+
+        /// <summary>The <c>titleId</c> attribute of the <c>GameConfigProject</c>, or null.</summary>
+        public static uint? ParseTitleId(string xml)
+        {
+            try
+            {
+                // GameConfigProject is the root of a bare gameconfig and a child of
+                // XboxLiveSubmissionProject in the one an SPA carries.
+                XElement? project = XDocument.Parse(xml).Descendants().FirstOrDefault(e => e.Name.LocalName == "GameConfigProject");
+                string? text = ((string?)project?.Attribute("titleId"))?.Trim();
+                if (text is null)
+                {
+                    return null;
+                }
+
+                return text.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+                    ? uint.TryParse(text.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out uint hex) ? hex : null
+                    : uint.TryParse(text, out uint dec) ? dec : null;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Boards of titles that defined them on Xbox Live rather than in their SPA, keyed by Xbox
+        /// title id.
+        /// </summary>
+        /// <remarks>
+        /// <para>The service is gone, so these were recovered from the games. Each of these Rovio
+        /// titles builds an id-to-name map in its exe (<c>movw/movt rN, "TOTALSCORE"; movs r3, #id;
+        /// bl insert</c>, the same shape as its achievement table) and its leaderboard menu shows a
+        /// board only when <c>GetLeaderboardsAsync</c> returned its id: the Lua menu walks
+        /// <c>leaderboardOrder</c> (<c>scripts/xboxlive/leaderboards.lua</c>) and skips a name the
+        /// native map did not fill. An id the game does not know is ignored, so an entry here must
+        /// be right, but a missing one only hides that board. Seasons and Star Wars label their
+        /// buttons with their own artwork, so their display names are the game's internal ones;
+        /// Star Wars II draws the display name, so it gets real ones.</para>
+        ///
+        /// <para>Star Wars II needs its table only for TOTALSCORE (id 0): it posts its other sixteen
+        /// boards at every start, which <c>IXboxLiveHost.KnownLeaderboards</c> already covers.</para>
+        /// </remarks>
+        public static readonly IReadOnlyDictionary<uint, IReadOnlyList<Board>> ServiceBoards = new Dictionary<uint, IReadOnlyList<Board>>
+        {
+            // Angry Birds Seasons: TOTALSCORE, then one board per episode.
+            [0x314C1392] = Rovio(
+                (0, "TOTALSCORE"), (224, "TOTALSCOREEPISODE1"), (208, "TOTALSCOREEPISODE2"), (192, "TOTALSCOREEPISODE3"),
+                (176, "TOTALSCOREEPISODE4"), (160, "TOTALSCOREEPISODE5"), (144, "TOTALSCOREEPISODE6"), (128, "TOTALSCOREEPISODE7"),
+                (112, "TOTALSCOREEPISODE8"), (96, "TOTALSCOREEPISODE9"), (80, "TOTALSCOREEPISODE10"), (64, "TOTALSCOREEPISODE11"),
+                (48, "TOTALSCOREEPISODE12"), (32, "TOTALSCOREEPISODE13"), (16, "TOTALSCOREEPISODE14"), (240, "TOTALSCOREEPISODE15"),
+                (256, "TOTALSCOREEPISODE16"), (272, "TOTALSCOREEPISODE17"), (288, "TOTALSCOREEPISODE18"), (304, "TOTALSCOREEPISODE19"),
+                (320, "TOTALSCOREEPISODE20")),
+
+            // Angry Birds Star Wars.
+            [0x314C138A] = Rovio(
+                (32, "TOTALSCORE"), (0, "TATOIINE_1_LBNAME"), (16, "DEATHSTAR_1_LBNAME"), (64, "HOTH_1_LBNAME"),
+                (80, "BESPIN_1_LBNAME"), (96, "BOBAFETT_1_LBNAME"), (112, "ENDOR_1_LBNAME"), (128, "DEATHSTAR_2_LBNAME"),
+                (48, "IAP_1_LBNAME")),
+
+            // Angry Birds Star Wars II. Unlike the two above, its menu draws the board's
+            // LeaderboardName as the button label: TOTALSCORE's as it is, and a chapter board's with
+            // its last 18 (Bird Side) or 17 (Pork Side) characters cut off (LeaderboardDialog.lua,
+            // string.sub(displayName, 1, -19 / -18)). The service's names therefore ended in a side
+            // suffix of exactly those lengths, which " - Light Side Best" and " - Dark Side Best"
+            // are. Chapter names are the game's own (TEXTS_BASIC).
+            [0x314C1396] = Rovio(
+                (0, "LEADERBOARD_TOTALSCORE", "Total Score"),
+                (16, "LEADERBOARD_NABOOINVASIONLIGHT", Light("Naboo Invasion")), (32, "LEADERBOARD_NABOOINVASIONDARK", Dark("Naboo Invasion")),
+                (48, "LEADERBOARD_ESCAPETOTATOOINELIGHT", Light("Escape to Tatooine")), (64, "LEADERBOARD_ESCAPETOTATOOINEDARK", Dark("Escape to Tatooine")),
+                (80, "LEADERBOARD_BONUSLIGHT", Light("Bonus")), (96, "LEADERBOARD_BONUSDARK", Dark("Bonus")),
+                (112, "LEADERBOARD_BATTLEOFNABOOLIGHT", Light("Battle of Naboo")), (128, "LEADERBOARD_BATTLEOFNABOODARK", Dark("Battle of Naboo")),
+                (144, "LEADERBOARD_RISEOFTHECLONESLIGHT", Light("Rise of the Clones")), (160, "LEADERBOARD_RISEOFTHECLONESDARK", Dark("Rise of the Clones")),
+                (176, "LEADERBOARD_MASTERYOURDESTINYLIGHT", Light("Master Your Destiny")), (192, "LEADERBOARD_MASTERYOURDESTINYDARK", Dark("Master Your Destiny")),
+                (208, "LEADERBOARD_REBELSLIGHT", Light("Rebels")), (224, "LEADERBOARD_REBELSDARK", Dark("Rebels")),
+                (240, "LEADERBOARD_REVENGEOFTHEPORKLIGHT", Light("Revenge of the Pork")), (256, "LEADERBOARD_REVENGEOFTHEPORKDARK", Dark("Revenge of the Pork"))),
+        };
+
+        private static string Light(string chapter) => chapter + " - Light Side Best";
+
+        private static string Dark(string chapter) => chapter + " - Dark Side Best";
+
+        /// <summary>A Rovio board list: every one ranks a score, highest first.</summary>
+        private static IReadOnlyList<Board> Rovio(params (uint Id, string Name)[] boards) =>
+            boards.Select(b => new Board(b.Id, b.Name, b.Name, "Score", "Max")).ToList();
+
+        /// <summary>A Rovio board list whose display names differ from the game's own.</summary>
+        private static IReadOnlyList<Board> Rovio(params (uint Id, string Name, string Display)[] boards) =>
+            boards.Select(b => new Board(b.Id, b.Name, b.Display, "Score", "Max")).ToList();
 
         /// <summary>The gameconfig XML inside an SPA-carrying module, or null.</summary>
         public static string? FindGameConfig(byte[] bytes)

@@ -83,6 +83,12 @@ namespace GameRun
 
             // What a crash report would carry to WPR Hub, printed instead of queued (the real
             // reporter is composed by a head, which this harness has none of).
+            if (Environment.GetEnvironmentVariable("GAMERUN_HUB") == "1" &&
+                WPR.Shell.HubSetup.TryCreate("windows", null, null) is { } hub)
+            {
+                WPR.Engine.Online.OnlineBackend.Set(hub.Services);
+                Console.Error.WriteLine("[gamerun] WPR Hub composed: " + Configuration.Current.HubUri);
+            }
             WPR.Engine.Online.OnlineBackend.SetCrashReporter(new PrintingCrashReporter());
 
             // The Windows head's run-time audio decoder (WP8 media engine MP3/AAC), so a WP8 title
