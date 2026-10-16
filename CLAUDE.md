@@ -1051,7 +1051,7 @@ numeric XLAST ids (see the memory note on that).
 
 | family / title | achievements | leaderboards | verified |
 | --- | --- | --- | --- |
-| Rovio: Classic, Rio, Seasons, Space, Star Wars, Star Wars II, Stella, Amazing Alex | `GetAchievementsAsync` at boot; unlock by XLAST id | `PostResultAsync` (Max); board list from the SPA in `xbl.dll` | **Classic live**: level 1-1 cleared, 31140 posted to boards 1 and 2, read back in its own Total score screen beside another hub player. Achievements screen draws the catalogue |
+| Rovio: Classic, Rio, Seasons, Space, Star Wars, Star Wars II, Stella, Amazing Alex | `GetAchievementsAsync` at boot; unlock by XLAST id | `PostResultAsync` (Max); board list from the SPA in `xbl.dll`, or for Seasons / Star Wars / Star Wars II from `ServiceBoards` | **Classic live**: level 1-1 cleared, 31140 posted to boards 1 and 2, read back in its own Total score screen beside another hub player. Achievements screen draws the catalogue |
 | EA: MONOPOLY Millionaire | same | SPA: board 4 `Score`, **Sum**, i.e. Add | **live**: starting Pass 'n Play unlocked 17. Toast `5G - Multi-Millionaires!`, `achievements.db` `IsEarned=1 EarnedOnline=1`, hub `user_achievements` row with playtime |
 | Ubisoft Spark2: AC Pirates | through LuaMobileSDK, XBL network | SPA: board 1 `BOUNTY`, Max; names `LeaderboardAttribute` | **live**: sign-in, achievements menu, leaderboard read reaches the hub (1 row). The row is not drawn (see gaps) |
 | Gameloft: Modern Combat 4 | `GetAchievementsAsync(max 20)` | SPA: `LOCAL_XP`/`ONLINE_XP`, **Min** | reads only. Its menu took no synthetic input, so no unlock or post was seen |
@@ -1061,11 +1061,24 @@ What this needed (`9ee14875`, `46248967`):
 - **`GetLeaderboardsAsync` answers the title's boards**, read from the gameconfig inside its Xbox SPA
   (`XboxTitleConfig`: `XDBF` module, gzipped UTF-16 `<GameConfigProject>`, `StatsView` id, en-US
   name, rating aggregation). It used to answer an empty list, and every Angry Birds leaderboard screen
-  then stopped on "Sorry, we're not sure what happened" without asking for a board. Seasons, Star
-  Wars, Star Wars II and Amazing Alex define their boards on the service, not in the SPA. They fall
-  back to the boards the host has seen posted (`KnownLeaderboards`, persisted). Star Wars II posts all
-  16 at boot, so it is covered. **Seasons and Star Wars still show the error until a score is
-  posted.**
+  then stopped on "Sorry, we're not sure what happened" without asking for a board. Boards the title
+  has posted to (`KnownLeaderboards`, persisted) are always added to the list.
+- **Seasons, Star Wars and Star Wars II defined their boards on the service, not in the SPA
+  (2026-10-16).** Their gameconfig has no StatsViews, so `XboxTitleConfig.ServiceBoards` supplies
+  them, keyed by the gameconfig's Xbox `titleId` (Seasons `0x314C1392`, 21 boards; Star Wars
+  `0x314C138A`, 9; Star Wars II `0x314C1396`, 17). Ids come from the exe's id-to-name table, the same
+  `movw/movt "NAME"; movs r3, #id; bl insert` shape as the achievement table; they step by 16 and do
+  not follow display order (Seasons TOTALSCORE is 0, episode 1 is 224, episode 19 is 304; Star Wars
+  TOTALSCORE is 32, Tatooine 0). The Lua menu (`leaderboardOrder` in `scripts/xboxlive/leaderboards.lua`)
+  shows a board only if the list returned its id, and ignores ids it does not know. **Star Wars II
+  draws `LeaderboardName`** cut by `string.sub(name, 1, -19)` (Bird Side) / `-18` (Pork Side), so its
+  names carry an 18/17-character side suffix; the other two draw their own artwork. **Amazing Alex
+  never calls `GetLeaderboardsAsync`**: it reads board 0 ("Most Stars Collected") directly, which
+  already worked. Seasons' Lua key (for checking these) is `zePhest5faQuX2S2Apre@4reChAtEvUt`; it is
+  not in the exe as a string, it was found by scanning a guest heap dump for a 32-byte window that
+  decrypts the first block to the 7z magic. Verified on D3D11 against a scratch hub: Seasons' list,
+  an empty Total Score board, a won level posting to 304 and 0, both read back beside another
+  player; Star Wars' and Star Wars II's lists and Total Score with a row; Classic and Space unchanged.
 - **`LeaderboardAttribute` + `PostResultsAsync`**: the class was improvised and the call posted
   nothing. The game's own attribute vector is now read through its vtable. The rating is the
   lowest-numbered numeric column and the others travel as columns.
@@ -1092,6 +1105,13 @@ Contract tests: `Suites/XboxLiveSuite.cs`, covering the guest surface, the SPA r
   an empty view. The game probably asks `GetLeaderboardAsync` for attribute ids and draws those.
 - **MONOPOLY's `Score` board (Sum)** and **Classic's unlocks** were not reached live. Classic's
   achievements are by bird or star count.
+- **Service-defined boards not run on a phone.** The Seasons / Star Wars / Star Wars II tables are
+  shim data and not platform-specific, but were verified on the desktop only. A title with no SPA
+  boards that is not in `ServiceBoards` still shows only the boards it has posted to. Of the
+  installed Rovio titles every other one defines its boards in its SPA (Classic 13, Rio 13, Space 23,
+  Stella 1).
+- **Hub board names**: the hub sees only `BestScore<id>:0` for these titles, so its pages show
+  that key rather than "Total Score" or an episode name.
 - **Harness, desktop in use:** a scripted run must suppress focus activation. Otherwise a focus loss
   suspends the WP8 guest (`lifecycle: suspended`, fps ~0). The xbl harness copy calls
   `XnaBackend.SuppressFocusActivation`.

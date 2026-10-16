@@ -112,19 +112,27 @@ namespace WPR.Wp8Native
 
         /// <summary>
         /// <c>ILeaderboardMetadataCollection</c> (get_Items) for <c>GetLeaderboardsAsync</c>: the
-        /// boards the title's SPA defines, or - for a title whose boards lived on the service - the
-        /// ones the host has seen it post to.
+        /// boards the title's SPA defines (or, for a title whose boards lived on the service,
+        /// <see cref="XboxTitleConfig.ServiceBoards"/>), then any other board the host has seen it
+        /// post to, so a title in neither still finds the boards it has used.
         /// </summary>
         private long LeaderboardMetadataCollection()
         {
-            IReadOnlyList<uint> ids = TitleConfig.Boards.Select(b => b.Id).ToList();
+            List<uint> ids = TitleConfig.Boards.Select(b => b.Id).ToList();
             string source = TitleConfig.Source ?? "no SPA";
-            if (ids.Count == 0)
-            {
-                try { ids = XboxHost?.KnownLeaderboards() ?? []; }
-                catch (Exception ex) { XboxCalls.Add($"  host threw {ex.GetType().Name}: {ex.Message}"); }
+            IReadOnlyList<uint> posted = [];
+            try { posted = XboxHost?.KnownLeaderboards() ?? []; }
+            catch (Exception ex) { XboxCalls.Add($"  host threw {ex.GetType().Name}: {ex.Message}"); }
 
+            int defined = ids.Count;
+            ids.AddRange(posted.Where(id => !ids.Contains(id)));
+            if (defined == 0)
+            {
                 source = $"{source}, none defined; {ids.Count} posted to before";
+            }
+            else if (ids.Count > defined)
+            {
+                source = $"{source}; +{ids.Count - defined} posted to before";
             }
 
             long[] items = ids.Select(LeaderboardMetadata).ToArray();
