@@ -876,6 +876,24 @@ daily-reward menu, AC Pirates further into its intro. Runs where the harness win
 (`lifecycle: suspended`) were repeated. Contract tests 2214/2214 (`StartupAndStacksSuite`,
 `Direct3DStateSuite`, transacted writes in `WinRtClassesSuite`).
 
+### The WP8 GPU replay honours scissor rectangles (2026-10-16)
+
+Reported as "Angry Birds Stella's achievements overlap the title when scrolled". Rovio's menus
+(Stella's Achievements board, `4d1a2f37-…`) clip their scrolling lists with
+`RSSetScissorRects` + a rasterizer state with `ScissorEnable`, called every frame. The context
+slot (45) had no handler and the replay forced `ScissorTestEnable = false`, so rows drew over the
+board's title at the top and past its frame at the bottom. Now `Direct3DRuntime.ScissorRect`
+keeps the first rectangle (`RSGetScissorRects`, slot 96, hands it back), `GpuDraw.Scissor`
+carries it, and `Wp8GpuReplay` sets `ScissorRectangle` (clamped to the target) only when the
+draw's raster desc has ScissorEnable (byte 28) **and** a rectangle was set; an empty rectangle
+draws nothing. No rectangle with ScissorEnable on is treated as no clip (D3D would clip
+everything; no title relies on that). The `WPR_WP8_GPU=0` draw list still ignores scissor.
+The tell for this class: `rasters=` in the `guest fps` line, and `WPR_WP8_METHOD_TRACE=Scissor`.
+
+Repro in `gamerun` (1280x768 display coords): `24 hold 535 715 0.2` (trophy button on the main
+menu), then `30 swipe 640 550 640 250 3` and a `shot` mid-drag. Verified D1–D4; contract test in
+`Direct3DStateSuite`.
+
 ### The WP8 runtime must not allocate per guest call (2026-10-14)
 
 Reported as "Assassin's Creed Pirates (`40ae56ef-…`) is really slow on my phone". On the S24 the

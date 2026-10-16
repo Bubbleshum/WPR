@@ -337,7 +337,8 @@ namespace WPR.Wp8Native
                 target,
                 TargetOf(_gpuDepthTarget),
                 _gpuViewport,
-                geometry));
+                geometry,
+                ScissorRect));
         }
 
         /// <summary>Hands the frame's commands to the host; true if a GPU host took it.</summary>

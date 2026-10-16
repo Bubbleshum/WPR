@@ -195,6 +195,9 @@ namespace WPR.Wp8Native
         /// <summary>The viewport the image last set, if it set one.</summary>
         public (float Width, float Height)? Viewport { get; private set; }
 
+        /// <summary>The first rectangle of RSSetScissorRects (left, top, right, bottom), or null.</summary>
+        public int[]? ScissorRect { get; private set; }
+
         /// <summary>Resources the image created, by kind.</summary>
         public Dictionary<string, int> ResourcesCreated { get; } = new(StringComparer.Ordinal);
 
@@ -1570,7 +1573,25 @@ namespace WPR.Wp8Native
 
             // (UINT* NumViewports, D3D11_VIEWPORT*) and the scissor equivalent: none set.
             methods[95] = ("RSGetViewports", () => { Zero(Arg(1), 1); Return(0); });
-            methods[96] = ("RSGetScissorRects", () => { Zero(Arg(1), 1); Return(0); });
+            // RSGetScissorRects(UINT* NumRects, D3D11_RECT*): the count alone when the array is null.
+            methods[96] = ("RSGetScissorRects", () =>
+            {
+                long count = Arg(1), rects = Arg(2);
+                if (count != 0)
+                {
+                    if (ScissorRect is { } r && rects != 0 && _emulator.ReadUInt32(count, 0) > 0)
+                    {
+                        for (int i = 0; i < 4; i++)
+                        {
+                            _emulator.WriteUInt32(rects + (i * 4), (uint)r[i]);
+                        }
+                    }
+
+                    _emulator.WriteUInt32(count, ScissorRect is null ? 0u : 1u);
+                }
+
+                Return(0);
+            });
         }
 
         private Dictionary<int, (string, Action)> ContextSetters() => new()
@@ -1707,6 +1728,29 @@ namespace WPR.Wp8Native
                     {
                         Note(described);
                     }
+                }
+
+                Return(HResultOk);
+            }),
+            // void RSSetScissorRects(UINT NumRects, const D3D11_RECT*): left, top, right, bottom.
+            // Only the first is kept - one viewport, one rectangle, as every title here uses. It
+            // clips only while the bound rasterizer state has ScissorEnable on. Rovio's menus clip
+            // their scrolling lists with it (Stella's Achievements board); unrecorded, the rows
+            // drew over the board's title and frame.
+            [45] = ("RSSetScissorRects", () =>
+            {
+                if (Arg(1) > 0 && Arg(2) != 0)
+                {
+                    byte[] raw = _emulator.ReadMemory(Arg(2), 16);
+                    ScissorRect = [BitConverter.ToInt32(raw, 0), BitConverter.ToInt32(raw, 4), BitConverter.ToInt32(raw, 8), BitConverter.ToInt32(raw, 12)];
+                    if (_viewportsSeen.Add($"scissor {ScissorRect[2] - ScissorRect[0]}x{ScissorRect[3] - ScissorRect[1]}"))
+                    {
+                        Note($"RSSetScissorRects {string.Join(",", ScissorRect)}");
+                    }
+                }
+                else
+                {
+                    ScissorRect = null;
                 }
 
                 Return(HResultOk);
