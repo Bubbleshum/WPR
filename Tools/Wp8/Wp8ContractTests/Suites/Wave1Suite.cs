@@ -4,7 +4,7 @@ using WPR.Wp8Native;
 namespace Wp8ContractTests.Suites;
 
 /// <summary>
-/// The first wave (Plans/RUNTIME-CONVERGENCE.md, 1c and the top of the 1b to-do list): SList,
+/// The first wave (the runtime convergence plan, 1c and the top of the 1b to-do list): SList,
 /// file mapping, _stat, the start-up imports, setjmp/longjmp, uncaught_exception and _Fiopen.
 /// </summary>
 public sealed class Wave1Suite : IContractSuite

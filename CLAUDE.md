@@ -571,7 +571,7 @@ No `ApplicationPatcher.Version` bump: Android sidecars come from a re-patch, whi
 `WPR.Engine.Wp8Native.AudioTrackOutput` (WP8 voices straight onto Android `AudioTrack`s, with
 `SincResampler`) sat outside `AudioBackendRegistry`, so it never showed in the `[wpr-audio]` line
 and only WP8 titles could use it. It is now a module, **`Src/Modules/Audio/WPR.Audio.AudioTrack`**
-(plan 3b in `Plans/RUNTIME-CONVERGENCE.md`), and `Wp8NativeAudio` (one `DynamicSoundEffectInstance`
+(item 3b of the runtime convergence plan), and `Wp8NativeAudio` (one `DynamicSoundEffectInstance`
 per XAudio2 voice) is the only `IHostAudio` on both heads.
 
 **What the module covers: the streaming-voice half of `IAudioBackend`, nothing else.**
@@ -766,7 +766,7 @@ Alex's Play button works after the return. Contract tests: `Suites/HostWiringSui
 
 ### An unimplemented C++ constructor is a defaulted import, not a shaped object (2026-10-14)
 
-`ConstructShapedObject` and `LooksLikeVtable` are gone (Plans/RUNTIME-CONVERGENCE.md 1e). They
+`ConstructShapedObject` and `LooksLikeVtable` are gone (the runtime convergence plan 1e). They
 served one path: an imported `??0…` (an MSVC constructor from MSVCR110/MSVCP110/vccorlib/ConcRT)
 with no handler, where they wrote a synthetic trap vtable into the object unless a memory probe
 decided its first word was already a vptr. **It was never on the WinRT activation path**, and
@@ -1300,9 +1300,39 @@ and sent by the launcher's usual `OnlineBackend.FlushAsync()` after the run.
 | Android repatch-before-launch threw: error dialog, no launch | launches what is on disk, `PatchedVersion` left behind so the next launch retries; `install-problem` report |
 | Unity port with no build for this platform: error (desktop threw, Android dialog) | falls through to the original package in-process. Android still asks the player to install a bundled port APK that is sitting right there |
 | WP8 managed title registering a native helper library | `NativeXamlComponent` treated any native ARM `InProcessServer` as a Direct3D/XAML game, so the WP8 host got a library with no game in it and stopped at frame 0 ("no page description"). Now skipped: `SharpDX*`, `Lumia.*`, `Nokia.Graphics*`, `Microsoft.Xbox.dll`, and a non-drawing component unless the manifest names the `Direct3DXaml` template. **What In The World?** (Lumia.Imaging) and **Microsoft Minesweeper** 1.1.41016 (SharpDX.WP8) now run on `SilverlightGame` and report what they miss. Installed copies keep their old type until reinstalled |
+| no / unreadable / incomplete `WMAppManifest.xml` or `AppManifest.xaml` (2026-10-16). Desktop: the library scan dropped the package silently, the picker showed "invalid manifest". Android: the same dialog. Nothing was ever half-installed: the refusal came before any extract | completed or synthesised from the contents by `WPR.PackageManifests` (`Src/Core/WPR.Loader/PackageManifests.cs`) - see below |
 
-**Real refusals that stay, and are now reported** (`refused` source): no `WMAppManifest.xml`,
-an invalid manifest, a DRM-wrapped Marketplace download (now detected by its `PRE\x07` magic and
+**Manifests are synthesised when missing or broken.** `PackageManifests.Load` is the one reader
+both `ReadPreview` and `Install` use. A whole package takes a fast path (no assembly is opened);
+otherwise it inspects the package with Cecil: a type reaching `Microsoft.Xna.Framework.Game` is XNA,
+one reaching `System.Windows.Application` is Silverlight (start page = the XAML a
+`PhoneApplicationPage`'s `InitializeComponent` loads: MainPage, then a Splash/Loading page, then
+Main/Start), an ARM PE `.exe` (0x01C4, no CLR header) is native; an AppManifest.xaml that names an
+entry point decides the managed side, and base classes are followed across the package's
+assemblies to the most-derived type in the top (unreferenced) assembly. Identity, in order: the
+manifest's own attributes, WP8.1 `AppxManifest.xml` (`PhoneProductId`, `DisplayName`, `Executable`),
+the entry assembly (`[Guid]`, `AssemblyTitle`/`Product`, file/assembly version, company), the package
+file name, and for the ProductId a GUID from the SHA-256 of the entry image, so the same package
+always gets the same id (the scan compares ids). A missing icon is guessed from PNG names
+(`*icon*` before `*tile*`). The completed manifests are written into the install folder (the package's
+broken one kept as `.original`), because `SilverlightAppHost` (start page) and the WP8 runtime
+(ProductID, `ActivatableClasses`) read `WMAppManifest.xml` from there; a synthesised Silverlight
+manifest lists the package's native ARM DLLs as `InProcessServer`s so `NativeXamlComponent` can still
+spot a Direct3D/XAML game. Every such install logs `Package manifests incomplete (<keys>)` with where
+each value came from, and queues an `install-problem` report `WPR.InstallProblem.ManifestSynthesised`
+whose message is the stable key list (`wmappmanifest-missing|-invalid|-incomplete`,
+`appmanifest-missing|-invalid`) and whose `extra.synthesis_detail` has the values.
+Verified (desktop D3D11, scratch data root, stripped copies; no manifest-less package exists in the
+library): Angry Birds with neither manifest -> XNA, menu; with a truncated WMAppManifest -> XNA;
+Flowerz with neither -> Silverlight, starts at `Pages/Loading.xaml` like the real manifest, menu;
+Angry Birds Rio without WMAppManifest -> native, title screen; a ZIP holding only a text file -> still
+refused (`MissingManifestFiles`); Sonic Dash still `NotDecrypted`. Not run on Android. Limits: the
+ProductId is not the store's, so catalogue achievements and old saves do not attach;
+`.appxbundle` is not unpacked; `LibraryScanner` still lists `*.xap` only.
+
+**Real refusals that stay, and are now reported** (`refused` source): a package with no usable
+manifest and nothing runnable in it (`MissingManifestFiles`; `InvalidManifestFiles` from a head
+whose preview could not read the package at all, e.g. not a ZIP), a DRM-wrapped Marketplace download (now detected by its `PRE\x07` magic and
 reported as `NotDecrypted` rather than "unexpected error" - BBB: App-ocalypse and Sonic Dash), a
 native package with nothing executable, an installer that threw, and `ApplicationLaunch`'s
 "no host for this runtime type". `ApplicationInstaller.Install` reports its own refusals;
@@ -5468,7 +5498,7 @@ Files at the project root are **not** type shims — they're WPR-internal
 runtime/helper code that doesn't shadow any upstream type:
 - The CPU renderer (`SoftwareVisualRasteriser*.cs`, `TextRasteriser.cs`, `TrueTypeFont.cs`,
   `WpChrome.cs`, `UIElementRenderer.cs`, `SilverlightImageDecoder.cs`). It is the only one: the
-  **D3D11** renderers were retired on 2026-10-12 (Plans/RUNTIME-CONVERGENCE.md 2a) and the
+  **D3D11** renderers were retired on 2026-10-12 (the runtime convergence plan 2a) and the
   Avalonia ones (`SilverlightRenderer`, `BrandedSplashRenderer`, `IBackgroundRenderer`) on
   2026-10-13 (2b, Stage D). `DrawingSurfaceBackgroundGrid` is a plain Grid now.
   **Do not add a graphics or UI package reference to `WPR.Framework.Silverlight`** —

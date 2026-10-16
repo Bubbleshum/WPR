@@ -12,6 +12,14 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.10.0" />
     <PackageReference Include="xunit" Version="2.9.0" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <!-- PackageManifestsTests: builds test assemblies, and PackageManifests reads them. -->
+    <PackageReference Include="Mono.Cecil" Version="0.11.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Linked rather than referenced: WPR.Loader targets net10.0-windows on Windows (EF, the
+         installer), and this file needs only Cecil and WPR.Common's Log. -->
+    <Compile Include="..\WPR.Loader\PackageManifests.cs" Link="Linked\PackageManifests.cs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -944,7 +944,7 @@ namespace WPR.Wp8Native
         /// The object itself is left exactly as the caller handed it over. This used to be
         /// <c>ConstructShapedObject</c>, which wrote a synthetic vtable into it whenever
         /// <c>LooksLikeVtable</c> - a probe of guest memory - decided its first word was not already
-        /// one (Plans/RUNTIME-CONVERGENCE.md, 1e). It was retired on 2026-10-14 after a run of all
+        /// one (the runtime convergence plan, 1e). It was retired on 2026-10-14 after a run of all
         /// 11 in-scope WP8 titles reached it zero times: every constructor they import from a
         /// system DLL has a handler (the contract suite checks that statically), and the classes
         /// that reach this path are C++ classes from MSVC's runtime DLLs, which no .winmd
@@ -961,7 +961,7 @@ namespace WPR.Wp8Native
 
         /// <summary>
         /// WPR_WP8_TRAP_IMPORTS=1: stop the guest at the first unimplemented import instead of
-        /// answering 0 (Plans/RUNTIME-CONVERGENCE.md, 1a). A diagnostic for the regression harness
+        /// answering 0 (the runtime convergence plan, 1a). A diagnostic for the regression harness
         /// only: a game is never blocked up front for using something not yet implemented - it
         /// runs until it actually fails, and the failure is reported.
         /// </summary>

@@ -133,8 +133,27 @@ head's `Libraries/<abi>/`. The main pieces:
 
 An import with no handler is answered with 0 and recorded, and the list goes into
 the crash report if the guest stops. `WPR_WP8_TRAP_IMPORTS=1` stops at the first one
-instead, as a diagnostic. See
-[`Plans/RUNTIME-CONVERGENCE.md`](../Plans/RUNTIME-CONVERGENCE.md) Track 1.
+instead, as a diagnostic. Trapping is never the default: trap-by-default stopped all 11
+installed titles at boot, and an unknown game must run until it actually fails. The rules
+that came out of the runtime convergence plan (completed 2026-10-14 and removed; see
+[`Plans/README.md`](../Plans/README.md)):
+
+- **`SafeToDefault` holds only imports whose documented answer IS 0**, each with a one-line
+  reason. Anything else is implemented to its contract, never "answered 0 because callers
+  ignore it".
+- **`__abi_WinRTraise*` is never defaulted**: it is the game throwing, and it is raised as a
+  guest C++/CX exception (`PlatformRaise`). A raise the old code swallowed can expose a host bug
+  the swallow hid (twice so far), so read `raised=[…]` in the run's `summary:` line.
+- **No guessed vtables.** An unimplemented `??0…` constructor returns `this` untouched and is
+  counted as defaulted; the only guessing left is the WinRT stand-in for an unknown class,
+  counted as `guessedslots=[…]`. Implement what shows up there.
+- **Diff before and after.** `scratchpad/gamerun/wp8-regression.ps1` runs every installed WP8
+  title for a fixed time and records frames, the stop reason and the defaulted lists; a runtime
+  change is judged against that table, not against a green build.
+
+Deliberately **not** converged: `Direct3DRuntime` translates guest D3D11 into XNA draws (a
+translator, not a second renderer); Unity ports and GameMaker run as separate processes; the
+launcher UI (Avalonia on Windows, native views on Android) is not game rendering.
 
 ## Project layout (`Src/`)
 

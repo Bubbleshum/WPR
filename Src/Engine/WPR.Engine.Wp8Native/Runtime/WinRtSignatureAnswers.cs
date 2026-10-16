@@ -39,7 +39,7 @@ namespace WPR.Wp8Native
         /// <summary>
         /// Members of a stand-in class the metadata does not describe, answered by the out-parameter
         /// heuristics in <c>CreateDiscoveryObject</c> (which register looks like a stack pointer).
-        /// The last shape-guessing in the runtime (Plans/RUNTIME-CONVERGENCE.md, 1e); counted so it
+        /// The last shape-guessing in the runtime (the runtime convergence plan, 1e); counted so it
         /// reaches the <c>summary:</c> line, where an empty list means none of it ran.
         /// </summary>
         public IReadOnlyDictionary<string, int> GuessedSlots => _guessedSlots;

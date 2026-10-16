@@ -42,7 +42,7 @@ namespace WPR.Tests
             {
                 "WPR.Backend.FNA",
                 // WPR.Backend.Direct3D11 was here (-> Vortice) until 2026-10-12, when it was
-                // retired (Plans/RUNTIME-CONVERGENCE.md item 2a). Nothing references Vortice now.
+                // retired (the runtime convergence plan item 2a). Nothing references Vortice now.
                 // The FAudio audio backend (Src/Audio/, split out of WPR.Backend.FNA on
                 // 2026-09-01). It must reference FNA for the same reason the graphics adapter
                 // does: the FAudio/FACT P/Invokes are compiled INTO FNA.dll, and FNA registers its
