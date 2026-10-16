@@ -114,8 +114,9 @@ namespace WPR
 
         /// <summary>
         /// Locate <c>Runner.exe</c> from the GameMaker runtime cache. Searches common paths
-        /// in priority order. Returns null if no installed runtime is found — the caller should
-        /// either fall back to Silverlight or trigger a runtime install (not implemented yet).
+        /// in priority order. Returns null if no installed runtime is found, and
+        /// <see cref="TryLaunchAsync"/> then answers false so the title falls through to <c>SilverlightGame</c>. WPR does not install a
+        /// GameMaker runtime itself.
         /// </summary>
         public static string? LocateRunnerExe()
         {
