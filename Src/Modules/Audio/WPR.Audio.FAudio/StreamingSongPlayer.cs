@@ -407,10 +407,22 @@ namespace WPR.Audio.FAudio
 		{
 			int slot = (int) (_submitted % SlotCount);
 			int wanted = _slotFrames * _channels;
-			int got;
-			unsafe
+			// NVorbis 0.10.5 can hang for ever in a ReadSamples that reaches past the end of a
+			// stream whose first granule is not 0 (found through a movie soundtrack, see
+			// MediaCodecStream.ReadAudio); ask for no more than is left. A short read still ends
+			// the song below, as before.
+			int ask = wanted;
+			if (_decoder!.TotalSamples > 0)
 			{
-				got = _decoder!.ReadSamples(new Span<float>((void*) _slots[slot], wanted));
+				ask = (int) Math.Clamp((_decoder.TotalSamples - _decoder.SamplePosition) * _channels, 0, wanted);
+			}
+			int got = 0;
+			if (ask > 0)
+			{
+				unsafe
+				{
+					got = _decoder.ReadSamples(new Span<float>((void*) _slots[slot], ask));
+				}
 			}
 			got -= got % _channels;
 			if (got < wanted)
