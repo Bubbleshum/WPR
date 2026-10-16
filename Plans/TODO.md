@@ -47,20 +47,16 @@ at that time. Ranked by impact within each group.
 
 ## Silverlight shims
 
-1. **`MessageBox.Show` ignores its buttons**: both heads' `ShowSimpleImpl` show OK only and
-   return `MessageBoxResult.None` for every answer, so a game that asks OK/Cancel or Yes/No and
-   tests for `OK` never proceeds. `Src/Platforms/WPR.Platform.Windows/ServicesSetup.cs:63`,
-   `Src/Platforms/WPR.Platform.Android/ServicesSetup.cs:88` (`Src/Core/WPR.Framework.Silverlight/System/Windows/MessageBox.cs:11`)
-2. **`BitmapImage` hides `BitmapSource`'s decoder** with an empty `SetSource` and
+1. **`BitmapImage` hides `BitmapSource`'s decoder** with an empty `SetSource` and
    `PixelWidth`/`PixelHeight` = 4. Game IL binds the `BitmapSource` members so games are not
    affected, but WPR code (and reflection) holding a `BitmapImage` gets the stubs. Quick win:
    delete the three members. `Src/Core/WPR.Framework.Silverlight/System/Windows/Media/Imaging/BitmapImage.cs:67`
-3. Rasteriser shapes: `StrokeDashArray` phase restarts per figure; miters past the limit are
+2. Rasteriser shapes: `StrokeDashArray` phase restarts per figure; miters past the limit are
    bevelled rather than clipped. `Src/Core/WPR.Framework.Silverlight/SoftwareVisualRasteriser.Shapes.cs`
-4. **Launchers not wired**: `EmailComposeTask.Show` (needs `mailto:` in the allowed schemes) and
+3. **Launchers not wired**: `EmailComposeTask.Show` (needs `mailto:` in the allowed schemes) and
    `BingMapsTask.Show` are empty. `Src/Core/WPR.Framework.Phone/Tasks/EmailComposeTask.cs:15`,
    `Src/Core/WPR.Framework.Phone/Tasks/BingMapsTask.cs:32`
-5. **`Microsoft.Devices.Sensors.Gyroscope` has no shim** (no installed WP7 title uses it; WP8
+4. **`Microsoft.Devices.Sensors.Gyroscope` has no shim** (no installed WP7 title uses it; WP8
    native titles have one through WinRT).
 
 ## XNA framework
@@ -152,5 +148,3 @@ at that time. Ranked by impact within each group.
 
 - Delete `BitmapImage`'s hiding `SetSource`/`get_PixelWidth`/`get_PixelHeight`.
 - `AndroidNotificationManager.ScheduleNotification`: log and return `Task.CompletedTask`.
-- `MessageBox`: map `OKCancel`/`YesNo`/`YesNoCancel` and the result back (the commented-out
-  switch is already in both `ServicesSetup.cs` files; the Android one needs its own dialog enum).

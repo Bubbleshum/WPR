@@ -199,6 +199,9 @@ namespace WPR.Wp8Native
         /// <summary>The viewport the image last set, if it set one.</summary>
         public (float Width, float Height)? Viewport { get; private set; }
 
+        /// <summary>The first rectangle of RSSetScissorRects (left, top, right, bottom), or null.</summary>
+        public int[]? ScissorRect { get; private set; }
+
         /// <summary>Resources the image created, by kind.</summary>
         public Dictionary<string, int> ResourcesCreated { get; } = new(StringComparer.Ordinal);
 
@@ -946,15 +949,42 @@ namespace WPR.Wp8Native
             }
 
             resource.Storage = _emulator.AllocateHeap(resource.StorageSize);
+            bool stale = _emulator.LastAllocationReused;
 
             if (initial == 0 || resource.Storage == 0)
             {
+                ZeroStorage(resource, stale);
                 return;
             }
 
             long source = _emulator.ReadUInt32(initial + 0, 0);
             int pitch = (int)_emulator.ReadUInt32(initial + 4, 0);
             CopyRows(resource, source, pitch);
+        }
+
+        private static readonly byte[] Zeros = new byte[64 * 1024];
+
+        /// <summary>
+        /// Clears a resource created with no initial data. Direct3D 11 hands such a resource out
+        /// zeroed, but its storage here is a guest heap block, and a reused one still holds whatever
+        /// the last owner left. 2020: My Country packs sprites into a 1024x1024 atlas it creates
+        /// empty and fills a region at a time; on a reused block the gaps between sprites held an
+        /// old loading screen, and linear filtering at each sprite's edge drew it as a thin light
+        /// seam round every map tile and building. A block from the heap's untouched end is
+        /// zero already, and is left alone: clearing every new atlas cost loading time.
+        /// </summary>
+        private void ZeroStorage(FrameCapture.Resource resource, bool stale)
+        {
+            if (!stale)
+            {
+                return; // the heap's untouched end is zero already
+            }
+
+            for (long done = 0; done < resource.StorageSize; done += Zeros.Length)
+            {
+                int count = (int)Math.Min(Zeros.Length, resource.StorageSize - done);
+                _emulator.WriteMemory(resource.Storage + done, Zeros.AsSpan(0, count));
+            }
         }
 
         /// <summary>D3D11_BUFFER_DESC opens with ByteWidth.</summary>
@@ -973,10 +1003,12 @@ namespace WPR.Wp8Native
             }
 
             resource.Storage = _emulator.AllocateHeap(resource.StorageSize);
+            bool stale = _emulator.LastAllocationReused;
 
             long source = initial == 0 ? 0 : _emulator.ReadUInt32(initial + 0, 0);
             if (source == 0 || resource.Storage == 0)
             {
+                ZeroStorage(resource, stale);
                 return;
             }
 
@@ -1602,7 +1634,25 @@ namespace WPR.Wp8Native
 
             // (UINT* NumViewports, D3D11_VIEWPORT*) and the scissor equivalent: none set.
             methods[95] = ("RSGetViewports", () => { Zero(Arg(1), 1); Return(0); });
-            methods[96] = ("RSGetScissorRects", () => { Zero(Arg(1), 1); Return(0); });
+            // RSGetScissorRects(UINT* NumRects, D3D11_RECT*): the count alone when the array is null.
+            methods[96] = ("RSGetScissorRects", () =>
+            {
+                long count = Arg(1), rects = Arg(2);
+                if (count != 0)
+                {
+                    if (ScissorRect is { } r && rects != 0 && _emulator.ReadUInt32(count, 0) > 0)
+                    {
+                        for (int i = 0; i < 4; i++)
+                        {
+                            _emulator.WriteUInt32(rects + (i * 4), (uint)r[i]);
+                        }
+                    }
+
+                    _emulator.WriteUInt32(count, ScissorRect is null ? 0u : 1u);
+                }
+
+                Return(0);
+            });
         }
 
         private Dictionary<int, (string, Action)> ContextSetters() => new()
@@ -1739,6 +1789,29 @@ namespace WPR.Wp8Native
                     {
                         Note(described);
                     }
+                }
+
+                Return(HResultOk);
+            }),
+            // void RSSetScissorRects(UINT NumRects, const D3D11_RECT*): left, top, right, bottom.
+            // Only the first is kept - one viewport, one rectangle, as every title here uses. It
+            // clips only while the bound rasterizer state has ScissorEnable on. Rovio's menus clip
+            // their scrolling lists with it (Stella's Achievements board); unrecorded, the rows
+            // drew over the board's title and frame.
+            [45] = ("RSSetScissorRects", () =>
+            {
+                if (Arg(1) > 0 && Arg(2) != 0)
+                {
+                    byte[] raw = _emulator.ReadMemory(Arg(2), 16);
+                    ScissorRect = [BitConverter.ToInt32(raw, 0), BitConverter.ToInt32(raw, 4), BitConverter.ToInt32(raw, 8), BitConverter.ToInt32(raw, 12)];
+                    if (_viewportsSeen.Add($"scissor {ScissorRect[2] - ScissorRect[0]}x{ScissorRect[3] - ScissorRect[1]}"))
+                    {
+                        Note($"RSSetScissorRects {string.Join(",", ScissorRect)}");
+                    }
+                }
+                else
+                {
+                    ScissorRect = null;
                 }
 
                 Return(HResultOk);
@@ -2734,6 +2807,30 @@ namespace WPR.Wp8Native
             DeviceCreated = true;
             Note($"host device 0x{devicePointer:X8}, context 0x{_immediateContext:X8}, feature level 9_3");
             return (devicePointer, _immediateContext);
+        }
+
+        /// <summary>Whether <paramref name="pointer"/> is a resource (texture, buffer) the device made.</summary>
+        public bool IsResource(long pointer) => ResourceAt(pointer) is not null;
+
+        /// <summary>
+        /// A <c>DrawingSurface</c> component's own texture (handed to
+        /// <c>IDrawingSurfaceRuntimeHostNative::CreateSynchronizedTexture</c>) becomes the back buffer:
+        /// what is drawn into it is the frame, and its size is the screen's.
+        /// </summary>
+        public void AdoptPresentationTexture(long texture)
+        {
+            if (texture == 0)
+            {
+                return;
+            }
+
+            _backBufferPointer = texture;
+            if (ResourceAt(texture) is { PixelWidth: > 0, PixelHeight: > 0 } resource)
+            {
+                RequestSwapChainSize((uint)resource.PixelWidth, (uint)resource.PixelHeight);
+            }
+
+            Note($"presentation texture 0x{texture:X8} ({BackBufferWidth}x{BackBufferHeight}) adopted as the back buffer");
         }
 
         /// <summary>A render target view over the back buffer, the third argument of <c>Draw</c>.</summary>

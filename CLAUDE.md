@@ -807,9 +807,9 @@ The WP8 runtime's Media Foundation (`Src/Engine/WPR.Engine.Wp8Native/Runtime/Med
 * **Compressed audio in the media engine** through a new seam: `WPR.Engine.Audio.IAudioDecoder` +
   `AudioDecoderBackend`, declared by `caps.AudioDecoder(...)`, bridged into the runtime's
   `IMediaDecoder` by `Wp8NativeMediaDecoder`. Windows: `FFmpegAudioDecoder` over the head's ffmpeg.exe
-  (temp file in, WAVE on stdout; ~30-80 ms per file). **Android declares none yet** (ffmpeg-kit cannot
-  run in the game process; the one to write is MediaExtractor + MediaCodec), so there compressed
-  sources still fail as on a codec-less phone.
+  (temp file in, WAVE on stdout; ~30-80 ms per file). Android: `WPR.Audio.MediaCodec.MediaCodecAudioDecoder`
+  (MediaExtractor + MediaCodec in the game process, since ffmpeg-kit cannot run there; ~1.5 s for
+  AC Pirates' 92 s title MP3 on the S24).
 
 **Why a run-time decoder and not install-time transcoding** (measured over the 102 ARM titles in
 the library): the media engine's users (Assassin's Creed Pirates, Doodle God Blitz, FIFA 14/15,
@@ -958,6 +958,24 @@ worse; MC4 now reaches its "touch the screen" title (was the Havok logo at 30 s)
 daily-reward menu, AC Pirates further into its intro. Runs where the harness window lost focus
 (`lifecycle: suspended`) were repeated. Contract tests 2214/2214 (`StartupAndStacksSuite`,
 `Direct3DStateSuite`, transacted writes in `WinRtClassesSuite`).
+
+### The WP8 GPU replay honours scissor rectangles (2026-10-16)
+
+Reported as "Angry Birds Stella's achievements overlap the title when scrolled". Rovio's menus
+(Stella's Achievements board, `4d1a2f37-…`) clip their scrolling lists with
+`RSSetScissorRects` + a rasterizer state with `ScissorEnable`, called every frame. The context
+slot (45) had no handler and the replay forced `ScissorTestEnable = false`, so rows drew over the
+board's title at the top and past its frame at the bottom. Now `Direct3DRuntime.ScissorRect`
+keeps the first rectangle (`RSGetScissorRects`, slot 96, hands it back), `GpuDraw.Scissor`
+carries it, and `Wp8GpuReplay` sets `ScissorRectangle` (clamped to the target) only when the
+draw's raster desc has ScissorEnable (byte 28) **and** a rectangle was set; an empty rectangle
+draws nothing. No rectangle with ScissorEnable on is treated as no clip (D3D would clip
+everything; no title relies on that). The `WPR_WP8_GPU=0` draw list still ignores scissor.
+The tell for this class: `rasters=` in the `guest fps` line, and `WPR_WP8_METHOD_TRACE=Scissor`.
+
+Repro in `gamerun` (1280x768 display coords): `24 hold 535 715 0.2` (trophy button on the main
+menu), then `30 swipe 640 550 640 250 3` and a `shot` mid-drag. Verified D1–D4; contract test in
+`Direct3DStateSuite`.
 
 ### The WP8 runtime must not allocate per guest call (2026-10-14)
 
@@ -1585,6 +1603,151 @@ Classic (WP8) stopped at frame 200 on D1, D2 and D4, Back leaves, one hub report
 Angry Birds, Carcassonne, Flowerz, Cut the Rope, MONOPOLY, MC4, Feed Me Oil, Chickens Can't Fly
 and AE 3D Motor run normally. Android Release builds; **not run on Android** (env hooks do not reach
 `:game`; a real failing title is the way to see it there).
+
+### Every package format reaches a host; unknown Direct3D/XAML titles infer their page (2026-10-16)
+
+Survey of the library (both roots, 290 distinct packages by ProductID; `scratchpad/formatsurvey`,
+read-only, classifies with the installer's own `NativeXamlComponent.Find`). **No appx/appxbundle
+exists in the library**; every package is a `.xap`, and every one carries a `RuntimeType` WPR knows.
+
+| format | count | installs as | host | starts? (desktop harness, 2026-10-16) |
+| --- | --- | --- | --- | --- |
+| WP7 XNA | 172 | XNA | `FnaGameHost` (game's `Game`) | yes - Fruit Ninja WP7 menu |
+| WP7 mixed-mode (`SharedGraphicsDeviceManager`) | 13 | Silverlight | `SilverlightGame` | yes - Carcassonne menu |
+| WP7 Silverlight | 10 | Silverlight | `SilverlightGame` | yes - Flowerz menu |
+| WP8 Silverlight, managed | 2 | Silverlight | `SilverlightGame` | yes - Wordament page |
+| WP8 managed + native helper libs (SharpDX, Lumia.Imaging) | 5 | Silverlight | `SilverlightGame` | runs; Microsoft Minesweeper WP8 still draws nothing (SharpDX) |
+| WP8 Unity (managed shell + `UnityPlayer.dll`) | 32 | Silverlight | `SilverlightGame` (UnityPlayer stubbed) | runs, draws black: the engine is native and not hosted. A `wpr-port.json` port is the only route |
+| WP8 native exe (`Modern Native`) | 14 | ModernNative | `Wp8NativeGame` (exe) | yes - Angry Birds Rio menu |
+| WP8 Direct3D/XAML, background grid | 32 | ModernNative | `Wp8NativeGame` + `XamlInterop` | all reach Connect; 3 hand-written (Alex, MC4, AC Pirates) play; the others run on an inferred page (below) |
+| WP8 Direct3D/XAML, `DrawingSurface` | 6 | ModernNative | same, `DrawingSurface` path | reach GetTexture and draw frames (Fruit Ninja 8, Jetpack Joyride 5), then stop on a guest thread |
+| DRM-wrapped (`PRE\x07`) | 2 | refused `NotDecrypted` | - | BBB: App-ocalypse, Sonic Dash |
+
+GameMaker WP8 exports (Briquid Mini, Lines The Game) are Direct3D/XAML (`WinPhoneRunnerAppComponent`);
+the desktop now offers ModernNative ones to Runner.exe too and otherwise runs the ARM runner (Lines:
+1,500 frames, black). Packages with no or a broken manifest are the "synthesised metadata" work.
+
+**Three classification bugs, fixed:**
+
+- **`NativeXamlComponent` looked for a `.winmd` named after the component DLL.** WinRT names it after
+  the class's namespace (`FusionComponent.FusionMain` in AlexXamlComponent.dll is described by
+  `FusionComponent.winmd`). Since the Direct3DXaml-template test (2026-10-14) that sent **Amazing
+  Alex**, Fruit Ninja 2013, Jetpack Joyride, Bubble Guriko, Kingdoms & Lords and Make It Rain to
+  Silverlight with their game stubbed. It now tries each class namespace and its prefixes, then the
+  DLL name. **An Alex installed between 10-14 and now is Silverlight and needs a reinstall.**
+- **Metadata now outranks a d3d11 import**: Age of Sparta registers Gameloft's WindowsCorePackage
+  toolkit (imports d3d11) ahead of its game.
+- **`@AppResLib.dll,-100` titles are resolved at install** (`AppResourceTitle`, the RT_STRING table
+  of the package's resource DLL): Microsoft Minesweeper, MONOPOLY ("Millionaire"), Asphalt Overdrive.
+  Installed copies keep the raw text until reinstalled; the lists already prefer the catalogue name.
+
+**Generic page descriptions** (`Runtime/XamlShellInference.cs`). A Direct3D/XAML title with no
+`XamlShells` entry used to stop at frame 0 ("no page description"). The host now reads the managed
+shell's IL with System.Reflection.Metadata (nothing is loaded) and builds a `XamlShell`:
+
+- **Which class**: the one in the package metadata with `CreateContentProvider` that the shell names
+  most; calls through one of its interfaces count (EA's shared page holds an `IEAD3DBackground` made
+  with `Activator.CreateInstance`).
+- **Instance**: `newobj` = ActivateInstance (a constructor with arguments = factory `CreateInstance`),
+  a static returning the class (`GetInstance`) = that.
+- **Steps**, from the call graph (4 levels) of App `.ctor`/`Application_Launching` + page `.ctor`
+  (Launch), page `*Loaded` (Loaded, `OnNavigatedTo` if no Loaded reaches the class), page
+  `*OrientationChanged` (after Loaded), `Application_Deactivated`/`OnNavigatedFrom`,
+  `Application_Activated`, `*BackKeyPress`, `Application_Closing`. Statics of other package classes
+  are included (Doodle God Blitz's `DeviceWrapper.Set*Handler` callbacks: left out, the engine called
+  through null), and so is another class built through its factory (Spark2's `LuaMobileSDKBridge`).
+  `SetManipulationHost` is added after `CreateContentProvider` (the grid calls it, not the IL).
+- **Arguments**: sizes and scale from `Wp8Display`; literal constants the IL loads right before the
+  call; a delegate gets a handler whose follow-up calls are read from the C# handler (and any shell
+  control it builds - MC4's `VideoPlayer` ends a movie with `SetShowMovieFinish`); device questions
+  by parameter or event name (language en-US, region US, firmware 8.0.10521.0, NOKIA, RM-821);
+  an orientation by the page XAML's `SupportedOrientations` (read from `.g.resources`); a full-version
+  flag true; a component interface gets a default-answering host object.
+- **Back key**: the boolean whose answer goes to `e.Cancel` (closes on false), else the first boolean
+  asked (closes on true), else a void call named for Back (keeps every press).
+
+`WPR_WP8_XAML_INFER=1` ignores the hand-written description, which is how this was proved: with it
+set, **Amazing Alex, Modern Combat 4 and AC Pirates reach the same screens** (Alex menu, MC4 title,
+AC Pirates' intro cutscene) and the contract suite `XamlShellInferenceSuite` checks the inferred
+descriptions equal the hand-written ones step by step (MC4 gains its `OnOrientationChanged`). The
+log says which: `page description: X (hand-written)` / `page description inferred from the managed
+shell: ...`. **Hand-written still wins**; write one when a title needs what IL cannot show (which
+branch a handler takes, what a callback really answers).
+
+**`DrawingSurface` providers** (not the background grid): `IDrawingSurfaceContentProviderNative`
+(IID `c8377af0-7a69-41d4-a322-8f60e9a0acf8`, found by probing; the IInspectable face at the object's
+start is ruled out) gets `Connect(host)`, then per frame `PrepareResources(time, &dirty)` and
+`GetTexture(size, &synchronized, &rect)`. The runtime host's `CreateSynchronizedTexture` adopts the
+component's texture as the back buffer (`Direct3DRuntime.AdoptPresentationTexture`); both runtime-host
+slots answer both methods, telling them apart by whether the first argument is a device resource.
+
+**Also fixed on the way:** a vertex shader that failed on the device left its effect holding a freed
+blob, and disposing it killed the whole process (`0xC0000005` in `FNA3D_AddDisposeEffect`, Jetpack
+Joyride at teardown); the effect's native handle is now abandoned when the shader is marked broken.
+
+**Where the inferred titles stop** (desktop, 30 s, not chased): Doodle God Blitz 16 frames and Hexic
+0 frames (null call in the engine), Asphalt Overdrive 0 frames (null call after its `voidFunction`
+delegate; no manipulation handler answers), Bubble Guriko 0 frames (CPU exception 0), Fruit Ninja /
+Jetpack Joyride a few frames ("guest thread 2 exited and no thread is runnable"). Asphalt Overdrive
+was a `PlatformNotSupportedException` as Silverlight (old tester report), then "no page description"
+as native; it now activates, runs its page and connects. Not run on Android (the emulator was in use).
+
+No `ApplicationPatcher.Version` bump: no patcher table changed. Reinstall to pick up the
+classification and title fixes; the inference and DrawingSurface host apply on next launch.
+
+### A WP8 thread waiting on itself is a Sleep (2026-10-16)
+
+**2020: My Country** (`40c1edab-…`, SDL for WinRT) presented 0 frames for ever on its inferred
+page, with ~20M `WaitForSingleObjectEx` + `GetCurrentThread` and ~10M `_Mtx_lock`/`_Mtx_unlock` per
+5 s. The store API has no `Sleep`, so SDL's `SDL_Delay` is `WaitForSingleObjectEx(GetCurrentThread(),
+ms, FALSE)`. `SyncLibrary.WaitAny` took the `(HANDLE)-2` pseudo-handle as "not a sync object, so
+signalled" and returned `WAIT_OBJECT_0` at once without switching. Guest threads are cooperative, so
+the `std::thread` worker the main thread had just launched (a 50 ms / 2 ms polling loop) never gave
+the CPU back: the main thread never ran again. The inferred page description was fine.
+
+A wait on the current-thread pseudo-handle is now a never-signalled thread object (a thread is
+signalled only when it ends): `WAIT_TIMEOUT`, after blocking to the deadline so other threads run.
+The `threads:` line shows such a thread as `blocked on thread itself (a sleep)`. **The tell** in an
+import trace (`WPR_WP8_IMPORT_TRACE`) is one thread alternating `GetCurrentThread` → `WaitForSingleObjectEx
+r0=0xFFFFFFFE r1=<ms>` with nothing else ever running. Desktop D1/D2: tutorial ("Chapter 1 - First
+Island"), taps advance it, 60 fps. None of the 11-title WP8 regression set waits on itself (same
+frames, same outcomes). Contract suite `SleepOnSelfSuite`. (The `SetViewDimensions(0,0,0,0)` gap
+noted here was what broke its touch; fixed in the next section.)
+
+### Inferred page arguments are computed, not guessed; a resource with no initial data is zeroed (2026-10-16)
+
+Two defects in 2020: My Country on the S24, both general.
+
+**Taps did nothing** (the tutorial's Build button, every map tap), while "Click to Continue"
+worked, because that one accepts a tap anywhere. The inferred page answered computed arguments by
+parameter name: `SetViewDimensions(0, 0, 0, 0)` and `set_ScaleFactor(160)`, where the page passes
+`(0, 0, 768, 1280)` (`Floor(Host.Content.ActualWidth * ScaleFactor / 100 + 0.5)`, minus a tray
+height) and `Host.Content.ScaleFactor / 100f` = **1.6** (Amazing Alex passes the raw 160, so no
+name rule can be right). The engine scales every pointer by them, so each touch landed off the
+screen. `XamlShellInference.Arguments.cs` (`ShellReading.EvaluateArguments`) now runs the calling
+method's IL from its start to the call on a small abstract machine: constants, locals, arithmetic
+with CLR int/float semantics, conversions, `Math.Floor/Ceiling/Round/Min/Max/Abs`, `new Size(w, h)`,
+`System.Windows.Interop.Content.ActualWidth/ActualHeight/ScaleFactor` from `Wp8Display` (portrait,
+as on WP8 in any orientation) and `SystemTray.IsVisible` from the page XAML; a branch on a known
+value is taken, on an unknown one falls through. A value it cannot know stays null and the old
+by-name answer is used. The contract suite now checks every numeric argument of the three
+hand-written titles equals the inferred one, and My Country's two (when installed, real data root
+or `WPR_DATA_ROOT`). **The tell**: a title whose "tap anywhere" screens advance but whose buttons
+never respond; read the `[xaml] SetViewDimensions(...)`/`set_ScaleFactor(...)` lines.
+
+**Thin light seams round every map tile and sprite** (D3D11, Vulkan and GLES alike, so not a
+driver or DXT problem). The game packs sprites at run time into a 1024x1024 atlas it creates with
+**no initial data**; a texture's storage is a guest heap block, and a reused block still held an
+old loading screen, which linear filtering pulled in at each sprite's edge. D3D11 hands out such a
+resource zeroed: `Direct3DRuntime.ZeroStorage` now clears textures and buffers created without
+initial data when their block was reused (`ArmEmulator.LastAllocationReused`; the heap's untouched
+end is zero already, and clearing every new block cost AC Pirates ~5% of its loading frames)
+(`Direct3DStateSuite`). **The tell**: lines along the edges of sprite quads, partial
+and light; dump the atlas and look between the sprites.
+
+Desktop D1/D2/D4 (+ `WPR_FORCE_NO_DXT=1`): tutorial → Build → Eagleroost Offices → placement
+(confirm/cancel shown), no seams. WP8 regression set (11 titles, Terraria/Halo/GTA excluded): same
+outcomes, frame counts within run-to-run noise. Not run on a phone or the emulator.
 
 ### Update checks and the About page's "what's new" (2026-09-29, Android)
 
@@ -5082,6 +5245,50 @@ is precisely why the seam above exists rather than a plain project move.
   "reinstall <game>" rather than "rebuild" when the fix lands in
   `ApplicationPatcher.cs`.
 
+### Silverlight `MessageBox.Show` blocks for a real answer (2026-10-16)
+
+`System.Windows.MessageBox.Show(text, caption, button)` used to **NullReference on every call**:
+the shim's `ShowSimpleImpl` was never assigned, because both heads assigned a same-named field on
+their own `internal System.Windows.MessageBox` placeholder (string-typed, returning null) with the
+button/result mapping commented out. Measured over the desktop installs: Big Buck Hunter Pro
+(OKCancel to quit a hunt, log out, buy), Galactic Reign, ISE titles, GoogleAnalytics and
+WinRTBridge (Unity) call it.
+
+The shape now: **the shim owns the mapping, a head only shows buttons.**
+`WPR.WindowsCompability.MessageBox.Presenter` is `(caption, text, labels) -> Task<int>`, the index
+pressed or **-1 when dismissed**. `Describe`/`Resolve` are the documented WP7 rules: `OK` is OK "in
+all cases" (dismissing included); `OKCancel` is OK only for the OK button, Cancel for Cancel,
+**Back**, Esc or closing the window. YesNo/YesNoCancel (desktop-only values the enum also has)
+map as WPF (dismiss = No / Cancel). Labels are WP7's lower-case "ok"/"cancel". `Show` blocks the
+game thread on the task (the game stops drawing, as under WP7's box); no presenter, or one that
+throws, answers as dismissed. Unit tests: `MessageBoxTests`.
+
+| head | presenter | the exits that complete the task |
+| --- | --- | --- |
+| Windows | `MessageBoxUtils.ShowGameMessageBoxAsync`, an Avalonia window built directly, topmost (the game window is SDL's and cannot own it), dispatched to the UI thread; gives the foreground back to the game window on close | a button, Esc, the close button, `Closed` |
+| Android | the same name over an `AlertDialog` on `MessageBoxUtils.MainActivity` (GameActivity in `:game`) | a button, cancel (Back, outside tap), dismiss |
+
+**Every exit must complete the task**, or the game thread waits for ever. That is why Windows does
+not use MessageBox.Avalonia: 2.2.0 predates the head's Avalonia, `GetMessageDialogResult` falls
+into its MissingMethodException fallback window, and that window never completes when closed.
+(The Android `GetMessageDialogResult` used by `Guide` has the same gap for Back; not changed here.)
+
+**Focus.** The dialog takes focus, and the SDL focus events wait in the queue until the game thread
+pumps again, so `Show` calls `XnaBackend.SuppressFocusActivation(2 s)` before and after: WP7 raised
+no Deactivated/Activated for its own box, and a spurious resume re-raises the game's `Activated`
+(see "Only the FIRST Game.Activated is the cold start"). Log: `[wpr-msgbox] "<caption>" (OKCancel)
+-> cancel = Cancel` through `Trace`, so it is in the per-game log.
+
+Verified in the desktop harness (Big Buck Hunter Pro, hunt -> Back -> PAUSED -> MAIN MENU, which asks
+"This will delete your progress ... ?" OKCancel): ok returns to the main menu, cancel and dismissed stay
+paused. The harness answers through `GAMERUN_MSGBOX=<index>[,...]` (a local addition to
+`scratchpad/gamerun`); the Avalonia window and the AlertDialog were built, not clicked. Reaching that
+screen needed `DOTNET_JITMinOpts=1`: the game's loader spin-waits on plain fields
+(`while (mStateManager == null);`), which the optimising JIT hoists, so every hunt otherwise hangs on
+LOADING. That is a separate bug, not fixed here.
+
+Shim and head behaviour only: no `ApplicationPatcher.Version` bump, no reinstall.
+
 ### A WP7 Silverlight game quits by THROWING, and WPR was swallowing it (2026-09-24)
 
 WP7 Silverlight had no public exit API. The universal idiom is therefore:
@@ -5714,13 +5921,13 @@ pairs, and each head projects them into its own paint type. Prefer that over a s
 **TFM list mirrors `WPR.Database` and must keep doing so** — on Windows that project has no plain
 `net8.0` leg, so a bare `net8.0` here fails restore with NU1201.
 
-**Three files are still duplicated, deliberately:**
+**Two files are still duplicated, deliberately** (a third, `System/Windows/MessageBox.cs`, was an
+`internal` placeholder and was deleted on 2026-10-16; see the `MessageBox.Show` section):
 
 | file | why it stays |
 | --- | --- |
-| `MessageBoxUtils.cs` | genuinely different implementations — Avalonia windows vs `AlertDialog`. Only the contract is common, and it is two delegates. |
+| `MessageBoxUtils.cs` | genuinely different implementations — Avalonia windows vs `AlertDialog`. Only the contract is common: two delegates, and since 2026-10-16 `ShowGameMessageBoxAsync` behind Silverlight's `MessageBox.Presenter`. |
 | `ServicesSetup.cs` | no longer where platform differences live: since 2026-09-01 each head declares a `PlatformDescriptor` (`WindowsPlatform` / `AndroidPlatform`) and `Start()` is one `PlatformComposition.Apply` call plus the `Guide`/`MessageBox` wiring. **Compare the two descriptors, not these files.** |
-| `System/Windows/MessageBox.cs` | an `internal` placeholder holding `ShowSimpleImpl`, entangled with the head-specific dialog wiring above. |
 
 **Still duplicated and not yet extracted** (measured 2026-09-02, in rough value order): the install
 pipeline shape — `ReadPreview` → `Install(stream, progress, confirmReplace, token)` → the

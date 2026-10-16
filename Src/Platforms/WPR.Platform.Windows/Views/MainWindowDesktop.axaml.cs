@@ -195,7 +195,10 @@ namespace WPR.Platform.Windows.Views
                     {
                         runtimePath = WPR.Online.Hub.Client.RuntimePaths.UnitySwap;
                     }
-                    else if (args.Target.ApplicationType == ApplicationType.Silverlight &&
+                    // A WP8 GameMaker export installs as ModernNative (its WinPhoneRunnerAppComponent
+                    // is a Direct3D/XAML component), so it is offered to Runner.exe too; without one
+                    // it falls through to the WP8 host, which runs the ARM runner itself.
+                    else if (args.Target.ApplicationType is ApplicationType.Silverlight or ApplicationType.ModernNative &&
                              await GameMakerLauncher.TryLaunchAsync(installFolder, args.Target.ProductId ?? "", args.Target.Name ?? ""))
                     {
                         runtimePath = WPR.Online.Hub.Client.RuntimePaths.Other; // the hub has no GameMaker path

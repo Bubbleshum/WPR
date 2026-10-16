@@ -764,6 +764,12 @@ namespace WPR.Wp8Native
         /// rest and bring with it every classic allocator bug, in a component whose whole
         /// job is to make the image's bugs visible rather than to add its own.
         /// </remarks>
+        /// <summary>
+        /// Whether the last <see cref="AllocateHeap"/> handed back a freed block, which still holds
+        /// its last owner's bytes. A block from the never-used end of the heap is zero.
+        /// </summary>
+        public bool LastAllocationReused { get; private set; }
+
         public long AllocateHeap(long size)
         {
             long aligned = Bucket(size);
@@ -774,8 +780,11 @@ namespace WPR.Wp8Native
                 _freed.Remove(reused);
                 RecordAllocation(reused, aligned);
                 BytesReused += aligned;
+                LastAllocationReused = true;
                 return reused;
             }
+
+            LastAllocationReused = false;
 
             if (_heapNext + aligned > HeapBase + HeapSize)
             {
