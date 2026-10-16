@@ -479,6 +479,18 @@ namespace WPR
                     {
                         Log.Warn(LogCategory.AppInstall, $"XnaAchievementSeeder failed (non-fatal): {ex.Message}");
                     }
+
+                    // Its movies, as for any other title: the WP8 media engine hands an ASF/MP4
+                    // source to the platform's video decoder, which on Android reads only the
+                    // sidecars written here (MediaCodec has no WMV).
+                    await PrepareMoviesQuietly(appDataFolder!, app.Name, _ => { }, cancelSource);
+                    if (cancelSource.IsCancellationRequested)
+                    {
+                        Directory.Delete(appDataFolder!, true);
+                        ApplicationContext.Current.Remove(app);
+
+                        return ApplicationInstallError.Canceled;
+                    }
                 }
                 else
                 {
@@ -839,11 +851,23 @@ namespace WPR
             Action<int> progressSet,
             CancellationToken cancelToken)
         {
-            // A WP8 native title is ARM code, never patched at install: nothing to redo.
+            // A WP8 native title is ARM code, never patched at install: there is no IL to redo.
+            // Its movies still need sidecars where the platform cannot decode them as shipped
+            // (Android has no WMV), so that half of a repatch runs. It is how a WP8 title
+            // installed before 2026-10-16 gets its movies on a phone: Halo: Spartan Assault sat
+            // on its first logo for ever without them.
             if (app.ApplicationType == ApplicationType.ModernNative)
             {
+                string nativeFolder = Path.Combine(
+                    Configuration.Current!.DataPath(Application.DataStoreFolder),
+                    app.ProductId.Trim('{').Trim('}'));
+                if (Directory.Exists(nativeFolder))
+                {
+                    await PrepareMoviesQuietly(nativeFolder, app.Name, progressSet, cancelToken);
+                }
+
                 progressSet(100);
-                return ApplicationInstallError.None;
+                return cancelToken.IsCancellationRequested ? ApplicationInstallError.Canceled : ApplicationInstallError.None;
             }
 
             try
@@ -984,6 +1008,26 @@ namespace WPR
             {
                 Log.Error(LogCategory.AppInstall, $"Repatch failed for {app.Name}: {ex}");
                 return ApplicationInstallError.PatchFailed;
+            }
+        }
+
+        /// <summary>
+        /// <see cref="VideoCompabilityConverter.PrepareMovies"/> off the caller's thread (the
+        /// install and repatch are started from the UI thread in both heads), never throwing: a
+        /// movie that cannot be prepared costs only its cutscene.
+        /// </summary>
+        private static async Task PrepareMoviesQuietly(string folder, string? name, Action<int> progressSet, CancellationToken cancelToken)
+        {
+            try
+            {
+                await Task.Run(() => VideoCompabilityConverter.PrepareMovies(folder, progressSet, cancelToken));
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                Log.Warn(LogCategory.AppInstall, $"Movie preparation failed for {name} (cutscenes will be skipped): {ex.Message}");
             }
         }
 
