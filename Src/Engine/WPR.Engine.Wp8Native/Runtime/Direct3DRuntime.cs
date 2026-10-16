@@ -2748,6 +2748,30 @@ namespace WPR.Wp8Native
             return (devicePointer, _immediateContext);
         }
 
+        /// <summary>Whether <paramref name="pointer"/> is a resource (texture, buffer) the device made.</summary>
+        public bool IsResource(long pointer) => ResourceAt(pointer) is not null;
+
+        /// <summary>
+        /// A <c>DrawingSurface</c> component's own texture (handed to
+        /// <c>IDrawingSurfaceRuntimeHostNative::CreateSynchronizedTexture</c>) becomes the back buffer:
+        /// what is drawn into it is the frame, and its size is the screen's.
+        /// </summary>
+        public void AdoptPresentationTexture(long texture)
+        {
+            if (texture == 0)
+            {
+                return;
+            }
+
+            _backBufferPointer = texture;
+            if (ResourceAt(texture) is { PixelWidth: > 0, PixelHeight: > 0 } resource)
+            {
+                RequestSwapChainSize((uint)resource.PixelWidth, (uint)resource.PixelHeight);
+            }
+
+            Note($"presentation texture 0x{texture:X8} ({BackBufferWidth}x{BackBufferHeight}) adopted as the back buffer");
+        }
+
         /// <summary>A render target view over the back buffer, the third argument of <c>Draw</c>.</summary>
         public long CreateHostRenderTargetView()
         {

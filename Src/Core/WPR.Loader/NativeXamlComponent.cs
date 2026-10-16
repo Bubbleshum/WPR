@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -32,8 +33,8 @@ namespace WPR
                 return null;
             }
 
-            XmlNodeList? paths = appNode.OwnerDocument?.SelectNodes("//ActivatableClasses/InProcessServer/Path");
-            if (paths == null)
+            XmlNodeList? servers = appNode.OwnerDocument?.SelectNodes("//ActivatableClasses/InProcessServer");
+            if (servers == null)
             {
                 return null;
             }
@@ -44,11 +45,13 @@ namespace WPR
             // declares CreateContentProvider (the page hands that to DrawingSurfaceBackgroundGrid),
             // else the first found. Assassin's Creed Pirates needs the second test: its SparkApp.dll
             // imports no d3d11 (its renderer is a Lua*.dll loaded at run time from Spark2Projects),
-            // and the Moga controller library it registers first is native ARM too.
-            string? first = null;
-            foreach (XmlNode node in paths)
+            // and the Moga controller library it registers first is native ARM too. The metadata
+            // test outranks the import: Age of Sparta registers Gameloft's WindowsCorePackage
+            // toolkit, which imports d3d11 too, ahead of its game (GODZ_WP8Comp.dll).
+            string? first = null, importsD3D = null;
+            foreach (XmlNode server in servers)
             {
-                string path = node.InnerText.Trim();
+                string path = server.SelectSingleNode("Path")?.InnerText.Trim() ?? "";
                 if (path.Length == 0 || IsMiddleware(path))
                 {
                     continue;
@@ -56,16 +59,25 @@ namespace WPR
 
                 ZipArchiveEntry? entry = archive.GetEntry(path)
                     ?? archive.Entries.FirstOrDefault(e => e.FullName.Equals(path, StringComparison.OrdinalIgnoreCase));
-                if (entry != null && IsNativeArm(entry, out bool draws))
+                if (entry != null && IsNativeArm(entry, out bool d3d))
                 {
-                    draws |= DeclaresContentProvider(archive, entry.FullName);
-                    if (draws)
+                    if (DeclaresContentProvider(archive, entry.FullName, ActivatableClassIds(server)))
                     {
                         return entry.FullName;
                     }
 
+                    if (d3d)
+                    {
+                        importsD3D ??= entry.FullName;
+                    }
+
                     first ??= entry.FullName;
                 }
+            }
+
+            if (importsD3D != null)
+            {
+                return importsD3D;
             }
 
             // No component draws. That is a Direct3D/XAML game only if the manifest says so (the
@@ -105,28 +117,77 @@ namespace WPR
 
         private static readonly byte[] CreateContentProviderName = System.Text.Encoding.ASCII.GetBytes("CreateContentProvider");
 
-        /// <summary>Whether the component's own .winmd (same name beside it) names CreateContentProvider.</summary>
-        private static bool DeclaresContentProvider(ZipArchive archive, string dllPath)
+        private static IEnumerable<string> ActivatableClassIds(XmlNode server)
         {
-            string winmdPath = Path.ChangeExtension(dllPath, ".winmd");
-            ZipArchiveEntry? winmd = archive.GetEntry(winmdPath)
-                ?? archive.Entries.FirstOrDefault(e => e.FullName.Equals(winmdPath, StringComparison.OrdinalIgnoreCase));
-            if (winmd == null)
+            XmlNodeList? classes = server.SelectNodes("ActivatableClass");
+            if (classes == null)
             {
-                return false;
+                yield break;
             }
 
-            try
+            foreach (XmlNode cls in classes)
             {
-                using Stream stream = winmd.Open();
-                using MemoryStream copy = new();
-                stream.CopyTo(copy);
-                return copy.GetBuffer().AsSpan(0, (int)copy.Length).IndexOf(CreateContentProviderName) >= 0;
+                if (cls.Attributes?["ActivatableClassId"]?.Value is { Length: > 0 } id)
+                {
+                    yield return id;
+                }
             }
-            catch (Exception)
+        }
+
+        /// <summary>
+        /// Whether the metadata describing the component's classes names CreateContentProvider.
+        /// </summary>
+        /// <remarks>
+        /// WinRT finds a class's metadata by its NAMESPACE, not by the DLL that implements it:
+        /// <c>FusionComponent.FusionMain</c> (Amazing Alex, in AlexXamlComponent.dll) is described by
+        /// FusionComponent.winmd, Mandreel's <c>__MandreelWP8Direct3DInterop.Direct3DInterop</c> by
+        /// __MandreelWP8Direct3DInterop.winmd. Looking only for a .winmd named after the DLL missed
+        /// both, so once the Direct3DXaml-template test arrived (2026-10-14) Alex, Fruit Ninja, Jetpack
+        /// Joyride, Bubble Guriko, Kingdoms &amp; Lords and Make It Rain installed as Silverlight with
+        /// their game replaced by a managed stub. Each class's namespace and every shorter prefix of
+        /// it are tried (WinRT's own lookup order), then the DLL's own name.
+        /// </remarks>
+        private static bool DeclaresContentProvider(ZipArchive archive, string dllPath, IEnumerable<string> classIds)
+        {
+            string directory = Path.GetDirectoryName(dllPath)?.Replace('\\', '/') ?? "";
+            List<string> candidates = new();
+            foreach (string id in classIds)
             {
-                return false;
+                string ns = id;
+                for (int dot = ns.LastIndexOf('.'); dot > 0; dot = ns.LastIndexOf('.'))
+                {
+                    ns = ns[..dot];
+                    candidates.Add(ns + ".winmd");
+                }
             }
+
+            candidates.Add(Path.GetFileName(Path.ChangeExtension(dllPath, ".winmd")));
+            foreach (string name in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                string winmdPath = directory.Length == 0 ? name : directory + "/" + name;
+                ZipArchiveEntry? winmd = archive.GetEntry(winmdPath)
+                    ?? archive.Entries.FirstOrDefault(e => e.FullName.Equals(winmdPath, StringComparison.OrdinalIgnoreCase));
+                if (winmd == null)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    using Stream stream = winmd.Open();
+                    using MemoryStream copy = new();
+                    stream.CopyTo(copy);
+                    if (copy.GetBuffer().AsSpan(0, (int)copy.Length).IndexOf(CreateContentProviderName) >= 0)
+                    {
+                        return true;
+                    }
+                }
+                catch (Exception)
+                {
+                }
+            }
+
+            return false;
         }
 
         private static readonly byte[] D3D11Import = System.Text.Encoding.ASCII.GetBytes("d3d11.dll");
