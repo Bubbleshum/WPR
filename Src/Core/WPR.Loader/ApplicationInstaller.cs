@@ -70,7 +70,7 @@ namespace WPR
 
                 ApplicationPreview preview = new ApplicationPreview
                 {
-                    Name = titleAttrib.Value,
+                    Name = AppResourceTitle.Resolve(archive, titleAttrib.Value),
                     // Not versionAttrib.Value directly: half the library never bumped that
                     // attribute off the 1.0.0.0 template default. See ApplicationVersionResolver.
                     Version = ApplicationVersionResolver.Resolve(archive, versionAttrib.Value, titleAttrib.Value),
@@ -390,7 +390,7 @@ namespace WPR
 
                 app = new Application()
                 {
-                    Name = titleAttrib.Value,
+                    Name = AppResourceTitle.Resolve(archive, titleAttrib.Value),
                     ApplicationType = runtimeTypeParsed,
                     // See ApplicationVersionResolver: the manifest attribute is the placeholder
                     // 1.0.0.0 for half the library, so the entry assembly is consulted when it is.

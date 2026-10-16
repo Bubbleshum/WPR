@@ -324,6 +324,19 @@ namespace WPR.Wp8Native
                         // draw reads freed memory and the process dies (0xC0000005 in
                         // FNA3D_ApplyVertexBufferBindings).
                         _brokenVertexShaders.Add(broken.Vertex.Key);
+
+                        // Its effect holds that freed blob too, and FNA3D frees it again when the
+                        // effect is disposed - at teardown, by this replay or by the device - which
+                        // killed the whole process with 0xC0000005 in FNA3D_AddDisposeEffect
+                        // (Jetpack Joyride). The native effect is abandoned instead: a leak for the
+                        // rest of this game run, which ends with its device.
+                        foreach (((long vertex, long _), Effect? leaked) in _effects)
+                        {
+                            if (vertex == broken.Vertex.Key && leaked is not null)
+                            {
+                                leaked.glEffect = IntPtr.Zero;
+                            }
+                        }
                         Warn($"broken {broken.Vertex.Key}", $"vertex shader 0x{broken.Vertex.Key:X8} failed on the device; its draws are skipped from now on");
                     }
                 }

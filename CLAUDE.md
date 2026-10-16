@@ -1503,6 +1503,97 @@ Angry Birds, Carcassonne, Flowerz, Cut the Rope, MONOPOLY, MC4, Feed Me Oil, Chi
 and AE 3D Motor run normally. Android Release builds; **not run on Android** (env hooks do not reach
 `:game`; a real failing title is the way to see it there).
 
+### Every package format reaches a host; unknown Direct3D/XAML titles infer their page (2026-10-16)
+
+Survey of the library (both roots, 290 distinct packages by ProductID; `scratchpad/formatsurvey`,
+read-only, classifies with the installer's own `NativeXamlComponent.Find`). **No appx/appxbundle
+exists in the library**; every package is a `.xap`, and every one carries a `RuntimeType` WPR knows.
+
+| format | count | installs as | host | starts? (desktop harness, 2026-10-16) |
+| --- | --- | --- | --- | --- |
+| WP7 XNA | 172 | XNA | `FnaGameHost` (game's `Game`) | yes - Fruit Ninja WP7 menu |
+| WP7 mixed-mode (`SharedGraphicsDeviceManager`) | 13 | Silverlight | `SilverlightGame` | yes - Carcassonne menu |
+| WP7 Silverlight | 10 | Silverlight | `SilverlightGame` | yes - Flowerz menu |
+| WP8 Silverlight, managed | 2 | Silverlight | `SilverlightGame` | yes - Wordament page |
+| WP8 managed + native helper libs (SharpDX, Lumia.Imaging) | 5 | Silverlight | `SilverlightGame` | runs; Microsoft Minesweeper WP8 still draws nothing (SharpDX) |
+| WP8 Unity (managed shell + `UnityPlayer.dll`) | 32 | Silverlight | `SilverlightGame` (UnityPlayer stubbed) | runs, draws black: the engine is native and not hosted. A `wpr-port.json` port is the only route |
+| WP8 native exe (`Modern Native`) | 14 | ModernNative | `Wp8NativeGame` (exe) | yes - Angry Birds Rio menu |
+| WP8 Direct3D/XAML, background grid | 32 | ModernNative | `Wp8NativeGame` + `XamlInterop` | all reach Connect; 3 hand-written (Alex, MC4, AC Pirates) play; the others run on an inferred page (below) |
+| WP8 Direct3D/XAML, `DrawingSurface` | 6 | ModernNative | same, `DrawingSurface` path | reach GetTexture and draw frames (Fruit Ninja 8, Jetpack Joyride 5), then stop on a guest thread |
+| DRM-wrapped (`PRE\x07`) | 2 | refused `NotDecrypted` | - | BBB: App-ocalypse, Sonic Dash |
+
+GameMaker WP8 exports (Briquid Mini, Lines The Game) are Direct3D/XAML (`WinPhoneRunnerAppComponent`);
+the desktop now offers ModernNative ones to Runner.exe too and otherwise runs the ARM runner (Lines:
+1,500 frames, black). Packages with no or a broken manifest are the "synthesised metadata" work.
+
+**Three classification bugs, fixed:**
+
+- **`NativeXamlComponent` looked for a `.winmd` named after the component DLL.** WinRT names it after
+  the class's namespace (`FusionComponent.FusionMain` in AlexXamlComponent.dll is described by
+  `FusionComponent.winmd`). Since the Direct3DXaml-template test (2026-10-14) that sent **Amazing
+  Alex**, Fruit Ninja 2013, Jetpack Joyride, Bubble Guriko, Kingdoms & Lords and Make It Rain to
+  Silverlight with their game stubbed. It now tries each class namespace and its prefixes, then the
+  DLL name. **An Alex installed between 10-14 and now is Silverlight and needs a reinstall.**
+- **Metadata now outranks a d3d11 import**: Age of Sparta registers Gameloft's WindowsCorePackage
+  toolkit (imports d3d11) ahead of its game.
+- **`@AppResLib.dll,-100` titles are resolved at install** (`AppResourceTitle`, the RT_STRING table
+  of the package's resource DLL): Microsoft Minesweeper, MONOPOLY ("Millionaire"), Asphalt Overdrive.
+  Installed copies keep the raw text until reinstalled; the lists already prefer the catalogue name.
+
+**Generic page descriptions** (`Runtime/XamlShellInference.cs`). A Direct3D/XAML title with no
+`XamlShells` entry used to stop at frame 0 ("no page description"). The host now reads the managed
+shell's IL with System.Reflection.Metadata (nothing is loaded) and builds a `XamlShell`:
+
+- **Which class**: the one in the package metadata with `CreateContentProvider` that the shell names
+  most; calls through one of its interfaces count (EA's shared page holds an `IEAD3DBackground` made
+  with `Activator.CreateInstance`).
+- **Instance**: `newobj` = ActivateInstance (a constructor with arguments = factory `CreateInstance`),
+  a static returning the class (`GetInstance`) = that.
+- **Steps**, from the call graph (4 levels) of App `.ctor`/`Application_Launching` + page `.ctor`
+  (Launch), page `*Loaded` (Loaded, `OnNavigatedTo` if no Loaded reaches the class), page
+  `*OrientationChanged` (after Loaded), `Application_Deactivated`/`OnNavigatedFrom`,
+  `Application_Activated`, `*BackKeyPress`, `Application_Closing`. Statics of other package classes
+  are included (Doodle God Blitz's `DeviceWrapper.Set*Handler` callbacks: left out, the engine called
+  through null), and so is another class built through its factory (Spark2's `LuaMobileSDKBridge`).
+  `SetManipulationHost` is added after `CreateContentProvider` (the grid calls it, not the IL).
+- **Arguments**: sizes and scale from `Wp8Display`; literal constants the IL loads right before the
+  call; a delegate gets a handler whose follow-up calls are read from the C# handler (and any shell
+  control it builds - MC4's `VideoPlayer` ends a movie with `SetShowMovieFinish`); device questions
+  by parameter or event name (language en-US, region US, firmware 8.0.10521.0, NOKIA, RM-821);
+  an orientation by the page XAML's `SupportedOrientations` (read from `.g.resources`); a full-version
+  flag true; a component interface gets a default-answering host object.
+- **Back key**: the boolean whose answer goes to `e.Cancel` (closes on false), else the first boolean
+  asked (closes on true), else a void call named for Back (keeps every press).
+
+`WPR_WP8_XAML_INFER=1` ignores the hand-written description, which is how this was proved: with it
+set, **Amazing Alex, Modern Combat 4 and AC Pirates reach the same screens** (Alex menu, MC4 title,
+AC Pirates' intro cutscene) and the contract suite `XamlShellInferenceSuite` checks the inferred
+descriptions equal the hand-written ones step by step (MC4 gains its `OnOrientationChanged`). The
+log says which: `page description: X (hand-written)` / `page description inferred from the managed
+shell: ...`. **Hand-written still wins**; write one when a title needs what IL cannot show (which
+branch a handler takes, what a callback really answers).
+
+**`DrawingSurface` providers** (not the background grid): `IDrawingSurfaceContentProviderNative`
+(IID `c8377af0-7a69-41d4-a322-8f60e9a0acf8`, found by probing; the IInspectable face at the object's
+start is ruled out) gets `Connect(host)`, then per frame `PrepareResources(time, &dirty)` and
+`GetTexture(size, &synchronized, &rect)`. The runtime host's `CreateSynchronizedTexture` adopts the
+component's texture as the back buffer (`Direct3DRuntime.AdoptPresentationTexture`); both runtime-host
+slots answer both methods, telling them apart by whether the first argument is a device resource.
+
+**Also fixed on the way:** a vertex shader that failed on the device left its effect holding a freed
+blob, and disposing it killed the whole process (`0xC0000005` in `FNA3D_AddDisposeEffect`, Jetpack
+Joyride at teardown); the effect's native handle is now abandoned when the shader is marked broken.
+
+**Where the inferred titles stop** (desktop, 30 s, not chased): Doodle God Blitz 16 frames and Hexic
+0 frames (null call in the engine), Asphalt Overdrive 0 frames (null call after its `voidFunction`
+delegate; no manipulation handler answers), Bubble Guriko 0 frames (CPU exception 0), Fruit Ninja /
+Jetpack Joyride a few frames ("guest thread 2 exited and no thread is runnable"). Asphalt Overdrive
+was a `PlatformNotSupportedException` as Silverlight (old tester report), then "no page description"
+as native; it now activates, runs its page and connects. Not run on Android (the emulator was in use).
+
+No `ApplicationPatcher.Version` bump: no patcher table changed. Reinstall to pick up the
+classification and title fixes; the inference and DrawingSurface host apply on next launch.
+
 ### Update checks and the About page's "what's new" (2026-09-29, Android)
 
 `WPR.Shell.AppUpdates` asks GitHub's `/releases/latest` (drafts and pre-releases excluded) at most

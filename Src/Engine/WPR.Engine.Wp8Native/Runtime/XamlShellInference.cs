@@ -39,7 +39,11 @@ namespace WPR.Wp8Native
         private const int MaxDepth = 4;
 
         /// <summary>A call the shell makes on a component class, as read from IL.</summary>
-        private sealed record ShellCall(string Class, string Method, bool IsNew, bool IsStatic, bool IsFunctionPointer, int Parameters, object?[] TrailingConstants, string? NextCall);
+        private sealed record ShellCall(string Class, string Method, bool IsNew, bool IsStatic, bool IsFunctionPointer, int Parameters, object?[] TrailingConstants, string? NextCall)
+        {
+            /// <summary>For an event subscription: what the C# handler (and anything it hooks up) calls on the component.</summary>
+            public IReadOnlyList<ShellCall> Handler { get; init; } = [];
+        }
 
         /// <summary>
         /// Infers a shell for <paramref name="componentDll"/> from the managed assemblies beside it.
@@ -98,9 +102,10 @@ namespace WPR.Wp8Native
                 ? $"xaml inference: no managed shell names {classId}; the template's steps are assumed"
                 : $"xaml inference: {Path.GetFileName(reading.Path)} drives {classId}");
 
-            Builder builder = new(metadata, classId);
+            Builder builder = new(metadata, classId, reading?.Landscape ?? false);
             List<XamlShellStep> launch = builder.Steps(reading?.Launch, Phase.Launch);
             List<XamlShellStep> loaded = builder.Steps(reading?.Loaded, Phase.Loaded);
+            loaded.AddRange(builder.Steps(reading?.Oriented, Phase.Loaded).Where(step => !loaded.Any(l => l.Method == step.Method)));
             if (!loaded.Any(s => s.Method == CreateContentProvider) && reading is not null)
             {
                 // No Loaded handler reaches the component (some shells do it from OnNavigatedTo).
@@ -207,7 +212,8 @@ namespace WPR.Wp8Native
         }
 
         /// <summary>Turns calls read from IL into steps, with arguments from the component's metadata.</summary>
-        private sealed class Builder(WinmdReader metadata, string classId)
+        /// <param name="landscape">The page is laid out landscape (its SupportedOrientations).</param>
+        private sealed class Builder(WinmdReader metadata, string classId, bool landscape)
         {
             public List<XamlShellStep> Steps(IReadOnlyList<ShellCall>? calls, Phase phase)
             {
@@ -275,7 +281,7 @@ namespace WPR.Wp8Native
                     object?[] arguments = method is { } m ? Arguments(call, m.Method) : [XamlShell.ManipulationHost];
                     if (subscription && arguments.Length > 0)
                     {
-                        arguments[0] = CallbackFor(method is { } e && e.Method.ParameterTypes.Count > 0 ? e.Method.ParameterTypes[0] : ""); // a C# handler
+                        arguments[0] = CallbackFor(method is { } e && e.Method.ParameterTypes.Count > 0 ? e.Method.ParameterTypes[0] : "", HandlerSteps(call), call.Method); // a C# handler
                     }
 
                     if (steps.Count > 0 && steps[^1].Method == call.Method)
@@ -358,16 +364,21 @@ namespace WPR.Wp8Native
             /// question about the device gets the answer a phone would give - an engine that asks
             /// for its language (Doodle God Blitz's GetLanguageHandler) uses the answer at once.
             /// </summary>
-            private object CallbackFor(string delegateType)
+            private object CallbackFor(string delegateType, XamlShellStep[]? then = null, string? eventName = null)
             {
-                if (metadata.DelegateInvoke(delegateType)?.ReturnType != "String")
-                {
-                    return XamlShell.Callback;
-                }
-
-                string? answer = DeviceAnswer(delegateType.Split('.')[^1]);
-                return answer is null ? XamlShell.Callback : new XamlCallback(answer);
+                string? answer = metadata.DelegateInvoke(delegateType)?.ReturnType == "String" ? (eventName is null ? null : DeviceAnswer(eventName)) ?? DeviceAnswer(delegateType.Split('.')[^1]) : null;
+                return answer is null && (then is null || then.Length == 0) ? XamlShell.Callback : new XamlCallback(answer, then ?? []);
             }
+
+            /// <summary>
+            /// What the handler calls back on the component, the frame after the event: void calls only,
+            /// and nothing that ends the app (an exit handler would close the game the first time
+            /// the engine asks whether it may).
+            /// </summary>
+            private XamlShellStep[] HandlerSteps(ShellCall subscription) => Steps(subscription.Handler, Phase.Lifecycle)
+                .Where(step => !step.Method.Contains("Exit", StringComparison.OrdinalIgnoreCase) && !step.Method.Contains("Quit", StringComparison.OrdinalIgnoreCase))
+                .Take(4)
+                .ToArray();
 
             /// <summary>What a WP8 phone answers to a device question, by the name it is asked under; null for anything else.</summary>
             private static string? DeviceAnswer(string name)
@@ -375,8 +386,9 @@ namespace WPR.Wp8Native
                 bool Has(string word) => name.Contains(word, StringComparison.OrdinalIgnoreCase);
                 return Has("Language") || Has("Locale") || Has("Culture") ? "en-US"
                     : Has("Region") || Has("Country") ? "US"
-                    : Has("Firmware") || Has("OSVersion") ? "8.0.10521.0"
-                    : Has("Manufacturer") ? "NOKIA"
+                    : Has("HardwareVersion") ? "1.0.0.0"
+                    : Has("Firmware") || Has("OSVersion") || Has("SystemVersion") ? "8.0.10521.0"
+                    : Has("Manufacturer") || Has("Family") ? "NOKIA"
                     : Has("DeviceName") || Has("Model") ? "RM-821_eu_euro1_276"
                     : null;
             }
@@ -390,14 +402,18 @@ namespace WPR.Wp8Native
                     // Constants are known for the trailing run of arguments the IL loaded literally.
                     int fromEnd = count - 1 - i;
                     object? constant = fromEnd < call.TrailingConstants.Length ? call.TrailingConstants[^(fromEnd + 1)] : null;
-                    arguments[i] = DefaultFor(method.ParameterTypes[i], call.Method, constant);
+                    string name = i < method.ParameterNames.Count ? method.ParameterNames[i] : "";
+                    arguments[i] = DefaultFor(method.ParameterTypes[i], call.Method, constant, name);
                 }
 
                 return arguments;
             }
 
-            private object? DefaultFor(string type, string method, object? constant)
+            private object? DefaultFor(string type, string method, object? constant, string parameter = "")
             {
+                // An orientation the page computed from its own: what its SupportedOrientations says.
+                bool orientation = constant is null &&
+                    (parameter.Contains("Orientation", StringComparison.OrdinalIgnoreCase) || method.Contains("Orientation", StringComparison.OrdinalIgnoreCase));
                 switch (type)
                 {
                     case "Windows.Foundation.Size":
@@ -416,13 +432,16 @@ namespace WPR.Wp8Native
                             : method.Contains("FullVersion", StringComparison.OrdinalIgnoreCase) || method.Contains("Licensed", StringComparison.OrdinalIgnoreCase)
                               || method.Contains("Purchased", StringComparison.OrdinalIgnoreCase);
                     case "String":
-                        return constant as string ?? DeviceAnswer(method) ?? "";
+                        return constant as string ?? (orientation ? (landscape ? "LandscapeLeft" : "PortraitUp") : null)
+                            ?? DeviceAnswer(parameter) ?? DeviceAnswer(method) ?? "";
                     case "Int32":
                     case "UInt32":
                     case "Int64":
                     case "Int16":
                     case "Byte":
-                        return constant is int n ? n : method.Contains("Scale", StringComparison.OrdinalIgnoreCase) ? Wp8Display.Scale : 0;
+                        // PageOrientation: LandscapeLeft 18, PortraitUp 5.
+                        return constant is int n ? n : orientation ? (landscape ? 18 : 5)
+                            : method.Contains("Scale", StringComparison.OrdinalIgnoreCase) ? Wp8Display.Scale : 0;
                 }
 
                 if (metadata.DelegateInvoke(type) is not null)
@@ -451,6 +470,12 @@ namespace WPR.Wp8Native
             public List<ShellCall> Loaded { get; } = [];
 
             public List<ShellCall> Navigated { get; } = [];
+
+            /// <summary>The page's OrientationChanged handler, run after Loaded.</summary>
+            public List<ShellCall> Oriented { get; } = [];
+
+            /// <summary>A page of the shell declares <c>SupportedOrientations="Landscape"</c> in its XAML.</summary>
+            public bool Landscape { get; private set; }
 
             public List<ShellCall> Deactivated { get; } = [];
 
@@ -524,6 +549,8 @@ namespace WPR.Wp8Native
                     Walk(page, m => m == ".ctor", Launch);
                     Walk(page, m => m.EndsWith("Loaded", StringComparison.Ordinal) && m != "get_Loaded", Loaded);
                     Walk(page, m => m == "OnNavigatedTo", Navigated);
+                    // The page raises OrientationChanged once it is laid out in its orientation.
+                    Walk(page, m => m.EndsWith("OrientationChanged", StringComparison.Ordinal), Oriented);
                     Walk(page, m => m == "OnNavigatedFrom", Deactivated);
                     Walk(page, m => m.Contains("BackKeyPress", StringComparison.Ordinal), BackKey);
                 }
@@ -537,6 +564,44 @@ namespace WPR.Wp8Native
                 }
 
                 Mentions.AddRange(All.Select(c => c.Class).Where(_drawing.Contains));
+                Landscape = ReadPageXaml().Any(xaml => xaml.Contains("SupportedOrientations=\"Landscape\"", StringComparison.Ordinal));
+            }
+
+            /// <summary>The XAML of the assembly's pages, from its Silverlight <c>.g.resources</c> bundle.</summary>
+            private IEnumerable<string> ReadPageXaml()
+            {
+                List<string> pages = [];
+                try
+                {
+                    DirectoryEntry resources = _pe.PEHeaders.CorHeader!.ResourcesDirectory;
+                    foreach (ManifestResourceHandle handle in _md.ManifestResources)
+                    {
+                        ManifestResource resource = _md.GetManifestResource(handle);
+                        if (!resource.Implementation.IsNil || !_md.GetString(resource.Name).EndsWith(".g.resources", StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
+                        BlobReader blob = _pe.GetSectionData(resources.RelativeVirtualAddress).GetReader((int)resource.Offset, resources.Size - (int)resource.Offset);
+                        byte[] bytes = blob.ReadBytes(blob.ReadInt32());
+                        using System.Resources.ResourceReader reader = new(new MemoryStream(bytes));
+                        System.Collections.IDictionaryEnumerator entries = reader.GetEnumerator();
+                        while (entries.MoveNext())
+                        {
+                            if (entries.Key is string key && key.EndsWith(".xaml", StringComparison.OrdinalIgnoreCase) && entries.Value is Stream stream)
+                            {
+                                using StreamReader text = new(stream);
+                                pages.Add(text.ReadToEnd());
+                            }
+                        }
+                    }
+                }
+                catch (Exception)
+                {
+                    // No bundle, or one this reader cannot open: the page is taken as portrait.
+                }
+
+                return pages;
             }
 
             private bool DerivesFromPage(TypeDefinition type, int depth)
@@ -563,7 +628,7 @@ namespace WPR.Wp8Native
                 }
             }
 
-            private void Collect(MethodDefinitionHandle handle, List<ShellCall> into, int depth, HashSet<MethodDefinitionHandle> visited, bool followCalls)
+            private void Collect(MethodDefinitionHandle handle, List<ShellCall> into, int depth, HashSet<MethodDefinitionHandle> visited, bool followCalls, bool followFunctionPointers = false)
             {
                 if (depth > MaxDepth || !visited.Add(handle))
                 {
@@ -594,9 +659,21 @@ namespace WPR.Wp8Native
 
                     if (target.Kind == HandleKind.MethodDefinition)
                     {
-                        if (followCalls && op is not (ILOpCode.Ldftn or ILOpCode.Ldvirtftn))
+                        if (followCalls && (followFunctionPointers || op is not (ILOpCode.Ldftn or ILOpCode.Ldvirtftn)))
                         {
-                            Collect((MethodDefinitionHandle)target, into, depth + 1, visited, followCalls);
+                            Collect((MethodDefinitionHandle)target, into, depth + 1, visited, followCalls, followFunctionPointers);
+                        }
+
+                        // A handler that builds a control of the shell's own (MC4's VideoPlayer) hands
+                        // the rest to it, often through events its XAML wires up, which no IL names:
+                        // everything that control's methods say to the component is the reaction.
+                        if (followFunctionPointers && op == ILOpCode.Newobj && depth < MaxDepth)
+                        {
+                            TypeDefinitionHandle control = _md.GetMethodDefinition((MethodDefinitionHandle)target).GetDeclaringType();
+                            foreach (MethodDefinitionHandle controlMethod in _md.GetTypeDefinition(control).GetMethods())
+                            {
+                                Collect(controlMethod, into, MaxDepth, visited, followCalls: false);
+                            }
                         }
 
                         continue;
@@ -646,9 +723,34 @@ namespace WPR.Wp8Native
                                 : null;
                     }
 
+                    // An event subscription's handler is the shell method whose ldftn sits beside the
+                    // add_ (before it for a plain delegate, after it for WindowsRuntimeMarshal's
+                    // AddEventHandler pattern). Followed through what it hooks up in turn: Modern
+                    // Combat 4's ShowMovie starts a player whose MediaEnded calls SetShowMovieFinish.
+                    List<ShellCall> handler = [];
+                    if (followCalls && memberName.StartsWith("add_", StringComparison.Ordinal) && HandlerNear(code, i) is { } handlerMethod)
+                    {
+                        Collect(handlerMethod, handler, 0, [], followCalls: true, followFunctionPointers: true);
+                    }
+
                     into.Add(new ShellCall(owner, memberName, op == ILOpCode.Newobj, !header.IsInstance,
-                        op is ILOpCode.Ldftn or ILOpCode.Ldvirtftn, parameters, [.. trailing], next));
+                        op is ILOpCode.Ldftn or ILOpCode.Ldvirtftn, parameters, [.. trailing], next) { Handler = handler });
                 }
+            }
+
+            /// <summary>The shell method a delegate is made from next to the add_ at <paramref name="at"/>.</summary>
+            private static MethodDefinitionHandle? HandlerNear(List<(ILOpCode Op, int Token, object? Constant)> code, int at)
+            {
+                foreach (int i in Enumerable.Range(at + 1, 8).Concat(Enumerable.Range(Math.Max(0, at - 8), Math.Min(8, at)).Reverse()))
+                {
+                    if (i < code.Count && code[i].Op is ILOpCode.Ldftn or ILOpCode.Ldvirtftn &&
+                        MetadataTokens.EntityHandle(code[i].Token) is { Kind: HandleKind.MethodDefinition } target)
+                    {
+                        return (MethodDefinitionHandle)target;
+                    }
+                }
+
+                return null;
             }
 
             private string? TypeName(EntityHandle handle)
