@@ -16,7 +16,7 @@ namespace WPR.SilverlightCompability
     /// and manipulation handler are only remembered.</para>
     ///
     /// <para>History: until 2026-10-12 a Direct3D11 backend could draw the app's splash image or
-    /// a test pattern here (retired, Plans/RUNTIME-CONVERGENCE.md 2a), and until 2026-10-13 the
+    /// a test pattern here (retired, the runtime convergence plan 2a), and until 2026-10-13 the
     /// Avalonia Silverlight host drew a branded splash from the app's tile art or a status
     /// placeholder (retired with that host, 2b / Stage D).</para>
     /// </summary>

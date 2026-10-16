@@ -5,7 +5,7 @@ Stage C shipped (the user chose not to wait the one release §5 suggested), so e
 `ApplicationType.Silverlight` title runs on one host, `SilverlightGame` (renamed from
 `MixedModeGame`), on both heads, and there is no flag. Results in the Stage C and Stage D entries
 of §4 and in CLAUDE.md ("Pure Silverlight titles run on the XNA host", "One Silverlight host"). The §5 gate (`IBackgroundRenderer`) was settled
-by retiring the D3D11 backend on 2026-10-12 (RUNTIME-CONVERGENCE §2a). Results in the Stage C entry
+by retiring the D3D11 backend on 2026-10-12 (runtime convergence plan §2a). Results in the Stage C entry
 of §4 and in CLAUDE.md, "Pure Silverlight titles run on the XNA host".
 
 **Status (2026-09-25): Stages A and B are built.** Gaps 1, 2, 3 and 5 are done; gap 4 turned out
