@@ -130,6 +130,103 @@ namespace WPR.Platform.Windows
         }
 
         /// <summary>
+        /// The presenter behind a game's Silverlight <c>MessageBox.Show</c>: a WP-styled window with
+        /// one button per label, completing with the index pressed or -1 when it was dismissed (Esc,
+        /// closing the window). The shim maps that to a <c>MessageBoxResult</c>.
+        /// </summary>
+        /// <remarks>
+        /// Built directly rather than through MessageBox.Avalonia, whose 2.2.0 build predates the
+        /// Avalonia this head runs and lands in <see cref="GetMessageDialogResult"/>'s
+        /// MissingMethodException fallback, a window that never completes when it is closed. The
+        /// game thread waits on this task, so EVERY way out of the window has to complete it.
+        /// The game window is SDL's, not Avalonia's, so the dialog cannot be owned by it: it is
+        /// topmost instead, and the window that had the foreground (the game) gets it back on close.
+        /// </remarks>
+        public static Task<int> ShowGameMessageBoxAsync(string caption, string text, IReadOnlyList<string> labels)
+        {
+            Func<Task<int>> show = () =>
+            {
+                var tcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+                IntPtr previousForeground = GetForegroundWindow();
+
+                var w = new Window
+                {
+                    Title = string.IsNullOrEmpty(caption) ? "WPR" : caption,
+                    Width = 480,
+                    SizeToContent = SizeToContent.Height,
+                    CanResize = false,
+                    Topmost = true,
+                    ShowInTaskbar = false,
+                    WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                };
+
+                var panel = new StackPanel { Margin = new Thickness(24, 20), Spacing = 12 };
+                if (!string.IsNullOrEmpty(caption))
+                {
+                    panel.Children.Add(new TextBlock
+                    {
+                        Text = caption,
+                        FontSize = 22,
+                        FontWeight = FontWeight.Light,
+                        TextWrapping = TextWrapping.Wrap,
+                    });
+                }
+                panel.Children.Add(new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap });
+
+                var buttons = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left,
+                    Spacing = 8,
+                    Margin = new Thickness(0, 8, 0, 0),
+                };
+                for (int i = 0; i < labels.Count; i++)
+                {
+                    int index = i;
+                    var b = new Button { Content = labels[i], MinWidth = 120, IsDefault = i == 0 };
+                    b.Click += (_, _) => { tcs.TrySetResult(index); w.Close(); };
+                    buttons.Children.Add(b);
+                }
+                panel.Children.Add(buttons);
+                w.Content = panel;
+
+                w.KeyDown += (_, e) =>
+                {
+                    if (e.Key == Avalonia.Input.Key.Escape)
+                    {
+                        e.Handled = true;
+                        w.Close();
+                    }
+                };
+                // Closed covers Esc, the title bar's close button, Alt+F4 and WPR shutting down.
+                w.Closed += (_, _) =>
+                {
+                    tcs.TrySetResult(-1);
+                    if (previousForeground != IntPtr.Zero)
+                    {
+                        try { SetForegroundWindow(previousForeground); } catch { /* best effort */ }
+                    }
+                };
+
+                w.Show();
+                w.Activate();
+                return tcs.Task;
+            };
+
+            if (Dispatcher.UIThread.CheckAccess())
+                return show();
+
+            return Dispatcher.UIThread.InvokeAsync(show);
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        /// <summary>
         /// Shows an error dialog whose body is a read-only, selectable, multi-line TextBox so
         /// the user can copy the text. A "Copy" button copies the full body to the clipboard.
         /// Resizable. Falls back to <see cref="GetMessageDialogResult"/> on Android.

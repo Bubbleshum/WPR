@@ -5033,6 +5033,50 @@ is precisely why the seam above exists rather than a plain project move.
   "reinstall <game>" rather than "rebuild" when the fix lands in
   `ApplicationPatcher.cs`.
 
+### Silverlight `MessageBox.Show` blocks for a real answer (2026-10-16)
+
+`System.Windows.MessageBox.Show(text, caption, button)` used to **NullReference on every call**:
+the shim's `ShowSimpleImpl` was never assigned, because both heads assigned a same-named field on
+their own `internal System.Windows.MessageBox` placeholder (string-typed, returning null) with the
+button/result mapping commented out. Measured over the desktop installs: Big Buck Hunter Pro
+(OKCancel to quit a hunt, log out, buy), Galactic Reign, ISE titles, GoogleAnalytics and
+WinRTBridge (Unity) call it.
+
+The shape now: **the shim owns the mapping, a head only shows buttons.**
+`WPR.WindowsCompability.MessageBox.Presenter` is `(caption, text, labels) -> Task<int>`, the index
+pressed or **-1 when dismissed**. `Describe`/`Resolve` are the documented WP7 rules: `OK` is OK "in
+all cases" (dismissing included); `OKCancel` is OK only for the OK button, Cancel for Cancel,
+**Back**, Esc or closing the window. YesNo/YesNoCancel (desktop-only values the enum also has)
+map as WPF (dismiss = No / Cancel). Labels are WP7's lower-case "ok"/"cancel". `Show` blocks the
+game thread on the task (the game stops drawing, as under WP7's box); no presenter, or one that
+throws, answers as dismissed. Unit tests: `MessageBoxTests`.
+
+| head | presenter | the exits that complete the task |
+| --- | --- | --- |
+| Windows | `MessageBoxUtils.ShowGameMessageBoxAsync`, an Avalonia window built directly, topmost (the game window is SDL's and cannot own it), dispatched to the UI thread; gives the foreground back to the game window on close | a button, Esc, the close button, `Closed` |
+| Android | the same name over an `AlertDialog` on `MessageBoxUtils.MainActivity` (GameActivity in `:game`) | a button, cancel (Back, outside tap), dismiss |
+
+**Every exit must complete the task**, or the game thread waits for ever. That is why Windows does
+not use MessageBox.Avalonia: 2.2.0 predates the head's Avalonia, `GetMessageDialogResult` falls
+into its MissingMethodException fallback window, and that window never completes when closed.
+(The Android `GetMessageDialogResult` used by `Guide` has the same gap for Back; not changed here.)
+
+**Focus.** The dialog takes focus, and the SDL focus events wait in the queue until the game thread
+pumps again, so `Show` calls `XnaBackend.SuppressFocusActivation(2 s)` before and after: WP7 raised
+no Deactivated/Activated for its own box, and a spurious resume re-raises the game's `Activated`
+(see "Only the FIRST Game.Activated is the cold start"). Log: `[wpr-msgbox] "<caption>" (OKCancel)
+-> cancel = Cancel` through `Trace`, so it is in the per-game log.
+
+Verified in the desktop harness (Big Buck Hunter Pro, hunt -> Back -> PAUSED -> MAIN MENU, which asks
+"This will delete your progress ... ?" OKCancel): ok returns to the main menu, cancel and dismissed stay
+paused. The harness answers through `GAMERUN_MSGBOX=<index>[,...]` (a local addition to
+`scratchpad/gamerun`); the Avalonia window and the AlertDialog were built, not clicked. Reaching that
+screen needed `DOTNET_JITMinOpts=1`: the game's loader spin-waits on plain fields
+(`while (mStateManager == null);`), which the optimising JIT hoists, so every hunt otherwise hangs on
+LOADING. That is a separate bug, not fixed here.
+
+Shim and head behaviour only: no `ApplicationPatcher.Version` bump, no reinstall.
+
 ### A WP7 Silverlight game quits by THROWING, and WPR was swallowing it (2026-09-24)
 
 WP7 Silverlight had no public exit API. The universal idiom is therefore:
@@ -5665,13 +5709,13 @@ pairs, and each head projects them into its own paint type. Prefer that over a s
 **TFM list mirrors `WPR.Database` and must keep doing so** — on Windows that project has no plain
 `net8.0` leg, so a bare `net8.0` here fails restore with NU1201.
 
-**Three files are still duplicated, deliberately:**
+**Two files are still duplicated, deliberately** (a third, `System/Windows/MessageBox.cs`, was an
+`internal` placeholder and was deleted on 2026-10-16; see the `MessageBox.Show` section):
 
 | file | why it stays |
 | --- | --- |
-| `MessageBoxUtils.cs` | genuinely different implementations — Avalonia windows vs `AlertDialog`. Only the contract is common, and it is two delegates. |
+| `MessageBoxUtils.cs` | genuinely different implementations — Avalonia windows vs `AlertDialog`. Only the contract is common: two delegates, and since 2026-10-16 `ShowGameMessageBoxAsync` behind Silverlight's `MessageBox.Presenter`. |
 | `ServicesSetup.cs` | no longer where platform differences live: since 2026-09-01 each head declares a `PlatformDescriptor` (`WindowsPlatform` / `AndroidPlatform`) and `Start()` is one `PlatformComposition.Apply` call plus the `Guide`/`MessageBox` wiring. **Compare the two descriptors, not these files.** |
-| `System/Windows/MessageBox.cs` | an `internal` placeholder holding `ShowSimpleImpl`, entangled with the head-specific dialog wiring above. |
 
 **Still duplicated and not yet extracted** (measured 2026-09-02, in rough value order): the install
 pipeline shape — `ReadPreview` → `Install(stream, progress, confirmReplace, token)` → the
