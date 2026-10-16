@@ -54,6 +54,43 @@ public sealed class XamlShellInferenceSuite : IContractSuite
             h.Check($"{component}: same back key", inferred.BackKey?.QuitIf == known.BackKey?.QuitIf && inferred.BackKey?.QuitWhen == known.BackKey?.QuitWhen,
                 $"{inferred.BackKey?.QuitIf} quit when {inferred.BackKey?.QuitWhen}");
             h.Check($"{component}: marked inferred, background grid", inferred.Inferred && !inferred.DrawingSurface);
+
+            // Sizes and scales the page computes come out as the hand-written description has them.
+            static bool Numeric(object? v) => v is float or int or double or SizeF;
+            foreach (XamlShellStep step in known.Loaded)
+            {
+                XamlShellStep? mine = inferred.Loaded.FirstOrDefault(s => s.Method == step.Method);
+                if (mine is null || mine.Arguments.Length != step.Arguments.Length || !step.Arguments.Any(Numeric))
+                {
+                    continue;
+                }
+
+                h.Check($"{component}: {step.Method} arguments as written", step.Arguments.Zip(mine.Arguments).All(p => !Numeric(p.First) || Equals(p.First, p.Second)),
+                    string.Join(", ", mine.Arguments));
+            }
         }
+
+        // 2020: My Country computes its view rectangle and scale factor from Host.Content
+        // (MainPage.UpdateViewDimensions, ScaleFactor / 100f): answered by name they were
+        // (0, 0, 0, 0) and 160, and every touch it scaled by them missed. Checked when installed
+        // (the real data root, or WPR_DATA_ROOT's).
+        string? myCountry = new[] { Environment.GetEnvironmentVariable("WPR_DATA_ROOT"), Path.GetDirectoryName(Apps) }
+            .Where(root => !string.IsNullOrEmpty(root))
+            .Select(root => Path.Combine(root!, "AppData", "40c1edab-4f3d-475c-aae0-b378464241a4"))
+            .FirstOrDefault(folder => File.Exists(Path.Combine(folder, "MyCountry.dll")));
+        if (myCountry is null)
+        {
+            Console.WriteLine("  (skipped MyCountry.dll: not installed)");
+            return;
+        }
+
+        XamlShell? country = XamlShellInference.Infer(Path.Combine(myCountry, "MyCountry.dll"), WinmdReader.Load(Directory.GetFiles(myCountry, "*.winmd")));
+        XamlShellStep? view = country?.Loaded.FirstOrDefault(s => s.Method == "SetViewDimensions");
+        XamlShellStep? scale = country?.Loaded.FirstOrDefault(s => s.Method == "set_ScaleFactor");
+        h.Check("MyCountry.dll: SetViewDimensions(0, 0, physical width, physical height)",
+            view is not null && view.Arguments.SequenceEqual(new object?[] { 0, 0, Wp8Display.PhysicalWidth, Wp8Display.PhysicalHeight }),
+            view is null ? "missing" : string.Join(", ", view.Arguments));
+        h.Check("MyCountry.dll: ScaleFactor is Host.Content.ScaleFactor / 100", scale is not null && Equals(scale.Arguments[0], Wp8Display.Scale / 100f),
+            scale is null ? "missing" : string.Join(", ", scale.Arguments));
     }
 }

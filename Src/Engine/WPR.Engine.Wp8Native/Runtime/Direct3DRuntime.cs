@@ -917,15 +917,42 @@ namespace WPR.Wp8Native
             }
 
             resource.Storage = _emulator.AllocateHeap(resource.StorageSize);
+            bool stale = _emulator.LastAllocationReused;
 
             if (initial == 0 || resource.Storage == 0)
             {
+                ZeroStorage(resource, stale);
                 return;
             }
 
             long source = _emulator.ReadUInt32(initial + 0, 0);
             int pitch = (int)_emulator.ReadUInt32(initial + 4, 0);
             CopyRows(resource, source, pitch);
+        }
+
+        private static readonly byte[] Zeros = new byte[64 * 1024];
+
+        /// <summary>
+        /// Clears a resource created with no initial data. Direct3D 11 hands such a resource out
+        /// zeroed, but its storage here is a guest heap block, and a reused one still holds whatever
+        /// the last owner left. 2020: My Country packs sprites into a 1024x1024 atlas it creates
+        /// empty and fills a region at a time; on a reused block the gaps between sprites held an
+        /// old loading screen, and linear filtering at each sprite's edge drew it as a thin light
+        /// seam round every map tile and building. A block from the heap's untouched end is
+        /// zero already, and is left alone: clearing every new atlas cost loading time.
+        /// </summary>
+        private void ZeroStorage(FrameCapture.Resource resource, bool stale)
+        {
+            if (!stale)
+            {
+                return; // the heap's untouched end is zero already
+            }
+
+            for (long done = 0; done < resource.StorageSize; done += Zeros.Length)
+            {
+                int count = (int)Math.Min(Zeros.Length, resource.StorageSize - done);
+                _emulator.WriteMemory(resource.Storage + done, Zeros.AsSpan(0, count));
+            }
         }
 
         /// <summary>D3D11_BUFFER_DESC opens with ByteWidth.</summary>
@@ -944,10 +971,12 @@ namespace WPR.Wp8Native
             }
 
             resource.Storage = _emulator.AllocateHeap(resource.StorageSize);
+            bool stale = _emulator.LastAllocationReused;
 
             long source = initial == 0 ? 0 : _emulator.ReadUInt32(initial + 0, 0);
             if (source == 0 || resource.Storage == 0)
             {
+                ZeroStorage(resource, stale);
                 return;
             }
 

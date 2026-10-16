@@ -27,6 +27,9 @@ namespace WPR.Wp8Native
         private const long WaitFailed = 0xFFFFFFFF;
         private const long Infinite = 0xFFFFFFFF;
 
+        /// <summary>GetCurrentThread's (HANDLE)-2.</summary>
+        private const long CurrentThreadPseudoHandle = 0xFFFFFFFE;
+
         private const int ErrorInvalidHandle = 6;
         private const int ErrorInvalidParameter = 87;
         private const int ErrorAlreadyExists = 183;
@@ -436,7 +439,13 @@ namespace WPR.Wp8Native
         /// The wait every WaitFor* is: WAIT_OBJECT_0 + i (or WAIT_ABANDONED_0 + i for a mutex whose
         /// owner died), WAIT_TIMEOUT once the time has elapsed. An infinite or timed wait blocks the
         /// thread, so whoever will signal runs. A handle that is not a synchronisation object here
-        /// (a file, a pseudo-handle) is taken as signalled, as a completed file handle is.
+        /// (a file, the process pseudo-handle) is taken as signalled, as a completed file handle is.
+        /// The current-thread pseudo-handle is the exception: a thread is signalled when it ends, so
+        /// waiting on yourself can only time out. That is WP8's Sleep - the store API has none, and
+        /// SDL's WinRT port (2020: My Country) delays with
+        /// <c>WaitForSingleObjectEx(GetCurrentThread(), ms, FALSE)</c>. Answering it at once as
+        /// signalled never gave the CPU away, so a worker that polls with it starved every other
+        /// thread, the main one included, for ever.
         /// </summary>
         /// <remarks>
         /// A wait that is not satisfied at once, with nothing else able to run, cannot be satisfied
@@ -449,7 +458,9 @@ namespace WPR.Wp8Native
             Event?[] objects = new Event?[handles.Length];
             for (int i = 0; i < handles.Length; i++)
             {
-                objects[i] = _events.GetValueOrDefault(handles[i]);
+                objects[i] = handles[i] == CurrentThreadPseudoHandle
+                    ? new Event { Kind = Kind.Thread, ThreadId = me, Name = "itself (a sleep)" }
+                    : _events.GetValueOrDefault(handles[i]);
             }
 
             if (TrySatisfy(objects, waitAll, me) is { } now)
