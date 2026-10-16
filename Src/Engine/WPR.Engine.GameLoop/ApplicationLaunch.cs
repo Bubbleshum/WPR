@@ -321,7 +321,7 @@ namespace WPR
             // pure UI alike — is hosted by SilverlightGame: the page is laid out and rasterised on
             // the CPU (SoftwareVisualRasteriser) and composited whenever the game itself paints
             // nothing, and TouchPanel samples are routed into its visual tree. There is no other
-            // Silverlight host on either head since 2026-10-13 (Plans/RUNTIME-CONVERGENCE.md 2b).
+            // Silverlight host on either head since 2026-10-13 (the runtime convergence plan 2b).
             bool isSilverlight = app.ApplicationType == ApplicationType.Silverlight;
 
             // WP8 "Modern Native": an ARMv7 PE against WinRT. It runs on the dynarmic JIT inside

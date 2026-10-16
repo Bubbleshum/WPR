@@ -58,7 +58,7 @@ that backend drew only a splash image and a test pattern behind
 `DrawingSurfaceBackgroundGrid` for titles WPR could not host; native
 `DrawingSurfaceBackgroundGrid` content had moved to the WP8 runtime's replay on the
 shared device. It was deleted with its seam and the `SilverlightBackend` registry
-(commit `7c857d75`, [`RUNTIME-CONVERGENCE.md`](RUNTIME-CONVERGENCE.md) item 2a).
+(commit `7c857d75`, runtime convergence plan item 2a).
 `IBackgroundRenderer` remains, implemented only by `BrandedSplashRenderer`, until
 Stage C of [`SILVERLIGHT-XNA-CONVERGENCE.md`](SILVERLIGHT-XNA-CONVERGENCE.md) removes
 the Avalonia renderer.

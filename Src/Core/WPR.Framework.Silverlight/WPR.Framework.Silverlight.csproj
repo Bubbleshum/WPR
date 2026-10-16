@@ -16,7 +16,7 @@
 
   <!-- No UI framework. The Avalonia package (and with it the 11.3.9/12.1.3 split between the
        desktop and android legs) went with the Avalonia Silverlight host on 2026-10-13
-       (Plans/RUNTIME-CONVERGENCE.md 2b, Stage D): every Silverlight title is drawn by
+       (the runtime convergence plan 2b, Stage D): every Silverlight title is drawn by
        SoftwareVisualRasteriser on the XNA host. Do not add one back; the launcher UI's Avalonia
        lives in WPR.Platform.Windows only. -->
 
@@ -53,7 +53,7 @@
     No Vortice / Direct3D references live here any more. Stage 5e (2026-08-29) moved the three
     D3D11 renderers into Src/Backends/WPR.Backend.Direct3D11 behind an ISurfaceRendererBackend
     seam; on 2026-10-12 that backend, the seam and its SilverlightBackend registry were retired
-    altogether (Plans/RUNTIME-CONVERGENCE.md item 2a).
+    altogether (the runtime convergence plan item 2a).
     The WPR_D3D11 define went with them — this project now compiles identically on all three TFMs.
     Re-adding a graphics package here would re-open the backend leak the fitness test guards.
   -->

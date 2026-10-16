@@ -1,5 +1,5 @@
 // WP8 API census: every ARM PE in every WP8 XAP in the library, every import it makes, and whether
-// the runtime implements it. Plus the WinRT classes the images name. Plans/RUNTIME-CONVERGENCE.md.
+// the runtime implements it. Plus the WinRT classes the images name. See the runtime convergence plan.
 //
 //   wp8census <out-dir> <library-root> [<library-root> ...]
 using System.IO.Compression;
