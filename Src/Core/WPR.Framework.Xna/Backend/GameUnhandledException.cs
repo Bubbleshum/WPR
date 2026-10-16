@@ -114,6 +114,7 @@ namespace WPR.Xna.Rhi
 			{
 				WPR.Engine.Online.CompatibilityProblems.NoteFrameException(
 					WPR.Engine.Online.CompatibilityProblems.Categories.UpdateThrew, exception);
+				ErrorScreen.NoteFrameException(exception);
 			}
 			return handled;
 		}

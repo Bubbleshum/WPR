@@ -868,6 +868,14 @@ namespace Microsoft.Xna.Framework
 			// WPR: a host overlay (a MediaPlayerLauncher movie) has the screen. The game is not
 			// updated or drawn until it ends, and the time it was up is not handed to the game
 			// afterwards as one enormous step.
+			// WPR: a failure to put on the screen (a WP8 guest that stopped, or frames that throw and
+			// draw nothing). Shown as a host overlay, so the game stops running underneath it.
+			WPR.Xna.Rhi.GameErrorReport errorReport = WPR.Xna.Rhi.ErrorScreen.TakePending();
+			if (errorReport != null)
+			{
+				ShowErrorScreen(errorReport);
+			}
+
 			WPR.Xna.Rhi.IHostOverlay hostOverlay = WPR.Xna.Rhi.HostOverlay.Current;
 			if (hostOverlay != null)
 			{
@@ -999,6 +1007,7 @@ namespace Microsoft.Xna.Framework
                 {
                     WprDebugTrace.WriteLine("[wpr-ex] Game.Update (variable timestep) threw: " + ex2);
                     WPR.Engine.Online.CompatibilityProblems.NoteFrameException(WPR.Engine.Online.CompatibilityProblems.Categories.UpdateThrew, ex2);
+                    WPR.Xna.Rhi.ErrorScreen.NoteFrameException(ex2);
 					Exit();
                 }
             }
@@ -1085,6 +1094,7 @@ namespace Microsoft.Xna.Framework
 						{
 							WprDebugTrace.WriteLine($"[wpr-trace] Game.Draw #{wprTraceIndex} starting");
 						}
+						if (WPR.Xna.Rhi.ErrorScreen.ForceFrameFailure) throw new InvalidOperationException("WPR_TEST_FORCE_FRAME_FAILURE: Draw forced to throw by the test hook");
 						Draw(gameTime);
 						if (wprTraceThisTick)
 						{
@@ -1095,6 +1105,7 @@ namespace Microsoft.Xna.Framework
 					{
 						WprDebugTrace.WriteLine("[wpr-ex] Game.Draw threw: " + ex);
 						WPR.Engine.Online.CompatibilityProblems.NoteFrameException(WPR.Engine.Online.CompatibilityProblems.Categories.DrawThrew, ex);
+						WPR.Xna.Rhi.ErrorScreen.NoteFrameException(ex);
 						try
 						{
 							int reset = Microsoft.Xna.Framework.Graphics.SpriteBatch.WprForceEndAll();
@@ -1108,6 +1119,10 @@ namespace Microsoft.Xna.Framework
 							WprDebugTrace.WriteLine("[wpr-ex] Game.Draw SpriteBatch recovery threw: " + recoveryEx);
 						}
 					}
+
+					// The frame watch: a frame that threw and drew nothing, for long enough, is put on
+					// the screen. Read before EndDraw, whose Present resets the count.
+					WPR.Xna.Rhi.ErrorScreen.EndFrame(Microsoft.Xna.Framework.Graphics.GraphicsDevice.WprDrawCallsThisFrame);
 
 					try
                     {
@@ -1143,6 +1158,30 @@ namespace Microsoft.Xna.Framework
 		#endregion
 
 		#region Internal Methods
+
+		/// <summary>Shows <paramref name="report"/> through the registered error screen; with none, a
+		/// definite stop exits as it always did and a frame-watch verdict changes nothing.</summary>
+		private void ShowErrorScreen(WPR.Xna.Rhi.GameErrorReport report)
+		{
+			WPR.Xna.Rhi.IHostOverlay overlay = null;
+			try
+			{
+				overlay = WPR.Xna.Rhi.ErrorScreen.Factory?.Invoke(report, Exit);
+			}
+			catch (Exception ex)
+			{
+				WPR.Xna.Rhi.XnaBackend.LogWarn("[wpr-error-screen] could not be built: " + ex);
+			}
+
+			if (overlay == null)
+			{
+				if (report.Stopped) Exit();
+				return;
+			}
+
+			WPR.Xna.Rhi.XnaBackend.LogInfo("[wpr-error-screen] shown: " + report.Headline);
+			WPR.Xna.Rhi.HostOverlay.Show(overlay);
+		}
 
 		private void RunHostOverlay(WPR.Xna.Rhi.IHostOverlay overlay)
 		{

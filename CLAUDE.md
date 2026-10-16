@@ -1456,6 +1456,53 @@ crash reports only; a compat or install report for the same title must not swall
 No `ApplicationPatcher.Version` bump and no reinstall, except that a WP8 managed title installed as
 native needs a reinstall to move to `SilverlightGame`.
 
+### A failing game shows its error on the screen (2026-10-16)
+
+Two failures used to leave the player with nothing: a **WP8 guest that stopped** (fault, wild
+jump, trap, "no page description") called `Exit()`, so the window closed or sat black with no
+reason; and a game whose **frames throw and draw nothing** ran on as a black screen for ever. Both
+now show an **error screen**: game name, headline (exception type + message, or the guest's stop
+reason), where (top managed frame without its path, or "WP8 native code, after N frame(s)"), a few
+detail lines (the stack, or the WP8 post-mortem summary first), whether WPR Hub was told, and
+"press Back to exit".
+
+- **Seam**: `WPR.Xna.Rhi.ErrorScreen` (`WPR.Framework.Xna/Backend/ErrorScreen.cs`). `Request(report)`
+  from any thread; `Game.Tick` takes it on the game thread and shows `ErrorScreen.Factory`'s
+  overlay through `HostOverlay`, so the game stops running underneath (same slot as
+  `LauncherMovieOverlay`). `ApplicationLaunch.StartCore` registers the factory per launch;
+  `TeardownAudioState` resets it. No factory, or `WPR_ERROR_SCREEN=0`: a WP8 stop exits as before.
+- **The screen**: `WPR.Engine.GameLoop/ErrorScreenOverlay.cs`, drawn on the CPU with the Silverlight
+  `TextRasteriser` (system TrueType font, no content) into one backbuffer-sized texture, so it is the
+  same on every driver. The top ~10% is left empty for Android's logging-run button (top right).
+  **Only Back leaves** (phone button, Esc on the desktop); a tap does nothing. No font: a plain
+  dark screen with the red bar.
+- **The frame watch is conservative on purpose.** `NoteFrameException` (Game.Tick's Update/Draw
+  catches, GameTimer via `GameUnhandledException.ReportFrameException`) + `EndFrame(drawCalls)`,
+  read just before EndDraw (Present resets `WprDrawCallsThisFrame`). It trips only after **60
+  consecutive drawn frames AND 2 s** in which every frame threw AND issued no draw call. A frame that
+  draws, or that throws nothing, resets it; suppressed-draw frames are neutral. So Feed Me Oil,
+  Chickens Can't Fly and Brain Challenge (throw but paint) and Galactic Reign-style empty menus
+  (draw nothing, throw nothing) never see it. Unit tests: `ErrorScreenTests`.
+- **WP8 reports at the stop, not at exit**: `Wp8NativeGame.GuestFailed` fires on the guest thread,
+  `ApplicationLaunch` queues `ReportGuestFailure` from it (once; the post-`Run` report is skipped),
+  so killing the app from the error screen does not lose the report.
+- **Already covered elsewhere, deliberately not duplicated**: a launch that throws before the first
+  frame (constructor, `DoInitialize`, a refused runtime type) ends `Run`, and the desktop shows
+  `AppRunError`'s message box, Android `GameLauncher.HandleGameResult`'s dialog (driver hint first,
+  then the error, truncated at 3,500 chars). Note: a **variable-timestep** game whose Update throws
+  is `Exit()`ed by Game.Tick (long-standing), so it reaches those dialogs, not the screen.
+- **Report code**: not shown. The hub's code only exists after the launcher flushes, which is after
+  the game ends; the screen says "queued … sent when you leave the game" (or that server logging is off).
+- **Test hooks (opt-in, env)**: `WPR_TEST_FORCE_FRAME_FAILURE=1` makes every Draw throw before the
+  game draws; `WPR_TEST_WP8_STOP_AFTER_FRAMES=N` stops a WP8 guest at frame N. Log lines:
+  `[wpr-error-screen] shown: …`, `… Back pressed; leaving the game.`
+
+Verified 2026-10-16 (gamerun, scratch `WPR_DATA_ROOT`): AE 3D Motor forced on D1–D4, Angry Birds
+Classic (WP8) stopped at frame 200 on D1, D2 and D4, Back leaves, one hub report. No screen on
+Angry Birds, Carcassonne, Flowerz, Cut the Rope, MONOPOLY, MC4, Feed Me Oil, Chickens Can't Fly
+and AE 3D Motor run normally. Android Release builds; **not run on Android** (env hooks do not reach
+`:game`; a real failing title is the way to see it there).
+
 ### Update checks and the About page's "what's new" (2026-09-29, Android)
 
 `WPR.Shell.AppUpdates` asks GitHub's `/releases/latest` (drafts and pre-releases excluded) at most
