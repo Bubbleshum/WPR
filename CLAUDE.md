@@ -807,9 +807,9 @@ The WP8 runtime's Media Foundation (`Src/Engine/WPR.Engine.Wp8Native/Runtime/Med
 * **Compressed audio in the media engine** through a new seam: `WPR.Engine.Audio.IAudioDecoder` +
   `AudioDecoderBackend`, declared by `caps.AudioDecoder(...)`, bridged into the runtime's
   `IMediaDecoder` by `Wp8NativeMediaDecoder`. Windows: `FFmpegAudioDecoder` over the head's ffmpeg.exe
-  (temp file in, WAVE on stdout; ~30-80 ms per file). **Android declares none yet** (ffmpeg-kit cannot
-  run in the game process; the one to write is MediaExtractor + MediaCodec), so there compressed
-  sources still fail as on a codec-less phone.
+  (temp file in, WAVE on stdout; ~30-80 ms per file). Android: `WPR.Audio.MediaCodec.MediaCodecAudioDecoder`
+  (MediaExtractor + MediaCodec in the game process, since ffmpeg-kit cannot run there; ~1.5 s for
+  AC Pirates' 92 s title MP3 on the S24).
 
 **Why a run-time decoder and not install-time transcoding** (measured over the 102 ARM titles in
 the library): the media engine's users (Assassin's Creed Pirates, Doodle God Blitz, FIFA 14/15,
