@@ -1662,9 +1662,43 @@ The `threads:` line shows such a thread as `blocked on thread itself (a sleep)`.
 import trace (`WPR_WP8_IMPORT_TRACE`) is one thread alternating `GetCurrentThread` → `WaitForSingleObjectEx
 r0=0xFFFFFFFE r1=<ms>` with nothing else ever running. Desktop D1/D2: tutorial ("Chapter 1 - First
 Island"), taps advance it, 60 fps. None of the 11-title WP8 regression set waits on itself (same
-frames, same outcomes). Contract suite `SleepOnSelfSuite`. Inference gap seen on the way, not
-blocking: `SetViewDimensions` gets `(0,0,0,0)` because its arguments are computed from
-`Host.Content`, not literals (real: `0, 0, 768, 1280`).
+frames, same outcomes). Contract suite `SleepOnSelfSuite`. (The `SetViewDimensions(0,0,0,0)` gap
+noted here was what broke its touch; fixed in the next section.)
+
+### Inferred page arguments are computed, not guessed; a resource with no initial data is zeroed (2026-10-16)
+
+Two defects in 2020: My Country on the S24, both general.
+
+**Taps did nothing** (the tutorial's Build button, every map tap), while "Click to Continue"
+worked, because that one accepts a tap anywhere. The inferred page answered computed arguments by
+parameter name: `SetViewDimensions(0, 0, 0, 0)` and `set_ScaleFactor(160)`, where the page passes
+`(0, 0, 768, 1280)` (`Floor(Host.Content.ActualWidth * ScaleFactor / 100 + 0.5)`, minus a tray
+height) and `Host.Content.ScaleFactor / 100f` = **1.6** (Amazing Alex passes the raw 160, so no
+name rule can be right). The engine scales every pointer by them, so each touch landed off the
+screen. `XamlShellInference.Arguments.cs` (`ShellReading.EvaluateArguments`) now runs the calling
+method's IL from its start to the call on a small abstract machine: constants, locals, arithmetic
+with CLR int/float semantics, conversions, `Math.Floor/Ceiling/Round/Min/Max/Abs`, `new Size(w, h)`,
+`System.Windows.Interop.Content.ActualWidth/ActualHeight/ScaleFactor` from `Wp8Display` (portrait,
+as on WP8 in any orientation) and `SystemTray.IsVisible` from the page XAML; a branch on a known
+value is taken, on an unknown one falls through. A value it cannot know stays null and the old
+by-name answer is used. The contract suite now checks every numeric argument of the three
+hand-written titles equals the inferred one, and My Country's two (when installed, real data root
+or `WPR_DATA_ROOT`). **The tell**: a title whose "tap anywhere" screens advance but whose buttons
+never respond; read the `[xaml] SetViewDimensions(...)`/`set_ScaleFactor(...)` lines.
+
+**Thin light seams round every map tile and sprite** (D3D11, Vulkan and GLES alike, so not a
+driver or DXT problem). The game packs sprites at run time into a 1024x1024 atlas it creates with
+**no initial data**; a texture's storage is a guest heap block, and a reused block still held an
+old loading screen, which linear filtering pulled in at each sprite's edge. D3D11 hands out such a
+resource zeroed: `Direct3DRuntime.ZeroStorage` now clears textures and buffers created without
+initial data when their block was reused (`ArmEmulator.LastAllocationReused`; the heap's untouched
+end is zero already, and clearing every new block cost AC Pirates ~5% of its loading frames)
+(`Direct3DStateSuite`). **The tell**: lines along the edges of sprite quads, partial
+and light; dump the atlas and look between the sprites.
+
+Desktop D1/D2/D4 (+ `WPR_FORCE_NO_DXT=1`): tutorial → Build → Eagleroost Offices → placement
+(confirm/cancel shown), no seams. WP8 regression set (11 titles, Terraria/Halo/GTA excluded): same
+outcomes, frame counts within run-to-run noise. Not run on a phone or the emulator.
 
 ### Update checks and the About page's "what's new" (2026-09-29, Android)
 
