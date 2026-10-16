@@ -126,6 +126,26 @@ public sealed class Direct3DStateSuite : IContractSuite
         M(context, 89, 1, outViews, outDsv);
         Check("and nothing once it is unbound", h.U32(outViews) == 0 && h.U32(outDsv) == 0);
 
+        // ---- scissor rectangles (Rovio's menus clip their scrolling lists with one) ----
+        long rect = h.Buffer(16);
+        foreach ((int at, uint v) in new[] { (0, 10u), (4, 200u), (8, 700u), (12, 600u) })
+        {
+            e.WriteUInt32(rect + at, v);
+        }
+
+        M(context, 45, 1, rect);
+        Check("RSSetScissorRects records the rectangle each draw is replayed with",
+            e.Direct3D.ScissorRect is [10, 200, 700, 600]);
+        long count = Out(), outRect = h.Buffer(16);
+        M(context, 96, count, 0);
+        bool countOnly = h.U32(count) == 1;
+        M(context, 96, count, outRect);
+        Check("RSGetScissorRects answers the count, then the rectangle",
+            countOnly && h.U32(count) == 1 && e.ReadMemory(outRect, 16).SequenceEqual(e.ReadMemory(rect, 16)));
+        M(context, 45, 0, 0);
+        M(context, 96, count, 0);
+        Check("and none once zero rectangles are set", e.Direct3D.ScissorRect is null && h.U32(count) == 0);
+
         // ---- ID3D10Multithread ----
         long iid = h.Guid(new Guid("9b7e4e00-342c-4106-a19f-4f2704f689f0"));
         long pmt = Out();
@@ -202,6 +222,39 @@ public sealed class Direct3DStateSuite : IContractSuite
         h.S.TickMedia(0.6);
         h.S.TickMedia(0.6);
         Check("playing to the movie's length raises ENDED", events.Skip(before).Contains("ENDED"), string.Join(",", events.Skip(before)));
+
+        // A byte-stream source holding a file's exact bytes is handed over as that file, not as a
+        // temp copy, so a platform that plays only prepared sidecars (Android) finds them.
+        byte[] asf = [0x30, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11, 0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE, 0x6C, 7, 7, 7, 7, 7];
+        Directory.CreateDirectory(Path.Combine(h.Sandbox, "Movies"));
+        File.WriteAllBytes(Path.Combine(h.Sandbox, "Movies", "logo.wmv"), asf);
+        long ByteStream(byte[] content)
+        {
+            long ps = Out();
+            h.Call("CreateStreamOnHGlobal", 0, 1, ps);
+            long buffer = h.Buffer(content.Length);
+            e.WriteMemory(buffer, content);
+            long stream = h.U32(ps);
+            M(stream, 4, buffer, content.Length, Out());   // the engine reads a byte stream whole, wherever it stands
+            long pbs = Out();
+            h.Call("MFCreateMFByteStreamOnStream", stream, pbs);
+            return h.U32(pbs);
+        }
+
+        movie.OpenedPath = null;
+        M(engine, 45, ByteStream(asf), h.Bstr("Movies/logo.wmv"));
+        Check("a byte stream of a file's bytes is opened as that file",
+            movie.OpenedPath?.EndsWith(Path.Combine("Movies", "logo.wmv"), StringComparison.OrdinalIgnoreCase) == true, movie.OpenedPath ?? "(not opened)");
+        movie.OpenedPath = null;
+        M(engine, 45, ByteStream(asf), h.Bstr("anything"));
+        Check("found by content when its name says nothing",
+            movie.OpenedPath?.EndsWith(Path.Combine("Movies", "logo.wmv"), StringComparison.OrdinalIgnoreCase) == true, movie.OpenedPath ?? "(not opened)");
+        movie.OpenedPath = null;
+        byte[] other = (byte[])asf.Clone();
+        other[^1] = 9;
+        M(engine, 45, ByteStream(other), h.Bstr("Movies/logo.wmv"));
+        Check("a stream matching no file goes through a temp file",
+            movie.OpenedPath?.Contains("wpr-wp8-media", StringComparison.Ordinal) == true, movie.OpenedPath ?? "(not opened)");
         M(engine, 42);
         Check("Shutdown closes the movie", movie.Disposed);
         h.S.VideoDecoder = null;

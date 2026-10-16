@@ -55,7 +55,9 @@ namespace WPR.Wp8Native
     /// <summary>
     /// A draw and everything bound for it. State descriptions are the raw D3D11 desc bytes
     /// (D3D11_BLEND_DESC, D3D11_DEPTH_STENCIL_DESC, D3D11_RASTERIZER_DESC, D3D11_SAMPLER_DESC);
-    /// null means the default state.
+    /// null means the default state. <paramref name="Scissor"/> is the first rectangle of
+    /// RSSetScissorRects (left, top, right, bottom), or null when none is set; it applies only
+    /// while the rasterizer state's ScissorEnable is on.
     /// </summary>
     public sealed record GpuDraw(
         GpuShader Vertex,
@@ -72,5 +74,6 @@ namespace WPR.Wp8Native
         GpuTarget Target,
         GpuTarget? DepthTarget,
         float[]? Viewport,
-        FrameCapture.DrawCall Geometry) : GpuCommand;
+        FrameCapture.DrawCall Geometry,
+        int[]? Scissor = null) : GpuCommand;
 }

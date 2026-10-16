@@ -1762,7 +1762,12 @@ namespace Microsoft.Xna.Framework.Graphics
 
 				modifiedSamplers[sampler] = false;
 
-				//TODO: fix memory access violation
+				/* This catch only covers managed failures. An access violation in
+				 * FNA3D_VerifySampler (a texture freed under the sampler, e.g. by a
+				 * device recreated after content loaded on it) cannot be caught on
+				 * .NET Core; the known case, AE 3D Motor, was fixed in
+				 * ApplicationLaunch by skipping the pre-Run lifecycle priming.
+				 */
 				try
 				{
 					XnaBackend.Graphics.VerifySampler(

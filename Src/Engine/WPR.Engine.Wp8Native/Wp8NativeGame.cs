@@ -232,8 +232,11 @@ namespace WPR.Wp8Native
             Outcome = fault ?? _emulator?.StopReason ?? "the image returned";
 
             // The guest ending on its own is a failure to report, unless the player closed the game
-            // (OnExiting/Dispose set _closing first) or the image simply returned from its entry point.
-            bool failed = !_closing && Outcome != "the image returned";
+            // (OnExiting/Dispose set _closing first) or the game quit: returned from its entry point,
+            // exit(0)/_exit(0), or CoreApplication.Exit(). Rovio titles quit with exit(0) when Back
+            // is pressed on their main menu; that was reported as a crash and, once the error screen
+            // existed, shown as one (Angry Birds Stella on the S24, 2026-10-16).
+            bool failed = !_closing && !IsCleanQuit(Outcome);
             if (failed)
             {
                 _capture = new List<string>();
@@ -316,6 +319,16 @@ namespace WPR.Wp8Native
         /// ApplicationLaunch queues the WPR Hub report from it and sets <see cref="FailureReported"/>.
         /// </summary>
         public event Action<Wp8GuestFailure>? GuestFailed;
+
+        /// <summary>
+        /// The ways a WP8 game ends itself on purpose. A non-zero exit code or std::terminate is
+        /// still a failure.
+        /// </summary>
+        internal static bool IsCleanQuit(string outcome) => outcome is
+            "the image returned" or
+            "the image called exit(0)" or
+            "the image called _exit(0)" or
+            "the image called CoreApplication.Exit()";
 
         /// <summary>Set by the <see cref="GuestFailed"/> handler once the failure is queued for WPR Hub.</summary>
         public bool FailureReported { get; set; }
