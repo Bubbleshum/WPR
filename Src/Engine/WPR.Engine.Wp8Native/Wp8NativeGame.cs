@@ -194,14 +194,23 @@ namespace WPR.Wp8Native
                     // A Direct3D/XAML title: the game is a WinRT component, and the host plays the
                     // managed page that would have activated it (Src/Engine/WPR.Engine.Wp8Native/Runtime/XamlInterop.cs).
                     string directory = Path.GetDirectoryName(_executable)!;
-                    XamlShell? shell = XamlShells.ForComponent(_executable);
+                    WinmdReader metadata = WinmdReader.Load(Directory.GetFiles(directory, "*.winmd"));
+                    // A hand-written page description when there is one; otherwise one read from the
+                    // title's managed shell (XamlShellInference), so an unknown Direct3D/XAML title
+                    // attempts to run. WPR_WP8_XAML_INFER=1 (diagnostic) ignores the hand-written one,
+                    // which is how the inference is checked against the titles that have one.
+                    bool forceInference = Environment.GetEnvironmentVariable("WPR_WP8_XAML_INFER") == "1";
+                    XamlShell? shell = forceInference ? null : XamlShells.ForComponent(_executable);
+                    shell ??= XamlShellInference.Infer(_executable, metadata, line => Log(line));
                     if (shell is null)
                     {
-                        fault = $"{Path.GetFileName(_executable)} is a Direct3D/XAML component WPR has no page description for yet";
+                        fault = $"{Path.GetFileName(_executable)} is a Direct3D/XAML component, but no class in its metadata declares CreateContentProvider";
                     }
                     else
                     {
-                        WinmdReader metadata = WinmdReader.Load(Directory.GetFiles(directory, "*.winmd"));
+                        Log(shell.Inferred
+                            ? $"page description inferred from the managed shell: {XamlShellInference.Describe(shell)}"
+                            : $"page description: {shell.ComponentDll} (hand-written)");
                         long start = _emulator.WinRt.StartComponent(image, metadata, shell);
                         fault = _emulator.Run(start, long.MaxValue / 4);
                         foreach (string line in _emulator.WinRt.ComponentLog.Take(60))

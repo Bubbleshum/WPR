@@ -45,6 +45,9 @@ namespace WPR.Wp8Native
 
         public IEnumerable<string> InterfaceNames => _interfaces.Keys;
 
+        /// <summary>Every runtime class that implements at least one interface.</summary>
+        public IEnumerable<string> ClassNames => _classInterfaces.Keys;
+
         public InterfaceLayout? Interface(string fullName) => _interfaces.GetValueOrDefault(fullName);
 
         /// <summary>The runtime class's default interface - the vtable an activated instance hands back.</summary>
