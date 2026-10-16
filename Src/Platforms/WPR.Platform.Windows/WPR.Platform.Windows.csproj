@@ -210,7 +210,7 @@
     <ProjectReference Include="$(SolutionDir)\Backends\WPR.Backend.FNA\WPR.Backend.FNA.csproj" />
     <!-- WPR.Backend.Direct3D11 (Vortice) was referenced here until 2026-10-12, when it was
          retired: it only drew splash / test-pattern placeholders behind DrawingSurfaceBackgroundGrid
-         for titles WPR cannot host. See Plans/RUNTIME-CONVERGENCE.md item 2a. -->
+         for titles WPR cannot host. See the runtime convergence plan item 2a. -->
     <ProjectReference Include="$(SolutionDir)\ThirdParty\Icons.Avalonia\src\Projektanker.Icons.Avalonia.FontAwesome\Projektanker.Icons.Avalonia.FontAwesome.csproj" />
     <ProjectReference Include="$(SolutionDir)\ThirdParty\Icons.Avalonia\src\Projektanker.Icons.Avalonia\Projektanker.Icons.Avalonia.csproj" />
     <ProjectReference Include="..\..\Core\WPR.Shell\WPR.Shell.csproj" />

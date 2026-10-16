@@ -267,7 +267,7 @@ no-op / forced-value above. Nothing else in the 279 scripts touches platform nat
 
 ## 11. Track 4 spike: Unity and Spark2 on the ARM CPU (2026-10-12)
 
-`Plans/RUNTIME-CONVERGENCE.md` §5 asked whether dynarmic (`WPR.Engine.Wp8Native`) reopens §2's
+The runtime convergence plan §5 asked whether dynarmic (`WPR.Engine.Wp8Native`) reopens §2's
 "ARM code cannot run" verdict. It set three questions, to be answered in order. Nothing was built;
 the two probe tools were throwaway and lived in the gitignored `scratchpad/track4/`.
 

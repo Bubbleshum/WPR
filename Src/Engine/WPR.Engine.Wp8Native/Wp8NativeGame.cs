@@ -281,6 +281,26 @@ namespace WPR.Wp8Native
             {
                 Failure = new Wp8GuestFailure(Outcome, _presented, string.Join('\n', _capture!));
                 _capture = null;
+
+                // Reported now, not when the game ends: the player may kill the app from the
+                // error screen rather than press Back.
+                bool reported = false;
+                try
+                {
+                    GuestFailed?.Invoke(Failure);
+                    reported = FailureReported;
+                }
+                catch (Exception ex)
+                {
+                    Log($"GuestFailed handler threw: {ex.Message}");
+                }
+
+                // Put the stop on the screen instead of closing the window on a black frame.
+                if (!_closing && WPR.Xna.Rhi.ErrorScreen.Request(DescribeFailure(Failure, reported)))
+                {
+                    Log("stop shown on the error screen; Back leaves");
+                    return;
+                }
             }
 
             // The guest is gone; there is nothing left to show. Ending the Game takes the window
@@ -292,8 +312,39 @@ namespace WPR.Wp8Native
         }
 
         /// <summary>
+        /// Raised on the guest thread when it stops on its own, with <see cref="Failure"/>.
+        /// ApplicationLaunch queues the WPR Hub report from it and sets <see cref="FailureReported"/>.
+        /// </summary>
+        public event Action<Wp8GuestFailure>? GuestFailed;
+
+        /// <summary>Set by the <see cref="GuestFailed"/> handler once the failure is queued for WPR Hub.</summary>
+        public bool FailureReported { get; set; }
+
+        private static WPR.Xna.Rhi.GameErrorReport DescribeFailure(Wp8GuestFailure failure, bool reported)
+        {
+            // The post-mortem, summary first, minus the line that repeats the headline.
+            var lines = new List<string>();
+            foreach (string raw in failure.Details.Split('\n'))
+            {
+                string line = raw.Trim();
+                if (line.Length == 0 || line.StartsWith("guest stopped after", StringComparison.Ordinal)) continue;
+                lines.Add(line.Length > 200 ? line.Substring(0, 200) + "…" : line);
+                if (lines.Count == 12) break;
+            }
+
+            return new WPR.Xna.Rhi.GameErrorReport
+            {
+                Headline = failure.Reason,
+                Where = $"WP8 native code, after {failure.FramesPresented:N0} frame(s)",
+                Detail = string.Join('\n', lines),
+                Stopped = true,
+                Reported = reported,
+            };
+        }
+
+        /// <summary>
         /// One line per run, whatever ended it, for the library regression table
-        /// (Plans/RUNTIME-CONVERGENCE.md, 1b): frames presented, the import that stopped the guest
+        /// (the runtime convergence plan, 1b): frames presented, the import that stopped the guest
         /// if one did, and every import still answered with 0. Logged even on a normal exit,
         /// which <see cref="LogPostMortem"/> is not.
         /// </summary>
@@ -515,9 +566,23 @@ namespace WPR.Wp8Native
 
         private long _gpuFramesDropped;
 
+        /// <summary>Test hook: <c>WPR_TEST_WP8_STOP_AFTER_FRAMES=N</c> stops the guest at frame N, as a
+        /// fault would, to see the error screen on demand. Off unless set.</summary>
+        private static readonly long StopAfterFrames =
+            long.TryParse(Environment.GetEnvironmentVariable("WPR_TEST_WP8_STOP_AFTER_FRAMES"), out long n) ? n : 0;
+
+        private void TestStopHook()
+        {
+            if (StopAfterFrames > 0 && _presented == StopAfterFrames)
+            {
+                _emulator?.Stop($"test hook WPR_TEST_WP8_STOP_AFTER_FRAMES={StopAfterFrames}");
+            }
+        }
+
         private void OnGpuFrameBuilt(GpuFrame frame)
         {
             _presented++;
+            TestStopHook();
             LogScreenQueries();
             lock (_gate)
             {
@@ -578,6 +643,7 @@ namespace WPR.Wp8Native
         private void OnFrameBuilt(FrameDrawList frame)
         {
             _presented++;
+            TestStopHook();
             lock (_gate)
             {
                 _latest = frame;

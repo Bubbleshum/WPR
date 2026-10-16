@@ -321,7 +321,7 @@ namespace WPR
             // pure UI alike — is hosted by SilverlightGame: the page is laid out and rasterised on
             // the CPU (SoftwareVisualRasteriser) and composited whenever the game itself paints
             // nothing, and TouchPanel samples are routed into its visual tree. There is no other
-            // Silverlight host on either head since 2026-10-13 (Plans/RUNTIME-CONVERGENCE.md 2b).
+            // Silverlight host on either head since 2026-10-13 (the runtime convergence plan 2b).
             bool isSilverlight = app.ApplicationType == ApplicationType.Silverlight;
 
             // WP8 "Modern Native": an ARMv7 PE against WinRT. It runs on the dynarmic JIT inside
@@ -631,6 +631,14 @@ namespace WPR
             // after this method returns. Registered before anything can construct a Game.
             RegisterFrameworkHooks();
 
+            // A failure that would otherwise leave a black screen is put on it instead (a WP8 guest
+            // that stopped, frames that throw and draw nothing). Per launch, cleared at teardown.
+            WPR.Xna.Rhi.ErrorScreen.Reset();
+            {
+                string errorTitle = HardcodedAchievementCatalogue.GameName(app.ProductId) ?? app.Name ?? app.ProductId ?? "the game";
+                WPR.Xna.Rhi.ErrorScreen.Factory = (report, exit) => new ErrorScreenOverlay(errorTitle, report, exit);
+            }
+
             // Setting game folder path
             WindowsCompability.Application.Current.ProductId = app.ProductId;
             // Same value on the neutral ambient holder. GamerServices reads it from here rather
@@ -913,6 +921,7 @@ namespace WPR
                 // launch cascaded into "this game can never be launched again until WPR
                 // is restarted."
                 Game? obj = null;
+                bool guestFailureReported = false;
                 try
                 {
                     if (isSilverlight)
@@ -956,6 +965,15 @@ namespace WPR
                         obj = new WPR.Wp8Native.Wp8NativeGame(
                             asmPath, sandbox, msg => Trace.WriteLine(msg),
                             new WPR.Wp8Native.Wp8NativeXboxHost(app.ProductId!, app.Name));
+                        // Reported the moment the guest stops, on its thread: the error screen then
+                        // says so, and a player who kills the app from it does not lose the report.
+                        WPR.Wp8Native.Wp8NativeGame wp8 = (WPR.Wp8Native.Wp8NativeGame)obj;
+                        wp8.GuestFailed += failure =>
+                        {
+                            guestFailureReported = true;
+                            ReportGuestFailure(app, failure);
+                            wp8.FailureReported = OnlineBackend.Crashes != null && Configuration.Current?.ServerLogging == true;
+                        };
                     }
                     else
                     {
@@ -1099,7 +1117,7 @@ namespace WPR
 
                             // A WP8 guest that died ends its Game normally - Exit() from the guest
                             // thread - so nothing above sees an exception. Report it here instead.
-                            if (obj is WPR.Wp8Native.Wp8NativeGame { Failure: { } wp8Failure })
+                            if (!guestFailureReported && obj is WPR.Wp8Native.Wp8NativeGame { Failure: { } wp8Failure })
                             {
                                 ReportGuestFailure(app, wp8Failure);
                             }
@@ -1657,6 +1675,8 @@ namespace WPR
             // instance, so before the audio device goes) without posting its completion.
             try { WPR.Xna.Rhi.HostOverlay.Clear(completed: false); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"HostOverlay.Clear on teardown threw: {ex.Message}"); }
+            try { WPR.Xna.Rhi.ErrorScreen.Reset(); }
+            catch (Exception ex) { Log.Warn(LogCategory.AppList, $"ErrorScreen.Reset on teardown threw: {ex.Message}"); }
             // Same for a MediaElement movie: ResetWprSingletons resets it again later, but by then
             // the audio device it plays through is gone.
             try { WPR.SilverlightCompability.MediaElement.ResetForNewLaunch(); }

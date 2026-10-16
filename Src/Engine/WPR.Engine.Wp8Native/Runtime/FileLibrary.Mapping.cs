@@ -2,7 +2,7 @@ namespace WPR.Wp8Native
 {
     /// <summary>
     /// File mappings and <c>_stat</c>, to their documented contracts
-    /// (Plans/RUNTIME-CONVERGENCE.md, 1c).
+    /// (the runtime convergence plan, 1c).
     /// </summary>
     public sealed partial class FileLibrary
     {
