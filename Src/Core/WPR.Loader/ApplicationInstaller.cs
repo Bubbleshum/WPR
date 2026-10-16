@@ -36,13 +36,16 @@ namespace WPR
         /// generic "available to install" placeholder.
         /// </summary>
         public Models.ApplicationType? ApplicationType { get; set; }
+
+        /// <summary>
+        /// True when the package's WMAppManifest.xml was missing, unreadable or incomplete and
+        /// some of this preview was synthesised from its contents (see <see cref="PackageManifests"/>).
+        /// </summary>
+        public bool MetadataSynthesised { get; set; }
     }
 
     public static class ApplicationInstaller
     {
-        private const string TempXmlFile = "temp.xml";
-        private static string TempXmlFileFullPath => Configuration.Current!.DataPath(TempXmlFile);
-
         public static ApplicationPreview? ReadPreview(Stream fileStream)
         {
             try
@@ -50,14 +53,11 @@ namespace WPR
                 if (fileStream.CanSeek) fileStream.Position = 0;
                 using ZipArchive archive = new ZipArchive(fileStream, ZipArchiveMode.Read, leaveOpen: true);
 
-                ZipArchiveEntry? manifestEntry = archive.GetEntry("WMAppManifest.xml");
-                if (manifestEntry == null) return null;
-
-                XmlDocument manifestDoc = new XmlDocument();
-                using (Stream ms = manifestEntry.Open())
-                {
-                    manifestDoc.Load(ms);
-                }
+                // A missing, unreadable or incomplete WMAppManifest.xml is completed from the
+                // package's contents (PackageManifests); null only when nothing in it can run.
+                PackageManifests? manifests = PackageManifests.Load(archive, PackageNameOf(fileStream), needEntryPoint: false);
+                if (manifests == null) return null;
+                XmlDocument manifestDoc = manifests.WmAppManifest;
 
                 XmlNode? appNode = manifestDoc.DocumentElement?.SelectSingleNode("//App");
                 if (appNode == null) return null;
@@ -78,6 +78,7 @@ namespace WPR
                     Author = appNode.Attributes?["Author"]?.Value ?? "Unknown",
                     Publisher = appNode.Attributes?["Publisher"]?.Value ?? "Unknown",
                     Description = appNode.Attributes?["Description"]?.Value ?? "",
+                    MetadataSynthesised = manifests.IsSynthesised,
                 };
 
                 // WP8 manifests spell "Modern Native" with a space that Enum.TryParse
@@ -118,7 +119,12 @@ namespace WPR
             }
         }
 
-        private static async Task<(ApplicationInstallError, Application?, string)> CreateApplicationEntryAndExtract(Stream fileStream, Action<int> progressSet, Func<Application, IObservable<bool>> deleteExistingApp, CancellationToken canceled)
+        /// <summary>The package's file name, when the stream is a file (the title of last resort).</summary>
+        private static string? PackageNameOf(Stream stream) => stream is FileStream fs ? Path.GetFileName(fs.Name) : null;
+
+        /// <param name="onSynthesised">Told the manifests when some of them were synthesised.</param>
+        private static async Task<(ApplicationInstallError, Application?, string)> CreateApplicationEntryAndExtract(Stream fileStream, Action<int> progressSet, Func<Application, IObservable<bool>> deleteExistingApp, CancellationToken canceled,
+            Action<PackageManifests> onSynthesised)
         {
             Application? app = null;
             string dataFolderProduct = "";
@@ -133,10 +139,20 @@ namespace WPR
                 }
 
                 ZipArchive archive = new ZipArchive(fileStream);
-                ZipArchiveEntry? entry = archive.GetEntry("WMAppManifest.xml");
-                if (entry == null)
+
+                // The package's manifests, or - when WMAppManifest.xml / AppManifest.xaml is
+                // missing, unreadable or incomplete - ones completed from what the package carries.
+                // Refused only when nothing in it can run (every game is attempted).
+                PackageManifests? manifests = PackageManifests.Load(archive, PackageNameOf(fileStream));
+                if (manifests == null)
                 {
                     return ( ApplicationInstallError.MissingManifestFiles, app, dataFolderProduct );
+                }
+                if (manifests.IsSynthesised)
+                {
+                    onSynthesised(manifests);
+                    Log.Warn(LogCategory.AppInstall,
+                        $"Package manifests incomplete ({string.Join(", ", manifests.Synthesised)}); attempting with synthesised metadata: {manifests.Describe()}");
                 }
 
                 if (canceled.IsCancellationRequested)
@@ -146,10 +162,7 @@ namespace WPR
 
                 progressSet(3);
 
-                entry.ExtractToFile(TempXmlFileFullPath, true);
-
-                XmlDocument wmManifestDoc = new XmlDocument();
-                wmManifestDoc.Load(TempXmlFileFullPath);
+                XmlDocument wmManifestDoc = manifests.WmAppManifest;
 
                 XmlElement? root = wmManifestDoc.DocumentElement;
                 XmlNodeList? appNodeList = root!.SelectNodes("//App");
@@ -284,9 +297,9 @@ namespace WPR
                 }
                 else
                 {
-                    entry = archive.GetEntry("AppManifest.xaml");
-                    if (entry == null)
+                    if (manifests.AppManifest == null)
                     {
+                        // No usable AppManifest.xaml and no managed entry point found by inspection.
                         return ( ApplicationInstallError.MissingManifestFiles, app, dataFolderProduct) ;
                     }
 
@@ -295,10 +308,7 @@ namespace WPR
                         return (ApplicationInstallError.Canceled, app, dataFolderProduct);
                     }
 
-                    entry.ExtractToFile(TempXmlFileFullPath, true);
-
-                    wmManifestDoc = new XmlDocument();
-                    wmManifestDoc.Load(TempXmlFileFullPath);
+                    wmManifestDoc = manifests.AppManifest;
 
                     XmlNode? deploymentNode = wmManifestDoc.DocumentElement;
 
@@ -370,6 +380,14 @@ namespace WPR
                     progressSet(5 + (int)((float)count / archive.Entries.Count * 50.0f));
                 }
 
+                // The WP8 runtime and the Silverlight host read WMAppManifest.xml (ProductID,
+                // start page, components) from the install folder, so they see what was installed.
+                if (manifests.IsSynthesised)
+                {
+                    try { manifests.WriteInto(productStoreFolder); }
+                    catch (Exception ex) { Log.Warn(LogCategory.AppInstall, $"Could not write the synthesised manifests (non-fatal): {ex.Message}"); }
+                }
+
                 app = new Application()
                 {
                     Name = titleAttrib.Value,
@@ -429,7 +447,9 @@ namespace WPR
                 }
 
                 // 60% spend for extracting files
-                (error, app, appDataFolder) = await Task.Run(() => CreateApplicationEntryAndExtract(fileStream, progressSet, deleteExistingApp, cancelSource));
+                PackageManifests? synthesised = null;
+                (error, app, appDataFolder) = await Task.Run(() => CreateApplicationEntryAndExtract(fileStream, progressSet, deleteExistingApp, cancelSource,
+                    m => synthesised = m));
 
                 if (error != ApplicationInstallError.None)
                 {
@@ -438,6 +458,13 @@ namespace WPR
                         ReportRefusedPackage(fileStream, error, package);
                     }
                     return error;
+                }
+
+                // Installed from synthesised metadata: say so on WPR Hub (an install problem,
+                // grouped by what was missing), so the case stays diagnosable.
+                if (synthesised != null)
+                {
+                    ReportSynthesisedManifests(synthesised, app!, package, appDataFolder);
                 }
 
                 // A WP8 native title is ARM machine code: there is no IL to stub, patch or
@@ -451,6 +478,18 @@ namespace WPR
                     catch (Exception ex)
                     {
                         Log.Warn(LogCategory.AppInstall, $"XnaAchievementSeeder failed (non-fatal): {ex.Message}");
+                    }
+
+                    // Its movies, as for any other title: the WP8 media engine hands an ASF/MP4
+                    // source to the platform's video decoder, which on Android reads only the
+                    // sidecars written here (MediaCodec has no WMV).
+                    await PrepareMoviesQuietly(appDataFolder!, app.Name, _ => { }, cancelSource);
+                    if (cancelSource.IsCancellationRequested)
+                    {
+                        Directory.Delete(appDataFolder!, true);
+                        ApplicationContext.Current.Remove(app);
+
+                        return ApplicationInstallError.Canceled;
                     }
                 }
                 else
@@ -702,6 +741,28 @@ namespace WPR
             }
         }
 
+        private static void ReportSynthesisedManifests(PackageManifests manifests, Application app,
+            WPR.Engine.Online.GamePackageRecord? package, string? installFolder)
+        {
+            try
+            {
+                // The message is the stable list of what was missing, so the hub groups these by
+                // cause; the values and where each came from travel in Extra.
+                var problem = new InvalidDataException("package manifests synthesised: " + string.Join(", ", manifests.Synthesised));
+                WPR.Engine.Online.CrashReport report = WPR.Engine.Online.CrashReport.ForInstallProblem(
+                    "install", "ManifestSynthesised", problem,
+                    app.ProductId, app.Name, package, installFolder, "installed with synthesised metadata");
+                report.Extra["synthesised"] = string.Join(",", manifests.Synthesised);
+                report.Extra["synthesis_detail"] = manifests.Describe();
+                report.Extra["runtime_type"] = app.ApplicationType.ToString();
+                WPR.Engine.Online.OnlineBackend.Crashes?.Report(report);
+            }
+            catch (Exception ex)
+            {
+                Log.Warn(LogCategory.AppInstall, $"Could not report synthesised manifests: {ex.Message}");
+            }
+        }
+
         /// <summary>True for a package that starts <c>PRE\x07</c>: a Marketplace download still in its DRM wrapper.</summary>
         private static bool IsDrmWrapped(Stream stream)
         {
@@ -726,8 +787,10 @@ namespace WPR
         private static string DescribeRefusal(ApplicationInstallError error) => error switch
         {
             ApplicationInstallError.NotDecrypted => "The package is a Marketplace download still wrapped in its DRM (starts PRE\\x07, not a ZIP).",
-            ApplicationInstallError.MissingManifestFiles => "The package has no WMAppManifest.xml, or a managed package has no AppManifest.xaml.",
-            ApplicationInstallError.InvalidManifestFiles => "The package's manifest is missing required attributes or names no entry assembly.",
+            // Manifests are synthesised from the contents when missing or broken (PackageManifests),
+            // so these mean nothing in the package could be run, or it is not a readable package.
+            ApplicationInstallError.MissingManifestFiles => "The package's manifests are missing or unusable and nothing runnable was found in it (no XNA Game, no Silverlight Application, no ARM executable).",
+            ApplicationInstallError.InvalidManifestFiles => "The package could not be read as a XAP, or its manifests are unusable and nothing runnable was found in it.",
             ApplicationInstallError.ModernNativeUnsupported => "A WP8 native package with no executable image to run.",
             ApplicationInstallError.NotSupportedAppType => "The package's runtime type is not one WPR can host.",
             ApplicationInstallError.ConvertFailed => "The install-time audio transcoder failed for every track.",
@@ -788,11 +851,23 @@ namespace WPR
             Action<int> progressSet,
             CancellationToken cancelToken)
         {
-            // A WP8 native title is ARM code, never patched at install: nothing to redo.
+            // A WP8 native title is ARM code, never patched at install: there is no IL to redo.
+            // Its movies still need sidecars where the platform cannot decode them as shipped
+            // (Android has no WMV), so that half of a repatch runs. It is how a WP8 title
+            // installed before 2026-10-16 gets its movies on a phone: Halo: Spartan Assault sat
+            // on its first logo for ever without them.
             if (app.ApplicationType == ApplicationType.ModernNative)
             {
+                string nativeFolder = Path.Combine(
+                    Configuration.Current!.DataPath(Application.DataStoreFolder),
+                    app.ProductId.Trim('{').Trim('}'));
+                if (Directory.Exists(nativeFolder))
+                {
+                    await PrepareMoviesQuietly(nativeFolder, app.Name, progressSet, cancelToken);
+                }
+
                 progressSet(100);
-                return ApplicationInstallError.None;
+                return cancelToken.IsCancellationRequested ? ApplicationInstallError.Canceled : ApplicationInstallError.None;
             }
 
             try
@@ -933,6 +1008,26 @@ namespace WPR
             {
                 Log.Error(LogCategory.AppInstall, $"Repatch failed for {app.Name}: {ex}");
                 return ApplicationInstallError.PatchFailed;
+            }
+        }
+
+        /// <summary>
+        /// <see cref="VideoCompabilityConverter.PrepareMovies"/> off the caller's thread (the
+        /// install and repatch are started from the UI thread in both heads), never throwing: a
+        /// movie that cannot be prepared costs only its cutscene.
+        /// </summary>
+        private static async Task PrepareMoviesQuietly(string folder, string? name, Action<int> progressSet, CancellationToken cancelToken)
+        {
+            try
+            {
+                await Task.Run(() => VideoCompabilityConverter.PrepareMovies(folder, progressSet, cancelToken));
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                Log.Warn(LogCategory.AppInstall, $"Movie preparation failed for {name} (cutscenes will be skipped): {ex.Message}");
             }
         }
 

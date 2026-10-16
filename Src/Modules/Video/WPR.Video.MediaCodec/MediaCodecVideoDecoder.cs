@@ -335,6 +335,18 @@ namespace WPR.Video.MediaCodec
             int frames = count / (AudioChannels * 2);
             if (frames <= 0) return 0;
             int need = frames * channelsIn;
+            // Never ask NVorbis 0.10.5 for samples past the stream's end: on a stream whose first
+            // granule is not 0 (ffmpeg's Vorbis encoder writes one, e.g. Halo's logo_game.wmv.wpr.ogg,
+            // start 0.0507 s) that ReadSamples call never returns. The caller is the WP8 media
+            // engine's soundtrack drain, on the guest thread, so the whole game froze on its first
+            // movie. Reproduced on the desktop with the same file; capping cures it.
+            long left = _vorbis.TotalSamples > 0 ? (_vorbis.TotalSamples - _vorbis.SamplePosition) * channelsIn : long.MaxValue;
+            if (left <= 0)
+            {
+                _audioDone = true;
+                return -1;
+            }
+            need = (int) Math.Min(need, left);
             if (_floats.Length < need) _floats = new float[need];
             int got;
             try

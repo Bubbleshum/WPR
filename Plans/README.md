@@ -54,5 +54,4 @@ Working notes rather than finished documents.
 
 | Doc | What it covers |
 | --- | --- |
-| [WPR-TODO.txt](WPR-TODO.txt) | Per-game crash notes awaiting diagnosis |
-| [PenguinGame fixing todo.txt](<PenguinGame fixing todo.txt>) | Debugging notes for one title's null-reference crash (Russian) |
+| [TODO.md](TODO.md) | The consolidated list of open work, built from the TODO markers in WPR's own code and the open items CLAUDE.md records. The old per-game crash notes (`WPR-TODO.txt`, the PenguinGame notes) were 0.0.16-era tester reports and were removed on 2026-10-16; recover them with `git show 1e30a2d0:Plans/WPR-TODO.txt` |

@@ -69,7 +69,10 @@ namespace WPR.WindowsCompability
             //BitmapImage bit =
             //new BitmapImage(new Uri("/Resources/1.jpg", UriKind.Relative));
             //img.Source = bit;
-            //TODO
+            // Leftover stub: this and get_PixelWidth/get_PixelHeight below HIDE BitmapSource's
+            // real decoder. Game IL binds the BitmapSource members (Silverlight declares them
+            // there), so games are unaffected, but WPR code holding a BitmapImage-typed
+            // reference reaches these. Deleting all three is the fix (Plans/TODO.md).
 
             //Image image = new Image
             //{
