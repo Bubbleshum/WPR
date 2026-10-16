@@ -7,7 +7,7 @@ namespace WPR.Wp8Native
     /// Job systems are built on these: a producer pushes a job, a worker flushes or pops the
     /// list. Answered with 0 they lose every job silently - a push links nothing and a flush
     /// hands back an empty list - which is how Angry Birds Go! reached a null call with five
-    /// workers parked on their condition variables (Plans/RUNTIME-CONVERGENCE.md, section 1).
+    /// workers parked on their condition variables (the runtime convergence plan, section 1).
     ///
     /// ARM32 lays the header out as on x86 (winnt.h): an 8-byte, 8-aligned union of
     /// <c>{ SLIST_ENTRY* Next; WORD Depth; WORD Sequence; }</c>. An entry is just its Next

@@ -469,7 +469,7 @@ Three things came out of writing it, generalised so they apply beyond PPL:
   necessary but not sufficient: the object is still exactly as the allocator handed it
   over, all zeros, so the first virtual call goes through a null vtable a long way away.
   A shaped vtable is written into any object whose first word is still zero.
-  *(Both retired 2026-10-14, Plans/RUNTIME-CONVERGENCE.md 1e: no in-scope title reached the
+  *(Both retired 2026-10-14, the runtime convergence plan 1e: no in-scope title reached the
   constructor stand-in any more, so an unimplemented constructor is now an ordinary defaulted
   import that returns `this`, is listed in `defaulted=[…]` and traps under
   `WPR_WP8_TRAP_IMPORTS=1`. See `HostStubs.IsCxxConstructor`.)*

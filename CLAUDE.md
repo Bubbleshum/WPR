@@ -571,7 +571,7 @@ No `ApplicationPatcher.Version` bump: Android sidecars come from a re-patch, whi
 `WPR.Engine.Wp8Native.AudioTrackOutput` (WP8 voices straight onto Android `AudioTrack`s, with
 `SincResampler`) sat outside `AudioBackendRegistry`, so it never showed in the `[wpr-audio]` line
 and only WP8 titles could use it. It is now a module, **`Src/Modules/Audio/WPR.Audio.AudioTrack`**
-(plan 3b in `Plans/RUNTIME-CONVERGENCE.md`), and `Wp8NativeAudio` (one `DynamicSoundEffectInstance`
+(item 3b of the runtime convergence plan), and `Wp8NativeAudio` (one `DynamicSoundEffectInstance`
 per XAudio2 voice) is the only `IHostAudio` on both heads.
 
 **What the module covers: the streaming-voice half of `IAudioBackend`, nothing else.**
@@ -766,7 +766,7 @@ Alex's Play button works after the return. Contract tests: `Suites/HostWiringSui
 
 ### An unimplemented C++ constructor is a defaulted import, not a shaped object (2026-10-14)
 
-`ConstructShapedObject` and `LooksLikeVtable` are gone (Plans/RUNTIME-CONVERGENCE.md 1e). They
+`ConstructShapedObject` and `LooksLikeVtable` are gone (the runtime convergence plan 1e). They
 served one path: an imported `??0…` (an MSVC constructor from MSVCR110/MSVCP110/vccorlib/ConcRT)
 with no handler, where they wrote a synthetic trap vtable into the object unless a memory probe
 decided its first word was already a vptr. **It was never on the WinRT activation path**, and
@@ -5451,7 +5451,7 @@ Files at the project root are **not** type shims — they're WPR-internal
 runtime/helper code that doesn't shadow any upstream type:
 - The CPU renderer (`SoftwareVisualRasteriser*.cs`, `TextRasteriser.cs`, `TrueTypeFont.cs`,
   `WpChrome.cs`, `UIElementRenderer.cs`, `SilverlightImageDecoder.cs`). It is the only one: the
-  **D3D11** renderers were retired on 2026-10-12 (Plans/RUNTIME-CONVERGENCE.md 2a) and the
+  **D3D11** renderers were retired on 2026-10-12 (the runtime convergence plan 2a) and the
   Avalonia ones (`SilverlightRenderer`, `BrandedSplashRenderer`, `IBackgroundRenderer`) on
   2026-10-13 (2b, Stage D). `DrawingSurfaceBackgroundGrid` is a plain Grid now.
   **Do not add a graphics or UI package reference to `WPR.Framework.Silverlight`** —

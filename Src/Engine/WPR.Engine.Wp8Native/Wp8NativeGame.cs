@@ -284,7 +284,7 @@ namespace WPR.Wp8Native
 
         /// <summary>
         /// One line per run, whatever ended it, for the library regression table
-        /// (Plans/RUNTIME-CONVERGENCE.md, 1b): frames presented, the import that stopped the guest
+        /// (the runtime convergence plan, 1b): frames presented, the import that stopped the guest
         /// if one did, and every import still answered with 0. Logged even on a normal exit,
         /// which <see cref="LogPostMortem"/> is not.
         /// </summary>

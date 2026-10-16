@@ -4,7 +4,7 @@ namespace WPR.Wp8Native
 {
     /// <summary>
     /// The CRT, vccorlib and Win32 imports every title reaches before its first frame, each to its
-    /// documented contract: the top of the 1b to-do list (Plans/RUNTIME-CONVERGENCE.md). All of
+    /// documented contract: the top of the 1b to-do list (the runtime convergence plan). All of
     /// these used to be answered with 0, which the trap policy turned into a stop at boot.
     /// </summary>
     public sealed partial class HostStubs
