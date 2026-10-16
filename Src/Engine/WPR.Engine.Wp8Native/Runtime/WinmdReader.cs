@@ -24,7 +24,11 @@ namespace WPR.Wp8Native
         }
 
         /// <param name="ParameterTypes">Each parameter's type name, as declared.</param>
-        public sealed record MethodLayout(string Name, int Slot, IReadOnlyList<string> ParameterTypes, string ReturnType);
+        public sealed record MethodLayout(string Name, int Slot, IReadOnlyList<string> ParameterTypes, string ReturnType)
+        {
+            /// <summary>Each parameter's declared name ("" when the metadata has none).</summary>
+            public IReadOnlyList<string> ParameterNames { get; init; } = [];
+        }
 
         private readonly Dictionary<string, InterfaceLayout> _interfaces = new(StringComparer.Ordinal);
         private readonly Dictionary<string, List<string>> _classInterfaces = new(StringComparer.Ordinal);
@@ -44,6 +48,9 @@ namespace WPR.Wp8Native
         }
 
         public IEnumerable<string> InterfaceNames => _interfaces.Keys;
+
+        /// <summary>Every runtime class that implements at least one interface.</summary>
+        public IEnumerable<string> ClassNames => _classInterfaces.Keys;
 
         public InterfaceLayout? Interface(string fullName) => _interfaces.GetValueOrDefault(fullName);
 
@@ -122,7 +129,10 @@ namespace WPR.Wp8Native
                     {
                         MethodDefinition method = md.GetMethodDefinition(mh);
                         (IReadOnlyList<string> parameters, string returns) = Signature(md, method);
-                        methods.Add(new MethodLayout(md.GetString(method.Name), InspectableSlots + index++, parameters, returns));
+                        methods.Add(new MethodLayout(md.GetString(method.Name), InspectableSlots + index++, parameters, returns)
+                        {
+                            ParameterNames = ParameterNames(md, method, parameters.Count),
+                        });
                     }
 
                     _interfaces[name] = new InterfaceLayout(name, methods, ReadGuid(md, type));
@@ -263,6 +273,21 @@ namespace WPR.Wp8Native
             };
 
             return owner.IsNil ? null : TypeName(md, owner);
+        }
+
+        private static IReadOnlyList<string> ParameterNames(MetadataReader md, MethodDefinition method, int count)
+        {
+            string[] names = Enumerable.Repeat("", count).ToArray();
+            foreach (ParameterHandle handle in method.GetParameters())
+            {
+                Parameter parameter = md.GetParameter(handle);
+                if (parameter.SequenceNumber >= 1 && parameter.SequenceNumber <= count)
+                {
+                    names[parameter.SequenceNumber - 1] = md.GetString(parameter.Name);
+                }
+            }
+
+            return names;
         }
 
         private static (IReadOnlyList<string>, string) Signature(MetadataReader md, MethodDefinition method)

@@ -80,6 +80,22 @@ namespace WPR.Wp8Native
         /// </summary>
         public object?[] InstanceArguments { get; init; } = [];
 
+        /// <summary>
+        /// Written by <see cref="XamlShellInference"/> from the title's managed shell rather than by
+        /// hand: the host says so in its log and crash reports, since a failure may be the guess.
+        /// </summary>
+        public bool Inferred { get; init; }
+
+        /// <summary>
+        /// The page hands its provider to a <c>DrawingSurface</c> (<c>SetContentProvider</c>), not a
+        /// <c>DrawingSurfaceBackgroundGrid</c>: the provider is <c>IDrawingSurfaceContentProviderNative</c>,
+        /// which makes its own device, draws into a texture of its own and gives it back through
+        /// <c>GetTexture</c>, instead of drawing into the host's target. Mandreel (Fruit Ninja,
+        /// Jetpack Joyride), Gameloft's WCP titles (Age of Sparta, Uno &amp; Friends) and Microsoft
+        /// Bingo are built this way.
+        /// </summary>
+        public bool DrawingSurface { get; init; }
+
         /// <summary>The page's back-key handler; null when it has none, so a press closes the app.</summary>
         public XamlBackKey? BackKey { get; init; }
 
@@ -555,6 +571,9 @@ namespace WPR.Wp8Native
         /// <summary>IDrawingSurfaceBackgroundContentProviderNative, the same in every title seen.</summary>
         private static readonly Guid BackgroundContentProviderNativeIid = new("262c1892-975a-45aa-8fe7-f25c2c4088e3");
 
+        /// <summary>IDrawingSurfaceContentProviderNative (a <c>DrawingSurface</c>'s provider), found by probing Fruit Ninja's.</summary>
+        private static readonly Guid SurfaceContentProviderNativeIid = new("c8377af0-7a69-41d4-a322-8f60e9a0acf8");
+
         /// <summary>A statics interface, from the activation factory by its IID.</summary>
         private void WithStaticInterface(WinmdReader.InterfaceLayout layout, Action<long> then)
         {
@@ -714,6 +733,37 @@ namespace WPR.Wp8Native
                 return;
             }
 
+            if (_shell!.DrawingSurface)
+            {
+                // IDrawingSurfaceContentProviderNative: IUnknown plus Connect, Disconnect,
+                // PrepareResources, GetTexture - seven slots, like the background one, whose IID is
+                // the one to rule out.
+                // The pointer at the object's start is its IInspectable face (IDrawingSurfaceContentProvider,
+                // six slots that can count as seven), so an answer that hands it back is ruled out too.
+                HashSet<Guid> ruledOut = [BackgroundContentProviderNativeIid];
+                void Probe() => ProbeCandidates(_provider, 0, wantedSlots: 7, exclude: ruledOut, found =>
+                {
+                    if (found.Pointer == _provider && ruledOut.Add(found.Iid))
+                    {
+                        Probe();
+                        return;
+                    }
+
+                    ConnectProviderNative(found);
+                });
+                QueryInterface(_provider, SurfaceContentProviderNativeIid, pointer =>
+                {
+                    if (pointer != 0)
+                    {
+                        ConnectProviderNative((SurfaceContentProviderNativeIid, pointer));
+                        return;
+                    }
+
+                    Probe();
+                });
+                return;
+            }
+
             // IDrawingSurfaceBackgroundContentProviderNative: IUnknown plus four methods. The known
             // IID first; probing for a seven-slot interface is the fallback.
             QueryInterface(_provider, BackgroundContentProviderNativeIid, pointer =>
@@ -739,9 +789,21 @@ namespace WPR.Wp8Native
                     return;
                 }
 
+                _runtimeHost = RuntimeHostObject();
+                if (_shell!.DrawingSurface)
+                {
+                    // Connect(IDrawingSurfaceRuntimeHostNative*): the component makes its own device
+                    // and hands its texture to CreateSynchronizedTexture.
+                    CallSlot("SurfaceProvider::Connect", _providerNative, SlotProviderConnect, [_runtimeHost], [], hr =>
+                    {
+                        Log($"Connect = 0x{hr:X8}; drawing (DrawingSurface)");
+                        NextFrame();
+                    });
+                    return;
+                }
+
                 (_hostDevice, _hostContext) = _emulator.Direct3D.CreateHostDevice();
                 _hostTarget = _emulator.Direct3D.CreateHostRenderTargetView();
-                _runtimeHost = RuntimeHostObject();
 
                 CallSlot("Provider::Connect", _providerNative, SlotProviderConnect, [_runtimeHost, _hostDevice], [], hr =>
                 {
@@ -875,7 +937,7 @@ namespace WPR.Wp8Native
         /// works, and one that compares pointers keeps what it has. Both are right here.
         /// </summary>
         private void ReconnectProvider(Action then) =>
-            CallProviderSlot("Provider::Connect", SlotProviderConnect, [_runtimeHost, _hostDevice], () =>
+            CallProviderSlot("Provider::Connect", SlotProviderConnect, _shell!.DrawingSurface ? [_runtimeHost] : [_runtimeHost, _hostDevice], () =>
             {
                 _providerDisconnected = false;
                 then();
@@ -925,6 +987,12 @@ namespace WPR.Wp8Native
                 .. BitConverter.GetBytes(_shell.RenderTarget.Height),
             ]);
 
+            if (_shell.DrawingSurface)
+            {
+                PrepareAndGetTexture(time, size);
+                return;
+            }
+
             CallSlot("Provider::PrepareResources", _providerNative, SlotProviderPrepareResources, [time, size], [], _ =>
             {
                 CallSlot("Provider::Draw", _providerNative, SlotProviderDraw, [_hostDevice, _hostContext, _hostTarget], [], hr =>
@@ -941,11 +1009,83 @@ namespace WPR.Wp8Native
             });
         }
 
-        /// <summary>IDrawingSurfaceRuntimeHostNative: IUnknown, then RequestAdditionalFrame.</summary>
-        /// <remarks>Every frame is drawn anyway: the host never stops asking.</remarks>
+        /// <summary>
+        /// A <c>DrawingSurface</c> frame: <c>PrepareResources(presentTargetTime*, BOOL* contentDirty)</c>,
+        /// then <c>GetTexture(DrawingSurfaceSizeF* surfaceSize, IDrawingSurfaceSynchronizedTextureNative**,
+        /// DrawingSurfaceRectF* textureSubRectangle)</c>, inside which the component draws into the
+        /// texture it gave <c>CreateSynchronizedTexture</c> - the frame the host shows.
+        /// </summary>
+        private void PrepareAndGetTexture(long time, long size)
+        {
+            long dirty = _scratch + 112;
+            long synchronized = _scratch + 116;
+            long rectangle = _scratch + 120; // left, top, right, bottom: 16 bytes
+            _emulator.WriteUInt32(dirty, 0);
+            _emulator.WriteUInt32(synchronized, 0);
+            CallSlot("SurfaceProvider::PrepareResources", _providerNative, SlotProviderPrepareResources, [time, dirty], [], _ =>
+            {
+                CallSlot("SurfaceProvider::GetTexture", _providerNative, SlotProviderDraw, [size, synchronized, rectangle], [], hr =>
+                {
+                    ComponentFrames++;
+                    if (ComponentFrames == 1)
+                    {
+                        Log($"first GetTexture returned 0x{hr:X8}, texture 0x{_emulator.ReadUInt32(synchronized):X8}");
+                    }
+
+                    _emulator.Direct3D.DeliverFrame();
+                    NextFrame();
+                });
+            });
+        }
+
+        /// <summary>
+        /// IDrawingSurfaceRuntimeHostNative: IUnknown, then two methods - RequestAdditionalFrame() and
+        /// CreateSynchronizedTexture(ID3D11Texture2D*, IDrawingSurfaceSynchronizedTextureNative**),
+        /// the second called only by a <c>DrawingSurface</c> component.
+        /// </summary>
+        /// <remarks>
+        /// <para>Their order is not in any metadata this host can read, so both slots answer both:
+        /// a call whose first argument is a resource the device made is CreateSynchronizedTexture,
+        /// anything else RequestAdditionalFrame. (Background titles call slot 3 with no arguments;
+        /// Fruit Ninja's Mandreel host hands its texture to slot 3 as well.)</para>
+        /// <para>Every frame is drawn anyway: the host never stops asking.</para>
+        /// </remarks>
         private long RuntimeHostObject() => CreateUnknownObject(
             "IDrawingSurfaceRuntimeHostNative",
-            ("RequestAdditionalFrame", () => Return(HResultOk)));
+            ("RequestAdditionalFrame|CreateSynchronizedTexture", RuntimeHostCall),
+            ("CreateSynchronizedTexture|RequestAdditionalFrame", RuntimeHostCall));
+
+        private int _runtimeHostCalls;
+
+        private void RuntimeHostCall()
+        {
+            long texture = Arg(1);
+            long outSynchronized = Arg(2);
+            if (!_emulator.Direct3D.IsResource(texture))
+            {
+                if (_runtimeHostCalls++ < 3)
+                {
+                    Log($"runtime host: RequestAdditionalFrame (r1=0x{texture:X8} r2=0x{outSynchronized:X8})");
+                }
+
+                Return(HResultOk); // RequestAdditionalFrame
+                return;
+            }
+
+            _emulator.Direct3D.AdoptPresentationTexture(texture);
+            Log($"CreateSynchronizedTexture(0x{texture:X8}): the component's texture is the screen");
+            if (outSynchronized != 0)
+            {
+                // IDrawingSurfaceSynchronizedTextureNative: BeginDraw, EndDraw. One GPU here, so
+                // there is nothing to synchronise.
+                _emulator.WriteUInt32(outSynchronized, (uint)CreateUnknownObject(
+                    "IDrawingSurfaceSynchronizedTextureNative",
+                    ("BeginDraw", () => Return(HResultOk)),
+                    ("EndDraw", () => Return(HResultOk))));
+            }
+
+            Return(HResultOk);
+        }
 
         /// <summary>
         /// An object whose interface derives from IUnknown rather than IInspectable: its own
