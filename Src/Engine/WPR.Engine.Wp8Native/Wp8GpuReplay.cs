@@ -42,6 +42,7 @@ namespace WPR.Wp8Native
         private readonly Dictionary<(byte[] Desc, float A, float B, float C, float D), BlendState> _blendByRef = new();
         private readonly Dictionary<(byte[] Desc, int Ref), DepthStencilState> _depthByRef = new();
         private readonly Dictionary<byte[], RasterizerState> _rasterByRef = new(ReferenceEqualityComparer.Instance);
+        private readonly Dictionary<byte[], RasterizerState> _rasterNoScissorByRef = new(ReferenceEqualityComparer.Instance);
         private readonly Dictionary<byte[], SamplerState> _samplerByRef = new(ReferenceEqualityComparer.Instance);
 
         /// <summary>Stands for "no desc" (the Direct3D default) in the identity-keyed caches.</summary>
@@ -71,8 +72,25 @@ namespace WPR.Wp8Native
             return _depthByRef.TryGetValue(key, out DepthStencilState? state) ? state : Remember(_depthByRef, key, DepthFor(desc, stencilRef));
         }
 
-        private RasterizerState RasterForCached(byte[]? desc)
-            => _rasterByRef.TryGetValue(desc ?? NoDesc, out RasterizerState? state) ? state : Remember(_rasterByRef, desc ?? NoDesc, RasterFor(desc));
+        private RasterizerState RasterForCached(byte[]? desc, bool scissor)
+        {
+            Dictionary<byte[], RasterizerState> cache = scissor ? _rasterByRef : _rasterNoScissorByRef;
+            return cache.TryGetValue(desc ?? NoDesc, out RasterizerState? state) ? state : Remember(cache, desc ?? NoDesc, RasterFor(desc, scissor));
+        }
+
+        /// <summary>D3D11_RASTERIZER_DESC.ScissorEnable, at byte 28.</summary>
+        internal static bool ScissorEnabled(byte[]? desc) => desc is { Length: >= 32 } && I32(desc, 28) != 0;
+
+        /// <summary>
+        /// A D3D11 scissor rectangle (left, top, right, bottom) clamped to a target, as an XNA
+        /// rectangle. Direct3D clips to the intersection of the rectangle and the target too.
+        /// </summary>
+        internal static Rectangle ScissorFor(int[] rect, int targetWidth, int targetHeight)
+        {
+            int left = Math.Clamp(rect[0], 0, targetWidth), top = Math.Clamp(rect[1], 0, targetHeight);
+            int right = Math.Clamp(rect[2], left, targetWidth), bottom = Math.Clamp(rect[3], top, targetHeight);
+            return new Rectangle(left, top, right - left, bottom - top);
+        }
 
         private SamplerState SamplerForCached(byte[]? desc)
             => _samplerByRef.TryGetValue(desc ?? NoDesc, out SamplerState? state) ? state : Remember(_samplerByRef, desc ?? NoDesc, SamplerFor(desc));
@@ -450,7 +468,23 @@ namespace WPR.Wp8Native
             // Fixed-function state.
             _device.BlendState = BlendForCached(draw.Blend, draw.BlendFactor);
             _device.DepthStencilState = draw.DepthTarget is null ? DepthStencilState.None : DepthForCached(draw.DepthStencil, draw.StencilRef);
-            _device.RasterizerState = RasterForCached(draw.Rasterizer);
+            // Scissor: only while the rasterizer state enables it and a rectangle was set (with
+            // none set Direct3D's rectangle is empty, but no title here relies on that, and a
+            // clipped-away draw is the worse guess). An empty rectangle draws nothing.
+            bool scissor = draw.Scissor is not null && ScissorEnabled(draw.Rasterizer);
+            if (scissor)
+            {
+                Rectangle clip = ScissorFor(draw.Scissor!, draw.Target.Width, draw.Target.Height);
+                if (clip.Width <= 0 || clip.Height <= 0)
+                {
+                    _skip = "empty scissor";
+                    return true;
+                }
+
+                _device.ScissorRectangle = clip;
+            }
+
+            _device.RasterizerState = RasterForCached(draw.Rasterizer, scissor);
             if (draw.Viewport is { } v)
             {
                 _device.Viewport = new Viewport((int)v[0], (int)v[1], Math.Max(1, (int)v[2]), Math.Max(1, (int)v[3]))
@@ -1286,9 +1320,9 @@ namespace WPR.Wp8Native
         }
 
         /// <summary>D3D11_RASTERIZER_DESC: FillMode, CullMode, FrontCounterClockwise, DepthBias, clamp, slope, ...</summary>
-        private RasterizerState RasterFor(byte[]? desc)
+        private RasterizerState RasterFor(byte[]? desc, bool scissor)
         {
-            string key = desc is null ? "default" : System.Convert.ToHexString(desc);
+            string key = (desc is null ? "default" : System.Convert.ToHexString(desc)) + (scissor ? "/s" : "");
             if (_rasters.TryGetValue(key, out RasterizerState? state))
             {
                 return state;
@@ -1307,7 +1341,7 @@ namespace WPR.Wp8Native
                     2 => frontCcw ? CullMode.CullCounterClockwiseFace : CullMode.CullClockwiseFace,
                     _ => frontCcw ? CullMode.CullClockwiseFace : CullMode.CullCounterClockwiseFace,
                 },
-                ScissorTestEnable = false,
+                ScissorTestEnable = scissor,
                 DepthBias = desc is null ? 0 : I32(desc, 12) / 16777216f,
                 SlopeScaleDepthBias = desc is null ? 0 : BitConverter.ToSingle(desc, 20),
             };

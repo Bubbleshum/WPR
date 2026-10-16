@@ -126,6 +126,26 @@ public sealed class Direct3DStateSuite : IContractSuite
         M(context, 89, 1, outViews, outDsv);
         Check("and nothing once it is unbound", h.U32(outViews) == 0 && h.U32(outDsv) == 0);
 
+        // ---- scissor rectangles (Rovio's menus clip their scrolling lists with one) ----
+        long rect = h.Buffer(16);
+        foreach ((int at, uint v) in new[] { (0, 10u), (4, 200u), (8, 700u), (12, 600u) })
+        {
+            e.WriteUInt32(rect + at, v);
+        }
+
+        M(context, 45, 1, rect);
+        Check("RSSetScissorRects records the rectangle each draw is replayed with",
+            e.Direct3D.ScissorRect is [10, 200, 700, 600]);
+        long count = Out(), outRect = h.Buffer(16);
+        M(context, 96, count, 0);
+        bool countOnly = h.U32(count) == 1;
+        M(context, 96, count, outRect);
+        Check("RSGetScissorRects answers the count, then the rectangle",
+            countOnly && h.U32(count) == 1 && e.ReadMemory(outRect, 16).SequenceEqual(e.ReadMemory(rect, 16)));
+        M(context, 45, 0, 0);
+        M(context, 96, count, 0);
+        Check("and none once zero rectangles are set", e.Direct3D.ScissorRect is null && h.U32(count) == 0);
+
         // ---- ID3D10Multithread ----
         long iid = h.Guid(new Guid("9b7e4e00-342c-4106-a19f-4f2704f689f0"));
         long pmt = Out();
