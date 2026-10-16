@@ -2,7 +2,7 @@
 
   <!--
     The WP8 API census: every import of every ARM PE in every WP8 XAP in the library, checked
-    against what the runtime implements, ranked by titles (Plans/RUNTIME-CONVERGENCE.md).
+    against what the runtime implements, ranked by titles (the runtime convergence plan).
 
       run Tools/Wp8/Wp8Census (dotnet run, double-dash project option) with arguments: <out-dir> <library-root> [...]
 

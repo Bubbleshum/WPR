@@ -4,7 +4,7 @@ namespace Wp8ContractTests.Suites;
 
 /// <summary>
 /// Imported MSVC C++ constructors (<c>??0Class@…</c>) after shape-guessing was retired
-/// (Plans/RUNTIME-CONVERGENCE.md, 1e): an implemented one runs its handler; an unimplemented one is
+/// (the runtime convergence plan, 1e): an implemented one runs its handler; an unimplemented one is
 /// an ordinary defaulted import that returns <c>this</c>, leaves the object alone and is recorded;
 /// and every system constructor the in-scope titles import has a handler, so none of them is
 /// defaulted in the first place.

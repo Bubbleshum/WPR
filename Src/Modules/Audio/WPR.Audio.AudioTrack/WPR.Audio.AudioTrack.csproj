@@ -14,7 +14,7 @@
     double-buffering ~30 ms chunks underran several times a second. An AudioTrack in stream mode
     goes straight to the platform mixer, and "buffer finished" is read off its playback head, so
     the game is paced by what has actually been heard. This was WPR.Engine.Wp8Native's
-    AudioTrackOutput until 2026-10-13 (Plans/RUNTIME-CONVERGENCE.md 3b); it moved here so it
+    AudioTrackOutput until 2026-10-13 (the runtime convergence plan 3b); it moved here so it
     shows in the [wpr-audio] line and so WP8 sound goes through DynamicSoundEffectInstance on
     both heads.
 

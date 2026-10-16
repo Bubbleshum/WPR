@@ -571,7 +571,7 @@ No `ApplicationPatcher.Version` bump: Android sidecars come from a re-patch, whi
 `WPR.Engine.Wp8Native.AudioTrackOutput` (WP8 voices straight onto Android `AudioTrack`s, with
 `SincResampler`) sat outside `AudioBackendRegistry`, so it never showed in the `[wpr-audio]` line
 and only WP8 titles could use it. It is now a module, **`Src/Modules/Audio/WPR.Audio.AudioTrack`**
-(plan 3b in `Plans/RUNTIME-CONVERGENCE.md`), and `Wp8NativeAudio` (one `DynamicSoundEffectInstance`
+(item 3b of the runtime convergence plan), and `Wp8NativeAudio` (one `DynamicSoundEffectInstance`
 per XAudio2 voice) is the only `IHostAudio` on both heads.
 
 **What the module covers: the streaming-voice half of `IAudioBackend`, nothing else.**
@@ -766,7 +766,7 @@ Alex's Play button works after the return. Contract tests: `Suites/HostWiringSui
 
 ### An unimplemented C++ constructor is a defaulted import, not a shaped object (2026-10-14)
 
-`ConstructShapedObject` and `LooksLikeVtable` are gone (Plans/RUNTIME-CONVERGENCE.md 1e). They
+`ConstructShapedObject` and `LooksLikeVtable` are gone (the runtime convergence plan 1e). They
 served one path: an imported `??0…` (an MSVC constructor from MSVCR110/MSVCP110/vccorlib/ConcRT)
 with no handler, where they wrote a synthetic trap vtable into the object unless a memory probe
 decided its first word was already a vptr. **It was never on the WinRT activation path**, and
@@ -1334,9 +1334,39 @@ and sent by the launcher's usual `OnlineBackend.FlushAsync()` after the run.
 | Android repatch-before-launch threw: error dialog, no launch | launches what is on disk, `PatchedVersion` left behind so the next launch retries; `install-problem` report |
 | Unity port with no build for this platform: error (desktop threw, Android dialog) | falls through to the original package in-process. Android still asks the player to install a bundled port APK that is sitting right there |
 | WP8 managed title registering a native helper library | `NativeXamlComponent` treated any native ARM `InProcessServer` as a Direct3D/XAML game, so the WP8 host got a library with no game in it and stopped at frame 0 ("no page description"). Now skipped: `SharpDX*`, `Lumia.*`, `Nokia.Graphics*`, `Microsoft.Xbox.dll`, and a non-drawing component unless the manifest names the `Direct3DXaml` template. **What In The World?** (Lumia.Imaging) and **Microsoft Minesweeper** 1.1.41016 (SharpDX.WP8) now run on `SilverlightGame` and report what they miss. Installed copies keep their old type until reinstalled |
+| no / unreadable / incomplete `WMAppManifest.xml` or `AppManifest.xaml` (2026-10-16). Desktop: the library scan dropped the package silently, the picker showed "invalid manifest". Android: the same dialog. Nothing was ever half-installed: the refusal came before any extract | completed or synthesised from the contents by `WPR.PackageManifests` (`Src/Core/WPR.Loader/PackageManifests.cs`) - see below |
 
-**Real refusals that stay, and are now reported** (`refused` source): no `WMAppManifest.xml`,
-an invalid manifest, a DRM-wrapped Marketplace download (now detected by its `PRE\x07` magic and
+**Manifests are synthesised when missing or broken.** `PackageManifests.Load` is the one reader
+both `ReadPreview` and `Install` use. A whole package takes a fast path (no assembly is opened);
+otherwise it inspects the package with Cecil: a type reaching `Microsoft.Xna.Framework.Game` is XNA,
+one reaching `System.Windows.Application` is Silverlight (start page = the XAML a
+`PhoneApplicationPage`'s `InitializeComponent` loads: MainPage, then a Splash/Loading page, then
+Main/Start), an ARM PE `.exe` (0x01C4, no CLR header) is native; an AppManifest.xaml that names an
+entry point decides the managed side, and base classes are followed across the package's
+assemblies to the most-derived type in the top (unreferenced) assembly. Identity, in order: the
+manifest's own attributes, WP8.1 `AppxManifest.xml` (`PhoneProductId`, `DisplayName`, `Executable`),
+the entry assembly (`[Guid]`, `AssemblyTitle`/`Product`, file/assembly version, company), the package
+file name, and for the ProductId a GUID from the SHA-256 of the entry image, so the same package
+always gets the same id (the scan compares ids). A missing icon is guessed from PNG names
+(`*icon*` before `*tile*`). The completed manifests are written into the install folder (the package's
+broken one kept as `.original`), because `SilverlightAppHost` (start page) and the WP8 runtime
+(ProductID, `ActivatableClasses`) read `WMAppManifest.xml` from there; a synthesised Silverlight
+manifest lists the package's native ARM DLLs as `InProcessServer`s so `NativeXamlComponent` can still
+spot a Direct3D/XAML game. Every such install logs `Package manifests incomplete (<keys>)` with where
+each value came from, and queues an `install-problem` report `WPR.InstallProblem.ManifestSynthesised`
+whose message is the stable key list (`wmappmanifest-missing|-invalid|-incomplete`,
+`appmanifest-missing|-invalid`) and whose `extra.synthesis_detail` has the values.
+Verified (desktop D3D11, scratch data root, stripped copies; no manifest-less package exists in the
+library): Angry Birds with neither manifest -> XNA, menu; with a truncated WMAppManifest -> XNA;
+Flowerz with neither -> Silverlight, starts at `Pages/Loading.xaml` like the real manifest, menu;
+Angry Birds Rio without WMAppManifest -> native, title screen; a ZIP holding only a text file -> still
+refused (`MissingManifestFiles`); Sonic Dash still `NotDecrypted`. Not run on Android. Limits: the
+ProductId is not the store's, so catalogue achievements and old saves do not attach;
+`.appxbundle` is not unpacked; `LibraryScanner` still lists `*.xap` only.
+
+**Real refusals that stay, and are now reported** (`refused` source): a package with no usable
+manifest and nothing runnable in it (`MissingManifestFiles`; `InvalidManifestFiles` from a head
+whose preview could not read the package at all, e.g. not a ZIP), a DRM-wrapped Marketplace download (now detected by its `PRE\x07` magic and
 reported as `NotDecrypted` rather than "unexpected error" - BBB: App-ocalypse and Sonic Dash), a
 native package with nothing executable, an installer that threw, and `ApplicationLaunch`'s
 "no host for this runtime type". `ApplicationInstaller.Install` reports its own refusals;
@@ -1459,6 +1489,53 @@ crash reports only; a compat or install report for the same title must not swall
 
 No `ApplicationPatcher.Version` bump and no reinstall, except that a WP8 managed title installed as
 native needs a reinstall to move to `SilverlightGame`.
+
+### A failing game shows its error on the screen (2026-10-16)
+
+Two failures used to leave the player with nothing: a **WP8 guest that stopped** (fault, wild
+jump, trap, "no page description") called `Exit()`, so the window closed or sat black with no
+reason; and a game whose **frames throw and draw nothing** ran on as a black screen for ever. Both
+now show an **error screen**: game name, headline (exception type + message, or the guest's stop
+reason), where (top managed frame without its path, or "WP8 native code, after N frame(s)"), a few
+detail lines (the stack, or the WP8 post-mortem summary first), whether WPR Hub was told, and
+"press Back to exit".
+
+- **Seam**: `WPR.Xna.Rhi.ErrorScreen` (`WPR.Framework.Xna/Backend/ErrorScreen.cs`). `Request(report)`
+  from any thread; `Game.Tick` takes it on the game thread and shows `ErrorScreen.Factory`'s
+  overlay through `HostOverlay`, so the game stops running underneath (same slot as
+  `LauncherMovieOverlay`). `ApplicationLaunch.StartCore` registers the factory per launch;
+  `TeardownAudioState` resets it. No factory, or `WPR_ERROR_SCREEN=0`: a WP8 stop exits as before.
+- **The screen**: `WPR.Engine.GameLoop/ErrorScreenOverlay.cs`, drawn on the CPU with the Silverlight
+  `TextRasteriser` (system TrueType font, no content) into one backbuffer-sized texture, so it is the
+  same on every driver. The top ~10% is left empty for Android's logging-run button (top right).
+  **Only Back leaves** (phone button, Esc on the desktop); a tap does nothing. No font: a plain
+  dark screen with the red bar.
+- **The frame watch is conservative on purpose.** `NoteFrameException` (Game.Tick's Update/Draw
+  catches, GameTimer via `GameUnhandledException.ReportFrameException`) + `EndFrame(drawCalls)`,
+  read just before EndDraw (Present resets `WprDrawCallsThisFrame`). It trips only after **60
+  consecutive drawn frames AND 2 s** in which every frame threw AND issued no draw call. A frame that
+  draws, or that throws nothing, resets it; suppressed-draw frames are neutral. So Feed Me Oil,
+  Chickens Can't Fly and Brain Challenge (throw but paint) and Galactic Reign-style empty menus
+  (draw nothing, throw nothing) never see it. Unit tests: `ErrorScreenTests`.
+- **WP8 reports at the stop, not at exit**: `Wp8NativeGame.GuestFailed` fires on the guest thread,
+  `ApplicationLaunch` queues `ReportGuestFailure` from it (once; the post-`Run` report is skipped),
+  so killing the app from the error screen does not lose the report.
+- **Already covered elsewhere, deliberately not duplicated**: a launch that throws before the first
+  frame (constructor, `DoInitialize`, a refused runtime type) ends `Run`, and the desktop shows
+  `AppRunError`'s message box, Android `GameLauncher.HandleGameResult`'s dialog (driver hint first,
+  then the error, truncated at 3,500 chars). Note: a **variable-timestep** game whose Update throws
+  is `Exit()`ed by Game.Tick (long-standing), so it reaches those dialogs, not the screen.
+- **Report code**: not shown. The hub's code only exists after the launcher flushes, which is after
+  the game ends; the screen says "queued … sent when you leave the game" (or that server logging is off).
+- **Test hooks (opt-in, env)**: `WPR_TEST_FORCE_FRAME_FAILURE=1` makes every Draw throw before the
+  game draws; `WPR_TEST_WP8_STOP_AFTER_FRAMES=N` stops a WP8 guest at frame N. Log lines:
+  `[wpr-error-screen] shown: …`, `… Back pressed; leaving the game.`
+
+Verified 2026-10-16 (gamerun, scratch `WPR_DATA_ROOT`): AE 3D Motor forced on D1–D4, Angry Birds
+Classic (WP8) stopped at frame 200 on D1, D2 and D4, Back leaves, one hub report. No screen on
+Angry Birds, Carcassonne, Flowerz, Cut the Rope, MONOPOLY, MC4, Feed Me Oil, Chickens Can't Fly
+and AE 3D Motor run normally. Android Release builds; **not run on Android** (env hooks do not reach
+`:game`; a real failing title is the way to see it there).
 
 ### Update checks and the About page's "what's new" (2026-09-29, Android)
 
@@ -5455,7 +5532,7 @@ Files at the project root are **not** type shims — they're WPR-internal
 runtime/helper code that doesn't shadow any upstream type:
 - The CPU renderer (`SoftwareVisualRasteriser*.cs`, `TextRasteriser.cs`, `TrueTypeFont.cs`,
   `WpChrome.cs`, `UIElementRenderer.cs`, `SilverlightImageDecoder.cs`). It is the only one: the
-  **D3D11** renderers were retired on 2026-10-12 (Plans/RUNTIME-CONVERGENCE.md 2a) and the
+  **D3D11** renderers were retired on 2026-10-12 (the runtime convergence plan 2a) and the
   Avalonia ones (`SilverlightRenderer`, `BrandedSplashRenderer`, `IBackgroundRenderer`) on
   2026-10-13 (2b, Stage D). `DrawingSurfaceBackgroundGrid` is a plain Grid now.
   **Do not add a graphics or UI package reference to `WPR.Framework.Silverlight`** —
