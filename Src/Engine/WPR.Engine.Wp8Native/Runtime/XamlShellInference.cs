@@ -32,7 +32,7 @@ namespace WPR.Wp8Native
     /// hand-written ones in <see cref="XamlShells"/> still win; this is what runs when there is none.</para>
     /// <para>Nothing in this file may name an XNA or engine type: the probe compiles it.</para>
     /// </remarks>
-    public static class XamlShellInference
+    public static partial class XamlShellInference
     {
         private const string CreateContentProvider = "CreateContentProvider";
         private const string SetManipulationHost = "SetManipulationHost";
@@ -41,6 +41,12 @@ namespace WPR.Wp8Native
         /// <summary>A call the shell makes on a component class, as read from IL.</summary>
         private sealed record ShellCall(string Class, string Method, bool IsNew, bool IsStatic, bool IsFunctionPointer, int Parameters, object?[] TrailingConstants, string? NextCall)
         {
+            /// <summary>
+            /// Each argument's value as the page computes it on this display (a number, a <see cref="SizeF"/>),
+            /// or null where it is not known: see <see cref="ShellReading.EvaluateArguments"/>.
+            /// </summary>
+            public object?[] Evaluated { get; init; } = [];
+
             /// <summary>For an event subscription: what the C# handler (and anything it hooks up) calls on the component.</summary>
             public IReadOnlyList<ShellCall> Handler { get; init; } = [];
         }
@@ -401,7 +407,9 @@ namespace WPR.Wp8Native
                 {
                     // Constants are known for the trailing run of arguments the IL loaded literally.
                     int fromEnd = count - 1 - i;
-                    object? constant = fromEnd < call.TrailingConstants.Length ? call.TrailingConstants[^(fromEnd + 1)] : null;
+                    // Better still, the value the page computes (see ShellReading.EvaluateArguments).
+                    object? constant = i < call.Evaluated.Length && call.Evaluated[i] is { } evaluated ? evaluated
+                        : fromEnd < call.TrailingConstants.Length ? call.TrailingConstants[^(fromEnd + 1)] : null;
                     string name = i < method.ParameterNames.Count ? method.ParameterNames[i] : "";
                     arguments[i] = DefaultFor(method.ParameterTypes[i], call.Method, constant, name);
                 }
@@ -417,7 +425,7 @@ namespace WPR.Wp8Native
                 switch (type)
                 {
                     case "Windows.Foundation.Size":
-                        return method.Contains("Window", StringComparison.OrdinalIgnoreCase) || method.Contains("Bounds", StringComparison.OrdinalIgnoreCase)
+                        return constant is SizeF size ? size : method.Contains("Window", StringComparison.OrdinalIgnoreCase) || method.Contains("Bounds", StringComparison.OrdinalIgnoreCase)
                             ? new SizeF(Wp8Display.LogicalWidth, Wp8Display.LogicalHeight)
                             : new SizeF(Wp8Display.PhysicalWidth, Wp8Display.PhysicalHeight);
                     case "Single":
@@ -428,7 +436,7 @@ namespace WPR.Wp8Native
                     case "Boolean":
                         // WPR answers every licence question as "bought" (Guide.IsTrialMode is false),
                         // so a full-version flag the page computed from it is true.
-                        return constant is int b ? b != 0
+                        return constant is int or double ? Convert.ToDouble(constant) != 0
                             : method.Contains("FullVersion", StringComparison.OrdinalIgnoreCase) || method.Contains("Licensed", StringComparison.OrdinalIgnoreCase)
                               || method.Contains("Purchased", StringComparison.OrdinalIgnoreCase);
                     case "String":
@@ -440,7 +448,7 @@ namespace WPR.Wp8Native
                     case "Int16":
                     case "Byte":
                         // PageOrientation: LandscapeLeft 18, PortraitUp 5.
-                        return constant is int n ? n : orientation ? (landscape ? 18 : 5)
+                        return constant is int n ? n : constant is double whole ? (int)whole : orientation ? (landscape ? 18 : 5)
                             : method.Contains("Scale", StringComparison.OrdinalIgnoreCase) ? Wp8Display.Scale : 0;
                 }
 
@@ -459,7 +467,7 @@ namespace WPR.Wp8Native
         }
 
         /// <summary>The component calls a managed shell makes, grouped by the lifecycle point that reaches them.</summary>
-        private sealed class ShellReading
+        private sealed partial class ShellReading
         {
             public string Path { get; private init; } = "";
 
@@ -476,6 +484,9 @@ namespace WPR.Wp8Native
 
             /// <summary>A page of the shell declares <c>SupportedOrientations="Landscape"</c> in its XAML.</summary>
             public bool Landscape { get; private set; }
+
+            /// <summary>A page of the shell shows the system tray (<c>SystemTray.IsVisible="True"</c> in its XAML).</summary>
+            public bool SystemTrayVisible { get; private set; }
 
             public List<ShellCall> Deactivated { get; } = [];
 
@@ -520,6 +531,11 @@ namespace WPR.Wp8Native
 
             private void ReadAll()
             {
+                // The XAML first: what a page says about itself is part of what its code computes.
+                List<string> xaml = ReadPageXaml().ToList();
+                Landscape = xaml.Any(text => text.Contains("SupportedOrientations=\"Landscape\"", StringComparison.Ordinal));
+                SystemTrayVisible = xaml.Any(text => text.Contains("SystemTray.IsVisible=\"True\"", StringComparison.OrdinalIgnoreCase));
+
                 List<TypeDefinition> apps = [], pages = [];
                 foreach (TypeDefinitionHandle handle in _md.TypeDefinitions)
                 {
@@ -564,7 +580,6 @@ namespace WPR.Wp8Native
                 }
 
                 Mentions.AddRange(All.Select(c => c.Class).Where(_drawing.Contains));
-                Landscape = ReadPageXaml().Any(xaml => xaml.Contains("SupportedOrientations=\"Landscape\"", StringComparison.Ordinal));
             }
 
             /// <summary>The XAML of the assembly's pages, from its Silverlight <c>.g.resources</c> bundle.</summary>
@@ -734,7 +749,11 @@ namespace WPR.Wp8Native
                     }
 
                     into.Add(new ShellCall(owner, memberName, op == ILOpCode.Newobj, !header.IsInstance,
-                        op is ILOpCode.Ldftn or ILOpCode.Ldvirtftn, parameters, [.. trailing], next) { Handler = handler });
+                        op is ILOpCode.Ldftn or ILOpCode.Ldvirtftn, parameters, [.. trailing], next)
+                    {
+                        Handler = handler,
+                        Evaluated = op is ILOpCode.Call or ILOpCode.Callvirt or ILOpCode.Newobj ? EvaluateArguments(il, i, parameters) : [],
+                    });
                 }
             }
 

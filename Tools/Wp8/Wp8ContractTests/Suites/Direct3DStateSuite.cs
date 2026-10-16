@@ -83,6 +83,14 @@ public sealed class Direct3DStateSuite : IContractSuite
 
         Check("CopyResource copies the staging texture's pixels into the texture", Contents(texture).SequenceEqual(pixels));
 
+        // A texture created with no initial data reads as zeros even on a reused heap block: 2020: My
+        // Country's sprite atlas showed an old loading screen between its sprites otherwise.
+        long dirty = e.AllocateHeap(pixels.Length);
+        e.WriteMemory(dirty, Enumerable.Repeat((byte)0xAB, pixels.Length).ToArray());
+        e.FreeHeap(dirty);
+        long empty = Texture(defaultDesc);
+        Check("a texture created with no initial data is zeroed", Contents(empty).All(b => b == 0));
+
         long second = Texture(defaultDesc);
         long box = h.Buffer(24);
         foreach ((int at, uint v) in new[] { (0, 2u), (4, 1u), (8, 0u), (12, 4u), (16, 3u), (20, 1u) })
