@@ -3,7 +3,6 @@ using WPR.Platform.Windows.Input;
 using WPR.Engine;
 using WPR.SilverlightCompability;
 using System.Linq;
-using System.Windows;
 
 namespace WPR.Platform.Windows
 {
@@ -55,53 +54,10 @@ namespace WPR.Platform.Windows
                     (result == MessageBox.Avalonia.Enums.ButtonResult.Yes) ? 1 : 0;
             };
 
-            System.Windows.MessageBox.ShowSimpleImpl = async (title, caption, button) =>
-            {
-                MessageBox.Avalonia.Enums.ButtonEnum buttonImpl = MessageBox.Avalonia.Enums.ButtonEnum.Ok;
-                switch (button)
-                {
-                    //TODO: implement other buttons
-                    /*case System.Windows.MessageBoxButton.OK:
-                        buttonImpl = MessageBox.Avalonia.Enums.ButtonEnum.Ok;
-                        break;
-
-                    case System.Windows.MessageBoxButton.OKCancel:
-                        buttonImpl = MessageBox.Avalonia.Enums.ButtonEnum.OkCancel;
-                        break;
-
-                    case System.Windows.MessageBoxButton.YesNoCancel:
-                        buttonImpl = MessageBox.Avalonia.Enums.ButtonEnum.YesNoCancel;
-                        break;
-
-                    case System.Windows.MessageBoxButton.YesNo:
-                        buttonImpl = MessageBox.Avalonia.Enums.ButtonEnum.YesNo;
-                        break;*/
-
-                    default:
-                        break;
-                }
-
-                var result = await MessageBoxUtils.GetMessageDialogResult(title, caption, buttonImpl,
-                    modalOnWindow: false, dispatchMain : true);
-
-                switch (result)
-                {
-                    /*case MessageBox.Avalonia.Enums.ButtonResult.Ok:
-                        return System.Windows.MessageBoxResult.OK;
-
-                    case MessageBox.Avalonia.Enums.ButtonResult.Yes:
-                        return System.Windows.MessageBoxResult.Yes;
-
-                    case MessageBox.Avalonia.Enums.ButtonResult.No:
-                        return System.Windows.MessageBoxResult.No;
-
-                    case MessageBox.Avalonia.Enums.ButtonResult.Cancel:
-                        return System.Windows.MessageBoxResult.Cancel;
-                    */
-                    default:
-                        return default;//System.Windows.MessageBoxResult.None;
-                }
-            };
+            // Silverlight's blocking MessageBox.Show. The shim owns the WP7 button/result mapping
+            // (WPR.WindowsCompability.MessageBox.Describe); this head only shows labelled buttons on
+            // its UI thread and reports the index pressed, or -1 when the dialog was dismissed.
+            WPR.WindowsCompability.MessageBox.Presenter = MessageBoxUtils.ShowGameMessageBoxAsync;
         }
     }
 }
