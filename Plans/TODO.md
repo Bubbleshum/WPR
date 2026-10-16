@@ -26,9 +26,8 @@ at that time. Ranked by impact within each group.
 
 1. **Asphalt Overdrive** (WP8 Direct3D/XAML) stops: no `XamlShells` description, and its title
    shows as `@AppResLib.dll,-100`. Being handled by the game-format agent (2026-10-16).
-2. **WP8 movies on Android need `<movie>.wpr.mp4` sidecars**, which install does not write for WP8
-   titles yet, so Halo: Spartan Assault would sit on its first logo on a phone. Being handled by
-   the WP8 movie-sidecar agent (2026-10-16). `Src/Engine/WPR.Engine.Wp8Native/Wp8NativeVideoDecoder.cs`
+2. **WP8 movies on Android**: install and repatch now write sidecars for native titles (merged
+   2026-10-16); WP8 titles installed before that need a repatch to get them.
 3. **`Obscured`/`Unobscured` (lock screen, calls) are never raised.** MC4 pauses its game only on
    these, so it comes back from the background unpaused.
    `Src/Engine/WPR.Engine.Wp8Native/Runtime/XamlShells.cs:59`
