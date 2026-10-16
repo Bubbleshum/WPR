@@ -859,9 +859,43 @@ clock drives both; `OnVideoStreamTick` hands out the frame due at that clock (in
 the voice's ~90 ms chunk, or a movie's frames step at 11 fps); `TransferVideoFrame` scales it into
 the game's B8G8R8A8/R8G8B8A8 texture through `Direct3DRuntime.WriteVideoFrame` (source and
 destination rectangles, border colour). A byte-stream source goes through a temp file. Windows
-plays them through ffmpeg.exe. **Android has a decoder only for sidecars**, so a WP8 movie there
-still fails as before unless install writes `<movie>.wpr.mp4`, which it does not do for WP8 yet:
-that is the next step for Halo on a phone, and why it would sit on its first logo there.
+plays them through ffmpeg.exe. Android plays them from sidecars: see the next section.
+
+### WP8 movies play on Android (2026-10-16)
+
+Halo used to sit on its first logo on a phone, for two reasons, each hiding the next:
+
+- **No sidecars for WP8 packages.** `ApplicationInstaller.Install` and `RepatchAsync` skipped
+  everything for a `ModernNative` title, `VideoCompabilityConverter.PrepareMovies` included. Both
+  now run it for native titles too (through `PrepareMoviesQuietly`, never fatal); repatch still
+  does no IL work and does not stamp `PatchedVersion` for them. **A WP8 title installed before this
+  needs a re-patch** (Android long-press → re-patch) to get its sidecars; the launch-time auto
+  repatch does not transcode. Installed WP8 titles with movies: Halo (13 `.wmv`) and Modern Combat 4
+  (5 briefing `.mp4`, which MediaCodec could already read as shipped).
+- **NVorbis 0.10.5 hangs in a `ReadSamples` that reaches past the end** of a stream whose first
+  granule is not 0, and ffmpeg's Vorbis encoder writes exactly that (Halo's sidecars start at
+  0.0507 s). `MediaCodecStream.ReadAudio` is called by the media engine's soundtrack drain on the
+  guest thread, so the 30 s bound never fired and the whole game froze, with `0 host call(s)` in the
+  "has not presented" report and `debuggerd -b` showing the guest thread at one managed pc. It now
+  asks for no more than `TotalSamples - SamplePosition`; `StreamingSongPlayer.SubmitNext` got the
+  same cap defensively (not measured to hang). Reproduced on the desktop against the pulled
+  `.wpr.ogg` with a 20-line NVorbis console (hangs at 16384, 4096 and 1024-frame reads; capped, all
+  finish). WP7 movies through `WprMoviePlayer` read the same method, so they were exposed too.
+
+A **byte-stream source** is now matched back to the package file it came from before falling back to
+a temp copy (`MediaEngine.FindPackageMovie`: the URL, then a file of that name, then any movie-sized
+file with the same bytes, in the package or the local folder, each confirmed byte for byte), so the
+decoder is handed a path with sidecars beside it. Halo opens its movies by URL and does not need it.
+Log: `[wpr-wp8] media: byte-stream source … is the package file …`, and once every 2 s while a movie
+plays, `[wpr-wp8] movie clock: <pos>/<len> s, chunks …, frames handed …` (a movie that never ends
+says nothing otherwise).
+
+Verified on `WPR_Verify` (Release APK, debug-signed): before the re-patch `no sidecar for
+…logo_game.wmv`; the re-patch wrote all 13 pairs through `:transcode` in ~16 s; then all four logo
+movies, the 34 s intro cutscene (frames on screen) and the menus, on A2 Vulkan and A1 GLES 3.1.
+Once, on the very first run after the intro, a ConcRT worker stopped with `FetchProtected of 4
+byte(s)` near a `savedata.bin` / `0x80070050` (ERROR_FILE_EXISTS) structure; the next two runs did
+not repeat it. Not caused by this change, not chased. Not run: S24, Mali.
 
 Diagnostics added on the way, all opt-in: `WPR_WP8_IMPORT_TRACE=N` (first N imports, critical
 sections skipped), `WPR_WP8_METHOD_TRACE=<text>` (host vtable calls whose name contains it,

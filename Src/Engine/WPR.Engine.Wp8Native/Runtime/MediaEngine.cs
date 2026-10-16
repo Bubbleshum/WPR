@@ -184,6 +184,9 @@ namespace WPR.Wp8Native
             // The voice's clock only moves a chunk at a time (~90 ms); a movie's frames need finer.
             public int ClockChunks = -1;
             public long ClockStamp;
+            public long ClockLogged;
+            public int TickCalls;
+            public int FramesHanded;
 
             public override IEnumerable<long> Destroy()
             {
@@ -437,12 +440,18 @@ namespace WPR.Wp8Native
                 }
 
                 double at = Position(e);
+                if (++e.TickCalls % 5000 == 0)
+                {
+                    System.Diagnostics.Trace.WriteLine($"[wpr-wp8] movie: OnVideoStreamTick #{e.TickCalls} at {at:0.00} s, {e.FramesHanded} frame(s) handed");
+                }
+
                 if (!e.Video.TryGetFrame(at, e.Frame))
                 {
                     Return(MediaCom.SFalse);
                     return;
                 }
 
+                e.FramesHanded++;
                 e.HaveFrame = true;
                 if (Arg(1) != 0)
                 {
@@ -665,7 +674,7 @@ namespace WPR.Wp8Native
 
             byte[] bytes = data ?? File.ReadAllBytes(file!);
             string name = Path.GetFileName(file ?? url);
-            PcmAudio.Wave? wave = PcmAudio.ReadWave(bytes) ?? OpenMovie(e, file, bytes, name) ?? Decode(bytes, name);
+            PcmAudio.Wave? wave = PcmAudio.ReadWave(bytes) ?? OpenMovie(e, file, url, bytes, name) ?? Decode(bytes, name);
             if (wave is null)
             {
                 FailLoad(e, url, MediaFoundation.MfEUnsupportedByteStreamType);
@@ -698,12 +707,22 @@ namespace WPR.Wp8Native
         /// cannot play - and wrong for one that cannot: Halo: Spartan Assault starts its logo movie,
         /// logs the error event and waits for ENDED or PAUSE, for ever.
         /// </remarks>
-        private PcmAudio.Wave? OpenMovie(Engine e, string? file, byte[] bytes, string name)
+        private PcmAudio.Wave? OpenMovie(Engine e, string? file, string url, byte[] bytes, string name)
         {
             string container = MediaContainer.Sniff(bytes);
             if (container is not ("ASF (WMA/WMV)" or "MP4") || VideoDecoder() is not { } decoder)
             {
                 return null;
+            }
+
+            // A byte-stream source is usually a package file the game opened itself. Handing the
+            // decoder that file, not a temp copy, matters on a platform that plays only what was
+            // prepared at install (Android: the sidecars beside the movie, since MediaCodec has
+            // no WMV). A copy in the temp folder has no sidecar beside it.
+            if (file is null && FindPackageMovie(url, bytes) is { } original)
+            {
+                System.Diagnostics.Trace.WriteLine($"[wpr-wp8] media: byte-stream source {name} is the package file {Path.GetRelativePath(_packageRoot, original)}");
+                file = original;
             }
 
             string? temporary = null;
@@ -755,6 +774,86 @@ namespace WPR.Wp8Native
             Decoded.Add($"{name} ({container}, video {video.Width}x{video.Height}, {seconds:0.0} s{(unknownLength ? " (length unknown)" : string.Empty)}, " +
                         $"{(channels == 0 ? "no sound" : $"{rate} Hz, {channels} ch")}, {decoder.Name})");
             return new PcmAudio.Wave(rate, Math.Max(channels, 1), pcm);
+        }
+
+        /// <summary>
+        /// The package file a byte-stream source was read from, or null: first what its URL names
+        /// (a game usually passes the file's own name), then any file of that name in the package,
+        /// then any movie-sized file in the package with those exact bytes. Each candidate must
+        /// match byte for byte, so a game's own generated stream is never mistaken for a file.
+        /// </summary>
+        internal string? FindPackageMovie(string url, byte[] bytes)
+        {
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(url) && ResolveUrl(url) is { } named && SameBytes(named, bytes))
+                {
+                    return named;
+                }
+
+                string leaf = string.IsNullOrWhiteSpace(url) ? string.Empty : Path.GetFileName(url.Replace('\\', '/').TrimEnd('/'));
+                string? byName = null;
+                string? byContent = null;
+                IEnumerable<string> candidates = new[] { _packageRoot, HostStubs.SandboxRoot }
+                    .Where(r => !string.IsNullOrEmpty(r) && Directory.Exists(r))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .SelectMany(r => Directory.EnumerateFiles(r, "*", SearchOption.AllDirectories));
+                foreach (string candidate in candidates)
+                {
+                    string ext = Path.GetExtension(candidate);
+                    bool movieExtension = ext.Equals(".wmv", StringComparison.OrdinalIgnoreCase)
+                                          || ext.Equals(".mp4", StringComparison.OrdinalIgnoreCase)
+                                          || ext.Equals(".m4v", StringComparison.OrdinalIgnoreCase)
+                                          || ext.Equals(".asf", StringComparison.OrdinalIgnoreCase)
+                                          || ext.Equals(".3gp", StringComparison.OrdinalIgnoreCase);
+                    bool sameName = leaf.Length > 0 && Path.GetFileName(candidate).Equals(leaf, StringComparison.OrdinalIgnoreCase);
+                    if ((!movieExtension && !sameName) || new FileInfo(candidate).Length != bytes.Length)
+                    {
+                        continue;
+                    }
+
+                    if (sameName && byName is null && SameBytes(candidate, bytes))
+                    {
+                        byName = candidate;
+                        break;
+                    }
+
+                    if (movieExtension && byContent is null && SameBytes(candidate, bytes))
+                    {
+                        byContent = candidate;
+                    }
+                }
+
+                return byName ?? byContent;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return null;
+            }
+        }
+
+        private static bool SameBytes(string path, byte[] bytes)
+        {
+            using FileStream s = new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            if (s.Length != bytes.Length)
+            {
+                return false;
+            }
+
+            byte[] buffer = new byte[81920];
+            int offset = 0;
+            int read;
+            while ((read = s.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                if (!buffer.AsSpan(0, read).SequenceEqual(bytes.AsSpan(offset, read)))
+                {
+                    return false;
+                }
+
+                offset += read;
+            }
+
+            return offset == bytes.Length;
         }
 
         /// <summary>The whole soundtrack, waiting for the decoder (bounded) as it fills.</summary>
@@ -1104,6 +1203,19 @@ namespace WPR.Wp8Native
                 }
 
                 double position = Position(e);
+                if (e.Video is not null)
+                {
+                    long now = System.Diagnostics.Stopwatch.GetTimestamp();
+                    if (now - e.ClockLogged > 2 * System.Diagnostics.Stopwatch.Frequency)
+                    {
+                        // A movie that never ends is otherwise silent: say where its clock is.
+                        e.ClockLogged = now;
+                        System.Diagnostics.Trace.WriteLine(
+                            $"[wpr-wp8] movie clock: {position:0.00}/{e.Wave.Duration:0.00} s, chunks {(e.Voice is { } v ? v.Completed - e.CompletedAtStart : -1)}/{e.Chunks.Count}, " +
+                            $"frames handed {e.FramesHanded} of {e.TickCalls} ticks, video ended={e.Video.VideoEnded}");
+                    }
+                }
+
                 if (position >= e.Wave.Duration - 1e-9 || e.Video is { DurationSeconds: <= 0, VideoEnded: true })
                 {
                     if (e.Loop)
