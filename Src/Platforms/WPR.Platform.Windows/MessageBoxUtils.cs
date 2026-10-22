@@ -36,16 +36,23 @@ namespace WPR.Platform.Windows
                 }
                 catch (System.MissingMethodException)
                 {
+                    // MessageBox.Avalonia 2.2.0 predates this head's Avalonia, so this fallback is
+                    // what actually shows. It sizes to its text: a fixed height pushed the buttons of
+                    // a long question (the uninstall prompt) off the bottom of a window that cannot
+                    // be resized, leaving no way to answer it.
                     var tcs = new TaskCompletionSource<MessageBox.Avalonia.Enums.ButtonResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-                    
+
                     var w = new Window
                     {
                         Title = title,
-                        Width = 420,
-                        Height = 200,
+                        Width = 480,
+                        SizeToContent = SizeToContent.Height,
                         CanResize = false,
                         WindowStartupLocation = WindowStartupLocation.CenterScreen
                     };
+                    // Closing with the title bar's X (or Alt+F4) answers None, which every caller
+                    // reads as "no" / "cancel". Without this the caller waited for ever.
+                    w.Closed += (_, __) => tcs.TrySetResult(MessageBox.Avalonia.Enums.ButtonResult.None);
                     
                     var panel = new StackPanel
                     {
