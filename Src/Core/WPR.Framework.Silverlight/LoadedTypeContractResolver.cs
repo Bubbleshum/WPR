@@ -18,12 +18,35 @@ namespace WPR.WindowsCompability
     /// A contract's name and namespace come from its <see cref="DataContractAttribute"/>, then
     /// the assembly's <see cref="ContractNamespaceAttribute"/>, then the serializer's default
     /// (<c>http://schemas.datacontract.org/2004/07/</c> + the CLR namespace). Generic types are
-    /// not matched here; the serializer's own resolver handles the ones it knows. Game
+    /// not matched by name; the serializer's own resolver handles the ones it knows. Game
     /// assemblies (collectible contexts) are searched before the Default context.
+    /// <para>Collections of framework types are named in the serializer's Arrays namespace
+    /// (<c>ArrayOfKeyValueOfstringint</c>, <c>ArrayOfstring</c>) and defined by no loaded type,
+    /// so they are built from the name: <c>ArrayOfKeyValueOf</c>KV is a
+    /// <see cref="System.Collections.Generic.Dictionary{TKey,TValue}"/>, any other <c>ArrayOf</c>T
+    /// a <see cref="System.Collections.Generic.List{T}"/> (an array and a list share the name, and
+    /// the file does not say which it was). Gravity Guy 2 keeps a Dictionary&lt;string, int&gt; and
+    /// a Dictionary&lt;string, Guid&gt; beside its save; unresolved, the read failed and the whole
+    /// file was thrown away at every launch.</para>
     /// </remarks>
     internal sealed class LoadedTypeContractResolver : DataContractResolver
     {
         private const string DefaultNamespacePrefix = "http://schemas.datacontract.org/2004/07/";
+
+        private const string ArraysNamespace = "http://schemas.microsoft.com/2003/10/Serialization/Arrays";
+
+        // The serializer's names for the primitives it knows (XML Schema names, plus its own
+        // char, guid and duration). anyType is object.
+        private static readonly System.Collections.Generic.Dictionary<string, Type> Primitives = new()
+        {
+            ["anyType"] = typeof(object), ["string"] = typeof(string), ["boolean"] = typeof(bool),
+            ["int"] = typeof(int), ["long"] = typeof(long), ["short"] = typeof(short),
+            ["byte"] = typeof(sbyte), ["unsignedByte"] = typeof(byte), ["unsignedShort"] = typeof(ushort),
+            ["unsignedInt"] = typeof(uint), ["unsignedLong"] = typeof(ulong), ["float"] = typeof(float),
+            ["double"] = typeof(double), ["decimal"] = typeof(decimal), ["dateTime"] = typeof(DateTime),
+            ["char"] = typeof(char), ["guid"] = typeof(Guid), ["duration"] = typeof(TimeSpan),
+            ["base64Binary"] = typeof(byte[]), ["anyURI"] = typeof(Uri),
+        };
 
         private static readonly ConcurrentDictionary<(string Name, string Namespace), Type?> Cache = new();
 
@@ -35,8 +58,45 @@ namespace WPR.WindowsCompability
                 return known;
             }
 
+            if (typeNamespace == ArraysNamespace)
+            {
+                return ArraysContract(typeName);
+            }
+
             return Find(typeName, typeNamespace ?? string.Empty);
         }
+
+        /// <summary>The collection a name in the Arrays namespace stands for, or null.</summary>
+        internal static Type? ArraysContract(string name)
+        {
+            if (!name.StartsWith("ArrayOf", StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            string item = name.Substring("ArrayOf".Length);
+            if (item.StartsWith("KeyValueOf", StringComparison.Ordinal))
+            {
+                string pair = item.Substring("KeyValueOf".Length);
+                for (int split = 1; split < pair.Length; split++)
+                {
+                    Type? key = ItemContract(pair.Substring(0, split));
+                    Type? value = key == null ? null : ItemContract(pair.Substring(split));
+                    if (value != null)
+                    {
+                        return typeof(System.Collections.Generic.Dictionary<,>).MakeGenericType(key!, value);
+                    }
+                }
+
+                return null;
+            }
+
+            Type? element = ItemContract(item);
+            return element == null ? null : typeof(System.Collections.Generic.List<>).MakeGenericType(element);
+        }
+
+        private static Type? ItemContract(string name) =>
+            Primitives.TryGetValue(name, out Type? primitive) ? primitive : ArraysContract(name);
 
         public override bool TryResolveType(Type type, Type? declaredType, DataContractResolver knownTypeResolver,
             out XmlDictionaryString? typeName, out XmlDictionaryString? typeNamespace)

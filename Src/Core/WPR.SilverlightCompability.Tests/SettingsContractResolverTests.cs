@@ -39,6 +39,40 @@ public class SettingsContractResolverTests
     }
 
     [Fact]
+    public void Collections_of_framework_types_read_back()
+    {
+        // Gravity Guy 2's settings hold a Dictionary<string, int> and a Dictionary<string, Guid>
+        // beside its save. Their contracts (ArrayOfKeyValueOfstringint, ...Ofstringguid) are named
+        // in the Arrays namespace and defined by no loaded type, so the read failed and the whole
+        // file, save included, was thrown away at every launch.
+        var settings = new Dictionary<string, object>
+        {
+            ["Counts"] = new Dictionary<string, int> { ["a"] = 1 },
+            ["Ids"] = new Dictionary<string, System.Guid> { ["b"] = System.Guid.Empty },
+            ["Nested"] = new Dictionary<string, object> { ["n"] = 2 },
+            ["Scores"] = new List<int> { 3, 4 },
+            ["Names"] = new[] { "x", "y" },
+        };
+
+        var stream = new MemoryStream();
+        new DataContractSerializer(typeof(Dictionary<string, object>),
+                new[] { typeof(Dictionary<string, int>), typeof(Dictionary<string, System.Guid>), typeof(List<int>), typeof(string[]) })
+            .WriteObject(stream, settings);
+        stream.Position = 0;
+
+        var read = (Dictionary<string, object>)new DataContractSerializer(
+                typeof(Dictionary<string, object>),
+                new DataContractSerializerSettings { DataContractResolver = new LoadedTypeContractResolver() })
+            .ReadObject(stream)!;
+
+        Assert.Equal(1, Assert.IsType<Dictionary<string, int>>(read["Counts"])["a"]);
+        Assert.Equal(System.Guid.Empty, Assert.IsType<Dictionary<string, System.Guid>>(read["Ids"])["b"]);
+        Assert.Equal(2, Assert.IsType<Dictionary<string, object>>(read["Nested"])["n"]);
+        Assert.Equal(new[] { 3, 4 }, (IEnumerable<int>)read["Scores"]);
+        Assert.Equal(new[] { "x", "y" }, (IEnumerable<string>)read["Names"]);
+    }
+
+    [Fact]
     public void A_named_contract_is_found_by_its_attribute()
     {
         Assert.Equal(typeof(RenamedSetting), LoadedTypeContractResolver.Find("Renamed", "urn:wpr-test"));
