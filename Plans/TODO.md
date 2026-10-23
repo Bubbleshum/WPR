@@ -51,10 +51,12 @@ at that time. Ranked by impact within each group.
 10. **The Mandreel message thread is a host stand-in** for the game's own managed page
     (`MainPage.Alpha.Beta`, `Runtime/MandreelMessages.cs`). It is kept by decision, against the
     rule that a game's shipped libraries run as shipped. It goes once the managed page can run.
-11. **Jetpack Joyride's world art draws only on OpenGL** (D3 and D4). On D3D11 and Vulkan a run
-    shows only the HUD and the backdrop text.
-12. **Mandreel titles draw into a 480-wide strip** at the left of a 1280x768 desktop window,
-    rotated.
+11. **Jetpack Joyride still has slight lag from skipped draws** (S24, 2026-10-23). Pacing the
+    guest by shown frames removed the stutter every ~2 s, and GC is down to ~2.5 collections a
+    second, but an occasional 50-60 ms gap remains where a frame is skipped and the phone misses
+    a refresh. Not GC and not file access; cause not pinned down. Separately, a 120-500 ms pause
+    when a run ends is the game's own save (~600 file operations). Branch
+    `claude/jetpack-joyride-5e24a7`, commit `6bdcfb9b`.
 
 ## Silverlight shims
 
