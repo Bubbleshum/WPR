@@ -484,8 +484,9 @@ namespace Microsoft.Xna.Framework.Graphics
 			// Set up the FNA3D Device
 			try
 			{
+				RhiPresentationParameters hostParameters = WprHostParameters(out wprTurn);
 				GLDevice = XnaBackend.Graphics.CreateDevice(
-					ref PresentationParameters.parameters,
+					ref hostParameters,
 #if DEBUG
 					1
 #else
@@ -540,6 +541,8 @@ namespace Microsoft.Xna.Framework.Graphics
 
 			// Allocate the pipeline cache to be used by Effects
 			PipelineCache = new PipelineCache(this);
+
+			WprApplyTurn();
 		}
 
 		~GraphicsDevice()
@@ -662,18 +665,43 @@ namespace Microsoft.Xna.Framework.Graphics
 			{
 				_wprDrawCallsThisFrame = 0;
 			}
-			// WPR: the achievement pop-up goes over the finished frame (AchievementToast).
-			AchievementToast.Draw(this);
-			FrameCapture.Raise(this);
+			// WPR: a portrait backbuffer shown turned on a landscape window (PresentationTurn)
+			// is drawn onto the host's backbuffer first, so the pop-up and a frame capture see
+			// what the player sees.
+			bool turned = WprBeginTurnedPresent();
+			try
+			{
+				// WPR: the achievement pop-up goes over the finished frame (AchievementToast).
+				AchievementToast.Draw(this);
+				FrameCapture.Raise(this);
+			}
+			finally
+			{
+				if (turned)
+				{
+					WprEndTurnedOverlay();
+				}
+			}
 			// WPR: a desktop game running fullscreen is letterboxed to its own aspect ratio; null
 			// (windowed, and every phone) fills the drawable exactly as before.
-			XnaBackend.Graphics.SwapBuffers(
-				GLDevice,
-				null,
-				WPR.Xna.Rhi.PresentationLetterbox.Destination,
-				PresentationParameters.DeviceWindowHandle
-			);
+			try
+			{
+				XnaBackend.Graphics.SwapBuffers(
+					GLDevice,
+					null,
+					WPR.Xna.Rhi.PresentationLetterbox.Destination,
+					PresentationParameters.DeviceWindowHandle
+				);
+			}
+			finally
+			{
+				if (turned)
+				{
+					WprRebindAfterTurnedPresent();
+				}
+			}
 			DiscardBackbufferContents();
+			WprEndFrame();
 		}
 
 		/// <summary>
@@ -697,10 +725,15 @@ namespace Microsoft.Xna.Framework.Graphics
 				return false;
 			}
 
+			RhiPresentationParameters hostParameters = WprHostParameters(out _);
 			XnaBackend.Graphics.ResetBackbuffer(
 				GLDevice,
-				ref PresentationParameters.parameters
+				ref hostParameters
 			);
+			if (wprTurnTarget != null)
+			{
+				WprBindBackbuffer();
+			}
 			Viewport = INTERNAL_viewport;
 			ScissorRectangle = ScissorRectangle;
 			return true;
@@ -715,16 +748,40 @@ namespace Microsoft.Xna.Framework.Graphics
 			{
 				overrideWindowHandle = PresentationParameters.DeviceWindowHandle;
 			}
-			// WPR: the achievement pop-up goes over the finished frame (AchievementToast).
-			AchievementToast.Draw(this);
-			FrameCapture.Raise(this);
-			XnaBackend.Graphics.SwapBuffers(
-				GLDevice,
-				sourceRectangle,
-				destinationRectangle,
-				overrideWindowHandle
-			);
+			// WPR: turned like Present(); the rectangles name the game's portrait space, which is
+			// no longer what is swapped, so a turned frame fills the window as Present() does.
+			bool turned = WprBeginTurnedPresent();
+			try
+			{
+				// WPR: the achievement pop-up goes over the finished frame (AchievementToast).
+				AchievementToast.Draw(this);
+				FrameCapture.Raise(this);
+			}
+			finally
+			{
+				if (turned)
+				{
+					WprEndTurnedOverlay();
+				}
+			}
+			try
+			{
+				XnaBackend.Graphics.SwapBuffers(
+					GLDevice,
+					turned ? null : sourceRectangle,
+					turned ? WPR.Xna.Rhi.PresentationLetterbox.Destination : destinationRectangle,
+					overrideWindowHandle
+				);
+			}
+			finally
+			{
+				if (turned)
+				{
+					WprRebindAfterTurnedPresent();
+				}
+			}
 			DiscardBackbufferContents();
+			WprEndFrame();
 		}
 
 		/// <summary>
@@ -795,6 +852,324 @@ namespace Microsoft.Xna.Framework.Graphics
 
 		#endregion
 
+		#region WPR: turned presentation
+
+		/* WPR: a portrait backbuffer shown turned on a landscape host window. See PresentationTurn.
+		 *
+		 * The game keeps the backbuffer it asked for. It is a render target (wprTurnTarget) the
+		 * device binds wherever FNA would bind the real backbuffer, so the game's viewport,
+		 * scissor, clears, draws and GetBackBufferData all work in its own 480x800 space, and
+		 * GetRenderTargets still answers "the backbuffer". The real backbuffer FNA3D is given is
+		 * the same size turned (800x480), and Present draws the target onto it turned a quarter.
+		 *
+		 * renderTargetCount == 0 still means "the game is drawing to its backbuffer" everywhere in
+		 * this class; wprPresentingTurned marks the short stretch inside Present where the HOST
+		 * backbuffer is bound (the turned copy, the achievement pop-up, a frame capture).
+		 */
+		private BackBufferTurn wprTurn;
+		private RenderTarget2D wprTurnTarget;
+		private bool wprPresentingTurned;
+		private SpriteBatch wprTurnBatch;
+		private readonly RhiRenderTargetBinding[] wprTurnNativeBinding = new RhiRenderTargetBinding[1];
+		private readonly RenderTargetBinding[] wprTurnBinding = new RenderTargetBinding[1];
+		private string wprTurnLogged;
+
+		// Saved around the turned copy: device state the game set and expects to find again.
+		private BlendState wprSavedBlend;
+		private DepthStencilState wprSavedDepth;
+		private RasterizerState wprSavedRaster;
+		private SamplerState wprSavedSampler;
+		private Texture wprSavedTexture;
+		private VertexBufferBinding[] wprSavedVertexBuffers;
+		private IndexBuffer wprSavedIndices;
+		private Viewport wprSavedViewport;
+		private Rectangle wprSavedScissor;
+
+		/// <summary>
+		/// The parameters FNA3D is given: the game's own, with width and height swapped when the
+		/// backbuffer is shown turned.
+		/// </summary>
+		private RhiPresentationParameters WprHostParameters(out BackBufferTurn turn)
+		{
+			RhiPresentationParameters host = PresentationParameters.parameters;
+			turn = PresentationTurn.For(host.backBufferWidth, host.backBufferHeight);
+			PresentationTurn.WindowSize(turn, ref host.backBufferWidth, ref host.backBufferHeight);
+			return host;
+		}
+
+		/// <summary>
+		/// Creates, resizes or drops the turned target after FNA3D's backbuffer was created or
+		/// reset, and binds it if the game is drawing to its backbuffer.
+		/// </summary>
+		private void WprApplyTurn()
+		{
+			PresentationTurn.Active = wprTurn;
+			int w = PresentationParameters.BackBufferWidth;
+			int h = PresentationParameters.BackBufferHeight;
+			if (wprTurn == BackBufferTurn.None)
+			{
+				if (wprTurnTarget != null)
+				{
+					wprTurnTarget.Dispose();
+					wprTurnTarget = null;
+					if (renderTargetCount == 0)
+					{
+						WprBindBackbuffer();
+					}
+				}
+				return;
+			}
+
+			if (	wprTurnTarget == null ||
+				wprTurnTarget.Width != w ||
+				wprTurnTarget.Height != h ||
+				wprTurnTarget.Format != PresentationParameters.BackBufferFormat ||
+				wprTurnTarget.DepthStencilFormat != PresentationParameters.DepthStencilFormat ||
+				wprTurnTarget.MultiSampleCount != PresentationParameters.MultiSampleCount	)
+			{
+				wprTurnTarget?.Dispose();
+				wprTurnTarget = new RenderTarget2D(
+					this,
+					w,
+					h,
+					false,
+					PresentationParameters.BackBufferFormat,
+					PresentationParameters.DepthStencilFormat,
+					PresentationParameters.MultiSampleCount,
+					RenderTargetUsage.PreserveContents
+				);
+			}
+			if (renderTargetCount == 0)
+			{
+				WprBindBackbuffer();
+			}
+
+			string line = $"[wpr-display] {w}x{h} backbuffer shown turned {wprTurn} on a {h}x{w} window";
+			if (line != wprTurnLogged)
+			{
+				wprTurnLogged = line;
+				XnaBackend.LogInfo(line);
+			}
+		}
+
+		/// <summary>
+		/// Binds what the game calls its backbuffer: the turned target, or FNA3D's own (always
+		/// FNA3D's own while Present draws the turned copy).
+		/// </summary>
+		private unsafe void WprBindBackbuffer()
+		{
+			if (wprTurnTarget != null && DeviceThreadDispatch.MustMarshal)
+			{
+				// Another thread of the game unbinding its target: decide what "the backbuffer" is
+				// on the device thread, when the call runs, not here mid-present.
+				DeviceThreadDispatch.Invoke(WprBindBackbuffer);
+				return;
+			}
+			byte preserve = (byte) (PresentationParameters.RenderTargetUsage != RenderTargetUsage.DiscardContents ? 1 : 0);
+			if (wprTurnTarget == null || wprPresentingTurned)
+			{
+				XnaBackend.Graphics.SetRenderTargets(
+					GLDevice,
+					IntPtr.Zero,
+					0,
+					IntPtr.Zero,
+					DepthFormat.None,
+					preserve
+				);
+				return;
+			}
+
+			wprTurnBinding[0] = new RenderTargetBinding(wprTurnTarget);
+			IRenderTarget target = wprTurnTarget;
+			fixed (RhiRenderTargetBinding* rt = &wprTurnNativeBinding[0])
+			{
+				PrepareRenderTargetBindings(rt, wprTurnBinding);
+				XnaBackend.Graphics.SetRenderTargets(
+					GLDevice,
+					(IntPtr) rt,
+					1,
+					target.DepthStencilBuffer,
+					target.DepthStencilFormat,
+					preserve
+				);
+			}
+		}
+
+		/// <summary>
+		/// Draws the turned target onto FNA3D's backbuffer and leaves that bound, with the
+		/// presentation parameters describing it, for the achievement pop-up and a frame capture.
+		/// False (nothing done) when the backbuffer is not turned or a render target is bound.
+		/// </summary>
+		private bool WprBeginTurnedPresent()
+		{
+			if (wprTurnTarget == null || renderTargetCount != 0 || wprPresentingTurned)
+			{
+				return false;
+			}
+
+			// On OpenGL a game's calls from its own threads wait for the device thread
+			// (DeviceThreadDispatch), and SwapBuffers would drain them with the HOST backbuffer
+			// bound; this then re-binds the game's backbuffer over whatever target they set. The
+			// Sims 3 builds each Sim's texture on a loader thread by drawing into a render target,
+			// and lost it that way (a black Sim). So they are held until the next frame boundary;
+			// only posted resource work runs here.
+			DeviceThreadDispatch.DrainPosted();
+			DeviceThreadDispatch.Suspended = true;
+
+			ApplySamplers();
+			wprPresentingTurned = true;
+			WprBindBackbuffer();
+			XnaBackend.Graphics.ResolveTarget(GLDevice, ref wprTurnNativeBinding[0]);
+
+			wprSavedBlend = BlendState;
+			wprSavedDepth = DepthStencilState;
+			wprSavedRaster = RasterizerState;
+			wprSavedSampler = SamplerStates[0];
+			wprSavedTexture = Textures[0];
+			wprSavedVertexBuffers = GetVertexBuffers();
+			wprSavedIndices = Indices;
+			wprSavedViewport = Viewport;
+			wprSavedScissor = ScissorRectangle;
+
+			// From here to the swap, WprPresentedBounds is the host backbuffer, so what draws over
+			// the frame (AchievementToast) and what reads it back (FrameCapture) work in the space
+			// the player sees. The game's presentation parameters are never touched: another thread
+			// of the game may read them at any moment.
+			int portraitW = PresentationParameters.BackBufferWidth;
+			int portraitH = PresentationParameters.BackBufferHeight;
+
+			Viewport = new Viewport(0, 0, portraitH, portraitW);
+			ScissorRectangle = new Rectangle(0, 0, portraitH, portraitW);
+			Vector4 black = new Vector4(0.0f, 0.0f, 0.0f, 1.0f);
+			ClearCore(ClearOptions.Target | ClearOptions.DepthBuffer | ClearOptions.Stencil, ref black, Viewport.MaxDepth, 0);
+
+			wprTurnBatch ??= new SpriteBatch(this);
+			wprTurnBatch.Begin(SpriteSortMode.Immediate, BlendState.Opaque, SamplerState.LinearClamp, DepthStencilState.None, RasterizerState.CullNone);
+			if (wprTurn == BackBufferTurn.Anticlockwise)
+			{
+				// Portrait (px, py) lands at (py, width - px): -90 degrees about the top-left,
+				// then down by the portrait width.
+				wprTurnBatch.Draw(wprTurnTarget, new Vector2(0, portraitW), null, Color.White, -MathHelper.PiOver2, Vector2.Zero, 1f, SpriteEffects.None, 0f);
+			}
+			else
+			{
+				// Portrait (px, py) lands at (height - py, px).
+				wprTurnBatch.Draw(wprTurnTarget, new Vector2(portraitH, 0), null, Color.White, MathHelper.PiOver2, Vector2.Zero, 1f, SpriteEffects.None, 0f);
+			}
+			wprTurnBatch.End();
+			return true;
+		}
+
+		/// <summary>
+		/// Called by <see cref="SpriteBatch.Begin(SpriteSortMode, BlendState, SamplerState, DepthStencilState, RasterizerState, Effect, Matrix)"/>:
+		/// a batch on the game's own portrait backbuffer is evidence for or against a turned
+		/// picture (<see cref="PresentationTurn"/>). Batches on a render target, and WPR's own
+		/// batches while Present draws the turned copy, say nothing about it.
+		/// </summary>
+		internal void WprNoteSpriteBatch(in Matrix transform)
+		{
+			if (renderTargetCount != 0 || wprPresentingTurned)
+			{
+				return;
+			}
+			int w = PresentationParameters.BackBufferWidth;
+			int h = PresentationParameters.BackBufferHeight;
+			if (h > w)
+			{
+				PresentationTurn.NoteBackBufferBatch(transform, w, h);
+			}
+		}
+
+		/// <summary>
+		/// The frame boundary: when the game's drawing turned the decision, rebuild FNA3D's
+		/// backbuffer the new way round and ask the platform to reshape the window.
+		/// </summary>
+		private void WprEndFrame()
+		{
+			if (!PresentationTurn.EndFrame() || renderTargetCount != 0)
+			{
+				return;
+			}
+			BackBufferTurn before = wprTurn;
+			RhiPresentationParameters hostParameters = WprHostParameters(out wprTurn);
+			if (wprTurn == before)
+			{
+				return;
+			}
+			XnaBackend.Graphics.ResetBackbuffer(
+				GLDevice,
+				ref hostParameters
+			);
+			WprApplyTurn();
+			WprBindBackbuffer();
+			Viewport = INTERNAL_viewport;
+			ScissorRectangle = ScissorRectangle;
+			Vector4 black = new Vector4(0.0f, 0.0f, 0.0f, 1.0f);
+			ClearCore(ClearOptions.Target | ClearOptions.DepthBuffer | ClearOptions.Stencil, ref black, Viewport.MaxDepth, 0);
+			if (wprTurn == BackBufferTurn.None)
+			{
+				XnaBackend.LogInfo($"[wpr-display] {PresentationParameters.BackBufferWidth}x{PresentationParameters.BackBufferHeight} backbuffer shown upright again");
+				wprTurnLogged = null;
+			}
+			PresentationTurn.RequestWindowChange();
+		}
+
+		/// <summary>
+		/// Puts back the game's presentation parameters and device state. The host backbuffer
+		/// stays bound until after the swap.
+		/// </summary>
+		private void WprEndTurnedOverlay()
+		{
+			BlendState = wprSavedBlend;
+			DepthStencilState = wprSavedDepth;
+			RasterizerState = wprSavedRaster;
+			SamplerStates[0] = wprSavedSampler;
+			Textures[0] = wprSavedTexture;
+			SetVertexBuffers(wprSavedVertexBuffers.Length == 0 ? null : wprSavedVertexBuffers);
+			Indices = wprSavedIndices;
+			wprSavedBlend = null;
+			wprSavedDepth = null;
+			wprSavedRaster = null;
+			wprSavedSampler = null;
+			wprSavedTexture = null;
+			wprSavedVertexBuffers = null;
+			wprSavedIndices = null;
+		}
+
+		/// <summary>
+		/// After the swap: bind the game's backbuffer again, and only THEN give back its viewport
+		/// and scissor. FNA3D's OpenGL driver flips a viewport against the backbuffer height when
+		/// no target is bound, so a viewport restored while the host backbuffer was still bound
+		/// stayed flipped on the game's target: every frame drawn without setting one again (the
+		/// movie player's) landed shifted.
+		/// </summary>
+		private void WprRebindAfterTurnedPresent()
+		{
+			wprPresentingTurned = false;
+			DeviceThreadDispatch.Suspended = false;
+			WprBindBackbuffer();
+			Viewport = wprSavedViewport;
+			ScissorRectangle = wprSavedScissor;
+		}
+
+		/// <summary>
+		/// The rectangle the frame being presented occupies: the game's backbuffer, or, while
+		/// Present draws a turned backbuffer (PresentationTurn), the host backbuffer it is drawn
+		/// onto. For what draws over a finished frame or reads it back (the achievement pop-up,
+		/// FrameCapture), so they work in what the player sees.
+		/// </summary>
+		public Rectangle WprPresentedBounds
+		{
+			get
+			{
+				int w = PresentationParameters.BackBufferWidth;
+				int h = PresentationParameters.BackBufferHeight;
+				return wprPresentingTurned ? new Rectangle(0, 0, h, w) : new Rectangle(0, 0, w, h);
+			}
+		}
+
+		#endregion
+
 		#region Public Reset Methods
 
 		public void Reset()
@@ -852,10 +1227,12 @@ namespace Microsoft.Xna.Framework.Graphics
 			 * The GLDevice needs to know what we're up to right away.
 			 * -flibit
 			 */
+			RhiPresentationParameters hostParameters = WprHostParameters(out wprTurn);
 			XnaBackend.Graphics.ResetBackbuffer(
 				GLDevice,
-				ref PresentationParameters.parameters
+				ref hostParameters
 			);
+			WprApplyTurn();
 
 			XnaBackend.NotifyBackBufferSize(PresentationParameters.BackBufferWidth, PresentationParameters.BackBufferHeight, PresentationParameters.DisplayOrientation);
 
@@ -960,7 +1337,9 @@ namespace Microsoft.Xna.Framework.Graphics
 				 * a more accurate value here, but the Backbuffer may disagree.
 				 * -flibit
 				 */
-				dsFormat = XnaBackend.Graphics.GetBackbufferDepthFormat(GLDevice);
+				dsFormat = wprTurnTarget != null && !wprPresentingTurned
+					? wprTurnTarget.DepthStencilFormat
+					: XnaBackend.Graphics.GetBackbufferDepthFormat(GLDevice);
 			}
 			else
 			{
@@ -1014,6 +1393,12 @@ namespace Microsoft.Xna.Framework.Graphics
 			int startIndex,
 			int elementCount
 		) where T : struct {
+			if (wprTurnTarget != null && !wprPresentingTurned)
+			{
+				// The game's backbuffer is the turned target; read that, not the host's.
+				wprTurnTarget.GetData(0, rect, data, startIndex, elementCount);
+				return;
+			}
 			int x, y, w, h;
 			if (rect == null)
 			{
@@ -1118,14 +1503,7 @@ namespace Microsoft.Xna.Framework.Graphics
 			RenderTargetUsage clearTarget;
 			if (renderTargets == null || renderTargets.Length == 0)
 			{
-				XnaBackend.Graphics.SetRenderTargets(
-					GLDevice,
-					IntPtr.Zero,
-					0,
-					IntPtr.Zero,
-					DepthFormat.None,
-					(byte) (PresentationParameters.RenderTargetUsage != RenderTargetUsage.DiscardContents ? 1 : 0) /* lol c# */
-				);
+				WprBindBackbuffer();
 
 				// Set the viewport/scissor to the size of the backbuffer.
 				newWidth = PresentationParameters.BackBufferWidth;

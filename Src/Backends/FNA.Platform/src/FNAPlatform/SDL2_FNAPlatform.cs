@@ -950,6 +950,33 @@ namespace Microsoft.Xna.Framework
 			? dy * _wprWindowHeight / Mouse.INTERNAL_WindowHeight
 			: dy;
 
+		/* A window position (presented-area pixels) in the game's display coordinates, through
+		 * PresentationTurn when a portrait backbuffer is shown turned on a landscape window. */
+		private static void WprWindowToDisplay(int x, int y, out float fx, out float fy)
+		{
+			int ww = Mouse.INTERNAL_WindowWidth;
+			int wh = Mouse.INTERNAL_WindowHeight;
+			if (ww <= 0 || wh <= 0)
+			{
+				fx = x;
+				fy = y;
+				return;
+			}
+			float u = (float)x / ww;
+			float v = (float)y / wh;
+			WPR.Xna.Rhi.PresentationTurn.WindowToBackBuffer(ref u, ref v);
+			fx = u * TouchPanel.DisplayWidth;
+			fy = v * TouchPanel.DisplayHeight;
+		}
+
+		/* SDL finger coordinates, normalised to the game's surface and turned with it. */
+		private static void WprFinger(float x, float y, out float u, out float v)
+		{
+			u = WprFingerX(x);
+			v = WprFingerY(y);
+			WPR.Xna.Rhi.PresentationTurn.WindowToBackBuffer(ref u, ref v);
+		}
+
 		private static void WprToggleDesktopFullscreen(Game game)
 		{
 			IntPtr window = game.Window.Handle;
@@ -960,6 +987,12 @@ namespace Microsoft.Xna.Framework
 			{
 				_wprPresentBackBufferWidth = device.PresentationParameters.BackBufferWidth;
 				_wprPresentBackBufferHeight = device.PresentationParameters.BackBufferHeight;
+				// The window shows the backbuffer turned (PresentationTurn): size it that way.
+				WPR.Xna.Rhi.PresentationTurn.WindowSize(
+					WPR.Xna.Rhi.PresentationTurn.Active,
+					ref _wprPresentBackBufferWidth,
+					ref _wprPresentBackBufferHeight
+				);
 			}
 
 			if (_wprDesktopFullscreen)
@@ -1331,6 +1364,19 @@ namespace Microsoft.Xna.Framework
 			SDL.SDL_Event evt;
 			char* charsBuffer = stackalloc char[32]; // SDL_TEXTINPUTEVENT_TEXT_SIZE
 
+			// WPR: the device just turned (or un-turned) a portrait backbuffer whose picture is
+			// landscape (PresentationTurn). Reshape the window to match; FNAWindow sizes it turned.
+			if (WPR.Xna.Rhi.PresentationTurn.TakeWindowChange() && game.GraphicsDevice != null)
+			{
+				PresentationParameters pp = game.GraphicsDevice.PresentationParameters;
+				game.Window.BeginScreenDeviceChange(pp.IsFullScreen);
+				game.Window.EndScreenDeviceChange(
+					game.GraphicsDevice.Adapter.DeviceName,
+					pp.BackBufferWidth,
+					pp.BackBufferHeight
+				);
+			}
+
 			// WP7's Back button is MOMENTARY: a press is one discrete "go back", not a
 			// state held across frames. PollEvents runs once per Tick immediately before
 			// Update (Game.cs), so we clear the Back edge here and (re)assert it below only
@@ -1491,9 +1537,12 @@ namespace Microsoft.Xna.Framework
 						// Windows only notices a touch screen once it's touched
 						TouchPanel.TouchDeviceExists = true;
 
+						float bu = (float)(evt.button.x - Mouse.INTERNAL_WindowOffsetX) / Mouse.INTERNAL_WindowWidth;
+						float bv = (float)(evt.button.y - Mouse.INTERNAL_WindowOffsetY) / Mouse.INTERNAL_WindowHeight;
+						WPR.Xna.Rhi.PresentationTurn.WindowToBackBuffer(ref bu, ref bv);
 						TouchPanel.INTERNAL_onTouchEvent(1, TouchLocationState.Pressed,
-							(float)(evt.button.x - Mouse.INTERNAL_WindowOffsetX) / Mouse.INTERNAL_WindowWidth,
-							(float)(evt.button.y - Mouse.INTERNAL_WindowOffsetY) / Mouse.INTERNAL_WindowHeight,
+							bu,
+							bv,
 							0.0f,
 							0.0f);
 					}
@@ -1536,11 +1585,17 @@ namespace Microsoft.Xna.Framework
 						// move was a huge X+Y vector — the H-vs-V drag classifier then
 						// dominated based on whichever axis the cursor's absolute
 						// coordinate was larger on, breaking swipe-direction detection.
+						float mu = (float)(evt.motion.x - Mouse.INTERNAL_WindowOffsetX) / Mouse.INTERNAL_WindowWidth;
+						float mv = (float)(evt.motion.y - Mouse.INTERNAL_WindowOffsetY) / Mouse.INTERNAL_WindowHeight;
+						float mdu = (float)evt.motion.xrel / Mouse.INTERNAL_WindowWidth;
+						float mdv = (float)evt.motion.yrel / Mouse.INTERNAL_WindowHeight;
+						WPR.Xna.Rhi.PresentationTurn.WindowToBackBuffer(ref mu, ref mv);
+						WPR.Xna.Rhi.PresentationTurn.WindowDeltaToBackBuffer(ref mdu, ref mdv);
 						TouchPanel.INTERNAL_onTouchEvent(1, TouchLocationState.Moved,
-							(float)(evt.motion.x - Mouse.INTERNAL_WindowOffsetX) / Mouse.INTERNAL_WindowWidth,
-							(float)(evt.motion.y - Mouse.INTERNAL_WindowOffsetY) / Mouse.INTERNAL_WindowHeight,
-							(float)evt.motion.xrel / Mouse.INTERNAL_WindowWidth,
-							(float)evt.motion.yrel / Mouse.INTERNAL_WindowHeight);
+							mu,
+							mv,
+							mdu,
+							mdv);
 					}
 				}
 				else if (evt.type == SDL.SDL_EventType.SDL_MOUSEBUTTONUP)
@@ -1553,9 +1608,12 @@ namespace Microsoft.Xna.Framework
 
 					if (TouchPanel.MouseAsTouch)
 					{
+						float bu = (float)(evt.button.x - Mouse.INTERNAL_WindowOffsetX) / Mouse.INTERNAL_WindowWidth;
+						float bv = (float)(evt.button.y - Mouse.INTERNAL_WindowOffsetY) / Mouse.INTERNAL_WindowHeight;
+						WPR.Xna.Rhi.PresentationTurn.WindowToBackBuffer(ref bu, ref bv);
 						TouchPanel.INTERNAL_onTouchEvent(1, TouchLocationState.Released,
-							(float)(evt.button.x - Mouse.INTERNAL_WindowOffsetX) / Mouse.INTERNAL_WindowWidth,
-							(float)(evt.button.y - Mouse.INTERNAL_WindowOffsetY) / Mouse.INTERNAL_WindowHeight,
+							bu,
+							bv,
 							0.0f,
 							0.0f);
 					}
@@ -1583,15 +1641,10 @@ namespace Microsoft.Xna.Framework
 						SDL.SDL_GetMouseState(out int wsx, out int wsy);
 						wsx -= Mouse.INTERNAL_WindowOffsetX;
 						wsy -= Mouse.INTERNAL_WindowOffsetY;
-						int wsWidth = Mouse.INTERNAL_WindowWidth;
-						int wsHeight = Mouse.INTERNAL_WindowHeight;
+						WprWindowToDisplay(wsx, wsy, out float wsfx, out float wsfy);
 						WPR.Xna.Rhi.WheelTouchScroll.Notify(
-							(wsWidth > 0)
-								? wsx * (float) TouchPanel.DisplayWidth / wsWidth
-								: wsx,
-							(wsHeight > 0)
-								? wsy * (float) TouchPanel.DisplayHeight / wsHeight
-								: wsy,
+							wsfx,
+							wsfy,
 							evt.wheel.y
 						);
 					}
@@ -1616,12 +1669,7 @@ namespace Microsoft.Xna.Framework
 						SDL.SDL_GetMouseState(out int cx, out int cy);
 						cx -= Mouse.INTERNAL_WindowOffsetX;
 						cy -= Mouse.INTERNAL_WindowOffsetY;
-						int ww = Mouse.INTERNAL_WindowWidth;
-						int wh = Mouse.INTERNAL_WindowHeight;
-						float dispScaleX = (ww > 0) ? (float)TouchPanel.DisplayWidth / ww : 1f;
-						float dispScaleY = (wh > 0) ? (float)TouchPanel.DisplayHeight / wh : 1f;
-						float anchorX = cx * dispScaleX;
-						float anchorY = cy * dispScaleY;
+						WprWindowToDisplay(cx, cy, out float anchorX, out float anchorY);
 
 						// Place the two virtual fingers 60 px (display-space) on
 						// either side of the cursor.
@@ -1661,33 +1709,39 @@ namespace Microsoft.Xna.Framework
 					TouchPanel.TouchDeviceExists = true;
 					TouchPanel.LastActiveTouchId = evt.tfinger.touchId;
 
+					WprFinger(evt.tfinger.x, evt.tfinger.y, out float fu, out float fv);
 					TouchPanel.INTERNAL_onTouchEvent(
 						(int) evt.tfinger.fingerId,
 						TouchLocationState.Pressed,
-						WprFingerX(evt.tfinger.x),
-						WprFingerY(evt.tfinger.y),
+						fu,
+						fv,
 						0,
 						0
 					);
 				}
 				else if (evt.type == SDL.SDL_EventType.SDL_FINGERMOTION)
 				{
+					WprFinger(evt.tfinger.x, evt.tfinger.y, out float fu, out float fv);
+					float fdu = WprFingerDX(evt.tfinger.dx);
+					float fdv = WprFingerDY(evt.tfinger.dy);
+					WPR.Xna.Rhi.PresentationTurn.WindowDeltaToBackBuffer(ref fdu, ref fdv);
 					TouchPanel.INTERNAL_onTouchEvent(
 						(int) evt.tfinger.fingerId,
 						TouchLocationState.Moved,
-						WprFingerX(evt.tfinger.x),
-						WprFingerY(evt.tfinger.y),
-						WprFingerDX(evt.tfinger.dx),
-						WprFingerDY(evt.tfinger.dy)
+						fu,
+						fv,
+						fdu,
+						fdv
 					);
 				}
 				else if (evt.type == SDL.SDL_EventType.SDL_FINGERUP)
 				{
+					WprFinger(evt.tfinger.x, evt.tfinger.y, out float fu, out float fv);
 					TouchPanel.INTERNAL_onTouchEvent(
 						(int) evt.tfinger.fingerId,
 						TouchLocationState.Released,
-						WprFingerX(evt.tfinger.x),
-						WprFingerY(evt.tfinger.y),
+						fu,
+						fv,
 						0,
 						0
 					);
@@ -3124,12 +3178,13 @@ namespace Microsoft.Xna.Framework
 
 					// The ID base is zero, sometimes OSes (Android) make finger ids
 					// negative — games typically expect finger ID >= 1. Abs+1 normalises.
+					WprFinger(finger->x, finger->y, out float su, out float sv);
 					TouchPanel.SetFinger(
 						fingersWritten,
 						Math.Abs((int)finger->id) + 1,
 						new Vector2(
-							(float)Math.Round(WprFingerX(finger->x) * TouchPanel.DisplayWidth),
-							(float)Math.Round(WprFingerY(finger->y) * TouchPanel.DisplayHeight)
+							(float)Math.Round(su * TouchPanel.DisplayWidth),
+							(float)Math.Round(sv * TouchPanel.DisplayHeight)
 						)
 					);
 					fingersWritten += 1;
@@ -3170,14 +3225,7 @@ namespace Microsoft.Xna.Framework
 					 * their hit-rects miss. WP7 games at 480x800 in a maximised desktop
 					 * window are the common case where this matters.
 					 */
-					int ww = Mouse.INTERNAL_WindowWidth;
-					int wh = Mouse.INTERNAL_WindowHeight;
-					float fx = (ww > 0)
-						? (float)x * TouchPanel.DisplayWidth / ww
-						: x;
-					float fy = (wh > 0)
-						? (float)y * TouchPanel.DisplayHeight / wh
-						: y;
+					WprWindowToDisplay(x, y, out float fx, out float fy);
 
 					TouchPanel.SetFinger(mouseSlot, WPR_MOUSE_AS_TOUCH_FINGER_ID, new Vector2(fx, fy));
 				}

@@ -161,6 +161,12 @@ namespace WPR
             // portrait, that means turning the picture a quarter so it fills the long side, as
             // the phone did when it rotated into the player.
             bool rotate = !_portrait && bh > bw && _movie.Width >= _movie.Height;
+            if (rotate)
+            {
+                // Turned +90 degrees about the centre: the picture's top is the right edge, so a
+                // desktop window stands it up by turning anticlockwise (PresentationTurn).
+                WPR.Xna.Rhi.PresentationTurn.NoteTurnedFrame(WPR.Xna.Rhi.BackBufferTurn.Anticlockwise);
+            }
             float targetW = rotate ? bh : bw;
             float targetH = rotate ? bw : bh;
             float scale = Math.Min(targetW / _movie.Width, targetH / _movie.Height);

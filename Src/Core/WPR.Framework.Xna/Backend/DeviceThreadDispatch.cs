@@ -44,7 +44,13 @@ namespace WPR.Xna.Rhi
 		{
 			public Action Work;
 			public Exception Error;
-			public readonly ManualResetEventSlim Done = new ManualResetEventSlim(false);
+			public readonly ManualResetEventSlim Done;
+
+			/// <summary>True for <see cref="Post"/>: nobody waits, a failure is only logged.</summary>
+			public readonly bool Posted;
+
+			public WorkItem() => Done = new ManualResetEventSlim(false);
+			public WorkItem(Action work) { Work = work; Posted = true; }
 		}
 
 		private static readonly object _lock = new object();
@@ -52,6 +58,15 @@ namespace WPR.Xna.Rhi
 		private static volatile int _pending;
 		private static volatile bool _enabled;
 		private static int _reported;
+		private static int _postFailuresReported;
+
+		/// <summary>
+		/// Set by the device while it presents a turned backbuffer (PresentationTurn): waiting
+		/// calls are held until the next frame boundary instead of running mid-present, where they
+		/// would meet the host backbuffer bound and the device would re-bind the game's backbuffer
+		/// over whatever target they set. Posted resource work still runs.
+		/// </summary>
+		internal static bool Suspended;
 
 		[ThreadStatic] private static WorkItem _threadItem;
 
@@ -81,6 +96,7 @@ namespace WPR.Xna.Rhi
 		public static void Disable()
 		{
 			_enabled = false;
+			Suspended = false;
 			WorkItem[] stranded;
 			lock (_lock)
 			{
@@ -90,6 +106,10 @@ namespace WPR.Xna.Rhi
 			}
 			foreach (WorkItem item in stranded)
 			{
+				if (item.Posted)
+				{
+					continue;
+				}
 				item.Error = new ObjectDisposedException("GraphicsDevice",
 					"The graphics device was destroyed before this call reached the device thread.");
 				item.Done.Set();
@@ -144,6 +164,80 @@ namespace WPR.Xna.Rhi
 			}
 		}
 
+		/// <summary>
+		/// Queue <paramref name="work"/> for the device thread and return at once. For resource
+		/// creation and uploads on desktop OpenGL, where waiting is what deadlocks: a loader thread
+		/// that waits here while holding a lock the device thread spins on in game code that never
+		/// calls WPR (Need for Speed Undercover's <c>QuadEffectManager.threadLock</c>) can never be
+		/// served. Queued in the same FIFO as <see cref="Invoke(Action)"/>, so a worker's own calls
+		/// still run in the order it made them. The work must own everything it touches (copy the
+		/// caller's data first).
+		/// </summary>
+		public static void Post(Action work)
+		{
+			lock (_lock)
+			{
+				if (!_enabled)
+				{
+					work();
+					return;
+				}
+				_queue.Enqueue(new WorkItem(work));
+				_pending = _queue.Count;
+			}
+		}
+
+		/// <summary>
+		/// On the device thread, before it uses a resource: run the posted work at the head of the
+		/// queue, so a texture or buffer a worker created or filled exists and holds its data. Stops
+		/// at the first waiting call, because that one is a worker's draw and must not be mixed
+		/// into the frame the device thread is building.
+		/// </summary>
+		public static void DrainPosted()
+		{
+			if (_pending == 0 || !OffThreadGpuCalls.OnDeviceThread)
+			{
+				return;
+			}
+			while (true)
+			{
+				WorkItem item;
+				lock (_lock)
+				{
+					if (_queue.Count == 0 || !_queue.Peek().Posted)
+					{
+						return;
+					}
+					item = _queue.Dequeue();
+					_pending = _queue.Count;
+				}
+				Run(item);
+			}
+		}
+
+		private static void Run(WorkItem item)
+		{
+			try
+			{
+				item.Work();
+			}
+			catch (Exception ex)
+			{
+				if (!item.Posted)
+				{
+					item.Error = ex;
+				}
+				else if (Interlocked.Increment(ref _postFailuresReported) <= 5)
+				{
+					XnaBackend.LogWarn("[wpr-gputhread] queued resource call failed on the device thread: " + ex.Message);
+				}
+			}
+			if (!item.Posted)
+			{
+				item.Done.Set();
+			}
+		}
+
 		/// <summary>Run <paramref name="work"/> on the device thread, wait, and return its result.</summary>
 		public static T Invoke<T>(Func<T> work)
 		{
@@ -158,6 +252,11 @@ namespace WPR.Xna.Rhi
 		/// </summary>
 		public static void Drain()
 		{
+			if (Suspended)
+			{
+				DrainPosted();
+				return;
+			}
 			if (_pending == 0 || !OffThreadGpuCalls.OnDeviceThread)
 			{
 				return;
@@ -175,15 +274,7 @@ namespace WPR.Xna.Rhi
 					item = _queue.Dequeue();
 					_pending = _queue.Count;
 				}
-				try
-				{
-					item.Work();
-				}
-				catch (Exception ex)
-				{
-					item.Error = ex;
-				}
-				item.Done.Set();
+				Run(item);
 			}
 		}
 	}

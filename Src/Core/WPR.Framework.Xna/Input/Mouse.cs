@@ -94,8 +94,20 @@ namespace Microsoft.Xna.Framework.Input
 			);
 
 			// Scale the mouse coordinates for the faux-backbuffer
-			x = (int) ((double) (x - INTERNAL_WindowOffsetX) * INTERNAL_BackBufferWidth / INTERNAL_WindowWidth);
-			y = (int) ((double) (y - INTERNAL_WindowOffsetY) * INTERNAL_BackBufferHeight / INTERNAL_WindowHeight);
+			// WPR: and turn them with a backbuffer shown turned (PresentationTurn).
+			if (PresentationTurn.Active == BackBufferTurn.None)
+			{
+				x = (int) ((double) (x - INTERNAL_WindowOffsetX) * INTERNAL_BackBufferWidth / INTERNAL_WindowWidth);
+				y = (int) ((double) (y - INTERNAL_WindowOffsetY) * INTERNAL_BackBufferHeight / INTERNAL_WindowHeight);
+			}
+			else
+			{
+				float u = (float) (x - INTERNAL_WindowOffsetX) / INTERNAL_WindowWidth;
+				float v = (float) (y - INTERNAL_WindowOffsetY) / INTERNAL_WindowHeight;
+				PresentationTurn.WindowToBackBuffer(ref u, ref v);
+				x = (int) ((double) u * INTERNAL_BackBufferWidth);
+				y = (int) ((double) v * INTERNAL_BackBufferHeight);
+			}
 
 			return new MouseState(
 				x,
@@ -123,8 +135,20 @@ namespace Microsoft.Xna.Framework.Input
 			}
 
 			// Scale the mouse coordinates for the faux-backbuffer
-			x = (int) ((double) x * INTERNAL_WindowWidth / INTERNAL_BackBufferWidth) + INTERNAL_WindowOffsetX;
-			y = (int) ((double) y * INTERNAL_WindowHeight / INTERNAL_BackBufferHeight) + INTERNAL_WindowOffsetY;
+			// WPR: and turn them with a backbuffer shown turned (PresentationTurn).
+			if (PresentationTurn.Active == BackBufferTurn.None)
+			{
+				x = (int) ((double) x * INTERNAL_WindowWidth / INTERNAL_BackBufferWidth) + INTERNAL_WindowOffsetX;
+				y = (int) ((double) y * INTERNAL_WindowHeight / INTERNAL_BackBufferHeight) + INTERNAL_WindowOffsetY;
+			}
+			else
+			{
+				float u = (float) x / INTERNAL_BackBufferWidth;
+				float v = (float) y / INTERNAL_BackBufferHeight;
+				PresentationTurn.BackBufferToWindow(PresentationTurn.Active, ref u, ref v);
+				x = (int) ((double) u * INTERNAL_WindowWidth) + INTERNAL_WindowOffsetX;
+				y = (int) ((double) v * INTERNAL_WindowHeight) + INTERNAL_WindowOffsetY;
+			}
 
 			XnaBackend.Input.SetMousePosition(WindowHandle, x, y);
 		}

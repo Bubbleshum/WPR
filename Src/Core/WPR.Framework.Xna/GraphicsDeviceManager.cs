@@ -416,6 +416,13 @@ namespace Microsoft.Xna.Framework
 				ref resizedBackBufferWidth,
 				ref resizedBackBufferHeight
 			);
+			// WPR: a window showing the backbuffer turned (PresentationTurn) is the backbuffer's
+			// size the other way round.
+			WPR.Xna.Rhi.PresentationTurn.WindowSize(
+				WPR.Xna.Rhi.PresentationTurn.Active,
+				ref resizedBackBufferWidth,
+				ref resizedBackBufferHeight
+			);
 
 			useResizedBackBuffer = true;
 			ApplyChanges();

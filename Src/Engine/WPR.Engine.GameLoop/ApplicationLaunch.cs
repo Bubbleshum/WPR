@@ -663,6 +663,9 @@ namespace WPR
             // The achievement pop-up, drawn over each finished frame. Per launch, cleared at teardown.
             WPR.Xna.Rhi.AchievementToast.Reset();
             WPR.Xna.Rhi.AchievementToast.Drawer = new AchievementToastOverlay().Draw;
+            // A title that draws a landscape picture into a portrait backbuffer is shown turned on
+            // a desktop window, once its drawing says so. Per launch, cleared at teardown.
+            WPR.Xna.Rhi.PresentationTurn.Reset();
             {
                 string errorTitle = HardcodedAchievementCatalogue.GameName(app.ProductId) ?? app.Name ?? app.ProductId ?? "the game";
                 WPR.Xna.Rhi.ErrorScreen.Factory = (report, exit) => new ErrorScreenOverlay(errorTitle, report, exit);
@@ -1767,6 +1770,7 @@ namespace WPR
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"ErrorScreen.Reset on teardown threw: {ex.Message}"); }
             try { WPR.Xna.Rhi.AchievementToast.Reset(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"AchievementToast.Reset on teardown threw: {ex.Message}"); }
+            WPR.Xna.Rhi.PresentationTurn.Reset();
             // Same for a MediaElement movie: ResetWprSingletons resets it again later, but by then
             // the audio device it plays through is gone.
             try { WPR.SilverlightCompability.MediaElement.ResetForNewLaunch(); }

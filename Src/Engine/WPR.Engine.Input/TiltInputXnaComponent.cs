@@ -66,6 +66,16 @@ namespace WPR.Engine.Input
         /// </summary>
         private DisplayOrientation ResolveOrientation()
         {
+            // A portrait backbuffer shown turned on a landscape window (PresentationTurn) is a
+            // phone held sideways: the game reports portrait, but the keys must tilt the device
+            // the way the player is holding it. Anticlockwise puts the phone's top on the left.
+            switch (WPR.Xna.Rhi.PresentationTurn.Active)
+            {
+                case WPR.Xna.Rhi.BackBufferTurn.Anticlockwise: return DisplayOrientation.LandscapeLeft;
+                case WPR.Xna.Rhi.BackBufferTurn.Clockwise: return DisplayOrientation.LandscapeRight;
+            }
+
+
             // Prefer whatever the window reports IF it's set to a real orientation —
             // that gives mobile builds (where the event actually fires) the right answer.
             GameWindow? win = Game?.Window;

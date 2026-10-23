@@ -2476,6 +2476,119 @@ and for the same reason — the surface there is the device panel, never 480x800
 No `ApplicationPatcher.Version` bump and no reinstall — this is shim behaviour in
 `WPR.Framework.Xna`, so games pick it up on next launch.
 
+### A landscape picture drawn into a portrait backbuffer turns the desktop window (2026-10-23)
+
+**Need for Speed Undercover** (`09cc7f9c-…`, EA) was sideways on Windows: the whole picture, the
+intro movie, the menus, the race and its HUD. Nothing in WPR answered it wrongly. The game is an
+EA J2ME port: its `midp` layer asks for a **480x800** backbuffer, leaves `SupportedOrientations`
+alone, hardcodes `isLandscape = true` in `midp.Display`, and draws every sprite batch through
+`CreateRotationZ(PI/2) * CreateTranslation(480, 0, 0)`. On the phone the player turned the
+device. A desktop window cannot be turned, so the window turns itself now. **The Sims 3**
+(320x533) and **The Sims Medieval** ship the same layer; The Sims 3 was installed and run (it
+turns to a 533x320 window). Medieval has not been run.
+
+- **Detected, not listed** (`WPR.Xna.Rhi.PresentationTurn`, `Backend/PresentationTurn.cs`). Such a
+  game says nothing through the XNA API that a portrait game does not; what it draws gives it
+  away. `SpriteBatch.Begin` reports every batch that starts on the game's portrait backbuffer
+  (`GraphicsDevice.WprNoteSpriteBatch`); `QuarterTurnOf` calls its matrix a turned picture only
+  when it is an exact unit quarter turn that carries the landscape rectangle onto the backbuffer
+  (`+90° then x + width` = Anticlockwise, `-90° then y + height` = Clockwise). A sprite turned
+  about its centre, a scaled turn or a camera pan is not. `LauncherMovieOverlay` reports the frames
+  where it turns a landscape movie onto a portrait backbuffer. **10 turned frames in a row turn the
+  window, 180 frames in a row whose backbuffer batches are all upright turn it back**, and frames
+  with no backbuffer batch (a 3D scene alone, a pause) count for neither. The rule is
+  `PresentationTurn.Observe`, unit-tested. Only on a platform that cannot rotate
+  (`SupportsOrientationChanges` false: the desktop) and only while the backbuffer is portrait.
+  Log: `[wpr-display] 480x800 backbuffer shown turned Anticlockwise on a 800x480 window` and
+  `… shown upright again` (stdout, through `XnaBackend.LogInfo`).
+- **NFS opens on its own EA splash for about a second in a portrait window** (that splash is drawn
+  upright, so it is sideways art), then the window turns as the intro movie starts and stays
+  turned. A portrait game that plays a landscape movie through `MediaPlayerLauncher` now gets a
+  landscape window for the movie and its portrait window back about 180 frames after it.
+- **`GraphicsDevice` keeps the game's backbuffer as a render target** (`wprTurnTarget`) and binds it
+  wherever FNA binds the real backbuffer, so `PresentationParameters`, the viewport, clears,
+  `GetBackBufferData` and `GetRenderTargets` all stay the game's. FNA3D is given the parameters
+  turned, and `Present` draws the target onto the real backbuffer turned a quarter with an internal
+  `SpriteBatch`, restoring every device state it touches. The achievement pop-up and
+  `FrameCapture` run **after** that and size themselves from `GraphicsDevice.WprPresentedBounds`
+  (the host backbuffer during a turned present), so both work in what the player sees (a harness
+  `shot` of NFS is 800x480, upright). The game's `PresentationParameters` are never altered: a
+  first version swapped them for that stretch, and another thread of the game can read them at
+  any moment.
+  A change of decision is applied after a present (`WprEndFrame`: `ResetBackbuffer` with the new
+  shape, no `DeviceReset` raised to the game), and the next `PollEvents` reshapes the window through
+  `GameWindow.EndScreenDeviceChange`, which `FNAWindow` sizes turned.
+- **Input goes the other way**: `PresentationTurn.WindowToBackBuffer` in `Mouse.GetState` /
+  `SetPosition` and in every SDL mouse-as-touch and finger path of `SDL2_FNAPlatform`
+  (`WprWindowToDisplay`, `WprFinger`). **NFS reads one finger through `Mouse.GetState`**, not
+  `TouchPanel` (`JavaLib.Update` calls `HandleMouse()` with fewer than two touches down), so the
+  harness `tap` (a synthetic `TouchPanel` finger) does nothing in it. A local `mclick u v secs`
+  verb (window-normalised, a `DispatchProxy` over `XnaBackend.Input`) drove it instead.
+- `Window.CurrentOrientation` stays `Portrait`, as WP7 reported. The keyboard tilt emulator treats
+  a turned window as **LandscapeLeft** (`TiltInputXnaComponent.ResolveOrientation`): NFS steers on
+  accelerometer Y.
+- **Android is unchanged on purpose**: the activity stays portrait and the player turns the phone,
+  which is the WP7 behaviour.
+
+Verified 2026-10-23 (desktop harness, scratch data root, window-space `mclick`s):
+
+| cell | NFS Undercover | The Sims 3 | The Sims Medieval |
+| --- | --- | --- | --- |
+| D1 D3D11 | ✅ movie, dialogue, race, tilt steering, brake | ✅ menu → Select Game → Create A Sim | ✅ menu (landscape backbuffer, never turned) |
+| D2 Vulkan | ✅ same | ✅ same | ✅ menu |
+| D3 OpenGL | ✅ same (hung before) | ✅ same | ✅ menu |
+| D4 GLES 3.0 + no DXT | ✅ same (hung before; washed out, as D4 always is) | ✅ same | ✅ menu |
+| A1/A2, P1–P3 | not run: Android behaviour is unchanged by design | | |
+
+Medieval's play button lights under a tap but the scripted press did not start a game; not chased.
+Regression, D1, this build against the unchanged base: Mirror's Edge, Angry Birds, Doodle Jump
+(portrait), Gravity Guy, Fragger and AE 3D Motor reach the same screens. Unit tests:
+`PresentationTurnTests`, `DeviceThreadDispatchTests`.
+
+**Desktop OpenGL deadlocked NFS, before this change too; a worker's resource calls are now
+posted, not waited for.** Its `QuadEffectManager` guards the scene with a homemade spin-lock
+(`while (m_threadLock) Thread.yield();`, and midp's `yield()` is empty). The loader thread took
+the lock and created a texture; on desktop OpenGL that call is handed to the device thread
+(`DeviceThreadDispatch`) and the worker waited, while the device thread spun on the lock inside
+`SceneMenu.updateIntro`, calling nothing WPR could drain from. Android's GLES creates textures on
+FNA3D's worker contexts and never had it; the Windows `FNA3D.dll` cannot be rebuilt here (no MSVC)
+to get them. So on desktop OpenGL (`FnaGraphicsBackend.MarshalPooledResourceCalls`: off the device
+thread, not Android):
+
+- **Texture (not render target) and vertex/index buffer creation is posted**
+  (`DeviceThreadDispatch.Post`) and the worker gets a stand-in handle at once
+  (`WPR.Backend.FNA.DeferredGpuHandles`: a one-byte native allocation, so it never equals a real
+  FNA3D handle). **Uploads are posted too, with the data copied.** Posted work shares the FIFO
+  with the waited-for calls, so a worker's own calls keep their order.
+- **Every backend call that takes a texture or buffer** (samplers, vertex bindings, indexed draws,
+  Set/Get data, disposal) runs the posted work at the head of the queue first when it is on the
+  device thread (`DeviceThreadDispatch.DrainPosted`, which stops at the first waited-for call so a
+  worker's draw is never mixed into the device thread's frame), then swaps a stand-in for its
+  handle. Free when nothing was posted: one counter read.
+- Render-target textures, effects, renderbuffers and readbacks are still waited for. A game whose
+  loader spins the same way on one of those would still hang on desktop OpenGL.
+
+Three turn-path bugs this exposed on OpenGL, all fixed. They come from one fact: on desktop
+OpenGL a game's other threads reach the device through the device thread, so whatever the
+device thread does mid-present, they meet.
+
+- **A worker's waiting calls are held for the whole turned present**
+  (`DeviceThreadDispatch.Suspended`, set in `WprBeginTurnedPresent`, cleared after the swap;
+  posted resource work still runs). Drained mid-present they met the host backbuffer bound, and the
+  device then re-bound the game's backbuffer over the target they had set. The Sims 3 builds each
+  Sim's texture on a loader thread by drawing into a render target, and the Sim came out black (D4
+  and D3 without DXT, where decompression slows the loader into that window); its 3D layer was also
+  clipped into a square when queued draws landed on the host backbuffer.
+- **A worker unbinding its target asks the device thread what "the backbuffer" is**
+  (`WprBindBackbuffer` marshals itself), so the answer is taken when the call runs, not mid-present.
+- **The game's viewport and scissor are restored after its backbuffer target is bound again**
+  (`WprRebindAfterTurnedPresent`): FNA3D's GL driver flips a viewport against the backbuffer height
+  when no target is bound, so one restored too early stayed shifted on the target, and every frame
+  drawn without setting it again (the movie player's) landed offset.
+
+Also seen: the off-screen `gamerun` window takes keyboard focus and SDL reads the global mouse, so
+whoever uses the desktop plays the game. The local `Script.cs` now drops real keys and buttons.
+
 ### Android graphics: the driver is Vulkan, forced, on emulator and hardware alike (2026-09-07)
 
 > **This section REVERSES the long-standing force of OpenGL.** If you are reading an older note,

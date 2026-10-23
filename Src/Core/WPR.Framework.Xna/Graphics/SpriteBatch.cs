@@ -328,6 +328,9 @@ namespace Microsoft.Xna.Framework.Graphics
 
 			customEffect = effect;
 			transformMatrix = transformationMatrix;
+			// WPR: a landscape picture drawn turned into a portrait backbuffer is shown turned on
+			// a desktop window (PresentationTurn); this is how the device notices.
+			GraphicsDevice.WprNoteSpriteBatch(transformMatrix);
 
 			if (sortMode == SpriteSortMode.Immediate)
 			{

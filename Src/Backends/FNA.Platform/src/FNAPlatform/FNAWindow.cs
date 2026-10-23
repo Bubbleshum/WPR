@@ -123,10 +123,18 @@ namespace Microsoft.Xna.Framework
 			int clientHeight
 		) {
 			string prevName = deviceName;
+			// WPR: a portrait backbuffer shown turned (PresentationTurn) gets a landscape window.
+			// The orientation below still follows the backbuffer the game asked for.
+			int windowWidth = clientWidth, windowHeight = clientHeight;
+			WPR.Xna.Rhi.PresentationTurn.WindowSize(
+				WPR.Xna.Rhi.PresentationTurn.For(clientWidth, clientHeight),
+				ref windowWidth,
+				ref windowHeight
+			);
 			FNAPlatform.ApplyWindowChanges(
 				window,
-				clientWidth,
-				clientHeight,
+				windowWidth,
+				windowHeight,
 				wantsFullscreen,
 				screenDeviceName,
 				ref deviceName

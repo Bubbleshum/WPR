@@ -58,8 +58,11 @@ namespace WPR
             }
 
             if (device.GetRenderTargets().Length > 0) return;
-            int bw = device.PresentationParameters.BackBufferWidth;
-            int bh = device.PresentationParameters.BackBufferHeight;
+            // The presented frame, which is the host backbuffer while a portrait backbuffer is
+            // shown turned on a landscape window (PresentationTurn).
+            Rectangle presented = device.WprPresentedBounds;
+            int bw = presented.Width;
+            int bh = presented.Height;
             if (bw <= 0 || bh <= 0) return;
 
             double unit = Math.Min(bw, bh) / 480.0;
