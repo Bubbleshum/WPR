@@ -2257,7 +2257,9 @@ Jetpack Joyride and Fruit Ninja 2013 draw through ANGLE (their own `libGLESv2.dl
 
 Contract suite `MandreelSurfaceSuite`. Verified D1–D4: Jetpack menu, missions, a run (flying, coins),
 death, results, Back, best distance after a relaunch; Fruit Ninja menu → mode select → a Classic round
-to its score screen. No `ApplicationPatcher.Version` bump and no reinstall.
+to its score screen. Galaxy S24 (P1, Vulkan, Release APK 0.2.08 / versionCode 51 installed in place):
+Jetpack fills the 2340x1080 screen, a run flies and collects coins at ~59 fps, no thrown frames.
+Not run: P2 (S24 GLES), A1/A2, Mali. No `ApplicationPatcher.Version` bump and no reinstall.
 
 ### Update checks and the About page's "what's new" (2026-09-29, Android)
 
