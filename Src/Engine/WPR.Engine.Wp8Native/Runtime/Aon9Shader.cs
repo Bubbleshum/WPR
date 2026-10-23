@@ -365,8 +365,9 @@ namespace WPR.Wp8Native
                 return [];
             }
 
+            var (relative, direct) = ConstantReads(code);
             var indexed = new List<(int Start, int End)>();
-            foreach (int based in RelativeConstantBases(code).Where(b => b < registers))
+            foreach (int based in relative.Where(b => b < registers))
             {
                 (int start, int end) = (based, registers);
                 foreach (Aon9ConstantMap map in maps)
@@ -378,6 +379,14 @@ namespace WPR.Wp8Native
                         end = Math.Min(registers, map.Target + map.Count);
                         break;
                     }
+                }
+
+                // A register above the palette that is read directly ends it. Jetpack Joyride's
+                // sprite batcher indexes c2[a0.x] and reads c122 directly, in the same constant
+                // buffer: inside the indexed array, that read was the HLSL compile error again.
+                if (direct.FirstOrDefault(r => r > start && r < end) is > 0 and var above)
+                {
+                    end = above;
                 }
 
                 indexed.Add((start, end));
@@ -428,12 +437,20 @@ namespace WPR.Wp8Native
         /// Constant registers a vs_2_x/ps_2_x program reads relatively: a source parameter of type
         /// CONST (2) with D3DSHADER_ADDRMODE_RELATIVE (bit 13) set.
         /// </summary>
-        internal static SortedSet<int> RelativeConstantBases(byte[] code)
+        internal static SortedSet<int> RelativeConstantBases(byte[] code) => ConstantReads(code).Relative;
+
+        /// <summary>
+        /// Constant registers a vs_2_x/ps_2_x program reads relatively (the base of each
+        /// <c>cN[a0]</c>) and directly. On shader model 2 a relative source is followed by its
+        /// address register token, which is not a source of its own.
+        /// </summary>
+        internal static (SortedSet<int> Relative, SortedSet<int> Direct) ConstantReads(byte[] code)
         {
             SortedSet<int> bases = [];
+            SortedSet<int> direct = [];
             if (code.Length < 4 || ((U32(code, 0) >> 8) & 0xFF) < 2)
             {
-                return bases;
+                return (bases, direct);
             }
 
             int at = 4;
@@ -456,13 +473,20 @@ namespace WPR.Wp8Native
                 // dcl (31), def (81), defi (48) and defb (47) carry no source registers.
                 if (opcode is not (31 or 81 or 48 or 47))
                 {
-                    for (int i = 1; i <= length && at + (i * 4) + 4 <= code.Length; i++)
+                    // Token 1 is the destination; sources follow.
+                    for (int i = 2; i <= length && at + (i * 4) + 4 <= code.Length; i++)
                     {
                         uint parameter = U32(code, at + (i * 4));
                         int type = (int)(((parameter >> 28) & 0x7) | ((parameter >> 8) & 0x18));
-                        if (type == 2 && (parameter & (1u << 13)) != 0)
+                        bool isRelative = (parameter & (1u << 13)) != 0;
+                        if (type == 2)
                         {
-                            bases.Add((int)(parameter & 0x7FF));
+                            (isRelative ? bases : direct).Add((int)(parameter & 0x7FF));
+                        }
+
+                        if (isRelative)
+                        {
+                            i++;   // the address register token
                         }
                     }
                 }
@@ -470,7 +494,7 @@ namespace WPR.Wp8Native
                 at += 4 + (length * 4);
             }
 
-            return bases;
+            return (bases, direct);
         }
 
         private static uint U32(ReadOnlySpan<byte> data, int at) => BinaryPrimitives.ReadUInt32LittleEndian(data[at..]);

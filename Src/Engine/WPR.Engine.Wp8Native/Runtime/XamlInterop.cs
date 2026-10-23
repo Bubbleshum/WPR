@@ -96,6 +96,20 @@ namespace WPR.Wp8Native
         /// </summary>
         public bool DrawingSurface { get; init; }
 
+        /// <summary>
+        /// The page is laid out landscape (<c>SupportedOrientations="Landscape"</c>). Only a
+        /// <see cref="DrawingSurface"/> sees it: the surface is an element of the page, so it is
+        /// landscape too, and so are the size <c>GetTexture</c> is handed, the texture the component
+        /// draws and the pointer positions it reads. A background grid is always the portrait screen.
+        /// </summary>
+        public bool Landscape { get; init; }
+
+        /// <summary>
+        /// The component draws into a texture in the page's own orientation, so the host shows it as
+        /// it is rather than turning it a quarter like the portrait back buffer.
+        /// </summary>
+        public bool PresentsUnturned => DrawingSurface && Landscape;
+
         /// <summary>The page's back-key handler; null when it has none, so a press closes the app.</summary>
         public XamlBackKey? BackKey { get; init; }
 
@@ -165,7 +179,9 @@ namespace WPR.Wp8Native
             _componentImage = image;
             // The component reads the raw (portrait) position and rotates it itself from the
             // Orientation the page set, exactly like an exe title: the default rotation is right.
-            PointerRotation = null;
+            // A DrawingSurface on a landscape page is the exception: its pointer positions are
+            // relative to the element, which is landscape (Jetpack Joyride, Fruit Ninja).
+            PointerRotation = shell.PresentsUnturned ? "none" : null;
             _scratch = _emulator.AllocateHeap(256);
             _iidCandidates = HarvestIidCandidates(image, metadata);
             Log($"{_iidCandidates.Count} candidate IID(s) harvested from {shell.ComponentDll}");
@@ -994,9 +1010,14 @@ namespace WPR.Wp8Native
             long time = _scratch + 96;
             long size = _scratch + 104;
             _emulator.WriteUInt64(time, (ulong)((ProcessEventsCalls + 1) * 16_667));
+            // A DrawingSurface on a landscape page measures landscape: 1280x768 on WXGA where the
+            // grid's render target is 768x1280.
+            (float surfaceWidth, float surfaceHeight) = _shell!.PresentsUnturned
+                ? (_shell.RenderTarget.Height, _shell.RenderTarget.Width)
+                : (_shell.RenderTarget.Width, _shell.RenderTarget.Height);
             _emulator.WriteMemory(size, [
-                .. BitConverter.GetBytes(_shell!.RenderTarget.Width),
-                .. BitConverter.GetBytes(_shell.RenderTarget.Height),
+                .. BitConverter.GetBytes(surfaceWidth),
+                .. BitConverter.GetBytes(surfaceHeight),
             ]);
 
             if (_shell.DrawingSurface)

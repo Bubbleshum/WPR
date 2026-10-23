@@ -102,7 +102,20 @@ namespace WPR.Wp8Native
             _localFolderPrefix = emulator.WinRt.LocalFolderPath;
 
             Directory.CreateDirectory(_writeRoot);
+
+            // A phone installs every app with Local\Shared\ShellContent (tile images) and
+            // Local\Shared\Transfers (background transfers) already there, and games keep files in
+            // them without creating them first: Jetpack Joyride's Mandreel file layer writes all of
+            // its saves to shared/ShellContent, and with the folder missing every write was ENOENT,
+            // so nothing it saved survived a relaunch.
+            foreach (string folder in SharedFolders)
+            {
+                Directory.CreateDirectory(Path.Combine(_writeRoot, folder));
+            }
         }
+
+        /// <summary>The folders a WP8 install's local folder starts with.</summary>
+        internal static readonly string[] SharedFolders = [Path.Combine("Shared", "ShellContent"), Path.Combine("Shared", "Transfers")];
 
         /// <summary>Every path the image asked for, and what happened - the discovery log.</summary>
         public List<string> Log { get; } = new();

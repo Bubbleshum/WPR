@@ -186,6 +186,7 @@ namespace WPR.Wp8Native
                 Activated = builder.Steps(reading?.Activated, Phase.Lifecycle),
                 Inferred = true,
                 DrawingSurface = reading is { UsesDrawingSurface: true, UsesBackgroundGrid: false },
+                Landscape = reading?.Landscape ?? false,
                 MandreelMessages = WinRtRuntime.HasMandreelMessages(metadata, classId),
             };
 

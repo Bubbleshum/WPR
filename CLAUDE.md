@@ -2226,10 +2226,38 @@ same outcome for every title. Ice Age Village is 0 frames on both. Frame counts 
 1580/1563, Seasons 1496/1498, Stella 1567/1567).
 
 **Open**:
-- On a 1280x768 desktop window, both Mandreel titles draw into a 480-wide strip at the left.
-- Jetpack's world art draws only on OpenGL.
+- ~~On a 1280x768 desktop window, both Mandreel titles draw into a 480-wide strip at the left.~~
+  ~~Jetpack's world art draws only on OpenGL.~~ Both fixed 2026-10-23, see the next section.
 - The Mandreel thread is a host stand-in for code in the game's own package (the managed page).
   The rule is to run shipped libraries as shipped; it is kept by decision until that page can run.
+
+### Mandreel titles play: a landscape DrawingSurface, a palette read past its end, Shared\ShellContent (2026-10-23)
+
+Jetpack Joyride and Fruit Ninja 2013 draw through ANGLE (their own `libGLESv2.dll`, ARM) into a
+`DrawingSurface` on a `SupportedOrientations="Landscape"` page. Three runtime defects, general ones:
+
+- **A relatively indexed palette with a register read directly above it.** Jetpack's sprite batcher
+  (vs_2_0) reads `c2[a0.x]` and `c122` directly, from one constant buffer. `Aon9Shader.ConstantArraysFor`
+  made `c2..c122` one indexed array, so `c122` was a direct read inside it: MojoShader's HLSL emits that
+  as `#define vs_c122 vs_uniforms_vec4[i];` (the stray semicolon fixed in the vendored source but not
+  in the shipped `FNA3D.dll`), the compile failed and the replay skipped every sprite draw
+  (`Could not compile input layout`, `vertex shader … failed on the device`). Vulkan drew nothing
+  either, silently. The indexed run now ends at the first directly read register above its base
+  (`ConstantReads` tells relative from direct, skipping a relative source's address token). **The
+  tell**: text draws, images do not, on D3D11 and Vulkan only; `WPR_WP8_SHADER_DUMP` + a d3d9
+  disassembly shows a `cN[a0]` and a direct `cM`, M > N, in the same buffer.
+- **The surface is landscape.** `XamlShell.Landscape` (from the page XAML) and `PresentsUnturned`
+  (`DrawingSurface && Landscape`): `GetTexture` is handed 1280x768 rather than the grid's 768x1280,
+  the component's texture is presented `PresentTurn.None`, and pointer positions are landscape
+  (`PointerRotation = "none"`), because a DrawingSurface is an element of the rotated page. A
+  background grid is always the portrait screen and is unchanged.
+- **`Local\Shared\ShellContent` must exist.** A phone installs every app with it (and
+  `Shared\Transfers`); Mandreel writes all its saves there without creating it, so every write was
+  ENOENT and nothing survived a relaunch. `FileLibrary` creates both (`FileLibrary.SharedFolders`).
+
+Contract suite `MandreelSurfaceSuite`. Verified D1–D4: Jetpack menu, missions, a run (flying, coins),
+death, results, Back, best distance after a relaunch; Fruit Ninja menu → mode select → a Classic round
+to its score screen. No `ApplicationPatcher.Version` bump and no reinstall.
 
 ### Update checks and the About page's "what's new" (2026-09-29, Android)
 

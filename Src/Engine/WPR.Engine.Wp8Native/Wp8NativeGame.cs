@@ -211,6 +211,7 @@ namespace WPR.Wp8Native
                         Log(shell.Inferred
                             ? $"page description inferred from the managed shell: {XamlShellInference.Describe(shell)}"
                             : $"page description: {shell.ComponentDll} (hand-written)");
+                        _presentUnturned = shell.PresentsUnturned;
                         long start = _emulator.WinRt.StartComponent(image, metadata, shell);
                         fault = _emulator.Run(start, long.MaxValue / 4);
                         foreach (string line in _emulator.WinRt.ComponentLog.Take(60))
@@ -926,6 +927,12 @@ namespace WPR.Wp8Native
             _emulator?.WinRt.InjectCharacter(character);
         }
 
+        /// <summary>
+        /// The frame is a landscape page's DrawingSurface texture, already the right way up
+        /// (<see cref="XamlShell.PresentsUnturned"/>); every other WP8 frame is the portrait screen.
+        /// </summary>
+        private volatile bool _presentUnturned;
+
         protected override void Draw(GameTime gameTime)
         {
             if (UseGpu)
@@ -951,7 +958,8 @@ namespace WPR.Wp8Native
                         _drawn++;
                     }
 
-                    _replay.Present(GraphicsDevice.PresentationParameters.BackBufferWidth, GraphicsDevice.PresentationParameters.BackBufferHeight);
+                    _replay.Present(GraphicsDevice.PresentationParameters.BackBufferWidth, GraphicsDevice.PresentationParameters.BackBufferHeight,
+                        _presentUnturned ? PresentTurn.None : PresentTurn.Anticlockwise);
                 }
 
                 base.Draw(gameTime);
