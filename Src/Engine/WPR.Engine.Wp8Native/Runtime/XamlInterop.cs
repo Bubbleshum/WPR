@@ -114,6 +114,12 @@ namespace WPR.Wp8Native
         /// (NavigationMode.Back). Run before the grid reconnects the content provider.
         /// </summary>
         public IReadOnlyList<XamlShellStep> Activated { get; init; } = [];
+
+        /// <summary>
+        /// The class is Mandreel's interop, whose page runs a thread that answers the component's
+        /// messages (MandreelMessages.cs); the host starts its own before <c>CreateContentProvider</c>.
+        /// </summary>
+        public bool MandreelMessages { get; init; }
     }
 
     public sealed partial class WinRtRuntime
@@ -261,6 +267,12 @@ namespace WPR.Wp8Native
             }
 
             XamlShellStep step = steps[index];
+            if (step.Method == "CreateContentProvider" && _shell!.MandreelMessages && !_mandreelStarted)
+            {
+                StartMandreelMessageThread(() => RunSteps(steps, index, done));
+                return;
+            }
+
             InvokeMember(step.Method, step.Arguments, step.Class, result =>
             {
                 if (step.Method == "CreateContentProvider")

@@ -59,6 +59,11 @@ namespace WPR.WindowsCompability
             //    userAlc reference. The Krome→AsteroidsDeluxe crash is this case.
             if (typeName.IndexOf(',') >= 0)
             {
+                // A game assembly named with punctuation was renamed at install ("Zuma's Revenge!"
+                // is "Zuma_s Revenge_"), and the parser rejects the original name before asking
+                // the resolver. See InstalledAssemblyNames.
+                typeName = WPR.Xna.Compat.InstalledAssemblyNames.StandardiseTypeName(typeName);
+
                 AssemblyLoadContext? callerAlc = null;
                 try
                 {
@@ -138,7 +143,26 @@ namespace WPR.WindowsCompability
         // * Framework names (mscorlib, System, System.Core, …, at WP7's 2.0.5.0 or desktop 4.0.0.0)
         //   go to the Default context's binder, which maps them to their facades; Assembly.GetType
         //   follows the facades' type forwarders into CoreLib.
-        private static Assembly? ResolveAssembly(AssemblyName name, AssemblyLoadContext? callerAlc)
+        internal static Assembly? ResolveAssembly(AssemblyName name, AssemblyLoadContext? callerAlc)
+        {
+            string? simple = name.Name;
+            if (string.IsNullOrEmpty(simple)) return null;
+
+            Assembly? loaded = FindLoaded(name, callerAlc);
+            if (loaded != null) return loaded;
+
+            try
+            {
+                return AssemblyLoadContext.Default.LoadFromAssemblyName(new AssemblyName(simple));
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        // The first two rules above, without loading anything: also what Assembly2.Load answers.
+        internal static Assembly? FindLoaded(AssemblyName name, AssemblyLoadContext? callerAlc)
         {
             string? simple = name.Name;
             if (string.IsNullOrEmpty(simple)) return null;
@@ -161,14 +185,7 @@ namespace WPR.WindowsCompability
                 if (found != null) return found;
             }
 
-            try
-            {
-                return AssemblyLoadContext.Default.LoadFromAssemblyName(new AssemblyName(simple));
-            }
-            catch
-            {
-                return null;
-            }
+            return null;
         }
 
         private static Assembly? FindAssembly(AssemblyLoadContext alc, string simpleName)

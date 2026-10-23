@@ -65,11 +65,14 @@ namespace WPR.Platform.Android.Native
         private int _loadGeneration;
         private bool _busy;
 
-        public static void Open(Context context, string pivot)
+        public static void Open(Context context, string pivot) => context.StartActivity(IntentFor(context, pivot));
+
+        /// <summary>The intent that opens this page on <paramref name="pivot"/> (also what a friend request notification opens).</summary>
+        public static Intent IntentFor(Context context, string pivot)
         {
             Intent intent = new Intent(context, typeof(SocialActivity));
             intent.PutExtra(ExtraPivot, pivot);
-            context.StartActivity(intent);
+            return intent;
         }
 
         protected override void OnCreate(Bundle? savedInstanceState)

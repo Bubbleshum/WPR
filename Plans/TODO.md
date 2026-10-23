@@ -44,6 +44,17 @@ at that time. Ranked by impact within each group.
    not in the SPA).
 8. Not reached live, so unverified: MONOPOLY's `Score` (Sum) board, Classic's unlocks, Halo
    gameplay (needs two fingers; the harness injects one).
+9. **The "no thread is runnable" fix is not verified on Android** (2026-10-21, commit `7a006328`).
+   Halo's stop never reproduced on the desktop, so it is fixed from the report and a desktop trace
+   only. Check the WPR Hub group stops growing for Halo, Fruit Ninja 2013 and Jetpack Joyride on
+   the next build. Then run all three on A1/A2 and the S24.
+10. **The Mandreel message thread is a host stand-in** for the game's own managed page
+    (`MainPage.Alpha.Beta`, `Runtime/MandreelMessages.cs`). It is kept by decision, against the
+    rule that a game's shipped libraries run as shipped. It goes once the managed page can run.
+11. **Jetpack Joyride's world art draws only on OpenGL** (D3 and D4). On D3D11 and Vulkan a run
+    shows only the HUD and the backdrop text.
+12. **Mandreel titles draw into a 480-wide strip** at the left of a 1280x768 desktop window,
+    rotated.
 
 ## Silverlight shims
 

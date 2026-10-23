@@ -57,6 +57,16 @@ public sealed class HubSettings
     /// <summary>A restore marked this many achievements earned. For repainting a gamerscore or a list.</summary>
     public Action<int>? ProgressRestored { get; init; }
 
+    /// <summary>
+    /// Every installed game's details, for offering the hub what it lacks (icons, names) about games
+    /// installed before that existed. Read once per process, at its first flush. Null skips the
+    /// backfill; new installs are still offered by the installer.
+    /// </summary>
+    public Func<IEnumerable<TitleDetails>>? InstalledTitles { get; init; }
+
+    /// <summary>For tests: the HTTP handler requests go through. Null = a normal HttpClient.</summary>
+    public HttpMessageHandler? Handler { get; init; }
+
     /// <summary>How to get a game's original package back, for uploads. Null disables uploads.</summary>
     public IGamePackageSource? Packages { get; init; }
 

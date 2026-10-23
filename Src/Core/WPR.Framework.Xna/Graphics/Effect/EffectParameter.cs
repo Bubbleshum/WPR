@@ -82,6 +82,11 @@ namespace Microsoft.Xna.Framework.Graphics
 		internal IntPtr values;
 		internal uint valuesSizeBytes;
 
+		/* WPR: values points into the effect's native memory, which the effect's finalizer
+		 * releases. A game may keep a parameter and drop the effect, so the parameter keeps the
+		 * effect alive. Set by Effect after parsing. */
+		internal Effect owner;
+
 		#endregion
 
 		#region Internal Constructor

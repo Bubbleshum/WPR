@@ -52,6 +52,26 @@ namespace WPR
         [System.Diagnostics.Conditional("DEBUG")]
         private static void WprTrace(string msg) => Trace.WriteLine(msg);
 
+        /// <summary>
+        /// Whether the install's WMAppManifest.xml declares AppPlatformVersion 8.0 or later. An
+        /// unreadable manifest answers false: WP7 behaviour, which every title had before.
+        /// </summary>
+        private static bool TargetsWindowsPhone8(string installFolder)
+        {
+            try
+            {
+                string path = Path.Combine(installFolder, "WMAppManifest.xml");
+                if (!File.Exists(path)) return false;
+                var doc = System.Xml.Linq.XDocument.Load(path);
+                string? version = doc.Root?.Attribute("AppPlatformVersion")?.Value;
+                return Version.TryParse(version, out Version? v) && v.Major >= 8;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
         /// <summary>Trace for the per-launch verbose log: kept in Release, because a logging run needs it there.</summary>
         private static void VerboseTrace(string msg) => Trace.WriteLine(msg);
 
@@ -361,6 +381,11 @@ namespace WPR
             // WPR Hub playtime: the whole run is one session, paused while the game is in the
             // background (the Activated/Deactivated wiring is at game creation, in StartCore).
             PlaytimeTracker.Begin(app.ProductId, app.Name);
+
+            // Retired online services WPR Hub now runs (Pool Pro Online 3's lobby, ...): the game's
+            // HTTP calls to their old hosts go to the hub instead. Fetched in the background; the
+            // game's first request waits for it briefly.
+            GameNetworkRoutes.Begin(app.ProductId, OnlineBackend.GameServices);
             try
             {
                 await StartCore(app, hooks, isSilverlight, isNative);
@@ -372,6 +397,7 @@ namespace WPR
             }
             finally
             {
+                GameNetworkRoutes.End();
                 PlaytimeTracker.End();
                 ReportCompatibilityProblems(app, endedNormally ? "ended normally" : "ended with an exception", _runClock.Elapsed);
                 _reportingApp = null;
@@ -634,6 +660,9 @@ namespace WPR
             // A failure that would otherwise leave a black screen is put on it instead (a WP8 guest
             // that stopped, frames that throw and draw nothing). Per launch, cleared at teardown.
             WPR.Xna.Rhi.ErrorScreen.Reset();
+            // The achievement pop-up, drawn over each finished frame. Per launch, cleared at teardown.
+            WPR.Xna.Rhi.AchievementToast.Reset();
+            WPR.Xna.Rhi.AchievementToast.Drawer = new AchievementToastOverlay().Draw;
             {
                 string errorTitle = HardcodedAchievementCatalogue.GameName(app.ProductId) ?? app.Name ?? app.ProductId ?? "the game";
                 WPR.Xna.Rhi.ErrorScreen.Factory = (report, exit) => new ErrorScreenOverlay(errorTitle, report, exit);
@@ -660,6 +689,8 @@ namespace WPR
             // consistent with the Silverlight path. (The XNA loop also SetCurrentDirectory's
             // to this folder below; this keeps the resolution correct regardless of CWD.)
             WPR.Common.WprHostEnvironment.CurrentInstallFolder = folderPath;
+            // Deployment.Current is the package's AppManifest.xaml on the phone, XNA titles too.
+            WPR.SilverlightCompability.Deployment.LoadForLaunch(folderPath);
             string curDir = Directory.GetCurrentDirectory();
 
             // Mirror Debug/Trace output to a per-game log file so we can see exceptions that
@@ -873,6 +904,16 @@ namespace WPR
             // Run on separate thread to not affect the UI
             await Task.Run(() =>
             {
+                // The game thread is WP7's UI thread to SynchronizationContext.Current, as it was on
+                // the phone: OpenXLive's NavigationService refuses to start without one (iRunner).
+                // Restored in the outer finally, because this is a pool thread. The WP8 native
+                // runtime gets none: its Xbox Live host waits on hub tasks from the guest thread.
+                SynchronizationContext? previousContext = SynchronizationContext.Current;
+                if (!isNative)
+                {
+                    SynchronizationContext.SetSynchronizationContext(new WPR.Xna.Rhi.GameThreadSynchronizationContext());
+                }
+
                 // Set this BEFORE the Game subclass is instantiated. Many WP7 games probe
                 // TouchPanel.GetCapabilities().IsConnected from their constructor or static
                 // init paths and cache the result for the rest of the session. If MouseAsTouch
@@ -924,6 +965,36 @@ namespace WPR
                 bool guestFailureReported = false;
                 try
                 {
+                    // Xbox Live for this title, served by achievements.db and WPR Hub. One host,
+                    // two consumers: the managed Microsoft.Xbox facade a managed WP8 title binds
+                    // (it reads XboxLiveBackend.Host), and the WP8 native runtime (handed it below).
+                    // Cleared in ResetWprSingletons.
+                    var xboxHost = new WPR.Wp8Native.Wp8NativeXboxHost(app.ProductId!, app.Name, folderPath);
+                    WPR.XboxLive.XboxLiveBackend.SetHost(xboxHost);
+
+                    // The WinRT package and display a managed WP8 title reads (WPR.Framework.WinRT),
+                    // from the same device model the native runtime presents.
+                    WPR.WinRT.WinRtHost.InstalledPath = folderPath;
+                    WPR.WinRT.WinRtHost.ResolutionScalePercent = WPR.Wp8Native.Wp8Display.Scale;
+
+                    // Host.Content.ScaleFactor: the same device model for a WP8 title, WVGA (100)
+                    // for a WP7 one, which never saw anything else. Reset in ResetWprSingletons.
+                    WPR.WindowsCompability.SilverlightHostContent.PlatformScaleFactor =
+                        TargetsWindowsPhone8(folderPath) ? WPR.Wp8Native.Wp8Display.Scale : 100;
+
+                    // A managed Direct3D content provider (the SharpDX Toolkit's game window) is
+                    // driven as the phone's compositor drove it: its own SharpDX calls go through
+                    // SharpDX.WP8 into WPR.Engine.HostDirect3D. Cleared in TeardownAudioState.
+                    WPR.SilverlightCompability.DrawingSurfaceBackgroundGrid.ContentProviderSet =
+                        provider => WPR.HostDirect3D.DrawingSurfaceHost.Attach(provider);
+                    WPR.SilverlightCompability.DrawingSurfaceBackgroundGrid.ManipulationHandlerSet =
+                        handler => WPR.WinRT.ManipulationInput.Attach(handler);
+
+                    // ApplicationData.LocalFolder is the title's isolated store, as on WP8.
+                    WPR.WinRT.WinRtHost.LocalFolderPath = WPR.WindowsCompability.PerGameIsolatedStorage.GameRoot(app.ProductId!);
+                    WPR.WinRT.WinRtHost.ProductId = app.ProductId!.Trim('{', '}');
+                    WPR.WinRT.WinRtHost.OpenUri = uri => WPR.Engine.Launchers.LauncherBackend.Uri?.TryOpen(uri) == true;
+
                     if (isSilverlight)
                     {
                         // No Game to instantiate: mainType is the game's Silverlight Application
@@ -963,8 +1034,7 @@ namespace WPR
                         // title's store, so "clear data" and uninstall-with-saves cover it too.
                         string sandbox = WPR.WindowsCompability.PerGameIsolatedStorage.GameRoot(app.ProductId!);
                         obj = new WPR.Wp8Native.Wp8NativeGame(
-                            asmPath, sandbox, msg => Trace.WriteLine(msg),
-                            new WPR.Wp8Native.Wp8NativeXboxHost(app.ProductId!, app.Name));
+                            asmPath, sandbox, msg => Trace.WriteLine(msg), xboxHost);
                         // Reported the moment the guest stops, on its thread: the error screen then
                         // says so, and a player who kills the app from it does not lose the report.
                         WPR.Wp8Native.Wp8NativeGame wp8 = (WPR.Wp8Native.Wp8NativeGame)obj;
@@ -1075,6 +1145,10 @@ namespace WPR
                     if (ownsDeviceBeforeRun)
                     {
                         WprTrace("[wpr-trace] ApplicationLaunch: game created its GraphicsDevice in its constructor; skipping the pre-Run lifecycle priming (Run recreates the device)");
+                    }
+                    else if (GameLifecycleQuirks.SkipsPreRunPriming(app.ProductId))
+                    {
+                        WprTrace("[wpr-trace] ApplicationLaunch: skipping the pre-Run lifecycle priming (GameLifecycleQuirks: one cold start)");
                     }
                     else
                     {
@@ -1357,6 +1431,8 @@ namespace WPR
                 {
                     Log.Warn(LogCategory.AppList, $"ALC unload best-effort failed: {ex}");
                 }
+
+                SynchronizationContext.SetSynchronizationContext(previousContext);
                 }  // end outer finally (ensures teardown runs even when ctor throws)
             });
         }
@@ -1675,8 +1751,22 @@ namespace WPR
             // instance, so before the audio device goes) without posting its completion.
             try { WPR.Xna.Rhi.HostOverlay.Clear(completed: false); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"HostOverlay.Clear on teardown threw: {ex.Message}"); }
+            WPR.SilverlightCompability.DrawingSurfaceBackgroundGrid.ContentProviderSet = null;
+            WPR.SilverlightCompability.DrawingSurfaceBackgroundGrid.ResetActive();
+            WPR.SilverlightCompability.DrawingSurfaceBackgroundGrid.ManipulationHandlerSet = null;
+            WPR.WinRT.ManipulationInput.Reset();
+            try { WPR.HostDirect3D.HostFiles.CloseAll(); }
+            catch (Exception ex) { Log.Warn(LogCategory.AppList, $"HostFiles.CloseAll on teardown threw: {ex.Message}"); }
+            // Its voices are DynamicSoundEffectInstances: released before the audio device goes.
+            try { WPR.HostDirect3D.HostExports.ReleaseAudio(); }
+            catch (Exception ex) { Log.Warn(LogCategory.AppList, $"HostExports.ReleaseAudio on teardown threw: {ex.Message}"); }
+            WPR.HostDirect3D.DrawingSurfaceHost.ResetDevice();
+            try { WPR.Xna.Rhi.EmbeddedGameLoop.Clear(); }
+            catch (Exception ex) { Log.Warn(LogCategory.AppList, $"EmbeddedGameLoop.Clear on teardown threw: {ex.Message}"); }
             try { WPR.Xna.Rhi.ErrorScreen.Reset(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"ErrorScreen.Reset on teardown threw: {ex.Message}"); }
+            try { WPR.Xna.Rhi.AchievementToast.Reset(); }
+            catch (Exception ex) { Log.Warn(LogCategory.AppList, $"AchievementToast.Reset on teardown threw: {ex.Message}"); }
             // Same for a MediaElement movie: ResetWprSingletons resets it again later, but by then
             // the audio device it plays through is gone.
             try { WPR.SilverlightCompability.MediaElement.ResetForNewLaunch(); }
@@ -1732,6 +1822,9 @@ namespace WPR
         /// </summary>
         private static void ResetWprSingletons()
         {
+            // The Xbox Live host is keyed by the title that just ran.
+            WPR.XboxLive.XboxLiveBackend.SetHost(null);
+
             // Application.Current lazy-creates a fresh instance on the next access, so it's
             // safe to clear to null here.
             try { WindowsCompability.Application.ResetCurrent(); }
@@ -1775,6 +1868,8 @@ namespace WPR
             try { WPR.Engine.Vibration.VibrationBackend.Device?.Stop(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"Vibration provider stop threw: {ex.Message}"); }
 
+            WPR.WindowsCompability.SilverlightHostContent.PlatformScaleFactor = 100;
+            WPR.SilverlightCompability.Threading.Dispatcher.Detach();
             try { WPR.SilverlightCompability.CompositionTarget.ResetForNewLaunch(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"CompositionTarget reset threw: {ex.Message}"); }
 
@@ -1815,6 +1910,9 @@ namespace WPR
             // The open-popup registry holds every popup a game left open — strongly, since an
             // open popup is on screen. Without this the next title would composite the last
             // one's dialog over its first page, and pin its load context.
+            try { WPR.SilverlightCompability.Deployment.ResetForNewLaunch(); }
+            catch (Exception ex) { Log.Warn(LogCategory.AppList, $"Deployment reset threw: {ex.Message}"); }
+
             try { WPR.SilverlightCompability.Popup.ResetForNewLaunch(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"Popup reset threw: {ex.Message}"); }
 

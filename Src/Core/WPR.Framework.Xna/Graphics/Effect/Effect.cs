@@ -239,6 +239,8 @@ namespace Microsoft.Xna.Framework.Graphics
 
 			// This is where it gets ugly...
 			INTERNAL_parseEffectStruct(effectData);
+			INTERNAL_keepAliveFrom(Parameters);
+			NativeEffects.Created(this);
 
 			// The default technique is the first technique.
 			CurrentTechnique = Techniques[0];
@@ -276,6 +278,8 @@ namespace Microsoft.Xna.Framework.Graphics
 
 			// Double the ugly, double the fun!
 			INTERNAL_parseEffectStruct(effectData);
+			INTERNAL_keepAliveFrom(Parameters);
+			NativeEffects.Created(this);
 
 			// Copy texture parameters, if applicable
 			for (int i = 0; i < cloneSource.Parameters.Count; i += 1)
@@ -318,6 +322,9 @@ namespace Microsoft.Xna.Framework.Graphics
 		#endregion
 
 		#region Destructor
+		/* WPR: this is what gives back an effect the game never disposes, the way XNA did. AE
+		 * Fruit Slash makes a new BasicEffect for every particle and trail draw and disposes none;
+		 * NativeEffects counts them. */
 		~Effect()
 		{
 			Dispose(false);
@@ -337,6 +344,8 @@ namespace Microsoft.Xna.Framework.Graphics
 						GraphicsDevice.GLDevice,
 						glEffect
 					);
+					glEffect = IntPtr.Zero;
+					NativeEffects.Released();
 				}
 				if (stateChangesPtr != IntPtr.Zero)
 				{
@@ -345,6 +354,20 @@ namespace Microsoft.Xna.Framework.Graphics
 				}
 			}
 			base.Dispose(disposing);
+		}
+
+		private void INTERNAL_keepAliveFrom(EffectParameterCollection parameters)
+		{
+			if (parameters == null)
+			{
+				return;
+			}
+			foreach (EffectParameter parameter in parameters)
+			{
+				parameter.owner = this;
+				INTERNAL_keepAliveFrom(parameter.Elements);
+				INTERNAL_keepAliveFrom(parameter.StructureMembers);
+			}
 		}
 
 		protected internal virtual void OnApply()

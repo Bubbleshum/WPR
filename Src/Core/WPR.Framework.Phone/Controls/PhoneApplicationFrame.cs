@@ -6,6 +6,20 @@ namespace Microsoft.Phone.Controls
 {
     public class PhoneApplicationFrame : Frame
     {
+        /// <summary>The orientation of the page on display (portrait when there is none), as
+        /// WP7's frame reports it. PointAbout Mashup reads it in <c>OnNavigatedTo</c>.</summary>
+        public PageOrientation Orientation =>
+            (Content as PhoneApplicationPage)?.Orientation ?? PageOrientation.PortraitUp;
+
+        /// <summary>Fired when the frame rotates. Never raised: pages do not rotate here (see
+        /// <see cref="PhoneApplicationPage.OrientationChanged"/>). The toolkit's ContextMenu
+        /// subscribes when its owner loads, and without the event that was a MissingMethodException.</summary>
+        public event EventHandler<OrientationChangedEventArgs>? OrientationChanged
+        {
+            add { }
+            remove { }
+        }
+
         /// <summary>
         /// Becomes the application's <c>RootVisual</c> immediately if nothing else has claimed it.
         /// </summary>

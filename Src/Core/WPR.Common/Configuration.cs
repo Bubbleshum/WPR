@@ -95,6 +95,12 @@ namespace WPR.Common
             // Look for a newer WPR release on GitHub and announce it (WPR.Shell.AppUpdates).
             // Null (absent) = on, the TiltSimulationEnabled precedent.
             public bool? UpdateCheckEnabled;
+            // Pop-up notifications by kind (NotifyMessages etc.). Null (absent) = on, the
+            // UpdateCheckEnabled precedent.
+            public bool? NotifyMessages;
+            public bool? NotifyGameInvites;
+            public bool? NotifyAchievements;
+            public bool? NotifyFriendRequests;
             // The gamertag games see while signed out of WPR Hub: "player" and six digits, made
             // once per install (see EffectiveGamerTag).
             public string? GuestGamerTag;
@@ -375,6 +381,34 @@ namespace WPR.Common
         {
             get => _ConfPrivate!.UpdateCheckEnabled != false;
             set => _ConfPrivate!.UpdateCheckEnabled = value ? null : false;
+        }
+
+        /// <summary>Pop up a notification for a new WPR Hub message. On by default (stored as null when on).</summary>
+        public bool NotifyMessages
+        {
+            get => _ConfPrivate!.NotifyMessages != false;
+            set => _ConfPrivate!.NotifyMessages = value ? null : false;
+        }
+
+        /// <summary>Pop up a notification for a game invite from a friend. On by default.</summary>
+        public bool NotifyGameInvites
+        {
+            get => _ConfPrivate!.NotifyGameInvites != false;
+            set => _ConfPrivate!.NotifyGameInvites = value ? null : false;
+        }
+
+        /// <summary>Pop up a notification for a WPR Hub friend request. On by default.</summary>
+        public bool NotifyFriendRequests
+        {
+            get => _ConfPrivate!.NotifyFriendRequests != false;
+            set => _ConfPrivate!.NotifyFriendRequests = value ? null : false;
+        }
+
+        /// <summary>Pop up a notification when a game awards an achievement. On by default.</summary>
+        public bool NotifyAchievements
+        {
+            get => _ConfPrivate!.NotifyAchievements != false;
+            set => _ConfPrivate!.NotifyAchievements = value ? null : false;
         }
 
         public static event EventHandler<string?>? GameLibraryPathChanged;

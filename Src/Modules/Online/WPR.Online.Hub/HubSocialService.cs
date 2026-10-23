@@ -57,6 +57,9 @@ public sealed class HubSocialService
     public Task<ChatMessage> SendMessageAsync(string username, string body, CancellationToken ct = default) =>
         CallAsync(hub => hub.SendMessageAsync(username, body, ct));
 
+    public Task<ChatMessage> SendInviteAsync(string username, string titleId, string? titleName, CancellationToken ct = default) =>
+        CallAsync(hub => hub.SendInviteAsync(username, titleId, titleName, ct));
+
     /// <summary>Best effort: a failed read receipt only leaves the unread count up. Never throws.</summary>
     public async Task MarkReadAsync(string username, long? upToId = null)
     {

@@ -59,7 +59,7 @@ namespace WPR
         /// scopes them to <c>Windows</c>. If the stub keeps the <c>Windows</c> scope, a call like
         /// <c>set_WindowBounds([System.Runtime.WindowsRuntime]Size)</c> won't bind to the stub's
         /// <c>set_WindowBounds([Windows]Size)</c>. Re-scope so both sides name the same type.
-        /// (WindowsTypeSynthesizer then materializes the struct under that scope.)
+        /// (WPR.Framework.WinRT, built as that assembly, implements the structs.)
         /// </summary>
         private const string ProjectedValueTypeScope = "System.Runtime.WindowsRuntime";
         private static readonly HashSet<string> ProjectedValueTypes = new(StringComparer.Ordinal)
@@ -104,6 +104,44 @@ namespace WPR
             return stubbedAssemblies;
         }
 
+        /// <summary>
+        /// WinRT metadata names the BCL as <c>mscorlib, Version=255.255.255.255</c>, a
+        /// pseudo-reference the WinRT-aware CLR redirected. <c>ImportReference</c> copies it into
+        /// the stub verbatim, and .NET cannot bind it, so the first use of any stubbed type that
+        /// touches a BCL type (every class: its base is System.Object) throws FileNotFoundException.
+        /// Gravity Guy 2 (eaa1ee62-073a-4520-831f-08691889f7f1) is the measured case: its MainPage
+        /// constructor reaches Microsoft.Xbox. Retarget it to the shared framework's mscorlib
+        /// facade. <c>Windows, Version=255</c> is left alone; the resolver maps that one.
+        /// </summary>
+        internal static bool RetargetWinRtMscorlib(AssemblyNameReference r)
+        {
+            if (!r.Name.Equals("mscorlib", StringComparison.OrdinalIgnoreCase)) return false;
+            if (r.Version == null || r.Version.Major != 255) return false;
+            r.Version = new Version(4, 0, 0, 0);
+            r.PublicKeyToken = new byte[] { 0xb7, 0x7a, 0x5c, 0x56, 0x19, 0x34, 0xe0, 0x89 };
+            return true;
+        }
+
+        /// <summary>
+        /// Point a <c>System.Runtime.WindowsRuntime</c> reference at the identity WPR.Framework.WinRT
+        /// is built as: 4.0.0.0, no strong name. WP8 user IL names 4.0.0.0 with Microsoft's token,
+        /// and stubs written before this named 8.0.0.0, which a 4.0.0.0 assembly does not satisfy.
+        /// </summary>
+        internal static void RetargetWinRtProjection(AssemblyNameReference r)
+        {
+            r.Version = new Version(4, 0, 0, 0);
+            r.PublicKeyToken = Array.Empty<byte>();
+        }
+
+        /// <summary>
+        /// WinRT components WPR implements for real, as a managed assembly of the same identity, so
+        /// their .winmd is not stubbed: <c>Microsoft.Xbox</c> is WPR.Framework.Xbox (WPR Hub), and
+        /// <c>SharpDX.WP8</c> is WPR.Framework.SharpDXWP8 (the native exports SharpDX calls, served
+        /// by WPR.Engine.HostDirect3D). Both bind ahead of an install folder, so installs that still
+        /// carry a stub are covered too.
+        /// </summary>
+        private static readonly HashSet<string> Implemented = new(StringComparer.OrdinalIgnoreCase) { "Microsoft.Xbox", "SharpDX.WP8" };
+
         private static string StubOne(string winmdPath, string installFolder)
         {
             var resolver = new DefaultAssemblyResolver();
@@ -124,6 +162,12 @@ namespace WPR
                 if (asmName.Equals("Windows", StringComparison.OrdinalIgnoreCase))
                 {
                     Log.Info(LogCategory.AppInstall, $"WinmdStubber: skipping system metadata '{asmName}.winmd'");
+                    return asmName;
+                }
+
+                if (Implemented.Contains(asmName))
+                {
+                    Log.Info(LogCategory.AppInstall, $"WinmdStubber: '{asmName}' is implemented by WPR; not stubbed");
                     return asmName;
                 }
 
@@ -153,6 +197,7 @@ namespace WPR
                 {
                     const AssemblyAttributes WinRtFlag = (AssemblyAttributes)0x0200;
                     r.Attributes &= ~WinRtFlag;
+                    RetargetWinRtMscorlib(r);
                 }
 
                 // 5. Save: backup native dll, then write stub in its place.
@@ -415,10 +460,9 @@ namespace WPR
             string fn = t.FullName;
             if (fn == "System.Void" || fn == "System.IntPtr" || fn == "System.UIntPtr") return true;
 
-            // Known WinRT value-type structs — WindowsTypeSynthesizer emits these as real structs
-            // (see its KnownValueTypeFields), so stub members that return them must default via
-            // initobj, not ldnull. The synthesized type isn't on disk yet when we stub, so we
-            // can't Resolve() it — recognise it by name.
+            // Known WinRT value-type structs — WPR.Framework.WinRT implements these as real structs,
+            // so stub members that return them must default via initobj, not ldnull. That assembly
+            // is not in this resolver's search path, so recognise them by name.
             if (fn == "Windows.Foundation.Size" || fn == "Windows.Foundation.Point" ||
                 fn == "Windows.Foundation.Rect")
                 return true;
@@ -440,6 +484,7 @@ namespace WPR
             foreach (var r in mod.AssemblyReferences)
                 if (r.Name == name) return r;
             var anr = new AssemblyNameReference(name, new Version(8, 0, 0, 0));
+            if (name == ProjectedValueTypeScope) RetargetWinRtProjection(anr);
             mod.AssemblyReferences.Add(anr);
             return anr;
         }

@@ -1110,11 +1110,246 @@ Contract tests: `Suites/XboxLiveSuite.cs`, covering the guest surface, the SPA r
   boards that is not in `ServiceBoards` still shows only the boards it has posted to. Of the
   installed Rovio titles every other one defines its boards in its SPA (Classic 13, Rio 13, Space 23,
   Stella 1).
-- **Hub board names**: the hub sees only `BestScore<id>:0` for these titles, so its pages show
-  that key rather than "Total Score" or an episode name.
+- ~~**Hub board names**~~: fixed 2026-10-23, see "WPR Hub leaderboards have names" below.
 - **Harness, desktop in use:** a scripted run must suppress focus activation. Otherwise a focus loss
   suspends the WP8 guest (`lifecycle: suspended`, fps ~0). The xbl harness copy calls
   `XnaBackend.SuppressFocusActivation`.
+
+### WPR Hub leaderboards have names (2026-10-23)
+
+A board a game created used to be named its raw key (`BestScore1:0`, `BestScoreLifeTime:0`). Now:
+
+- **WP8, native and managed**: `Wp8NativeXboxHost` (given the install folder by `ApplicationLaunch`)
+  reads the title's Xbox SPA with `XboxTitleConfig` and sends `XboxTitleConfig.HubName(board)` with
+  every read (`EnsureBoard(…, boardName)`) and post (`Submit(…, boardName)`). An internal
+  identifier (Seasons' `TOTALSCOREEPISODE3`, Star Wars' `HOTH_1_LBNAME`) is made readable ("Total
+  Score, Episode 3", "Hoth 1"). **Managed WP8 packages carry the same SPA** (measured over the
+  library: Bad Piggies, Gravity Guy 2, Mahjong, Minesweeper, Solitaire, Temple Run 2, Fruit Ninja
+  2013, MC4… in their own managed DLL), and they reach the same host, so they are named too. The
+  managed facade's `GetLeaderboardsAsync` still lists only boards posted to; that list is game-visible
+  behaviour and was left alone.
+- **WP7 XNA**: no proven XLAST mapping exists (54 of 59 XlastConfigurations hold achievements only),
+  so WPR sends no name and **the hub makes the fallback from the key** (`LeaderboardNames::fallback`:
+  "Best score", "Best time (recent)", "Best score (mode 2)", and for WP8 keys "Best score (board 2)").
+  Putting the fallback on the hub covers old clients and the backfill with one rule.
+- Sort order is already carried by the key (`BestTime*` = lower wins), so no sort is sent.
+
+**Hub** (branch `leaderboard-names`, from main; independent of `title-icon-uploads`): column
+`leaderboards.name_source` = `key | fallback | game | curated`. A game's name fills only `key` or
+`fallback`, never replaces another game name, and never a `curated` one (admin define/update, the
+definitions importer, and an admin-named board that was later undefined). `POST …/boards` takes
+`names: [{key, name}]`, `POST …/scores` takes `scores.*.name`; rate limits and the
+25-undefined-boards cap are unchanged. **Deploy is `php artisan migrate` alone**: a migration
+gives every board still named by its key the fallback, any board still on its key when a game next
+uses it gets the fallback then, and the client upgrades it to the real name on the next read or
+post. Admins rename boards from the game pages. Admin pages show a "from the game" / "from the
+key" pill on undefined boards.
+
+Verified 2026-10-23 against a scratch hub (old rows inserted before the migration): Angry Birds
+Classic's post created `BestScore1:0` "Total Score"; a read upgraded the backfilled `BestScore2:0`
+("Best score (board 2)", given by the backfill then done by a command, now a migration) to "Poached Eggs Total Score"; an admin-named undefined `BestScore3:0` kept
+its name; Fruit Ninja (WP7) got "Best score" (backfill) and "Best score (mode 2)" (new). Tests: hub
+`LeaderboardNamesTest` (7), WP8 contract `xbox live` (names checks pass; the 3 toast checks there
+fail on 0.2.07 already, since a7a69b20 moved unlock toasts in-game).
+
+### Managed WP8 titles reach Xbox Live too, and a package's own XNA layer runs (patcher v45, 2026-10-19)
+
+41 packages in the library are **managed** WP8 titles that call `Microsoft.Xbox` from C# (Gravity
+Guy 2, Bad Piggies, Rayman Jungle/Fiesta Run, Lara Croft Relic Run, the Microsoft casual games...).
+They used to get WinmdStubber's do-nothing stub: sign-in never completed and achievements went
+nowhere. Now they go through the same door as native titles:
+
+```
+game C# -> Microsoft.Xbox (WPR.Framework.Xbox) -> XboxLiveBackend.Host (WPR.Engine.XboxLive)
+        -> Wp8NativeXboxHost -> achievements.db / WPR Hub
+```
+
+| project | builds as | what it is |
+| --- | --- | --- |
+| `Src/Engine/WPR.Engine.XboxLive` | `WPR.Engine.XboxLive` | `IXboxLiveHost` + records (moved out of `Wp8Native/Runtime`; the probe tools compile the file directly) and `XboxLiveBackend`, the per-launch slot `ApplicationLaunch` fills with the same host it gives the native runtime and clears in `ResetWprSingletons` |
+| `Src/Core/WPR.Framework.WinRT` | `System.Runtime.WindowsRuntime` 4.0.0.0 | real WinRT async objects over `Task` (`IAsyncAction`, `IAsyncOperation<T>`, handlers, `AsyncStatus`), `WindowsRuntimeSystemExtensions` (await/AsTask), `EventRegistrationToken`/`WindowsRuntimeMarshal`/`AsyncInfo`, and `Size`/`Point`/`Rect`/`Color` with properties |
+| `Src/Core/WPR.Framework.Xbox` | `Microsoft.Xbox` 255.255.255.255 | the whole `Microsoft.Xbox.winmd` surface (all 23 copies in the library are identical, 365 members), .NET's projection applied |
+
+Things that are load-bearing:
+
+- **WPR's own assemblies bind before an install folder** (a collectible game ALC has no `Load`
+  override, so the default context is asked first). That is why the facade replaces the stub even in
+  installs made before it existed, and why the version must be 255.255.255.255: the TPA binder wants
+  available >= requested.
+- **Setters are methods named `put_X`**, not C# setters: WinRT metadata names them so, and game IL
+  calls `put_Completed`. Getters are ordinary properties.
+- **`Completed` fires exactly once**, at once on the setting thread if the operation already
+  finished (WPR answers most calls synchronously), else on a pool thread.
+- **A null async source awaits as completed-with-default** instead of throwing: every null one comes
+  from a stub of a component WPR does not implement.
+- **Patcher v43** retargets WinRT metadata's `mscorlib, Version=255.255.255.255` to the 4.0.0.0
+  facade (the stubber used to copy it into every stub, which .NET cannot bind; Mahjong and Solitaire
+  hit it 9 and 11 times). **v45** rescopes the async family and the mscorlib interop types
+  (`WinRtProjectionTypes`) to `System.Runtime.WindowsRuntime`, normalises references to it to 4.0.0.0,
+  and WinmdStubber no longer stubs `Microsoft.Xbox` (`Implemented`).
+- **v45 also stops the patcher stealing a package's OWN implementation.** Its by-name rules
+  (`WprFrameworkXnaTypes`, `Patches`, `WinRtProjectionTypes`) used to fire whatever assembly a ref
+  pointed at. Gravity Guy 2's `SharpDXCommon.dll` ships its own managed `Microsoft.Xna.Framework.Game`,
+  `Texture2D`, `GraphicsDevice`... over SharpDX, and its refs were swapped to WPR.Framework.Xna's, so
+  the game's code never ran (`MissingMethodException ... Game.get_Content()` returning a SharpDX
+  type). A framework-namespaced ref scoped to a package assembly that is not a framework copy
+  (`PackageOwnsScope`, `FrameworkAssemblyName`) is now left alone; log `[own-impl]`. Game-specific
+  redirects (`SWTheBattleForHoth.*`) are not framework-named and still apply. Measured over the
+  307-package library: a package type name collides with a patcher name **only** in Gravity Guy 2.
+
+**Audited, nothing stubbed that could run:** all 127 kinds of `.winmd` in the library carry zero IL
+bodies and every sibling `.dll` is native ARM, so WinmdStubber only ever replaces metadata + native
+code. The only bodies the patcher empties are the two documented fixups (Eazfuscator caller check,
+Montezuma's options dialog). Same-named shadowing that remains is by design: framework copies
+(`System.*`, `Microsoft.Phone` in Pool Pro) and `Newtonsoft.Json` (42 packages bind WPR's newer build).
+`FNWP72.dll` (Fruit Ninja's own game assembly) was committed in the Windows head from 0.1.0
+and copied to the output, unused (not in deps.json); removed 2026-10-19.
+
+Verified 2026-10-19, desktop D3D11 harness, scratch data root: Gravity Guy 2 signs in as the WPR
+player (`[wpr-xbox] SignInAsync -> <gamertag>`), its own SharpDX `Game` is constructed, and it then
+stops on `Windows.ApplicationModel.Package.Current` (an empty per-game shell). **It still draws
+nothing**: past that it presents through SharpDX's native D3D11 interop, which WPR does not host.
+Minesweeper, What In The World?, Mahjong and Solitaire reach the same screens as on main (black for
+the SharpDX/Arkadium ones), with the `mscorlib 255` and `put_Completed` failures gone; Angry Birds,
+Carcassonne and Flowerz unchanged. Tests: `XboxLiveFacadeTests` (16), shim suite 261/261, WP8
+contract tests 2296/2296, `BackendIsolationTests`, the WP8 probe builds, android legs build.
+Not run: Android, any phone. Not handled: the 3 titles compiled against raw WinRT types for user
+messages/multiplayer/`SignedOutEventArgs.ErrorCode`/`LeaderboardRow.Attributes`; multiplayer and
+marketplace purchases fail as an unreachable service (marketplace READS answer an empty marketplace
+since 2026-10-19, below); `GetLeaderboardsAsync` lists boards posted to (no SPA read
+for managed titles); `System.IO` WinRT stream/storage extensions and `WindowsRuntimeBuffer`.
+
+**v46 (same day): Gravity Guy 2 boots to its game loop.** `Windows.ApplicationModel.Package` (`Current.InstalledLocation.Path` = the install folder), `Windows.Storage.StorageFolder` (path only), `Windows.Graphics.Display.DisplayProperties` and the real `ResolutionScale`/`DisplayOrientations` enums joined WPR.Framework.WinRT and `WinRtProjectionTypes` (the per-game shells had a class for an enum and a Package with no Current). `WinRtHost` holds the per-launch answers, from `Wp8Display`. WP8's static `SystemTray.IsVisible`/`Opacity`/`BackgroundColor`/`ForegroundColor` were added beside the attached ones. Gravity Guy 2 now builds MainPage, signs in and calls `SharpDX.Toolkit.Game.Run`, with no exception, and then never ticks: the toolkit's `GamePlatformWP8` registers itself through `DrawingSurfaceBackgroundGrid.SetBackgroundContentProvider` and waits for `Connect(host, device)` and a per-frame `PrepareResources` + `Draw(device, context, renderTargetView)` over native Direct3D 11. Rendering it needs either real D3D11 behind SharpDX (desktop only) or managed SharpDX facades over FNA (both heads; ~290 members, its 6 `.cso` shaders and 67 of the toolkit's carry the Aon9 Direct3D 9 chunk MojoShader runs, content is `.dds` + `.tkfnt`).
+
+### Gravity Guy 2 plays: a title's own SharpDX runs on a host Direct3D 11 (2026-10-19)
+
+**WPR does not shim SharpDX. It implements what SharpDX calls**, so the title's own `SharpDX*.dll`
+run as shipped and any other SharpDX title needs nothing per title. (A first version replaced
+SharpDX with six managed facades bound per package by the patcher; that was dropped the same day,
+and no patcher change remains.)
+
+SharpDX's only way into native code is the **`SharpDX.WP8`** WinRT component every such package
+ships (native ARM): each static method of `SharpDX.WP8.Interop` returns the address of a system
+export as an **int** (`D3D11CreateDevice`, `CreateDXGIFactory1`, `CreateFile2`/`ReadFile`/...,
+`XAudio2Create`, `MF*`), which SharpDX turns into a delegate. Everything after that is plain IL
+calling COM vtables. So:
+
+| project | builds as | what it is |
+| --- | --- | --- |
+| `Src/Core/WPR.Framework.SharpDXWP8` | `SharpDX.WP8` 255.255.255.255 | `Interop`, answering each export with `HostExports.Address(name)`. Binds before the install folder (the `Microsoft.Xbox` facade trick); WinmdStubber leaves it alone (`Implemented`) |
+| `Src/Engine/WPR.Engine.HostDirect3D` | `WPR.Engine.HostDirect3D` | the exports, and Direct3D 11 / DXGI as host COM objects whose vtable slots are `[UnmanagedCallersOnly]` C# |
+
+```
+title C# -> its own SharpDX / SharpDX.Toolkit (unmodified)
+         -> SharpDX.WP8.Interop (WPR) -> HostExports -> HostDevice / HostContext (record)  -> GpuFrame
+DrawingSurfaceBackgroundGrid.SetBackgroundContentProvider -> DrawingSurfaceHost: Connect, then per
+  host frame PrepareResources + Draw(device, context, back buffer RTV) -> Wp8GpuReplay.Replay + Present
+```
+
+Things that are load-bearing:
+
+- **The addresses must fit an int.** `NativeCode` writes jump thunks into memory allocated below
+  2 GB (`VirtualAlloc`/`mmap` with a hint), written once and then made executable, x64 and ARM64.
+  Unimplemented vtable slots are reporter thunks: `[wpr-d3d] unimplemented: ID3D11DeviceContext1::X
+  (slot N)` once, E_NOTIMPL. A refused QueryInterface is logged the same way. **Read those two
+  lines first** when a new SharpDX title misbehaves.
+- **Signatures are SharpDX's delegate declarations**, not the Win32 headers: `ReadFile` returns a
+  4-byte BOOL with `out int`, `SetFilePointerEx` takes a `SeekOrigin`, `CreateFile2`'s dispositions
+  are `NativeFileMode`. Relative paths are the package's, Windows separators converted (`HostFiles`).
+- **The context holds a reference to everything bound** (`HostObject.Hold`), as Direct3D does.
+  Cocos2D's EAGLView binds a depth-stencil state and disposes its wrapper at once; without the
+  reference the state was freed while bound and `GetDescription` NRE'd inside `setOpenGLView`.
+  States are deduplicated by content, as Direct3D does.
+- **The provider is driven through its own native face**: a managed provider answers
+  `ICustomQueryInterface` for IID `262c1892-...` (IDrawingSurfaceBackgroundContentProviderNative),
+  and its slots 3/5/6 are Connect / PrepareResources / Draw, exactly what the phone called.
+  `ApplicationLaunch` sets `DrawingSurfaceBackgroundGrid.ContentProviderSet` per launch; the host
+  runs as `WPR.Xna.Rhi.EmbeddedGameLoop`, drawn by `SilverlightGame` under the page.
+- **Recording is the WP8 native runtime's**: `GpuFrame` and `Wp8GpuReplay` (Aon9 shaders, raw
+  D3D11 descs). Buffers' arrays are replaced, never written in place. The back buffer is the
+  portrait phone screen (`Wp8Display`, 768x1280); a landscape page is presented
+  `PresentTurn.Clockwise` (GG2 draws for LandscapeLeft; the native runtime's titles need the other
+  turn).
+- **Not provided**: XAudio2 (`XAudio2Create` answers E_NOTIMPL and is logged; GG2 does not use it,
+  its sounds are XNA `SoundEffect`s), Media Foundation (each `MF*` export E_NOTIMPL, logged by name),
+  `CoCreateInstanceFromApp` (WIC; logged with the CLSID), `LoadPackagedLibrary`.
+
+Three general fixes it needed, each of which applies beyond this title:
+
+| fix | symptom here |
+| --- | --- |
+| `Wp8GpuReplay.Ordered`: a **denormal** constant is read as the integer it is (1 for a bool). A C# `bool` copied byte for byte into a cbuffer is the float 1.4e-45; GPUs flush it, so `cmp -c0.x, colour, textured` took the untextured side. The smallest normal float fixed D3D11 but not GLES (medium precision flushes that too). `WPR_WP8_CONSTANT_INTS=0` turns it off | every CCSprite a white box of its vertex colour |
+| `Touch.FrameReported` is raised (`SilverlightGame.PumpTouchFrames`), every finger, once a tick while anything subscribes, with `Up` for a finger that vanished without a Released sample; `TouchFrameEventArgs.GetTouchPoints(element)` is relative to the element; `UIElement.RenderSize` exists | the menu took no tap at all (Cocos2D's only input path); then PLAY stayed pressed for ever |
+| Marketplace READS (`EnumerateOffersAsync`, `GetReceipts*`, `GetAssetsAsync`) answer an empty marketplace (`XboxHub.EmptyMarketplace`); purchases still fail. On a phone the reads succeeded, and a failure path can assume a screen that does not exist yet | `DLCManager` raised `LastErrorChanged` with no subscriber: NRE out of `Initialize`, before `LoadContent` |
+
+Verified 2026-10-19, desktop harness, scratch data root: main menu (clone tube, SHOP / OPTIONS /
+PLAY, Achievements, Leaderboards), PLAY taken, the first level running with its "Tap once to jump"
+tutorial, on **D1 D3D11, D2 Vulkan and D4 GLES 3.0 + no DXT**. Contract suite `HostDirect3DSuite`
+(exports, device creation, state dedupe and lifetime, the file calls). **Not run on Android or a
+phone.** Not done: **music** (the title's two `.mp3` songs are skipped: WPR's song player is Ogg
+and the installer transcodes `.wma` only), mip levels below the top one. `sfx_teleport.wav` is
+missing from the package itself (the title catches it). Re-verified 2026-10-21 on D1/D2/D4 with the
+harness script `14 hold 680 330 0.2; 26 hold 400 240 0.2`. **A PLAY tap at ~25 s does nothing, on
+every build back to this one**: that is the game's own menu state, not a regression; press it early.
+
+### Microsoft Mahjong, Minesweeper and Solitaire play (patcher v47-v49, 2026-10-21)
+
+Arkadium's three WP8 titles (`3533f0fe-…` Mahjong, `c430a852-…` Minesweeper, `282592d5-…`
+Solitaire) run their own SharpDX engine (`Arkadium.SharpDXEngine.WP8`) behind a
+`DrawingSurfaceBackgroundGrid`, with Silverlight menus. Verified D1 D3D11: Mahjong's tutorial pair
+matched, Minesweeper's tutorial and first tap, Solitaire's Klondike dealt with its tutorial dialog.
+Microsoft Bingo was not looked at. What it took, roughly in the order each one hid the next:
+
+| fix | without it |
+| --- | --- |
+| v47: WinRT-flagged refs stripped in the patcher; v48: a typeref into Silverlight's `System.Windows` that `Patches` does not list binds the shim of the same name (`SilverlightShimTypes`, by simple name); v49: the same, re-run for the new shim types below | `PlatformNotSupported` / `TypeLoadException` in `App` construction and on every tap that met a missing type |
+| `DrawingSurfaceHost.Attach` connects inside `SetBackgroundContentProvider`, and the device, runtime host and back buffer are kept for the launch (`ResetDevice` at teardown) | Arkadium reads the provider's device on the next line; a second Connect with a "new" device made it reload everything and fail |
+| `CompositionTarget.Rendering` is raised once a frame (`SilverlightGame.Update`, after the storyboard clock) | Arkadium's engine is ticked ONLY from a Rendering handler (`EngineThread.RequestUpdate`): the board recorded 0 draws a frame |
+| `Host.Content.ScaleFactor` is the WP8 display's (160) for an `AppPlatformVersion` 8.x title (`SilverlightHostContent.PlatformScaleFactor`), 100 for WP7 | the engine sized itself for 480x800 and drew in a corner of the 768x1280 surface |
+| a frame painted only by the background grid gets the page composited OVER it (no clear) | no XAML HUD, tutorial text or buttons over the board |
+| the grid's pointers are turned into the phone's portrait frame (inverse of the present turn), and a `LandscapeLeft` page is presented with the anticlockwise turn (`EmbeddedGameLoop.PageLandscapeLeft`) | taps missed every tile; Minesweeper's board drew upside down |
+| a star Grid's desired size is its content's, not its share of the space offered | a `VerticalAlignment="Top"` banner (#CC000000) filled the screen and took every tap |
+| `Dispatcher.BeginInvoke` is QUEUED when the Silverlight host is attached and drained once a tick (after the page's and embedded game's updates, before the FrameworkDispatcher fallback) | Solitaire posts `SetupGameMode` and then subscribes to the event it raises; inline, it fired with no subscriber and the game sat on its preloader. Drained at the top of the tick instead, Cocos2D's posted `FrameworkDispatcher.Update` went uncounted and the fallback pumped twice. `SilverlightAppHost` also drains it once before navigating to the start page, as the phone queued that navigation behind the app's startup posts: without that, Galactic Reign's MenuPage NRE'd in its view model and the screen stayed black |
+| children of a writable IList property are added to its collection (XamlReader) | `ApplicationBarBehavior.MenuItems` was set to an item: InvalidCast in GamePage's Loaded, engine never initialised |
+| bindings hook every object along a dotted path; `Converter`, `ConverterParameter`, `FallbackValue`, `TargetNullValue` | `Model.ScreenSize` updates never arrived (text boxes 0 wide); Boolean-to-Visibility binds failed |
+| `RichTextBox` + `System.Windows.Documents` (Paragraph, Run, Span, Bold, LineBreak, InlineUIContainer), drawn as one TextBlock per paragraph (inline pictures leave a gap, run colours are lost); `DiscreteDoubleKeyFrame`; `TransformGroup` content; `Microsoft.Devices.Sensors` resolvable from App.xaml | Minesweeper's tutorial control, its difficulty tiles and its first tile tap threw |
+
+Also on the way: an XAudio2 2.8 host for SharpDX titles (`HostXAudio2`, voices on the WP8 runtime's
+`XAudio2BufferQueue`), the D3D11 context's tail slots corrected (ClearState is 110, 134 slots),
+Panorama/Pivot headers from their HeaderTemplate, ItemsControl containers with ContentTemplate.
+
+**Diagnosing these titles:** the harness's `peek` verb (local `scratchpad/gamerun/Script.cs`) reads a
+member path from a page in the tree or a static type: `peek GamePage.Game._gameBoardView.IsTilesAppeared`,
+`peek @Arkadium.GameEngine.Core.EngineManagers.Display.ViewState`. A stuck Arkadium page is nearly
+always an engine flag (`IsRestoreDeviceNeeded`, `IsPreloaderVisible`, a `ReadyToSetGame` with no
+subscriber), and `[Loaded] handler … threw` goes to stdout, not the per-game log.
+
+Regression, D1, same scratch root: Carcassonne (reinstalled at v49), Flowerz (menu, Play page,
+board), Cut the Rope Exp., Angry Birds, Galactic Reign, Big Buck Hunter Pro, The Game of Life,
+FC Rocket and Little Acorns reach the same screens, with the same composite/no-composite answers as
+"Who draws a mixed-mode page"; Gravity Guy 2 plays on D1/D2/D4. Shim tests 269/269 (the new
+`ArkadiumTitlesTests`), WP8 contract tests 2308/2308.
+
+**Follow-ups, same day (patcher v51):**
+
+- **`HostBuffer` reuses replaced arrays.** Data is still replaced rather than written in place (a
+  recorded draw keeps the array it was recorded with), but a replaced array is retired and reused
+  once the frame that could have recorded it has been replayed (`HostBuffer.FrameReplayed`, called by
+  `DrawingSurfaceHost` after each replay); the replay first drops any stream it cached by that array's
+  identity (`Wp8GpuReplay.ForgetStream`, through `HostBuffer.Recycling`). An Unmap that changed nothing
+  keeps the array. `managed=` at frame 1201: Minesweeper 1058 MB -> 125 MB, Mahjong 447 -> 138 MB at
+  601; Gravity Guy 2 flat at ~120-140 MB over 1,800 frames.
+- **`UIElement.Clip`** is honoured by the rasteriser (the clip geometry's bounds, in the element's
+  coordinates, narrowing it and its descendants; exact for RectangleGeometry). **`SkewTransform`**
+  exists and is drawn by the skew path. **Storyboard paths with indexers** (`(TransformGroup.Children)[3]`,
+  `Children[3]`) resolve. **`RepeatBehavior` parses from XAML** (`Forever`, `3x`, a TimeSpan): every
+  XAML storyboard used to run once. Together: Solitaire's loading animation (a sprite sheet slid
+  behind an 85x85 clipped Canvas by a TransformGroup's fourth child) loops its frames.
+- **RichTextBox draws inline elements**: each paragraph is an `InlineFlowPanel` (WPR-internal) of
+  words, spaces, breaks and InlineUIContainer elements, wrapped and aligned, runs keeping their colour,
+  size and weight. Minesweeper's "A [1] means exactly one mine…" shows its tile pictures.
+
+**Open:** ApplicationBar and the panorama backdrop are WPR's. Not run on Android, D2 or D4.
 
 ### WPR Hub: leaderboards and automatic crash reports (2026-09-27)
 
@@ -1402,6 +1637,64 @@ trimming) builds fine.
 No `ApplicationPatcher.Version` bump. Nothing needs a repatch; only a reinstall writes the package
 record.
 
+### Installs fill in the hub's game details: name, publisher, icon (2026-10-23)
+
+Title pages on WPR Hub used to need an admin to type every name and upload every icon. Now each
+install offers what its package says about the game, and the hub keeps only what it lacks.
+
+* **Contract**: `WPR.Engine.Online.ITitleDetailsSync` + the `TitleDetails` record (title id, name,
+  publisher, developer, platform, the icon's path), slot `OnlineBackend.TitleDetails`.
+  `OnlineBackend.FlushAsync` flushes it with the rest.
+* **Implementation**: `WPR.Online.Hub.HubTitleDetails`, over `Client/Titles.cs`.
+* **Callers**: `ApplicationInstaller.Install` and `RepatchAsync` call `OfferTitleDetails`, which only
+  queues. `ApplicationInstaller.DescribeForHub` builds the record: `Application.Name/Publisher/Author`,
+  the platform from `WMAppManifest.xml`'s `AppPlatformVersion` (7.x, 8.0, 8.1), and the installed
+  `IconPath` file, which is read when the queue is sent, not when it is queued.
+
+How it behaves:
+
+- **Queued and flushed, like the install receipt beside it.** `Online/title-details/` holds one file
+  per title (prefixed with the id, so a second offer before a flush does nothing). The flush asks
+  `GET /api/titles/{id}/details` which fields the hub still wants, then `POST`s only those (the icon
+  as base64 of the package's own PNG/JPEG, at most 256 KB). An install never waits on this or fails over it.
+- **Asked once per hub.** Whatever the answer (kept, nothing wanted, 422/404 refused), the title
+  goes into `Online/title-details-sent.txt` as `<host>|<ID>`, so a second install, a repatch or a
+  later launch sends nothing, not even the GET. A network error or a 429 leaves it queued and ends the
+  flush. The host is in the key so a local test hub and the real one are told separately.
+- **Backfill.** The first flush of each process lists every installed game
+  (`ApplicationInstaller.InstalledTitlesForHub`, on its own `ApplicationContext` because it runs
+  on a flush thread) through `HubSettings.InstalledTitles`, and queues the ones not sent. That is how
+  games installed before this existed, or while server logging was off, reach the hub.
+- **Gated on server logging**, the install receipt's consent: it tells the hub this address
+  installed the game. With it off, nothing is queued, backfilled or sent.
+- **At most 10 titles per flush**, because the hub allows 30 requests a minute and 300 a day per
+  IP, and a title costs one or two requests.
+- An unresolved resource name (`@AppResLib.dll,-100`) is not sent as a name, and an icon that is not
+  a PNG or JPEG is left out.
+
+**Hub side** (branch `title-icon-uploads` in the hub repo): `Api/TitleDetailsController`, both
+routes anonymous behind the `title-details` limiter (30/min, 300/day per IP; POST `body.limit:400`).
+**It only ever fills an empty field.** An existing icon is never replaced, whether an admin or an
+earlier install set it, and a name is replaced only when it is the "Unknown game" placeholder (a
+title created by a score or an unlock before anyone named it). A title the hub has never seen is
+created. The icon must be a PNG or JPEG, 32 to 1024 px, at most 256 KB. It is decoded and re-encoded
+as a 256 px square PNG, the same as admin uploads (`GameImageService`), and marked
+`icon_source = wpr-install`, which the admin game page shows as "icon from a player's install". An
+admin changing the icon clears that mark. Title pages (`/compatibility/{id}`) already showed
+`icon_url`.
+
+Verified 2026-10-23 against a scratch hub, with the real installer in a console probe: Flowerz
+installed and the hub got its name, publisher, developer, platform and the 62 px tile, served at
+256 px on its compatibility page. Reinstalling Flowerz made no details requests. AlphaJax, with an
+admin name and icon set first, got its empty publisher, developer and platform filled, while the
+name and icon stayed and no image was stored. With the sent log deleted, a fresh process
+backfilled both: Flowerz (whose hub row had been deleted) was sent again, and AlphaJax took one GET.
+Tests: `HubTitleDetailsTests` (11) and the hub's `TitleDetailsTest` (9). Not run on Android: the
+code is shared and the head only passes the backfill delegate.
+
+No `ApplicationPatcher.Version` bump and no reinstall: existing installs are backfilled on the next
+launch.
+
 ### Every game is attempted; what it carries on past reaches WPR Hub (2026-10-14)
 
 Two halves, one policy (the "run unknown games until they fail" rule): WPR refuses a game up front
@@ -1577,6 +1870,68 @@ crash reports only; a compat or install report for the same title must not swall
 No `ApplicationPatcher.Version` bump and no reinstall, except that a WP8 managed title installed as
 native needs a reinstall to move to `SilverlightGame`.
 
+### A game Android killed on purpose is not a native crash (2026-10-23)
+
+Reported as "false NativeCrash reports for lots of games". The case studied, WPR-44SQYC8G (Angry
+Birds Space, S24, `recovered=next-start`), was **not** a live game judged dead, though it looked
+like one: the board reads that seemed to prove Space still running came from a *second* Space run
+(pid 3409, 16:24:18). The phone's own records settle it:
+
+```
+am_kill : [0,1476,com.wpr.android:game,0,stop com.wpr.android due to installPackageLI]   # logcat -b events
+pid=1476 process=com.wpr.android:game reason=16 (PACKAGE UPDATED)                        # dumpsys activity exit-info
+```
+
+**An APK install kills every WPR process, a running `:game` included**, and so does a force stop
+(Settings, or `am force-stop`, which the GPU matrix recipe runs before each launch). The run file
+is left behind, the next launcher's flush finds its pid gone (correctly), and files a NativeCrash.
+On a phone that sessions install onto many times a day that is most of the NativeCrash group.
+`/proc/<pid>` was never wrong here: `/proc` is `hidepid=invisible`, and the launcher and `:game`
+share a uid.
+
+- **`CompatibilityProblems.ProcessExitLookup`** asks the platform why a pid ended. Android answers
+  from `ActivityManager.getHistoricalProcessExitReasons` (API 30+,
+  `Online/AndroidProcessExits.cs`), wired in `AndroidPlatform`. PACKAGE_UPDATED,
+  PACKAGE_STATE_CHANGE, USER_REQUESTED, USER_STOPPED and PERMISSION_CHANGE are not crashes: the
+  run's per-problem reports are still queued, the NativeCrash is not (`[wpr-compat] … was ended by
+  the system (package-updated)` in the launcher log). Every other reason, low memory included, is
+  still a NativeCrash and now carries `extra.exit_reason` / `exit_description`. No record (desktop,
+  API < 30, a failing lookup) keeps the old behaviour. `GameLauncher`'s no-run-file fallback asks
+  about the newest `:game` death since the launch (pid 0).
+- **A normal end is `reason=2 (SIGNALED) status=9`** (GameActivity's own `KillProcess`), after the
+  file is already gone, so it never reaches this. A SIGNALED record with a run file left is a kill
+  WPR did not ask for and stays a crash (`exit_reason=signaled-9`).
+- **The run also holds a lock**, `compat-run.txt.lock` (`FileShare.None`, `flock` on Unix), from
+  `Begin` until `DiscardRunFile`. It only ever adds "alive": a held lock keeps the file even from
+  the launcher's `force: true` take (which could otherwise take a *different* game's live file),
+  and from the End→Discard window. When free, the pid check decides exactly as before, so a file
+  system whose `flock` does nothing cannot make a live run look dead. `HandleGameResult` waits up
+  to 1.5 s for the exiting process's lock (`ExitedGameLockWait`).
+
+**Diagnosing one of these**: `adb shell dumpsys activity exit-info com.wpr.android` lists the last
+16 deaths with reason and description, and `adb logcat -d -b events | grep am_kill` gives the
+kills. Both are read-only and safe on the user's phone. **Measure the blast radius on the hub**
+with `extra->recovered = 'next-start'` on `exception_type = 'NativeCrash'`, split by day against
+the dates builds were installed; after this, a NativeCrash without `exit_reason` comes from a
+client before this change or a phone below Android 11.
+
+**Seen in the same log, not changed here.** Every flush got `Too many requests`: the hub's
+anonymous diagnostics limit is 10 a minute and 200 a day **per IP**
+(`WPR_DIAGNOSTICS_PER_MINUTE`/`_PER_DAY`), while one run alone can queue a crash plus 10
+per-problem reports, and a player trying games all evening passes 200. The client already stops at
+the first 429 and keeps the queue in order; the limit is what is too tight (and carrier NAT puts
+many players behind one IP). Raising it, or keying signed-in senders by account, is a hub change.
+The AE Fruit Slash named-mutex failure in the same log is fixed on `claude/ae-fruit-slash-3ed415`
+(c0e59e89).
+
+Verified on `Pixel_Dev` (API 36, Release APK, hub pointed at a dead address), Cut the Rope running:
+launcher killed and restarted → file and lock kept, nothing queued (toybox `flock` on the lock from
+`adb shell` says HELD, on both `/storage/emulated` and `/data/media`, so the lock is real across
+processes there); `adb install -r` mid-game → the line above, no report; `kill -SEGV` on `:game` →
+NativeCrash queued with `exit_reason=crash-native`. Not run on the S24 (only its logs were read).
+Tests: `CompatibilityProblemsTests` (exit reasons, lock held / let go during the wait / held past
+it, lock-less files by pid). No `ApplicationPatcher.Version` bump and no reinstall.
+
 ### A failing game shows its error on the screen (2026-10-16)
 
 Two failures used to leave the player with nothing: a **WP8 guest that stopped** (fault, wild
@@ -1636,11 +1991,11 @@ exists in the library**; every package is a `.xap`, and every one carries a `Run
 | WP7 mixed-mode (`SharedGraphicsDeviceManager`) | 13 | Silverlight | `SilverlightGame` | yes - Carcassonne menu |
 | WP7 Silverlight | 10 | Silverlight | `SilverlightGame` | yes - Flowerz menu |
 | WP8 Silverlight, managed | 2 | Silverlight | `SilverlightGame` | yes - Wordament page |
-| WP8 managed + native helper libs (SharpDX, Lumia.Imaging) | 5 | Silverlight | `SilverlightGame` | runs; Microsoft Minesweeper WP8 still draws nothing (SharpDX) |
+| WP8 managed + native helper libs (SharpDX, Lumia.Imaging) | 5 | Silverlight | `SilverlightGame` | runs; SharpDX titles draw through `WPR.Engine.HostDirect3D` (Gravity Guy 2 plays); Microsoft Minesweeper stops in its `App` before SharpDX |
 | WP8 Unity (managed shell + `UnityPlayer.dll`) | 32 | Silverlight | `SilverlightGame` (UnityPlayer stubbed) | runs, draws black: the engine is native and not hosted. A `wpr-port.json` port is the only route |
 | WP8 native exe (`Modern Native`) | 14 | ModernNative | `Wp8NativeGame` (exe) | yes - Angry Birds Rio menu |
 | WP8 Direct3D/XAML, background grid | 32 | ModernNative | `Wp8NativeGame` + `XamlInterop` | all reach Connect; 3 hand-written (Alex, MC4, AC Pirates) play; the others run on an inferred page (below) |
-| WP8 Direct3D/XAML, `DrawingSurface` | 6 | ModernNative | same, `DrawingSurface` path | reach GetTexture and draw frames (Fruit Ninja 8, Jetpack Joyride 5), then stop on a guest thread |
+| WP8 Direct3D/XAML, `DrawingSurface` | 6 | ModernNative | same, `DrawingSurface` path | reach GetTexture and draw frames; Fruit Ninja and Jetpack Joyride (Mandreel) reach their menus since 2026-10-21 (see "Guest thread N exited...") |
 | DRM-wrapped (`PRE\x07`) | 2 | refused `NotDecrypted` | - | BBB: App-ocalypse, Sonic Dash |
 
 GameMaker WP8 exports (Briquid Mini, Lines The Game) are Direct3D/XAML (`WinPhoneRunnerAppComponent`);
@@ -1683,6 +2038,19 @@ shell's IL with System.Reflection.Metadata (nothing is loaded) and builds a `Xam
   by parameter or event name (language en-US, region US, firmware 8.0.10521.0, NOKIA, RM-821);
   an orientation by the page XAML's `SupportedOrientations` (read from `.g.resources`); a full-version
   flag true; a component interface gets a default-answering host object.
+- **Only the start page** (WMAppManifest's `DefaultTask NavigationPage`) is read when a page of
+  that name exists; another page's handlers run only if the app goes there (2026-10-22). Ice Age
+  Village's Gameloft Live page put its Loaded calls (`SetWebPageTransition`, Facebook's
+  `CancelLastRequest`) into the description; GTA: San Andreas' description lost the second copy of
+  every step (not run: excluded from WP8 regression work).
+- **A `DispatcherTimer.Tick` handler** the app or start page subscribes is followed, its calls run
+  after Loaded. Ice Age Village (`f9d4703c-…`) shows its logo for two seconds and only then calls
+  `InitGame` and builds the surface. Without it the game's sound singleton was null, and the first
+  map lookup walked a tree at `NULL + 0xF8`: **the zero page is mapped here, so a null object reads
+  as zeros instead of faulting, and an all-zero `std::map` walks for ever** (`_stricmp(NULL, …)`
+  millions of times a second, frame 0, no error). It now reaches `Connect`, and stops on a later
+  defect (below). Measured with the inferred descriptions of all 28 installed components, old vs new:
+  only those two titles changed.
 - **Back key**: the boolean whose answer goes to `e.Cancel` (closes on false), else the first boolean
   asked (closes on true), else a void call named for Back (keeps every press).
 
@@ -1714,6 +2082,16 @@ as native; it now activates, runs its page and connects. Not run on Android (the
 
 No `ApplicationPatcher.Version` bump: no patcher table changed. Reinstall to pick up the
 classification and title fixes; the inference and DrawingSurface host apply on next launch.
+
+**Ice Age Village, still open (2026-10-22):** after `Connect` a ConcRT worker calls
+`CreateVertexShader` with a null, zero-length bytecode and then Releases a null buffer (null call
+from `0x1001D23F`). The shader file was found and opened (`GetFileAsync`, `OpenReadAsync`), but
+the continuation that reads it (QI `IInputStream`/`IRandomAccessStream`, `DataReader`, `get_Size`,
+`LoadAsync`, function `0x1001CFC8`) was only scheduled (`_Schedule`) and had not run when the same
+worker went on to create the shader. Also: `CreateVertexShader` with no bytecode answers S_OK here
+(D3D11 says E_INVALIDARG), and the description calls `SetLaunchFromNotification(True, 0)` and
+`SetLaunchFromRemote(True, 0)`, which the real page calls only with a launch query string (the
+inference keeps the first of a method's calls, whatever branch it is in).
 
 ### A WP8 thread waiting on itself is a Sleep (2026-10-16)
 
@@ -1768,6 +2146,90 @@ and light; dump the atlas and look between the sprites.
 Desktop D1/D2/D4 (+ `WPR_FORCE_NO_DXT=1`): tutorial → Build → Eagleroost Offices → placement
 (confirm/cancel shown), no seams. WP8 regression set (11 titles, Terraria/Halo/GTA excluded): same
 outcomes, frame counts within run-to-run noise. Not run on a phone or the emulator.
+
+### "Guest thread N exited and no thread is runnable" (2026-10-21)
+
+The top WPR Hub crash group of 0.2.06 (Fruit Ninja 2013, Jetpack Joyride, Halo: Spartan Assault, all
+on Android). It had two separate causes behind one message. Neither was a lost wake-up in a sync
+primitive: `SetEvent`, the waits, `_Cnd_*` and ConcRT were all correct.
+
+**A timed wait is not a deadlock** (`GuestThreads.cs`, Halo). FMOD sleeps with
+`WaitForSingleObjectEx(event, 2 ms)` on an event nobody sets (0x0E000007 in Halo, from FMOD code at
+0x1005EE61, about 130 times in two minutes on the main thread; its pool threads 8 and 45 park on it
+too). `OnThreadExit` asked `PickNext` once. A worker that ended inside those 2 ms found nothing
+runnable *at that instant* and stopped the run, although the main thread would be runnable a
+millisecond later. Android's slower clock widens the window, which is why every report came from
+there. Now:
+
+- `BlockCurrentThread(..., timeout:)` records when a timed wait runs out (`GuestThread.WakeAt`).
+  The four timed waits pass it: `WaitFor*Object(s)Ex`, `SleepConditionVariable*`, `_Cnd_timedwait`
+  and `_Mtx_timedlock`.
+- A thread that ends with nothing runnable waits, in real time, for the earliest of those deadlines
+  (`NextAfterExit`; `EndCurrentGuestThread` too). If deferred work is queued, it runs it on the
+  ending thread first, as a wait with nothing to switch to already did. A deadline that passed
+  100 ms ago while its thread still cannot run (a condition wait that cannot retake its lock) is
+  dropped, not waited on for ever.
+- Untimed waits only, and nothing queued, is still reported as a deadlock with the same message.
+- `BlockCurrentThread`'s own "nothing else can run" path is unchanged: that thread still times out
+  or carries on at once.
+
+The tell is in the `threads:` lines: the main thread `blocked on event X`, with X also named by
+threads that are idle in a healthy run. Confirm with a one-off `Console.Error` line in `WaitAnyBlocking`
+printing the main thread's handle and timeout: a small finite timeout means it was this.
+`TimedWaitsWaitedOut` counts the rescues.
+
+**Mandreel's managed message thread** (`MandreelMessages.cs`, Fruit Ninja 2013 and Jetpack Joyride,
+both `__MandreelWP8Direct3DInterop`). The page's Loaded handler starts
+`new Thread(alpha.Beta).Start()` just before `CreateContentProvider`. `Beta` loops on the component's
+`wait_event(out size)`, reads the message (`get_message_event_data`/`2`) and answers questions with
+`set_message_event_data`. The native side posts with `SetEvent(request)` and blocks in
+`WaitForSingleObjectEx(reply, INFINITE)`. The inferred page never ran that thread, so the first
+message deadlocked. While no other thread existed the wait timed out (the "nothing else can run"
+path), which is why two messages appeared to work. Then a ConcRT worker drained its queue and
+exited. Now the inference sets `XamlShell.MandreelMessages` when the class has the five members, and
+the host starts a guest thread (`Mandreel messages`) that plays `Beta`:
+
+| message | page | host |
+| --- | --- | --- |
+| 1, command (`ProcessMessage`) | UI work through the dispatcher | `reset_NavigatedTo` clears the flag; `PromptExit` is the quit dialog's OK, so the app closes (`BackPressDelivered(false)`); `save_picture`, `purchaseGame`, `PromptUpdate` and `open_*` links are logged and dropped |
+| 2, `dispatch_async` | `dispatch_async_uithread(idx)` on the UI thread | the same call, queued as a follow-up step for the main thread's next frame |
+| 3, question (`ProcessMessage2`) | a string answer | `get_language` en, `get_music_state` 0, `get_deviceId` a fixed Base64 id, `check_NavigatedTo` 1 until reset (again after a return from the background), `check_promptExit` 0, `licenseStatus` 1, `check_LicensePurchaseResult` 2, anything else `error` (the page's default) |
+
+The thread has its own out-parameter scratch: the host's `_scratch` belongs to the main thread,
+which may be mid-call. Log: `[xaml] mandreel: message 3 "get_language" -> "en"` (first three of each).
+
+Contract tests: `Suites/ThreadExitSuite.cs` covers a timed wait outlived, a signalled one resumed at
+once, a real deadlock still reported, and the Mandreel flag on every installed Mandreel title (2306/2306).
+
+Verified on the desktop, D3D11, scratch `WPR_DATA_ROOT`:
+
+- **Jetpack Joyride**: was 5 frames; now its menu ("touch anywhere to play"), then a run with the
+  distance counter climbing, at 60 fps for 40 s. The run's world art does not draw; that is a
+  separate problem.
+- **Fruit Ninja 2013**: was 8 frames; now its main menu at 60 fps.
+- **Halo**: menu → START → operation → mission → two thumbs → play ("Survive the Covenant
+  invasion"), 16,682 frames.
+
+The desktop never reproduced Halo's stop: the window is too narrow there.
+
+| cell | Fruit Ninja 2013 | Jetpack Joyride | Halo |
+| --- | --- | --- | --- |
+| D1 D3D11 | ✅ menu, 60 fps | ✅ menu → run (world art missing) | ✅ mission played |
+| D2 Vulkan | ✅ menu | ✅ menu → run (world art missing) | not run |
+| D3 OpenGL | ✅ menu | ✅ menu → run, world drawn | not run |
+| D4 GLES 3.0 + no DXT | ✅ menu (washed out, as D4 always is) | ✅ menu → run, world drawn | not run |
+| A1/A2, P1–P3 | not run (no device or emulator attached) | | |
+
+WP8 regression set (12 titles, Terraria/Halo/GTA excluded), HEAD vs this change, 30 s each: the
+same outcome for every title. Ice Age Village is 0 frames on both. Frame counts first differed by
+10–20%, with the change run first while other builds were going; re-run alone they matched (Classic
+1580/1563, Seasons 1496/1498, Stella 1567/1567).
+
+**Open**:
+- On a 1280x768 desktop window, both Mandreel titles draw into a 480-wide strip at the left.
+- Jetpack's world art draws only on OpenGL.
+- The Mandreel thread is a host stand-in for code in the game's own package (the managed page).
+  The rule is to run shipped libraries as shipped; it is kept by decision until that page can run.
 
 ### Update checks and the About page's "what's new" (2026-09-29, Android)
 
@@ -2131,6 +2593,23 @@ build here, so the `.so` and the `.c` are kept in step by hand:
   touch, which never goes through the swapchain, stays correct**. Desktop surfaces report
   `IDENTITY`, so this changes nothing there. The cost is a compositor rotation pass on some mobile
   GPUs; correctness first.
+- **…and so `VK_SUBOPTIMAL_KHR` from that mismatch is ignored (2026-10-23).** Android answers EVERY
+  present on such a swapchain with `VK_SUBOPTIMAL_KHR`, and FNA3D rebuilt the swapchain on it, so
+  every landscape game rebuilt its swapchain on every frame (the log showed one "Opaque
+  presentation unsupported!" per frame; that warning is printed by each swapchain build). On the
+  `WPR_Verify` emulator's gfxstream Vulkan this froze the whole VM about a second after the first
+  frame (qemu at 0% CPU, adb offline; PvZ and Galactic Reign; portrait Montezuma was fine). On a
+  phone it was a hidden per-frame cost. `VulkanSwapchainData` now records the surface's
+  `currentTransform` and `currentExtent` when the swapchain is built, and a suboptimal present is
+  ignored while both are unchanged; a real rotation or resize still rebuilds, and so does a lost
+  surface. Log: `Vulkan: present is suboptimal only because the swapchain is not pre-rotated
+  (surface transform 0x2); keeping it` once per swapchain, and `Vulkan: recreating the swapchain
+  (acquire …, present …)` for every rebuild from the present path. `libFNA3D.so` rebuilt for all
+  three ABIs (the unmodified source rebuilds to identical code, only debug paths differ; swizzle
+  check passes). The Windows `FNA3D.dll` was not rebuilt and needs no change: desktop surfaces
+  report `IDENTITY`. Verified on `WPR_Verify` (A2): PvZ menu → level 1-1 → planted, home and back
+  (one rebuild for the lost surface, then kept), Galactic Reign and Montezuma. Not run on the S24
+  or a Mali device.
 
 **Things that did not change with the switch:**
 
@@ -3243,6 +3722,31 @@ fragment/query delimiters, and these titles' texture names contain spaces (`MILL
 
 No `ApplicationPatcher.Version` bump and no reinstall — games pick it up on next launch.
 
+### `TitleContainer.OpenStream` throws `FileNotFoundException` for a missing folder too (2026-10-23)
+
+WP7's title storage threw `FileNotFoundException` for every name it did not have. .NET throws
+`DirectoryNotFoundException` when a folder on the way is missing, and that is **not** a
+`FileNotFoundException`, so a game's `catch (FileNotFoundException)` misses it.
+`TitleContainer.OpenStream` now rethrows it as `FileNotFoundException` and keeps the original as
+the inner exception.
+
+**SPY Mouse** (`73E75EEE-…`, EA/Firemint) is the reference case. Its `ManagerFiles.open`
+probes `res/<name>`, then its alt dir `res_960x640/<name>`, and catches only
+`FileNotFoundException`. On every level start, `SceneGame.playAmbientScheme` asks for
+`sound/sound/amb/<scheme>/amb.xml.brd`, and **the package has no `res/sound` at all**. The loop
+`.xnb`s ship under `Content/sound/sound/amb/`, but no descriptor does, so the ambience never
+played on WP7 either. The escape skipped `loadAssets()` for every object on the floor, then
+`Draw` threw `ArgumentOutOfRangeException` on every frame. Play gave an empty screen. The hub
+saw only the one `Game.Update` throw.
+
+**The tell:** a hub `compat` group of `DirectoryNotFoundException` out of
+`TitleContainer.OpenStream`. Tests: `TitleContainerTests`.
+
+SPY Mouse reads input only from `Mouse.GetState()`, never `TouchPanel`, so the harness's `tap`
+does nothing in it. A local `mtap`/`mswipe` verb (a `DispatchProxy` over `XnaBackend.Input`) drove
+it to gameplay on D1. After the release it must keep reporting the injected position: if it
+falls back to the real cursor, the GUI cancels the press.
+
 ### The patcher rescopes typerefs, and blobs are not typerefs (patcher v22, 2026-09-05)
 
 A `typeof(...)` argument inside a **custom attribute** is stored in the attribute blob as an
@@ -3951,6 +4455,147 @@ does not misfire on a real effect.
 Shim behaviour in `WPR.Framework.Xna`, so no patcher bump and no reinstall for this half — but the
 game needs the v33 repatch above before it gets far enough to matter.
 
+### A signed-in gamer gets a token-shaped partner token (2026-10-21)
+
+`Gamer.GetPartnerToken` returned `""` while `SignedInGamer.IsSignedInToLive` answers true. A
+signed-in WP7 device always got a SAML `EncryptedAssertion` holding one xmlenc `EncryptedData`, and
+the WP7 Xbox LIVE sample's extractor, copied verbatim by titles, does
+`XDocument.Parse("<root>" + token + "</root>")` and `.Single()` of the `EncryptedData` descendant.
+**Contract Killer** (`3a9b71b7-…`, Glu, `XNAConnect.GetToken`) has no guard. Its Xbox login runs
+from `Update` once its dead server times out (~35 s, still on the title screen). It is a
+variable-timestep game, so the `InvalidOperationException` ended the run (hub report
+`update-threw … ThrowNoElementsException`). Glu added `if (partnerToken.Length == 0) return "";` in
+the later Gun Bros. Battleship and DracoWP catch it.
+
+`Gamer.PlaceholderPartnerToken` is now that shape with placeholder cipher data, from both
+`GetPartnerToken` and `EndGetPartnerToken`. Callers extract it, send it to the dead service and
+take their own request-failed path. `PartnerTokenTests` runs the sample extractor over it.
+Verified D1–D4 (harness): no throw, title → tips → first mission. The briefing's OK button never
+took a harness tap; Back advances it. Most likely the harness's synthetic finger staying `Released`
+in `GetState()` every later frame (unproven, and unrelated to the token). Not run on Android (no device attached).
+
+### AE Fruit Slash plays: what a WP7 library learns about its own package, touch ids, named mutexes (patcher v58, 2026-10-23)
+
+AE Fruit Slash (`0456cf7d-1802-4e07-8120-304a06cbdbf1`, AE Mobile's `AEMobile.WP7.GameFramework.XNA`
+plus Microsoft's ad SDK and Scoreloop) started after v44 but did not really work: nothing saved,
+Back reopened the screen it had just closed, and the round froze on the second slash. Five platform
+fixes, none touching the game's DLLs:
+
+| fix | without it |
+| --- | --- |
+| `Module.get_Name` call sites go to `WPR.WindowsCompability.ReflectionModules.GetName` (patcher v57, `RedirectModuleNameCalls`): a stream-loaded module is `"<Unknown>"` to .NET, so it answers `ScopeName`, the file name | AEMobile reads its version from the assembly whose `ManifestModule.Name` is `EntryPointAssembly + ".dll"`; with no match the version was null, `StateManager.CheckDirectory` threw on `Path.Combine(.., null)`, and no setting, score or launch count was ever saved |
+| `Assembly.Load(string)` goes to `Assembly2.Load` (a `MemberPatches` entry), which hands back an assembly already loaded in any context (Type2's lookup, `Type2.FindLoaded`) before asking the runtime | a library in the Default context cannot bind into the game's collectible one (`FileLoadException 0x80131515`): the ad SDK's `AdManager..cctor` does `Assembly.Load(Deployment.Current.EntryPointAssembly)` |
+| `Deployment.Current` is read from the install's `AppManifest.xaml` at launch (`Deployment.LoadForLaunch`, reset at teardown): EntryPointAssembly, EntryPointType, RuntimeVersion, Parts | it was always empty, for XNA titles too |
+| the synthetic finger's slot gets `NO_FINGER` on every idle tick (`SyntheticTouchInputBackend`) | after a tap the slot reported `Released` in `GetState()` **for ever**. AE's buttons fire on a Released touch inside them, so the menu pressed the gear again the moment Back closed Settings. This is the "harness tap stays Released" seen on Cut the Rope and Contract Killer: it was the injector, so keyboard touch bindings and the mouse wheel had it too |
+| `TouchPanel.SetFinger` assigns XNA ids itself: a new id for every new touch (`NewTouchId`), kept while it is down, followed when the SDL drain shifts a held finger to a lower slot (no longer reported as released there); a press in a slot that was Released last frame is `Pressed`, not `Moved` | the sources reuse ids: the mouse (`int.MaxValue`) and the synthetic finger are constants, Android pointer ids restart at 0. AE keys blade trails by id and forgets a released id in only two of its three dictionaries, so the second slash threw `ArgumentException`/`KeyNotFoundException` from every Update and the round froze, on any head and any input |
+
+Two more were Android-only:
+
+| fix | without it |
+| --- | --- |
+| named `Mutex` constructors and `Mutex.OpenExisting` go to `WPR.WindowsCompability.NamedMutex` (patcher v58, `RedirectNamedMutexCalls`): the OS mutex where there is one, else **one process-local mutex per name**, which every `Mutex` of that name waits on through a non-owning handle | **no named mutex can be created on Android.** CoreCLR keeps named objects under `TMPDIR`, the Android host leaves it unset, and the runtime fixes the directory at start-up to `/data/local/tmp`: `IOException ... mkdtemp("/data/local/tmp/.dotnet.XXXXXX") == nullptr; errno == EACCES`. Managed code cannot move it (it is chosen before managed code runs, and `AndroidEnvironment` values do not reach native `getenv`). AE died in `AEGame..ctor`; its save path takes another. Log: `[wpr-mutex] named mutexes are process-local in this process` |
+| FNA3D Vulkan's `VULKAN_INTERNAL_AllocateDescriptorSets` returns 0 with one warning for `VK_ERROR_OUT_OF_POOL_MEMORY` / `VK_ERROR_FRAGMENTED_POOL` instead of `FNA3D_LogError` (`libFNA3D.so` rebuilt, all three ABIs; `FNA3D.dll` not) | AE makes a **new `BasicEffect` for every particle and blade-trail draw** (`~Effect` gives them back; live stays ~60). Every shader keeps one uniform descriptor set for life, two per effect, so the 1,024-set uniform pool filled after ~512 effects, about 40 s of hard one-finger slashing on the S24. The driver already had a grow-the-pool path, but the failed first attempt went to `FNA3D_LogError`, **whose managed hook throws**, so the process aborted (`vkAllocateDescriptorSets VK_ERROR_OUT_OF_POOL_MEMORY`, unhandled, SIGABRT) before the recovery ran. The sampler-pool halving had the same flaw. Desktop drivers here do not enforce maxSets, so D2 never showed it. `[wpr-effects] created=N live=N` (Trace) every 128 effects tells this from a leak: a flat live count with a pool failure is this |
+
+**The tell for the id class**: an exception naming a touch id (`2147483646` is the synthetic finger,
+`2147483647` the mouse) from a game's input code, on the second gesture and never the first.
+The source ids still reach `GestureDetector` (`INTERNAL_onTouchEvent`) unchanged; only `TouchLocation.Id` changed.
+
+**The harness `peek` verb** (local `scratchpad/gamerun/Script.cs`) reads a static member path:
+`peek AEMobile.WP7.GameFramework.XNA.ScreenManager Current.sequeceScreens` lists AE's screen stack
+(an element list prints each element's type). That is what showed Settings being closed by Back and
+re-added the next frame.
+
+What remains, all the game's own network or a launcher with nothing behind it: every AE, ad and
+Scoreloop host is dead (`lemur/ant/monkey.ae-mobile.com`, `mobileads.msn.com`), so the round-end
+"Guess you like" panel spins until its X is tapped, and the ad SDK's `AdComponentCommon.Update`
+throws "Collection was modified" when a failed ad request removes the ad mid-enumeration (WPR's
+component loop survives it). Rate Us works once per launch: the game waits for the
+Deactivated/Activated a Marketplace launch caused, and `MarketplaceReviewTask.Show()` is a no-op.
+`Launching`/`Activated` NRE in the pre-Run priming pass (the game's `GameService` is created in
+`Initialize`); the post-first-tick pass succeeds. There is no leaderboard or achievement UI.
+
+Verified (desktop harness, scratch data root): menu, Help, Settings (sound/music off and on, kept
+across a relaunch), Rate prompt on the fifth launch, slash to start, fruit cut and score rising,
+BEST kept across a relaunch, bombs, pause and resume (button and Back), Back in play to pause, game
+over, Back to the menu, Back on the menu to the Quit dialog.
+
+| cell | result |
+| --- | --- |
+| D1 D3D11 | ✅ menu → play → pause → resume → game over → menu |
+| D2 Vulkan | ✅ same; heavy slashing (~30 effects/s) keeps ~60 native effects live |
+| D3 OpenGL | ✅ same (loads ~8 s slower) |
+| D4 GLES 3.0 + no DXT | ✅ same |
+| A1 emulator GLES 3.1 | ✅ menu, pause/resume, play, game over, Back to menu ↔ Quit |
+| A2 emulator Vulkan | ✅ same |
+| P1 S24 Vulkan | ✅ user-tested after the driver fix: over 4,000 effects created in one session (live 60-116), no crash. Before it: aborted on the second long slash |
+| P2 S24 GLES 3.2 | not run (phone reserved) |
+| P3 Mali | unverified, no device |
+
+A held Back is Android's force-quit (`GameActivity.OnKeyLongPress`). On the GLES emulator an injected
+`input keyevent KEYCODE_BACK` can arrive as a long press and close the game, which looks like a
+crash in a scripted run and is not one.
+
+Regression of the touch change, base `0bfacad2` vs this branch, same scripts (D1): Angry Birds,
+Cut the Rope, Fruit Ninja (sliced into a game, score rising on both), Carcassonne, Flowerz,
+Minesweeper (panorama swipe) reach the same screens. Unit tests: `SyntheticTouchTests` (a tap is
+Released for one frame, a press after a release is Pressed with a new id, a shifted finger keeps
+its id) and `ReflectionAndDeploymentTests`.
+
+**Patcher table changes (v57, v58)**: `--repatch-installed` on the desktop, automatic on Android.
+Not identity-binding. The touch and Deployment changes are shim behaviour and need no repatch;
+the driver fix is a native binary, so Android needs the APK repackaged.
+
+### iRunner plays: the store API, settings that hold a game's class, a game-thread context (patcher v59, 2026-10-23)
+
+iRunner (`525de61b-…`, Droidhen, cocos2d-xna) bundles Umeng analytics, OpenXLive, Microsoft's ad
+SDK and a `StoreWrapper.dll` compiled against Windows.winmd. The library's first copy was
+PlayReady-wrapped (`NotDecrypted`); a decrypted XAP replaced it. Seven platform fixes, none in
+the game's DLLs:
+
+| fix | without it |
+| --- | --- |
+| `Windows.ApplicationModel.Store` in `WPR.Framework.WinRT` (`CurrentApp`, `LicenseInformation`, `ListingInformation`, `ProductLicense`, `ProductListing`, `ProductType`), answering as the WP8 native runtime does: a purchased copy, a store with nothing for sale; purchases and receipts fail with `0x803F6107` | `LoadListingInformationAsync` was missing, `applicationDidFinishLaunching` aborted, nothing drew |
+| `IsolatedStorageSettings2` reads with `LoadedTypeContractResolver`, which finds a data contract's type in any loaded assembly (game contexts first) | `Save()` wrote game classes with known types and the read had none: every setting holding one (iRunner's whole save, `Classes.Model.AppSetting`) was dropped on each launch |
+| the game thread of a managed title has a `SynchronizationContext` (`WPR.Xna.Rhi.GameThreadSynchronizationContext`, posts through `WprGameThread`), installed and restored by `ApplicationLaunch` | OpenXLive's `NavigationService.Initialize` throws "Invalid cross-thread access" without one; its pages never opened |
+| `Deployment.Parts` is Silverlight's `AssemblyPartCollection` of `AssemblyPart` (`string Source`) | it was `DeploymentPartCollection`, a name no game binds; OpenXLive's `ManifestParser` died on the `TypeLoadException` |
+| `GameComponent.Dispose()` returns when re-entered on the same component | the ad SDK's `AdComponentCommon.Dispose` calls `Dispose()` on the component disposing it; `Game.Dispose` at teardown overflowed the stack and took **the whole desktop launcher** down. On the phone the shell ended the process without disposing |
+| Back is hidden from the second and later fixed-timestep Updates of a tick (`WprPhoneBackButton.HiddenFromCatchUpUpdates`; Draw still sees it) | Back is polled once per tick, so a catch-up tick read one press as several: OpenXLive closed its page and the game then quit |
+| `GameLifecycleQuirks.SingleColdStartProducts`: no pre-Run priming and no boot `Activated`, i.e. one `Launching` after the first tick | Umeng's `onLaunching` (on Launching and Activated) ran four times; its session thread copied a session the next call was rebuilding, and `string.Copy(null)` killed the process in about one cold start in four |
+
+**The context changes what every managed XNA title sees** (`SynchronizationContext.Current` was
+null on its game thread). WPR code that blocks the game thread on a task must keep `await`s inside
+it off this context (`ConfigureAwait(false)` or `Task.Run`), the trap the Silverlight host already
+has. Audited when it went in: GamerServices, `LeaderboardReader`, the hub client, `PlaytimeTracker`
+and the online store are clean. The WP8 native runtime gets no context (its Xbox Live host waits on
+hub tasks from the guest thread).
+
+Left alone, all the game's own: Umeng parses an invariant-format date with the current culture
+(`FormatException`, caught, on any non-US locale); OpenXLive's Score button and Umeng/ad requests
+go to dead servers.
+
+GPU matrix (menu → Adventure → boosts → run with Jump/Slide → death → Mission Fail → Back →
+achievements → Back → Quit → Exit):
+
+| cell | result |
+| --- | --- |
+| D1 D3D11 | ✅ full flow, 5/5 fresh-store runs clean |
+| D2 Vulkan | ✅ |
+| D3 OpenGL | ✅ |
+| D4 GLES 3.0 + no DXT | ✅ (washed out, as D4 always is) |
+| A1 emulator GLES 3.1 | ✅ full flow; settings survive a relaunch |
+| A2 emulator Vulkan | ✅ |
+| P1/P2 S24 | not run (the phone is not for test installs) |
+| P3 Mali | unverified, no device |
+
+Regression (D1, 30 s, tap and Back): Angry Birds, Cut the Rope, Doodle God, Chickens Can't Fly,
+Battlewagon, Feed Me Oil, Carcassonne, Flowerz, AE Fruit Slash run, with only their known errors.
+Battlewagon exited 127 once in 12 runs, at teardown after its own Back-quit; not reproduced in 11
+more (6 later, 3 first-run) or in 7 baseline runs. Tests: `SettingsContractResolverTests`,
+`GameThreadContextTests`, `GameComponentDisposeTests`.
+
+**Patcher table change (v59)**: the store types and `AssemblyPart` rescope by name. Not
+identity-binding: `--repatch-installed` on the desktop, automatic on Android.
+
 ### An empty gamertag is not the same as no gamertag (2026-09-19)
 
 `Gamer`'s ctor read `Configuration.Current.GamerTag ?? "HarryDirk"`. The **Android head writes
@@ -4588,6 +5233,34 @@ It also mapped XNA assembly names to `FNA`, which defines no XNA type since the 
 `WPR.Framework.Xna`, others by simple name in the caller's ALC, then every ALC, then the Default
 binder (which maps WP7's `mscorlib, Version=2.0.5.0`). `Type2Tests` covers the shapes. Eight
 installed titles call it; all that the harness can run still start. Shim behaviour, no patcher bump.
+
+### Content type names reach the assembly the installer renamed (2026-10-23)
+
+The patcher renames a game assembly with punctuation in its name
+(`AssemblyNameStandardization`: `*'",_&#^@!` become `_`), so Zuma's Revenge's `Zuma's Revenge!`
+is installed as `Zuma_s Revenge_`. Its content is not rewritten: `Content/levels/levels.xnb` still
+names `ZumasRevenge.LevelsXmlReader, Zuma's Revenge!`. The runtime's type-name parser rejects that
+name before any resolver is asked (an apostrophe opens a quoted token: "The given assembly name was
+invalid"), so `ContentTypeReaderManager.LoadAssetReaders` threw twice per load. The game never
+noticed, because the comma-split fallback applies the same regex and found the reader, but each
+throw is first-chance and reached WPR Hub as a `missing-assembly` compat group (0.2.06, Windows and
+Android). `WPR.Xna.Compat.InstalledAssemblyNames.StandardiseTypeName` now rewrites only the simple
+name of every assembly in the string (outer and generic arguments) before parsing; `Type2.GetType`
+does the same for names a game passes in code. **Keep its character set in step with
+`AssemblyNameStandardization`** (`WPR.Loader` is above `WPR.Framework.Xna`, so it is a copy).
+
+The same loader also stopped trying a plain `Type.GetType(name)` first. For any reader in the
+game's own assembly that call throws `FileLoadException` ("Operation is not supported": the Default
+context refusing the collectible game assembly), first-chance again, before the resolver overload
+finds it. The resolver overload now goes first, scanning loaded assemblies by simple name and
+letting the Default binder load anything not yet loaded (the `mscorlib` facade).
+
+Measured, desktop D3D11 harness, 30 s each, 0.2.07 vs this change: Zuma 2 `FileLoadException`s to
+0, **Plants vs. Zombies 221 to 0** (its `Sexy.TodLib.*Reader, LAWN` readers, one throw per load).
+Kinectimals, AE 3D Motor, Pitfall!, Fable: Coin Golf, ilomilo, the XLSContentLibrary title
+`09cc7f9c` and Guitar Hero 5 are identical (same first-chance list, same content errors, no thrown
+frames). The player sees no difference: the same reader type is found. Tests:
+`InstalledAssemblyNamesTests`. No patcher bump.
 
 ### Isolated storage always opens shared (patcher v20)
 
@@ -5291,7 +5964,38 @@ throws, answers as dismissed. Unit tests: `MessageBoxTests`.
 **Every exit must complete the task**, or the game thread waits for ever. That is why Windows does
 not use MessageBox.Avalonia: 2.2.0 predates the head's Avalonia, `GetMessageDialogResult` falls
 into its MissingMethodException fallback window, and that window never completes when closed.
-(The Android `GetMessageDialogResult` used by `Guide` has the same gap for Back; not changed here.)
+
+**XNA's `Guide.BeginShowMessageBox` uses the same presenter, and the package is gone (2026-10-23).**
+WPR Hub group `8bf2d758d13f` (`MissingMethodException: AvaloniaObjectExtensions.Bind(IAvaloniaObject, …)`
+from `MsBoxStandardWindow.!XamlIlPopulate`, 0.2.06/0.2.07, PvZ, Pool Pro Online 3, Doodle Jump,
+Fruit Ninja, Sonic 4, Bejeweled LIVE) was every Guide box on the desktop: the fallback window
+showed hardcoded OK/Yes/No instead of the game's labels, answered Yes as index 1 (the game's
+*second* button), and hung on close. Now:
+
+- `Guide.ShowMessageBoxFunc` answers the index pressed or `Guide.MessageBoxDismissed` (-1), and
+  `EndShowMessageBox` returns **null** for -1 ("null if the user cancelled", XNA's documented
+  answer for Back). It used to return the focus button, i.e. a dismissed "Quit?" could mean Yes.
+  `Guide.ResolveMessageBoxResult` is the mapping; a missing or throwing presenter answers null.
+  `BeginShowMessageBox` brackets the presenter with `SuppressFocusActivation(2 s)`, like Show.
+  Log: `[wpr-guide] "<title>" -> "<label>" (i)` / `dismissed (null)`.
+- Both heads pass the game's own labels and focus button to `ShowGameMessageBoxAsync`
+  (Windows: a 4-argument overload making the focus button the default).
+- The Windows head no longer references **MessageBox.Avalonia**. `MessageBoxUtils` builds every
+  dialog in code on one window (`ShowDialogWindowAsync`): launcher dialogs
+  (`GetMessageDialogResult`, now typed `DialogButtons`/`DialogAnswer`/`DialogIcon`, owned by
+  `MainWindow` when it is visible), the keyboard input box (`GetInputResult`, null on cancel, Guide
+  answers the default text) and game boxes. Do not bring the package back.
+- Android does not reference it either: its `GetMessageDialogResult` (typed on the package's enums,
+  with no callers left) is deleted, `ShowSelectableErrorAsync` is a one-button
+  `ShowGameMessageBoxAsync`, and `GetInputResult` completes on Back / dismiss too. Neither head
+  references MessageBox.Avalonia any more.
+
+Verified: a probe over the real Avalonia 11.3.9 window (each button, Esc, close, owned and unowned,
+from the UI thread and a worker; 16/16), and PvZ's first-run "Screen lock settings" Yes/No box in
+`scratchpad/gamerun` with the real window on its own Avalonia UI thread (`GuideHook.cs`, local:
+`GAMERUN_MSGBOX=<index>|esc|close,...`). The box only appears until PvZ has saved, so clear
+`IsolatedStore/706f822a-…` in the scratch root between runs. Doodle Jump's quit prompt on Back is
+drawn by the game itself, not a Guide box.
 
 **Focus.** The dialog takes focus, and the SDL focus events wait in the queue until the game thread
 pumps again, so `Show` calls `XnaBackend.SuppressFocusActivation(2 s)` before and after: WP7 raised
@@ -5308,6 +6012,146 @@ screen needed `DOTNET_JITMinOpts=1`: the game's loader spin-waits on plain field
 LOADING. That is a separate bug, not fixed here.
 
 Shim and head behaviour only: no `ApplicationPatcher.Version` bump, no reinstall.
+
+### The Silverlight host's thread has a SynchronizationContext (2026-10-22, patcher v54)
+
+`Dispatcher.AttachToCurrentThread` (called by `SilverlightGame`) now also installs a
+`DispatcherSynchronizationContext` (Silverlight's type, posting through the dispatcher queue drained
+once a frame); `Detach` restores the thread's old one. Before, `SynchronizationContext.Current` was
+null on that thread, so everything that returns "to the thread that started it" ran on the thread
+pool: `BackgroundWorker.RunWorkerCompleted` / `ProgressChanged`, and every `await` continuation in a
+WP8 app. **Minesweeper (WP7, `0b00c4a3-…`)** fills its board in a BackgroundWorker and builds the
+page in RunWorkerCompleted; on a pool thread that raced the page's layout and killed the process
+(`NullReferenceException` in `GameplayPage.ap`, unhandled) in most runs that started a game.
+Measured: 3 of 3 runs crashed before, 0 of 3 after, on both the old and the new build.
+
+**The trap: WPR code that blocks the host thread on a task.** An `await` inside it captures this
+context, its continuation is queued for the thread that is blocked, and the game hangs. Checked when
+this went in: the GamerServices sync calls (`GetProfile`, `GetAchievements`, `EndShowMessageBox`…)
+wait on `Task.Run(async …)` work, which runs with no context; `LeaderboardReader` uses
+`ConfigureAwait(false)`; the message box presenters dispatch to their own UI thread. **New
+sync-over-async on the host thread needs `ConfigureAwait(false)` or `Task.Run`.**
+
+The patcher entry (v54) is for apps naming the type; not identity-binding. Regression (desktop
+D3D11, against 2947a8de): the 7-title set and Minesweeper WP7, Pirates!, Big Buck Hunter Pro, Ice
+Age Village unchanged apart from animation phase; Fox News and YouTube unchanged on D1-D4.
+
+### PointAbout Mashup apps: what they need from the platform (2026-10-21, patcher v52)
+
+Hub group "`ResourceDictionary.get_MergedDictionaries()` not found" (0.2.06 Android): Fox News
+Latest Headlines (`3c10c9db-…`, PointAbout's "Mashup" framework) and YouTube (`dcbb1ac6-…`, WP8).
+Fox News was walked past each missing member in turn. Every fix is platform-side; the app's own
+DLLs (Mashup, LazyListBox, the toolkit, ad SDKs) run as shipped.
+
+| member | was | now |
+| --- | --- | --- |
+| `ResourceDictionary.MergedDictionaries` | `List<>` | `PresentationFrameworkCollection<ResourceDictionary>`, Silverlight's type (IL binds the getter by return type) |
+| `ResourceDictionary.Remove(string)` / `Remove(object)` | `bool` | `void`, as Silverlight |
+| `<sys:String>`, `sys:Double`, `sys:Int32`, `sys:Boolean` resources | `Activator` failed on `string`, element skipped | value from the element text |
+| `ItemsControl.ItemsPanel` | stored only | a StackPanel / VirtualizingStackPanel template sets the control's Orientation (a Grid already had its layout) |
+| `ItemsControl.ItemContainerStyle` | missing | applied to each container when the style's TargetType fits |
+| `VirtualizingStackPanel`, `VirtualizationMode` | missing (v52: shim types bind on repatch) | a StackPanel that realises every item |
+| `PhoneApplicationFrame.Orientation` | missing | the displayed page's orientation |
+
+`ApplicationBar`, `ListBoxItem`, `ItemsPanelTemplate` and content alignment came from this branch
+already.
+
+**ListBox has Silverlight's default visual tree and draws through it** (step 2, same day):
+ScrollViewer named `ScrollViewer` > `ItemsPresenter` > the items panel (`ItemsPanel`, a
+`VirtualizingStackPanel` by default) > the containers. Fox News bundles **LazyListBox**, which takes
+that ScrollViewer from `GetTemplateChild` in `OnApplyTemplate`, finds the VirtualizingStackPanel
+below it through `VisualTreeHelper`, and reads containers through
+`VirtualizingPanel.ItemContainerGenerator`. Without the tree its `ArrangeOverride` threw "can only
+be used with a virtualized list" and the whole page painted black. What that takes:
+
+- `ItemsControl.ItemsHost` / `HostChildren`: where the containers live. It is the control itself
+  (an ItemsControl here is still a StackPanel) unless a subclass hosts a real panel; `ListBox` does.
+  **Everything meaning "the containers" goes through `HostChildren`**: ItemsControl, Selector,
+  ItemContainerGenerator and the touch router's row selection. `Children` is only the control's own
+  visual. Game IL never sees the difference: Silverlight's ListBox is not a Panel.
+- `ItemsPresenter` is a `Panel` holding the items panel (Silverlight's is a FrameworkElement), so
+  layout, the rasteriser, the hit tester and Loaded reach the containers with no new case.
+- `VirtualizingStackPanel : VirtualizingPanel : Panel`, as in Silverlight (StackPanel's layout is
+  shared through `StackPanel.MeasureStack`/`ArrangeStack`). `VirtualizingPanel.ItemContainerGenerator`
+  returns the owner's generator as `IItemContainerGenerator` (no members: WPR realises every
+  container, so no panel can drive generation). `ItemsControl.GetItemsOwner` exists.
+- A ListBox's `OnApplyTemplate` runs once, before its first measure (`WprBeforeMeasure`), with the
+  built-in tree as its template root (`Control.SetBuiltInTemplateRoot`). A ListBox `Template` is
+  stored, not drawn. `ScrollViewer.*ScrollBarVisibility` set on the ListBox reaches the ScrollViewer.
+- Any ItemsPanel now lays a ListBox's containers out itself (Grid, the toolkit's WrapPanel).
+- `VisualStateManager.GetVisualStateGroups` has Silverlight's signature,
+  `IList GetVisualStateGroups(FrameworkElement)`, never null (LazyListBox's helper library binds it).
+
+Fox News now draws its first page (the header bar), with no compat problem left. **Its content is
+empty**, for two reasons that predate this change: the view model has no modules
+(`FavoriteModules[0]` resolves to null), and the app's own bundled `Microsoft.Phone.Controls.dll`
+Pivot throws NullReferenceException in `OnSelectedIndexPropertyChanged` (it expects its template parts
+`PivotItemPresenter` / `HeadersListElement`). Regression (D3D11, base 961195e8 vs this): Gravity Guy
+2, Mahjong, Minesweeper, Solitaire (the GG2 session's tap scripts), Carcassonne, Flowerz and Galactic
+Reign reach the same screens; differences were the random deal, animation phase and run-to-run timing.
+
+**YouTube (WP8, IdentityMine) reaches its first page** (step 3, patcher v53): the "trending" panorama
+header. Its content is the 2013 YouTube API, which no longer answers. What it took, all general:
+
+| gap | fix |
+| --- | --- |
+| `Frame.Navigated` was raised AFTER the page's `OnNavigatedTo` | now before, as on the phone (Navigating, OnNavigatingFrom, OnNavigatedFrom, Navigated, OnNavigatedTo, Loaded). YouTube's App takes the page's NavigationService in its Navigated handler and the page reads it in OnNavigatedTo; the other order was an NRE that killed the process. **The host does NOT use Navigated**: it lays the page out and applies its orientation from the WPR-only `Frame.WprNavigationCompleted`, raised after OnNavigatedTo (where Navigated used to be). On Navigated it saw Arkadium's game pages before they set their orientation, and Mahjong and Minesweeper drew their landscape boards into a portrait screen |
+| ItemsControl ignored an observable `ItemsSource` | follows `INotifyCollectionChanged`: Add/Remove insert and remove only those rows, anything else rebuilds. A list bound to an ObservableCollection filled after a download stayed empty for ever |
+| children of a collection object with no `[ContentProperty]` were rejected | they are its items (XAML's rule): YouTube's `TemplateTypeCollection` (a `List<TemplateType>`) was empty, so IdentityMine's ContentFrame had no template for any page |
+| `{StaticResource}` could not see keys declared earlier in a dictionary still being parsed | `ParseContext.DictionaryScopes`: a standalone resources file (`datatemplates.xaml`) has no element above it. **Searched LAST**, only when element, template and application scopes all miss: consulted first it changed what Arkadium's menus resolved and every bound label on Mahjong, Minesweeper and Solitaire disappeared |
+| a binding ON `DataContext` read the element's own DataContext | it reads the parent's, as in Silverlight. Before, set/clear fed back into each other until the stack overflowed. **With no parent context it leaves the value alone** rather than clearing it: Mashup sets a page's DataContext from code (in Silverlight that replaces the binding; WPR keeps it attached), and clearing it there blanked Fox News |
+| `<X.Margin><Binding …/></X.Margin>` stored the Binding object | it binds the property, like the attribute form. Style setters whose Value is a Binding bind too, and a setter value of the wrong type is skipped (`[wpr-style]`) instead of poisoning the typed getter |
+| `Type.GetProperty` threw `AmbiguousMatchException` for a property hidden with `new` and another type | `ReflectionMembers.GetProperty`, most-derived wins, in the reader and bindings |
+| `DataTemplate.LoadContent()` returned `UIElement` | `DependencyObject`, Silverlight's signature |
+| `JournalEntry.Source` read-only; `ShellTile.Delete()` returned bool | settable (GoBack navigates to it); void, and tiles are a real per-run set (Create adds, Delete removes, primary refuses) |
+| `NavigationService` had no events | `Navigating`/`Navigated`/`NavigationFailed`/`NavigationStopped`, the frame's |
+| missing types | WP8 `LongListSelector` (+ LayoutMode, ItemKind, ItemRealizationEventArgs), `ManipulationState`, `Microsoft.Phone.BackgroundTransfer` (real HttpClient transfers to and from the isolated store), `MediaLibraryExtensions` (WPR.Framework.Xna, WprFrameworkXnaTypes), WinRT `ApplicationProfile`, `VoiceCommandService.InstallCommandSetsFromFileAsync`, `Windows.System.Threading.ThreadPool` |
+
+**WP8 `LongListSelector`** is built on the templated ListBox (ScrollViewer > ItemsPresenter >
+[ListHeader, items, ListFooter]); rows are ContentPresenters. **`ItemRealized`/`ItemUnrealized` follow
+the viewport (one screen either side)** because apps use them as "load the next page"; realising
+every row at once would make them fetch page after page. Not built: grouping (flat), Grid layout
+(laid out as a list), the jump list, ManipulationState (always Idle).
+
+**Fox News shows its feed** (2026-10-22). The feed URL in its `app_config.json` is still live
+(`feeds.foxnews.com/foxnews/latest` redirects to https); the 403s in the log are appmakr's dead
+analytics pings. What stood between them was the WP7 toolkit's **Pivot, shipped in the app's own
+Microsoft.Phone.Controls.dll** and so run as shipped. Each fix is general, and the first two reach
+every WP7 title that ships that DLL:
+
+| gap | fix |
+| --- | --- |
+| Pivot raises `LoadedPivotItem` (where Mashup starts a feed download) only from its page-change animation on the `PivotItemPresenter` template part, and no template was ever applied | `Control.EnsureTemplateApplied`: a control whose `OnApplyTemplate` is an app's or a shipped library's gets its template (its own, else the implicit style for its `DefaultStyleKey` in `themes/generic.xaml` of that type's assembly, `DefaultStyles`) **built but not drawn**, and the override called once, before its first measure **or Loaded**, whichever is first (Loaded is raised before layout here). WPR's own controls are skipped. Only the style's `Template` is used; WpChrome still draws a Pivot |
+| `DefaultStyleKey`'s setter threw the value away | kept in the property store (the toolkit calls it on objects whose base chain here is not Control) |
+| `TemplatedItemsControl.GetContainer` was null for every XAML item | `ItemsControl` prepares (`PrepareContainerForItemOverride`) the containers XAML declared, once, before the first measure or Loaded, as Silverlight's generator does |
+| `int SelectedIndex` read null (metadata with only a callback) | such a value-type property defaults to `default(T)` |
+| `Binding.Path` was a string; the Pivot's IL sets it as `PropertyPath` | `PropertyPath`, Silverlight's type (`PathText` internally) |
+| no `WriteableBitmap(UIElement, Transform)` | the element's size, transparent (Render is still a no-op) |
+| a path `FavoriteModules[0]` did not resolve, and a child whose own DataContext is bound was skipped when the parent's context arrived | indexers in binding paths (IList, or any one-argument int/string indexer; an observable collection on the way is watched); a DataContext binding is re-read when the parent's changes |
+| `RssItemObservableCollection`'s non-generic `GetEnumerator` throws | items read through `IEnumerable<object>` when the source has it |
+| its Add events arrive late through the dispatcher and one past their index: rows doubled | an Add is applied only if it turns the shown rows into the source as it is; otherwise the rows are rebuilt from the source, and an event the rows already reflect is ignored |
+| `Control.IsEnabledChanged` was a field event; the toolkit's MenuItem (not a Control here) subscribes in its ctor, so the delegate overwrote the panel's children list | handlers kept in the property store, as DefaultStyleKey |
+| `PhoneApplicationFrame.OrientationChanged` missing (ContextMenu) | declared; never raised, like the page's |
+
+The rest of the log is harmless: `Activated` at a cold start (WPR's invention) throws
+`KeyNotFoundException: RSS_MODULES` from `RestoreState`, after `Launching` already did the work.
+
+GPU matrix, 2026-10-22 (first page, 30 s, scratch root):
+
+| cell | Fox News | YouTube |
+| --- | --- | --- |
+| D1 D3D11 | ✅ the live feed (foxnews.com/latest), rows in feed order | ✅ "trending" header + banner |
+| D2 Vulkan | ✅ same | ✅ same |
+| D3 OpenGL | ✅ same | ✅ same |
+| D4 GLES 3.0 + no DXT | ✅ same (washed out, as D4 always is) | ✅ same (washed out) |
+| A1/A2, P1–P3 | not run (no Android build made for this) | not run |
+
+Still open in YouTube (not chased): `ZmediaWrapper.VideoData.get_Duration` is missing from the
+managed stub WinmdStubber makes of the app's native `ZmediaWrapper` WinRT component, and
+`Windows.Phone.Apps.UpdateServiceClient.CheckAsync(bool)` is missing although the app ships that DLL
+itself (a by-name redirect is the likely cause; both are the stub-policy question, not shim work).
+`<FontFamily x:Key>` resources do not resolve: there is no `FontFamily` type, and `TextBlock.FontFamily`
+is a string here. Library blast radius of `get_MergedDictionaries`: no other non-Unity title calls it.
 
 ### A WP7 Silverlight game quits by THROWING, and WPR was swallowing it (2026-09-24)
 
@@ -5742,6 +6586,74 @@ scripts: the ten mixed-mode titles keep their split exactly (Carcassonne, Galact
 Game of Life composite in an idle run; the other seven do not), with pixel-identical frames for the
 static ones; Flowerz (menu → board → pieces placed) and Minesweeper (dashboard → panorama → classic)
 reach the same screens on D1, and on D2–D4 after the change. Android was not run (no emulator free).
+
+### The WP Toolkit's own gesture engine runs (patcher v50, 2026-10-20)
+
+A game that ships `Microsoft.Phone.Controls.Toolkit.dll` now runs that Toolkit's `GestureService` /
+`GestureListener` as written; WPR implements what it calls underneath. 13 library packages ship the
+Toolkit; Carcassonne, Ice Age Village, Minesweeper and Sudoku use its gestures.
+
+**The old redirect never worked.** The patcher pointed the gesture types at WPR's `Microsoft.Phone`
+with a fresh `AssemblyNameReference` that was not the module's own `Microsoft.Phone` ref, so Cecil
+wrote those typerefs **scoped to the game module itself**, which defines none of them (check with
+Cecil: `GestureEventArgs -> Minesweeper.dll`). The XAML reader meanwhile resolved
+`toolkit:GestureListener` to WPR's, so every `Tap="handler"` failed to bind (`[XamlReader] SKIP attr
+'Tap="m"'` in stdout) and the listener had no subscribers. **That was the Minesweeper/Sudoku "guard"
+Stage C recorded**: menu taps never reached the game at all. And WPR's listener only ever raised
+Tap, so Hold/Drag/Pinch/DoubleTap reached nobody.
+
+What the Toolkit needs, and what changed to give it:
+
+| Toolkit call | was | now |
+| --- | --- | --- |
+| `Touch.FrameReported` | declared, never raised | `TouchFrameReporter.Report` from `SilverlightGame.PumpTouchFrameReported` |
+| `TouchPoint.Action != 3` | WPR's enum was 0/1/2 | Silverlight's `Down=1, Move=2, Up=3` |
+| `VisualTreeHelper.FindElementsInHostCoordinates` | always empty | `HitTester.HitTest` |
+| `TransformToVisual(...).Inverse`, cast to `MatrixTransform` | identity, no `MatrixTransform` type | translation from `HitTester.OriginInRoot`; `Matrix`/`MatrixTransform` exist (patcher entries) |
+| `DispatcherTimer` (its 100 ms gesture poll) | ticked on a thread-pool thread | ticks on the game thread |
+| `TouchPanel.ReadGesture` | already real | unchanged |
+
+Things that are load-bearing:
+
+- **FrameReported is raised AFTER the router's pass**, not before. A list selects the tapped row
+  on release, and the Toolkit raises Tap from this event; first, Tap reached the handler with
+  `SelectedItem == null` and Sudoku's mode list ignored it.
+- **It is raised whoever draws the page**, before `PumpSilverlightTouch`'s "game reads touch" gate,
+  and the read counter is resynchronised after it: the Toolkit's own `IsGestureAvailable` reads
+  would otherwise count as the game reading touch and stop routed input on a page the game draws.
+  Reads from its 100 ms timer during a touch still count.
+- **A finger that vanishes without a Released sample gets an Up**: the Toolkit ends a gesture only
+  on a frame whose points are all Up; otherwise its timer and hit list live for ever.
+- **`DispatcherTimer` now ticks on the game thread for every Silverlight title** (one queued tick at
+  most, dropped after `Stop`/restart), as Silverlight did on its UI thread. `Stop` is thread-safe:
+  Sudoku stops a timer from a `BackgroundWorker` completion, and the old check-then-dispose raced
+  into a NullReferenceException that killed the process (reached only once taps worked).
+- **XAML**: an xmlns naming `assembly=Microsoft.Phone.Controls.Toolkit` is looked up there first
+  (`XamlReader.ToolkitAssemblyName`). WPR's own `GestureService`/`GestureListener` stay for installs
+  not yet repatched; the router still dispatches to them.
+- **`TransformToVisual` agrees with hit testing by construction** (`OriginInRoot` walks the same
+  ArrangedRect / ScrollViewer / PanoramaItem rules). RenderTransforms are in neither.
+
+**`Microsoft.Phone.Shell.ApplicationBar` exists now, stored but not drawn** (`IApplicationBar`,
+`ApplicationBar`, the icon button / menu item types, `PhoneApplicationPage.ApplicationBar`). It was
+missing entirely, so every page declaring one (Minesweeper's and Sudoku's boards) failed to
+construct and the navigation to it silently did nothing. Drawing the bar and routing taps to its
+buttons (`ApplicationBarMenuItem.RaiseClick`) is still to do.
+
+Verified 2026-10-20, desktop D3D11 harness, scratch data roots: Minesweeper and Sudoku menus take
+taps (Achievements / Help & Options / Leaderboards open, Back returns, Sudoku Training opens its
+board, the tutorial's ok dismisses). A/B against the branch tip without this change, same scripts,
+12 titles (Carcassonne, Galactic Reign, AlphaJax, Flowerz, Minesweeper, Cut the Rope, Little
+Acorns, Big Buck Hunter Pro, The Game of Life, Pirates!, Rabbids Go Phone, Sudoku): identical
+composite split, zero thrown frames or crashes on either side, frames identical apart from startup
+timing and animation noise; Carcassonne's Leaderboards and Options buttons open the right pages.
+Shim tests 269/269 (`ToolkitGestureSurfaceTests`). **Not verified**: Hold/Drag/Pinch in play.
+Minesweeper's and Sudoku's boards sit behind intro panels driven by visual states and
+`PlaneProjection` flips WPR does not animate, so the cells were never reached. Not run: D2–D4
+(nothing here draws), Android, any phone.
+
+**Patcher table change (v50; written as v47 on branch toolkit-gestures).** Not identity-binding: `--repatch-installed` on the desktop,
+automatic on Android.
 
 ### When I touch a shim type
 

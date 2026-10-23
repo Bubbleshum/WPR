@@ -1,15 +1,22 @@
-namespace WPR.Wp8Native
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace WPR.XboxLive
 {
     /// <summary>
     /// What stands behind <c>Microsoft.Xbox</c> when a host has something real to offer:
     /// the player's gamertag, a place to record achievements, and an online leaderboard.
     /// </summary>
     /// <remarks>
-    /// The probe runs without one, and <see cref="WinRtRuntime"/> then answers as it always has -
-    /// a signed-in player with no achievements and empty boards. WPR's game host implements this
-    /// over its achievement store and WPR Hub. Everything here is called on the emulator thread
-    /// in the middle of a guest call, so it must not throw, and anything that waits on the
-    /// network must give up quickly.
+    /// Two consumers: the WP8 native runtime's <c>Microsoft.Xbox</c> WinRT slots (called on the
+    /// emulator thread in the middle of a guest call), and the managed <c>Microsoft.Xbox</c>
+    /// facade managed WP8 titles bind (WPR.Framework.Xbox, which finds the host through
+    /// <c>XboxLiveBackend</c>). So it must not throw, and anything that waits on the
+    /// network must give up quickly. The WP8 probe runs without one, and the native runtime
+    /// then answers as it always has - a signed-in player with no achievements and empty boards.
+    /// WPR's game host implements this over its achievement store and WPR Hub
+    /// (WPR.Wp8Native.Wp8NativeXboxHost).
     /// </remarks>
     public interface IXboxLiveHost
     {
@@ -29,16 +36,19 @@ namespace WPR.Wp8Native
         XboxLeaderboardPage? ReadLeaderboard(uint leaderboardId, uint skip, uint max, bool titleView);
 
         /// <summary>
+        /// Boards the host knows this title uses, for <c>GetLeaderboardsAsync</c> when the title's
+        /// SPA defines none (see the WP8 runtime's <c>XboxTitleConfig</c>): the ones it has posted to.
+        /// </summary>
+        IReadOnlyList<uint> KnownLeaderboards() => [];
+
+        /// <summary>The player's gamer picture as a local PNG, or null for the default one.</summary>
+        string? GamerPicturePath => null;
+
+        /// <summary>
         /// <c>ILeaderboardService::PostResultsAsync</c>: several columns at once. The default posts
         /// the rating (<see cref="XboxLeaderboardAttribute.PickRating"/>) through
         /// <see cref="PostResult"/> and drops the other columns.
         /// </summary>
-        /// <summary>
-        /// Boards the host knows this title uses, for <c>GetLeaderboardsAsync</c> when the title's
-        /// SPA defines none (see <see cref="XboxTitleConfig"/>): the ones it has posted to.
-        /// </summary>
-        IReadOnlyList<uint> KnownLeaderboards() => [];
-
         void PostResults(uint leaderboardId, IReadOnlyList<XboxLeaderboardAttribute> attributes)
         {
             if (XboxLeaderboardAttribute.PickRating(attributes) is { } rating && rating.TryGetInt64(out long value))

@@ -61,9 +61,49 @@ namespace WPR.Platform.Android.Native
             BuildAccentGrid();
             BuildVibrationToggle();
             BuildServerLoggingToggle();
+            BuildNotificationToggles();
             BuildUpdateCheckToggle();
             BuildRatingCooldown();
             BuildGraphicsDriverPicker();
+        }
+
+        /// <summary>
+        /// One on/off row per kind of pop-up (Configuration.NotifyMessages / NotifyGameInvites /
+        /// NotifyAchievements), the same switch-and-word rows as vibration. Saved at once; each is
+        /// read live when something would pop up.
+        /// </summary>
+        private void BuildNotificationToggles()
+        {
+            LinearLayout rows = FindViewById<LinearLayout>(Resource.Id.notificationToggles)!;
+            void Row(string label, bool on, Action<Configuration, bool> save)
+            {
+                LinearLayout row = new LinearLayout(this) { Orientation = Orientation.Horizontal };
+                row.SetGravity(GravityFlags.CenterVertical);
+                row.SetPadding(0, HubViews.Dp(this, 8), 0, 0);
+
+                TextView text = HubViews.Text(this, "", 15, WpTheme.Foreground);
+                row.AddView(text, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
+                Switch toggle = new Switch(this);
+                WpTheme.ApplySwitch(toggle);
+                row.AddView(toggle);
+
+                toggle.Checked = on;
+                text.Text = $"{label}: {(on ? "on" : "off")}";
+                toggle.CheckedChange += (_, args) =>
+                {
+                    text.Text = $"{label}: {(args.IsChecked ? "on" : "off")}";
+                    if (Configuration.Current == null) return;
+                    save(Configuration.Current, args.IsChecked);
+                    Configuration.Current.Save();
+                };
+                rows.AddView(row);
+            }
+
+            Configuration? config = Configuration.Current;
+            Row("messages", config?.NotifyMessages != false, (c, v) => c.NotifyMessages = v);
+            Row("game invites", config?.NotifyGameInvites != false, (c, v) => c.NotifyGameInvites = v);
+            Row("friend requests", config?.NotifyFriendRequests != false, (c, v) => c.NotifyFriendRequests = v);
+            Row("achievements", config?.NotifyAchievements != false, (c, v) => c.NotifyAchievements = v);
         }
 
         /// <summary>

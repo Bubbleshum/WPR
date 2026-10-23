@@ -29,13 +29,16 @@ internal sealed class HubConnection
             if (_client is null || _client.BaseUri.AbsoluteUri != wanted)
             {
                 _client?.Dispose();
-                _client = new HubClient(baseUri, userAgent: $"WPR/{_settings.WprVersion} ({_settings.Platform})");
+                _client = new HubClient(baseUri, userAgent: $"WPR/{_settings.WprVersion} ({_settings.Platform})",
+                    http: _settings.Handler is { } handler ? new HttpClient(handler, disposeHandler: false) { BaseAddress = Slashed(baseUri) } : null);
             }
 
             _client.AccessToken = SafeGet(_settings.AccessToken) is { Length: > 0 } token ? token : null;
             return _client;
         }
     }
+
+    private static Uri Slashed(Uri uri) => uri.AbsoluteUri.EndsWith('/') ? uri : new Uri(uri.AbsoluteUri + "/");
 
     public bool IsSignedIn => SafeGet(_settings.BaseUri) is not null && SafeGet(_settings.AccessToken) is { Length: > 0 };
 

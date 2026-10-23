@@ -36,6 +36,9 @@ public sealed class HubPresence : IPresence
 
     internal HubPresence(HubConnection connection) => _connection = connection;
 
+    /// <summary>Every heartbeat answer, as it lands (on the presence loop's thread). Must not throw or block.</summary>
+    internal Action<PresenceBeat>? BeatReceived { get; set; }
+
     public void Start()
     {
         lock (_gate)
@@ -121,6 +124,8 @@ public sealed class HubPresence : IPresence
                     PresenceBeat beat = await hub.SendPresenceAsync(status, titleId, titleName).ConfigureAwait(false);
                     wait = TimeSpan.FromSeconds(Math.Clamp(beat.NextHeartbeatSeconds, 15, 300));
                     LastBeat = beat;
+                    try { BeatReceived?.Invoke(beat); }
+                    catch (Exception e) { _connection.Observe(e); }
                     if (!wasOnline || lastTitle != titleId || lastHidden != hidden)
                         _connection.Log((hidden ? "presence: appearing offline" : "presence: online")
                             + (titleId is null ? "" : $", playing {titleName ?? titleId}"));

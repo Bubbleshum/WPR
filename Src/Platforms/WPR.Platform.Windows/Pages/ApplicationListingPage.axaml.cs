@@ -48,10 +48,10 @@ namespace WPR.Platform.Windows.Pages
                 var msgResult = await MessageBoxUtils.GetMessageDialogResult(
                     title: WPR.Shell.Resources.ApplicationAlreadyInstalled,
                     text: String.Format(WPR.Shell.Resources.ApplicationAlreadyInstalledDescription, app.Name),
-                    icon: MessageBox.Avalonia.Enums.Icon.Question,
-                    buttons: MessageBox.Avalonia.Enums.ButtonEnum.YesNo);
+                    icon: DialogIcon.Question,
+                    buttons: DialogButtons.YesNo);
 
-                context.SetOutput(msgResult == MessageBox.Avalonia.Enums.ButtonResult.Yes);
+                context.SetOutput(msgResult == DialogAnswer.Yes);
             }));
 
             // Both uninstall entry points (the game pane and the list's context menu) go through
@@ -69,13 +69,13 @@ namespace WPR.Platform.Windows.Pages
                         + "No: uninstall but keep the save data, so it comes back if you reinstall.\n"
                         + "Cancel: do nothing.\n\n"
                         + "Achievements are kept either way.",
-                    icon: MessageBox.Avalonia.Enums.Icon.Question,
-                    buttons: MessageBox.Avalonia.Enums.ButtonEnum.YesNoCancel);
+                    icon: DialogIcon.Question,
+                    buttons: DialogButtons.YesNoCancel);
 
                 context.SetOutput(msgResult switch
                 {
-                    MessageBox.Avalonia.Enums.ButtonResult.Yes => UninstallChoice.DeleteSaveData,
-                    MessageBox.Avalonia.Enums.ButtonResult.No => UninstallChoice.KeepSaveData,
+                    DialogAnswer.Yes => UninstallChoice.DeleteSaveData,
+                    DialogAnswer.No => UninstallChoice.KeepSaveData,
                     // Cancel, or the window closed with the X.
                     _ => UninstallChoice.Cancel,
                 });
@@ -149,7 +149,7 @@ namespace WPR.Platform.Windows.Pages
                     title: "Repatch first",
                     text: $"{name} was patched by an older version of WPR, so it still uses the save "
                         + "data shared by every game. Click Repatch, then clear its data.",
-                    icon: MessageBox.Avalonia.Enums.Icon.Info);
+                    icon: DialogIcon.Info);
                 return;
             }
 
@@ -159,9 +159,9 @@ namespace WPR.Platform.Windows.Pages
                     + "settings and unlocked content. It cannot be undone.\n\n"
                     + "Achievements are not affected. Close the game before continuing.\n\n"
                     + "Clear the data?",
-                icon: MessageBox.Avalonia.Enums.Icon.Warning,
-                buttons: MessageBox.Avalonia.Enums.ButtonEnum.YesNo);
-            if (answer != MessageBox.Avalonia.Enums.ButtonResult.Yes) return;
+                icon: DialogIcon.Warning,
+                buttons: DialogButtons.YesNo);
+            if (answer != DialogAnswer.Yes) return;
 
             try
             {
@@ -242,7 +242,7 @@ namespace WPR.Platform.Windows.Pages
                 await MessageBoxUtils.GetMessageDialogResult(
                     title: WPR.Shell.Resources.InstallationFailed,
                     text: LocaleUtils.GetDisplayName(ApplicationInstallError.InvalidManifestFiles),
-                    icon: MessageBox.Avalonia.Enums.Icon.Error);
+                    icon: DialogIcon.Error);
                 return;
             }
 
@@ -257,7 +257,7 @@ namespace WPR.Platform.Windows.Pages
                 await MessageBoxUtils.GetMessageDialogResult(
                     title: WPR.Shell.Resources.InstallationFailed,
                     text: LocaleUtils.GetDisplayName(ApplicationInstallError.MissingManifestFiles),
-                    icon: MessageBox.Avalonia.Enums.Icon.Error);
+                    icon: DialogIcon.Error);
                 return;
             }
 
@@ -274,7 +274,7 @@ namespace WPR.Platform.Windows.Pages
                 await MessageBoxUtils.GetMessageDialogResult(
                     title: WPR.Shell.Resources.InstallationFailed,
                     text: LocaleUtils.GetDisplayName(ApplicationInstallError.InvalidManifestFiles),
-                    icon: MessageBox.Avalonia.Enums.Icon.Error);
+                    icon: DialogIcon.Error);
                 return;
             }
 
@@ -303,7 +303,7 @@ namespace WPR.Platform.Windows.Pages
                 await MessageBoxUtils.GetMessageDialogResult(
                     title: WPR.Shell.Resources.InstallationFailed,
                     text: LocaleUtils.GetDisplayName(err),
-                    icon: MessageBox.Avalonia.Enums.Icon.Error);
+                    icon: DialogIcon.Error);
             }
 
             ViewModel!.UpdateApplicationList(ViewModel!.SearchText);

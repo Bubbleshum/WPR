@@ -60,9 +60,20 @@ namespace WPR
             // Read into memory so we can rewrite in place without holding a file lock.
             byte[] bytes = File.ReadAllBytes(dllPath);
 
+            // The patcher's resolver, not Cecil's default. Writing a module resolves the type of
+            // every enum constant (MetadataBuilder.GetConstantType), and after patching those are
+            // WPR types: the default resolver looks only in the process's working directory, so
+            // the write threw wherever that is not the WPR bin (the harness; always on Android,
+            // which has no managed DLLs on disk). The DLL then kept its WinRT-flagged references
+            // and every method naming Windows.* or Microsoft.Xbox threw PlatformNotSupported when
+            // compiled: Microsoft Mahjong's Arkadium.Common.WP8.dll, measured.
+            var resolver = new ConstantEnumStubResolver();
+            resolver.AddSearchDirectory(Path.GetDirectoryName(dllPath)!);
+            resolver.AddSearchDirectory(AppContext.BaseDirectory);
+
             using var ms = new MemoryStream(bytes, writable: false);
             AssemblyDefinition asm;
-            try { asm = AssemblyDefinition.ReadAssembly(ms); }
+            try { asm = AssemblyDefinition.ReadAssembly(ms, new ReaderParameters { AssemblyResolver = resolver }); }
             catch
             {
                 // Native dll, mixed-mode, or otherwise unreadable — leave alone.
@@ -87,7 +98,13 @@ namespace WPR
                 // corruption if Cecil throws.
                 string tmpPath = dllPath + ".striprewrite";
                 if (File.Exists(tmpPath)) File.Delete(tmpPath);
-                asm.Write(tmpPath);
+                try { asm.Write(tmpPath); }
+                catch
+                {
+                    // Never leave a torn temp file beside the DLL.
+                    if (File.Exists(tmpPath)) File.Delete(tmpPath);
+                    throw;
+                }
                 // Cecil may keep the input MemoryStream alive until Dispose; we already wrote
                 // to a separate file, so it's safe to swap.
                 File.Delete(dllPath);

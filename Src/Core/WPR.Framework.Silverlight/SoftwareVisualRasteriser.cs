@@ -129,6 +129,21 @@ namespace WPR.SilverlightCompability
                 ApplyViewboxScale(viewbox, ref bounds, ref scaleX, ref scaleY);
             }
 
+            // UIElement.Clip, in the element's own coordinates (so after its transform, like
+            // everything else here), narrows what it AND its descendants draw. Exact for a
+            // RectangleGeometry; any other geometry clips to its bounding box. A sprite sheet slid
+            // behind a clipped Canvas (Arkadium's SimpleSprite, Microsoft Solitaire's loading
+            // animation) showed the whole sheet without it.
+            if (element.Clip is Geometry clipGeometry)
+            {
+                Rect local = clipGeometry.Bounds;
+                clip = Intersect(clip, new Rect(
+                    bounds.X + (local.X * scaleX),
+                    bounds.Y + (local.Y * scaleY),
+                    Math.Max(0, local.Width * scaleX),
+                    Math.Max(0, local.Height * scaleY)));
+            }
+
             // Everything this element draws is clipped to its own slot AND to whatever an
             // ancestor imposed — a ScrollViewer viewport, in practice.
             Rect drawClip = Intersect(bounds, clip);
@@ -310,6 +325,7 @@ namespace WPR.SilverlightCompability
                     break;
 
                 case RotateTransform:
+                case SkewTransform:
                     // Likewise: a non-zero angle is handled by PaintTransformed, and a zero one
                     // contributes nothing.
                     break;
@@ -402,6 +418,9 @@ namespace WPR.SilverlightCompability
 
                 case RotateTransform r:
                     return Rotation(r.Angle).About(r.CenterX, r.CenterY);
+
+                case SkewTransform k:
+                    return Skew(k.AngleX, k.AngleY).About(k.CenterX, k.CenterY);
 
                 case CompositeTransform c:
                     return new Affine { M11 = c.ScaleX, M22 = c.ScaleY }
@@ -1049,6 +1068,11 @@ namespace WPR.SilverlightCompability
             Rect r = element.ArrangedRect;
             hash.Add(r.X); hash.Add(r.Y); hash.Add(r.Width); hash.Add(r.Height);
             hash.Add(element.Opacity);
+            if (element.Clip is Geometry clipGeometry)
+            {
+                Rect clipBounds = clipGeometry.Bounds;
+                hash.Add(clipBounds.X); hash.Add(clipBounds.Y); hash.Add(clipBounds.Width); hash.Add(clipBounds.Height);
+            }
 
             // A storyboard that slides a panel animates its transform and nothing else — the
             // arranged rect never moves — so without this the page hashes identically every frame

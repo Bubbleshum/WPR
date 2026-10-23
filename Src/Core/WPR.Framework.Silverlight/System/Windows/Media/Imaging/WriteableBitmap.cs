@@ -47,6 +47,24 @@ namespace WPR.WindowsCompability
         }
 
         /// <summary>
+        /// Silverlight's snapshot constructor: a bitmap the size of <paramref name="element"/> as
+        /// laid out, with the element rendered into it (see <see cref="Render"/>: here it stays
+        /// transparent). The toolkit's Pivot snapshots its header strip this way in
+        /// OnApplyTemplate; without the overload that was a MissingMethodException.
+        /// </summary>
+        public WriteableBitmap(UIElement element, Transform transform)
+            : this(SnapshotSize(element, w: true), SnapshotSize(element, w: false))
+        {
+            Render(element, transform);
+        }
+
+        private static int SnapshotSize(UIElement? element, bool w)
+        {
+            double size = element is FrameworkElement fe ? (w ? fe.ActualWidth : fe.ActualHeight) : 0;
+            return double.IsNaN(size) || size < 1 ? 1 : (int)Math.Ceiling(size);
+        }
+
+        /// <summary>
         /// Pushes pending writes to the screen. WPR draws from <c>Pixels</c> on demand, so there is
         /// nothing to flush — but games call it after every edit, so it must exist and be cheap.
         /// </summary>

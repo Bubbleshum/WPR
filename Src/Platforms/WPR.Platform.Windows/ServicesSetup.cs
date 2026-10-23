@@ -17,47 +17,23 @@ namespace WPR.Platform.Windows
             // (clearing would leave the SECOND game launched without achievements or tilt).
             PlatformComposition.Apply(new WindowsPlatform());
 
-            Guide.ShowInputBoxFunc = async (title, description, defaultText) =>
-            {
-                return await MessageBoxUtils.GetInputResult(title, description, defaultText, false, true);
-            };
+            Guide.ShowInputBoxFunc = (title, description, defaultText) =>
+                MessageBoxUtils.GetInputResult(title, description, defaultText);
 
-            Guide.ShowMessageBoxFunc = async (title, description, buttonNames, currentActiveButton, icon) =>
-            {
-                MessageBox.Avalonia.Enums.Icon messageBoxIcon = MessageBox.Avalonia.Enums.Icon.None;
-                switch (icon)
-                {
-                    case MessageBoxIcon.Error:
-                        messageBoxIcon = MessageBox.Avalonia.Enums.Icon.Error;
-                        break;
-
-                    case MessageBoxIcon.Alert:
-                    case MessageBoxIcon.Warning:
-                        messageBoxIcon = MessageBox.Avalonia.Enums.Icon.Warning;
-                        break;
-
-                    default:
-                        break;
-                }
-
-                var result = await MessageBoxUtils.GetMessageDialogResult(title, description, (buttonNames.Count() <= 1) 
-                        ? MessageBox.Avalonia.Enums.ButtonEnum.Ok
-                        : MessageBox.Avalonia.Enums.ButtonEnum.YesNo, 
-                    messageBoxIcon, buttonNames, false, true);
-
-                if (result == MessageBox.Avalonia.Enums.ButtonResult.None)
-                {
-                    return currentActiveButton;
-                }
-
-                return (result == MessageBox.Avalonia.Enums.ButtonResult.Ok) ? 0 :
-                    (result == MessageBox.Avalonia.Enums.ButtonResult.Yes) ? 1 : 0;
-            };
+            // XNA's Guide.BeginShowMessageBox: the game's own labels, its focus button as the default,
+            // and the index pressed back, or -1 when the box was closed (Guide answers null then, as
+            // XNA documents for Back). The icon is not drawn.
+            Guide.ShowMessageBoxFunc = (title, description, buttonNames, focusButton, icon) =>
+                MessageBoxUtils.ShowGameMessageBoxAsync(title, description, buttonNames.ToList(), focusButton);
 
             // Silverlight's blocking MessageBox.Show. The shim owns the WP7 button/result mapping
             // (WPR.WindowsCompability.MessageBox.Describe); this head only shows labelled buttons on
             // its UI thread and reports the index pressed, or -1 when the dialog was dismissed.
             WPR.WindowsCompability.MessageBox.Presenter = MessageBoxUtils.ShowGameMessageBoxAsync;
+            WPR.Engine.Online.GameInvites.Picker = InvitePicker.ShowAsync;
+            // A game invite's notification shows the game's tile.
+            WPR.Shell.HubMessageNotifications.GameIconPath = titleId =>
+                WPR.GameIconStore.Find(titleId) is { } relative ? WPR.Common.Configuration.Current?.DataPath(relative) : null;
         }
     }
 }

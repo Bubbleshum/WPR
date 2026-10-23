@@ -63,14 +63,23 @@ namespace WPR.Notifications.AndroidChannel
         private readonly int _SmallIconResourceId;
         private Dictionary<string, string> _NofChannels;
 
+        /// <summary>
+        /// Turns a notification's <see cref="Notification.ActivationId"/> into the activity a tap
+        /// opens. Supplied by the host, for the same reason as the icon: this module must not name
+        /// the app's activities.
+        /// </summary>
+        private readonly Func<string, Intent?>? _ActivationIntent;
+
         /// <param name="smallIconResourceId">Host drawable for the status bar - see
         /// <see cref="_SmallIconResourceId"/>.</param>
-        public AndroidNotificationManager(Context context, int smallIconResourceId)
+        /// <param name="activationIntent">What a tap opens - see <see cref="_ActivationIntent"/>.</param>
+        public AndroidNotificationManager(Context context, int smallIconResourceId, Func<string, Intent?>? activationIntent = null)
         {
             _NofChannels = new Dictionary<string, string>();
 
             _Context = context;
             _SmallIconResourceId = smallIconResourceId;
+            _ActivationIntent = activationIntent;
             _NofManagerCompat = NotificationManagerCompat.From(_Context);
         }
 
@@ -176,7 +185,24 @@ namespace WPR.Notifications.AndroidChannel
                 }
             }
 
-            _NofManagerCompat.Notify(_NofId++, builder.Build());
+            Intent? open = notification.ActivationId != null ? _ActivationIntent?.Invoke(notification.ActivationId) : null;
+            if (open != null)
+            {
+                PendingIntentFlags flags = PendingIntentFlags.UpdateCurrent
+                    | (OperatingSystem.IsAndroidVersionAtLeast(23) ? PendingIntentFlags.Immutable : 0);
+                builder.SetContentIntent(PendingIntent.GetActivity(_Context, notification.ActivationId!.GetHashCode(), open, flags));
+                builder.SetAutoCancel(true);
+            }
+
+            if (notification.ActivationId != null)
+            {
+                // One notification per activation (one per conversation): a newer message replaces it.
+                _NofManagerCompat.Notify(notification.ActivationId, 1, builder.Build());
+            }
+            else
+            {
+                _NofManagerCompat.Notify(_NofId++, builder.Build());
+            }
             return Task.CompletedTask;
         }
     }

@@ -22,6 +22,15 @@ namespace Microsoft.Xna.Framework
 	{
 		private static int _pending;
 
+		/// <summary>
+		/// Game thread: true while <see cref="Game.Tick"/> runs the second and later fixed-timestep
+		/// Updates of one tick. The press is polled once per tick, and a tick that catches up runs
+		/// several Updates; a game that reads Back level-triggered in Update would then take one press
+		/// as several. iRunner closes OpenXLive's page on the first and quits the game on the second.
+		/// On the phone a press reached one Update. Draw still sees it, as it always did.
+		/// </summary>
+		internal static bool HiddenFromCatchUpUpdates;
+
 		/// <summary>Queue one Back press for the next tick. Safe from any thread.</summary>
 		public static void Press()
 		{

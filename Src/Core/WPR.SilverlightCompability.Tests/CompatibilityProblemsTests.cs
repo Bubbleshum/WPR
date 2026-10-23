@@ -288,6 +288,7 @@ public class CompatibilityProblemsTests
             Assert.Equal("Carcassonne", run.Run.TitleName);
             Assert.Equal(@"C:\x\y", run.Run.InstallFolder);
             Assert.Equal(Environment.ProcessId, run.Run.ProcessId);
+            Assert.True(run.Run.HoldsLock);
             Assert.Equal(2, run.Problems.Count);
             Assert.Equal("System.TypeLoadException", run.Problems[0].ExceptionType);
             Assert.Equal("tab\there\nand a new line", run.Problems[1].Detail);
@@ -322,7 +323,8 @@ public class CompatibilityProblemsTests
             CompatibilityProblems.Begin(new RunIdentity { ProductId = "{C0FFEE}", TitleName = "Carcassonne", ProcessId = 0 });
             CompatibilityProblems.Observe(MissingType("System.Windows.Controls.RichTextBox"), captureStack: true);
             CompatibilityProblems.Observe(MissingType("System.Windows.Data.BindingExpression"));
-            CompatibilityProblems.End(); // the process "died": nothing discarded the file
+            CompatibilityProblems.End(); // the process "died": nothing discarded the file...
+            CompatibilityProblems.ReleaseRunLock(); // ...and the kernel let go of its lock
 
             var reporter = new ListReporter();
             CompatibilityProblems.RecoverAbandonedRun(reporter);
@@ -349,6 +351,196 @@ public class CompatibilityProblemsTests
             CompatibilityProblems.End();
             CompatibilityProblems.RunFilePath = before;
             try { Directory.Delete(dir, true); } catch { }
+        }
+    }
+
+    /// <summary>A run file as another process's run writes it.</summary>
+    private static string ForeignRunFile(int pid, bool locked) =>
+        "wpr-compat-run 1\nproduct\t{2E36DF2B}\ntitle\tAngry Birds Space\nstarted\t"
+        + DateTimeOffset.UtcNow.ToString("O") + "\npid\t" + pid + "\n" + (locked ? "lock\t1\n" : "")
+        + "p\tmissing-type\tSystem.Windows.Controls.RichTextBox\tdetail\t\t0.5\tSystem.TypeLoadException\t.\n";
+
+    private static FileStream HoldLock(string path) =>
+        new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+
+    private static void WithRunFile(Action<string> body)
+    {
+        string dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "wpr-compat-test-" + Guid.NewGuid().ToString("N"));
+        string? before = CompatibilityProblems.RunFilePath;
+        Directory.CreateDirectory(dir);
+        CompatibilityProblems.RunFilePath = System.IO.Path.Combine(dir, "compat-run.txt");
+        try
+        {
+            body(CompatibilityProblems.RunFilePath);
+        }
+        finally
+        {
+            CompatibilityProblems.End();
+            CompatibilityProblems.ReleaseRunLock();
+            CompatibilityProblems.RunFilePath = before;
+            try { Directory.Delete(dir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void A_live_run_in_another_process_is_never_recovered_even_when_its_pid_looks_dead()
+    {
+        // WPR-44SQYC8G: the Android launcher, recreated while Angry Birds Space played in :game,
+        // judged that run dead and filed it as a native crash. Pid 0 is "dead" to the old check;
+        // the lock held here stands in for the live :game process.
+        WithRunFile(path =>
+        {
+            File.WriteAllText(path, ForeignRunFile(pid: 0, locked: true));
+            var reporter = new ListReporter();
+            using (FileStream game = HoldLock(CompatibilityProblems.RunLockPath!))
+            {
+                CompatibilityProblems.RecoverAbandonedRun(reporter);
+                Assert.Empty(reporter.Reports);
+                Assert.True(File.Exists(path));
+
+                // Nor by the Android launcher's "the :game I started has gone" path: the live
+                // lock may be a different game started since.
+                Assert.Null(CompatibilityProblems.TakeRunFile(force: true));
+                Assert.True(File.Exists(path));
+            }
+
+            // The game process dies: the kernel lets go of its lock, and the run is recovered once.
+            CompatibilityProblems.RecoverAbandonedRun(reporter);
+            CrashReport crash = Assert.Single(reporter.Reports, r => r.Source == CrashReport.Sources.NativeCrash);
+            Assert.Equal("{2E36DF2B}", crash.TitleId);
+            Assert.Equal("next-start", crash.Extra["recovered"]);
+            Assert.False(File.Exists(path));
+            CompatibilityProblems.RecoverAbandonedRun(reporter);
+            Assert.Single(reporter.Reports, r => r.Source == CrashReport.Sources.NativeCrash);
+        });
+    }
+
+    [Fact]
+    public void A_lock_let_go_while_waiting_is_taken()
+    {
+        // The launcher hears :game died when its binder closes, a moment before its lock does.
+        WithRunFile(path =>
+        {
+            File.WriteAllText(path, ForeignRunFile(pid: 0, locked: true));
+            FileStream game = HoldLock(CompatibilityProblems.RunLockPath!);
+            var letGo = new System.Threading.Timer(_ => game.Dispose(), null, 200, System.Threading.Timeout.Infinite);
+            try
+            {
+                PersistedRun? run = CompatibilityProblems.TakeRunFile(force: true, TimeSpan.FromSeconds(5));
+                Assert.NotNull(run);
+                Assert.Equal("Angry Birds Space", run!.Run.TitleName);
+                Assert.Single(run.Problems);
+                Assert.False(File.Exists(path));
+            }
+            finally
+            {
+                letGo.Dispose();
+                game.Dispose();
+            }
+
+            // And a lock that stays held is given up on after the wait, file kept.
+            File.WriteAllText(path, ForeignRunFile(pid: 0, locked: true));
+            using FileStream still = HoldLock(CompatibilityProblems.RunLockPath!);
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            Assert.Null(CompatibilityProblems.TakeRunFile(force: true, TimeSpan.FromMilliseconds(300)));
+            Assert.True(clock.ElapsedMilliseconds >= 250);
+            Assert.True(File.Exists(path));
+        });
+    }
+
+    [Fact]
+    public void A_run_holds_its_lock_from_begin_until_discarded()
+    {
+        WithRunFile(path =>
+        {
+            CompatibilityProblems.Begin(new RunIdentity { ProductId = "{C0FFEE}", TitleName = "Carcassonne" });
+            Assert.Contains("\nlock\t1\n", File.ReadAllText(path));
+            Assert.Throws<IOException>(() => HoldLock(CompatibilityProblems.RunLockPath!).Dispose());
+
+            // Between End and the discard (the run's reports being queued) it is still live.
+            CompatibilityProblems.End();
+            Assert.Null(CompatibilityProblems.TakeRunFile(force: true));
+            Assert.True(File.Exists(path));
+
+            CompatibilityProblems.DiscardRunFile();
+            Assert.False(File.Exists(path));
+            HoldLock(CompatibilityProblems.RunLockPath!).Dispose(); // free again
+        });
+    }
+
+    [Fact]
+    public void A_file_from_before_the_lock_still_goes_by_its_pid()
+    {
+        WithRunFile(path =>
+        {
+            // A live pid and no lock line (this process, with a run active): left alone unless forced.
+            CompatibilityProblems.Begin();
+            File.WriteAllText(path, ForeignRunFile(Environment.ProcessId, locked: false));
+            var reporter = new ListReporter();
+            CompatibilityProblems.RecoverAbandonedRun(reporter);
+            Assert.Empty(reporter.Reports);
+            Assert.True(File.Exists(path));
+            Assert.NotNull(CompatibilityProblems.TakeRunFile(force: true));
+            CompatibilityProblems.End();
+
+            // A dead pid and no lock line: recovered.
+            File.WriteAllText(path, ForeignRunFile(pid: 0, locked: false));
+            CompatibilityProblems.RecoverAbandonedRun(reporter);
+            Assert.Single(reporter.Reports, r => r.Source == CrashReport.Sources.NativeCrash);
+            Assert.False(File.Exists(path));
+        });
+    }
+
+    [Fact]
+    public void A_run_the_platform_ended_on_purpose_is_not_a_native_crash()
+    {
+        // WPR-44SQYC8G really was this: Android's exit record for the Space :game process said
+        // reason=16 (PACKAGE UPDATED), "stop com.wpr.android due to installPackageLI".
+        var before = CompatibilityProblems.ProcessExitLookup;
+        try
+        {
+            WithRunFile(path =>
+            {
+                int askedPid = -1;
+                DateTimeOffset askedAfter = default;
+                CompatibilityProblems.ProcessExitLookup = (pid, after) =>
+                {
+                    askedPid = pid; askedAfter = after;
+                    return new ProcessExit { Reason = "package-updated", Description = "stop com.wpr.android due to installPackageLI", IsCrash = false };
+                };
+                File.WriteAllText(path, ForeignRunFile(pid: 0, locked: true));
+                var reporter = new ListReporter();
+                CompatibilityProblems.RecoverAbandonedRun(reporter);
+
+                Assert.Equal(0, askedPid);
+                Assert.True(DateTimeOffset.UtcNow - askedAfter < TimeSpan.FromMinutes(1)); // the run's start time
+                Assert.DoesNotContain(reporter.Reports, r => r.Source == CrashReport.Sources.NativeCrash);
+                // What the run met is still worth knowing.
+                Assert.Single(reporter.Reports, r => r.Source == CrashReport.Sources.Compatibility && r.TitleId == "{2E36DF2B}");
+                Assert.False(File.Exists(path));
+
+                // A real crash keeps its report, now saying what Android called it.
+                CompatibilityProblems.ProcessExitLookup = (_, _) => new ProcessExit { Reason = "crash-native", Description = "crash" };
+                File.WriteAllText(path, ForeignRunFile(pid: 0, locked: true));
+                CompatibilityProblems.RecoverAbandonedRun(reporter);
+                CrashReport crash = Assert.Single(reporter.Reports, r => r.Source == CrashReport.Sources.NativeCrash);
+                Assert.Equal("crash-native", crash.Extra["exit_reason"]);
+                Assert.Equal("crash", crash.Extra["exit_description"]);
+
+                // A lookup that fails, or knows nothing, leaves it a crash, as before.
+                CompatibilityProblems.ProcessExitLookup = (_, _) => throw new InvalidOperationException("no service");
+                File.WriteAllText(path, ForeignRunFile(pid: 0, locked: true));
+                CompatibilityProblems.RecoverAbandonedRun(reporter);
+                Assert.Equal(2, reporter.Reports.Count(r => r.Source == CrashReport.Sources.NativeCrash));
+                CompatibilityProblems.ProcessExitLookup = (_, _) => null;
+                File.WriteAllText(path, ForeignRunFile(pid: 0, locked: true));
+                Assert.True(CompatibilityProblems.ReportNativeCrash(reporter, CompatibilityProblems.TakeRunFile(force: false)!, "native crash", recovered: false));
+                Assert.Equal(3, reporter.Reports.Count(r => r.Source == CrashReport.Sources.NativeCrash));
+            });
+        }
+        finally
+        {
+            CompatibilityProblems.ProcessExitLookup = before;
         }
     }
 

@@ -24,7 +24,8 @@ namespace WPR.Platform.Windows
             // descriptor is applied.
             Hub ??= WPR.Shell.HubSetup.TryCreate("windows", new Online.DesktopGamePackageSource(),
                 new WPR.Database.Online.EfOnlineLocalStore(), WPR.XnaAchievementSeeder.SeedCataloguesAsync,
-                id => WPR.GameIconStore.Find(id) != null, WPR.GameIconStore.SaveDownloaded);
+                id => WPR.GameIconStore.Find(id) != null, WPR.GameIconStore.SaveDownloaded,
+                WPR.ApplicationInstaller.InstalledTitlesForHub);
             if (Hub != null) caps.Online(Hub.Services);
         }
 

@@ -21,6 +21,27 @@ namespace WPR.SilverlightCompability
 
         public Rect(Point location, Size size) : this(location.X, location.Y, size.Width, size.Height) { }
 
+        /// <summary>The smallest rectangle holding both points.</summary>
+        public Rect(Point point1, Point point2)
+            : this(Math.Min(point1.X, point2.X), Math.Min(point1.Y, point2.Y),
+                Math.Abs(point2.X - point1.X), Math.Abs(point2.Y - point1.Y)) { }
+
+        /// <summary>Grows the rectangle to hold <paramref name="point"/>.</summary>
+        public void Union(Point point)
+        {
+            double left = Math.Min(X, point.X), top = Math.Min(Y, point.Y);
+            double right = Math.Max(Right, point.X), bottom = Math.Max(Bottom, point.Y);
+            X = left; Y = top; Width = right - left; Height = bottom - top;
+        }
+
+        /// <summary>Grows the rectangle to hold <paramref name="rect"/>.</summary>
+        public void Union(Rect rect)
+        {
+            double left = Math.Min(X, rect.X), top = Math.Min(Y, rect.Y);
+            double right = Math.Max(Right, rect.Right), bottom = Math.Max(Bottom, rect.Bottom);
+            X = left; Y = top; Width = right - left; Height = bottom - top;
+        }
+
         public double Left => X;
         public double Top => Y;
         public double Right => X + Width;

@@ -223,6 +223,8 @@ namespace WPR.Wp8Native
                 if (xaml && _providerDisconnected)
                 {
                     Page("XamlShell::Application_Activated", _shell!.Activated);
+                    // OnNavigatedTo runs again on the way back, setting the flag check_NavigatedTo reads.
+                    _mandreelNavigatedTo = true;
                     steps.Add(("DrawingSurfaceBackgroundGrid::Connect", ReconnectProvider));
                 }
 

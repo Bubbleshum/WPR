@@ -33,6 +33,12 @@ namespace WPR.Wp8Native
     /// Reads block the guest for at most
     /// <see cref="ReadTimeout"/>: the image waits for the operation either way, and it is only
     /// ever asked for on a leaderboard screen.</para>
+    ///
+    /// <para><b>Board names</b> go to the hub with every read and post: the en-US name in the
+    /// title's own Xbox SPA (<see cref="XboxTitleConfig"/>, read from the install folder the first
+    /// time a board is touched), so the hub shows "Total Score" rather than <c>BestScore0:0</c>.
+    /// A managed WP8 title reaches the same host, so its boards are named too when its package
+    /// carries an SPA. A board the SPA does not describe is sent without a name.</para>
     /// </remarks>
     public sealed class Wp8NativeXboxHost : IXboxLiveHost
     {
@@ -42,14 +48,34 @@ namespace WPR.Wp8Native
         private readonly string? _titleName;
         private readonly object _cacheLock = new();
         private IReadOnlyList<XboxAchievement>? _cache;
+        private readonly Lazy<XboxTitleConfig> _titleConfig;
 
-        public Wp8NativeXboxHost(string productId, string? titleName)
+        /// <param name="packageRoot">The title's install folder, where its Xbox SPA is looked for
+        /// to name its boards; null names none.</param>
+        public Wp8NativeXboxHost(string productId, string? titleName, string? packageRoot = null)
         {
             _productId = productId;
             _titleName = titleName;
+            _titleConfig = new Lazy<XboxTitleConfig>(() => packageRoot is null ? XboxTitleConfig.Empty : XboxTitleConfig.Load(packageRoot));
+        }
+
+        /// <summary>The hub name of a board, from the title's SPA; null when it does not describe it.</summary>
+        internal string? BoardName(uint leaderboardId)
+        {
+            try
+            {
+                return _titleConfig.Value.HubName(leaderboardId);
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"[wpr-xbox] reading board names failed: {ex.Message}");
+                return null;
+            }
         }
 
         public string Gamertag => Configuration.Current?.EffectiveGamerTag ?? string.Empty;
+
+        public string? GamerPicturePath => Configuration.Current?.EffectiveGamerPicturePath;
 
         public IReadOnlyList<XboxAchievement> GetAchievements()
         {
@@ -244,7 +270,7 @@ namespace WPR.Wp8Native
 
             try
             {
-                OnlineBackend.Leaderboards?.Submit(_productId, _titleName, board, sent, columns);
+                OnlineBackend.Leaderboards?.Submit(_productId, _titleName, board, sent, columns, BoardName(leaderboardId));
             }
             catch (Exception ex)
             {
@@ -263,7 +289,7 @@ namespace WPR.Wp8Native
             string board = BoardKey(leaderboardId);
             try
             {
-                service.EnsureBoard(_productId, _titleName, board);
+                service.EnsureBoard(_productId, _titleName, board, BoardName(leaderboardId));
                 if (!service.CanRead)
                 {
                     return null;

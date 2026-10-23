@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Text;
 using WPR.Engine.Launchers;
 using WPR.Wp8Native;
+using WPR.XboxLive;
 
 namespace Wp8ContractTests.Suites;
 

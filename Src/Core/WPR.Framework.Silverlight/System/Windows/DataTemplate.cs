@@ -16,13 +16,22 @@ namespace WPR.SilverlightCompability
         /// <summary>The XML element that becomes the root of every materialized instance.</summary>
         public XElement? VisualTreeRoot { get; set; }
 
-        public UIElement? LoadContent()
+        /// <summary>The page or control whose XAML declared this template; it answers the event handlers the template names.</summary>
+        internal object? HandlerHost { get; set; }
+
+        /// <summary>The elements this template was declared inside; their resources stay in reach.</summary>
+        internal FrameworkElement[]? Scopes { get; set; }
+
+        /// <remarks>Returns <see cref="DependencyObject"/>, Silverlight's signature: game IL binds
+        /// it by return type (YouTube's item templates), and a <c>UIElement</c> return was a
+        /// MissingMethodException that took the app down at start-up.</remarks>
+        public DependencyObject? LoadContent()
         {
             if (VisualTreeRoot == null) return null;
-            object root = XamlReader.LoadElement(VisualTreeRoot);
-            if (root is UIElement el) return el;
+            object root = XamlReader.LoadElement(VisualTreeRoot, HandlerHost, Scopes);
+            if (root is DependencyObject d) return d;
             throw new XamlParseException(
-                $"DataTemplate root must be a UIElement (got '{root.GetType().Name}').");
+                $"DataTemplate root must be a DependencyObject (got '{root.GetType().Name}').");
         }
     }
 }

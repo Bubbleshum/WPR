@@ -93,13 +93,16 @@ namespace WPR.Engine.Input
 
             if (!sample.Active)
             {
-                if (_wasDown)
-                {
-                    // Nothing running any more: let SetFinger turn the previous Pressed/Moved into
-                    // a Released so GetState() reports the lift.
-                    TouchPanel.SetFinger(slot, TouchPanel.NO_FINGER, Vector2.Zero);
-                    _wasDown = false;
-                }
+                // Nothing running: write NO_FINGER every tick, not only on the tick after a press.
+                // SetFinger turns a previous Pressed/Moved into Released (the lift), and a previous
+                // Released into Invalid, which is what takes the finger out of GetState(). Nothing
+                // else clears a reserved slot, so skipping this once the lift had been reported
+                // left that Released touch in GetState() on every later frame. A game whose buttons
+                // fire on a Released touch inside them then pressed the last tapped button again
+                // whenever a screen under it regained input: AE Fruit Slash reopened its Settings
+                // screen the moment Back closed it.
+                TouchPanel.SetFinger(slot, TouchPanel.NO_FINGER, Vector2.Zero);
+                _wasDown = false;
                 return;
             }
 

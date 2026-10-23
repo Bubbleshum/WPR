@@ -48,11 +48,14 @@ namespace WPR.Platform.Android.Native
         private const string ExtraUsername = "wpr.hub.conversation.username";
         private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(5);
 
-        public static void Open(Activity host, string username)
+        public static void Open(Activity host, string username) => host.StartActivity(IntentFor(host, username));
+
+        /// <summary>The intent that opens <paramref name="username"/>'s conversation (also what a message notification opens).</summary>
+        public static Intent IntentFor(Context context, string username)
         {
-            Intent intent = new Intent(host, typeof(ConversationActivity));
+            Intent intent = new Intent(context, typeof(ConversationActivity));
             intent.PutExtra(ExtraUsername, username);
-            host.StartActivity(intent);
+            return intent;
         }
 
         private string _with = "";
@@ -107,6 +110,7 @@ namespace WPR.Platform.Android.Native
         protected override void OnResume()
         {
             base.OnResume();
+            HubMessageNotifications.ActiveConversation = _with; // its messages show here, no pop-up
             _poll?.Cancel();
             _poll = new CancellationTokenSource();
             _ = PollAsync(_poll.Token);
@@ -114,6 +118,7 @@ namespace WPR.Platform.Android.Native
 
         protected override void OnPause()
         {
+            if (HubMessageNotifications.ActiveConversation == _with) HubMessageNotifications.ActiveConversation = null;
             _poll?.Cancel();
             _poll = null;
             base.OnPause();
@@ -224,11 +229,11 @@ namespace WPR.Platform.Android.Native
             wrap.SetGravity(message.Mine ? GravityFlags.End : GravityFlags.Start);
             wrap.SetPadding(message.Mine ? Dp(48) : 0, Dp(4), message.Mine ? 0 : Dp(48), Dp(4));
 
-            TextView body = HubViews.Text(this, message.Body, 16, WpTheme.Foreground);
-            body.SetBackgroundColor(message.Mine ? WpTheme.Accent : WpTheme.Chrome);
-            body.SetPadding(Dp(12), Dp(8), Dp(12), Dp(8));
-            body.SetTextIsSelectable(false);
-            wrap.AddView(body, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent));
+            // An invite card takes the bubble's full width so its text column has room; a text
+            // message hugs its words.
+            View bubble = message.IsInvite ? InviteCard(message) : TextBubble(message);
+            wrap.AddView(bubble, new LinearLayout.LayoutParams(
+                message.IsInvite ? ViewGroup.LayoutParams.MatchParent : ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent));
 
             string when = HubText.Ago(message.SentAt);
             if (message.Mine && message.ReadAt != null) when += " · read";
@@ -236,12 +241,60 @@ namespace WPR.Platform.Android.Native
             meta.SetPadding(0, Dp(2), 0, 0);
             wrap.AddView(meta);
 
-            body.LongClickable = true;
-            body.LongClick += (_, _) => _ = ShowActionsAsync(hub, message, wrap);
+            bubble.LongClickable = true;
+            bubble.LongClick += (_, _) => _ = ShowActionsAsync(hub, message, wrap);
 
             if (atTop) _messages.AddView(wrap, 0);
             else _messages.AddView(wrap);
             _shown[message.Id] = wrap;
+        }
+
+        private TextView TextBubble(ChatMessage message)
+        {
+            TextView body = HubViews.Text(this, message.Body, 16, WpTheme.Foreground);
+            body.SetBackgroundColor(message.Mine ? WpTheme.Accent : WpTheme.Chrome);
+            body.SetPadding(Dp(12), Dp(8), Dp(12), Dp(8));
+            body.SetTextIsSelectable(false);
+            return body;
+        }
+
+        /// <summary>
+        /// A game invite as one entry: the game's tile on the left, the text on the right, and for
+        /// an invite from a friend a Play button under it when the game is installed here (the
+        /// friend is waiting in the game's own lobby).
+        /// </summary>
+        private View InviteCard(ChatMessage message)
+        {
+            LinearLayout card = new LinearLayout(this) { Orientation = Orientation.Horizontal };
+            card.SetBackgroundColor(message.Mine ? WpTheme.Accent : WpTheme.Chrome);
+            card.SetPadding(Dp(8), Dp(8), Dp(12), Dp(8));
+            card.SetGravity(GravityFlags.CenterVertical);
+
+            ImageView tile = new ImageView(this);
+            tile.SetScaleType(ImageView.ScaleType.CenterCrop);
+            tile.SetBackgroundColor(Color.Black);
+            if (InviteArt(message.TitleId!) is { } art) tile.SetImageBitmap(art);
+            card.AddView(tile, new LinearLayout.LayoutParams(Dp(64), Dp(64)));
+
+            LinearLayout text = new LinearLayout(this) { Orientation = Orientation.Vertical };
+            text.SetPadding(Dp(12), 0, 0, 0);
+            TextView kind = HubViews.Text(this, "GAME INVITE", 11, message.Mine ? WpTheme.Foreground : WpTheme.Accent);
+            kind.LetterSpacing = 0.08f;
+            text.AddView(kind);
+            text.AddView(HubViews.Text(this, message.Body, 15, WpTheme.Foreground));
+
+            if (!message.Mine && FindInstalled(message.TitleId!) is { } game)
+            {
+                TextView play = HubViews.Text(this, "play", 14, WpTheme.Foreground);
+                play.SetBackgroundColor(WpTheme.Accent);
+                play.SetPadding(Dp(14), Dp(4), Dp(14), Dp(4));
+                play.Clickable = true;
+                WpTheme.ApplyTilt(play);
+                play.Click += (_, _) => GameLauncher.Launch(this, game);
+                text.AddView(play, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent) { TopMargin = Dp(6) });
+            }
+            card.AddView(text, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
+            return card;
         }
 
         private async Task ShowActionsAsync(HubOnline hub, ChatMessage message, View bubble)
@@ -387,5 +440,33 @@ namespace WPR.Platform.Android.Native
         }
 
         private int Dp(int dp) => HubViews.Dp(this, dp);
+
+        private readonly Dictionary<string, Bitmap?> _inviteArt = new Dictionary<string, Bitmap?>(StringComparer.OrdinalIgnoreCase);
+
+        private Bitmap? InviteArt(string productId)
+        {
+            if (!_inviteArt.TryGetValue(productId, out Bitmap? art))
+            {
+                try { art = GameTileArt.Decode(FindInstalled(productId), productId); }
+                catch (Exception) { art = null; }
+                _inviteArt[productId] = art;
+            }
+            return art;
+        }
+
+        private static WPR.Models.Application? FindInstalled(string productId)
+        {
+            try
+            {
+                // Fully qualified: Activity's own ApplicationContext property would win otherwise.
+                return WPR.Models.ApplicationContext.Current.Applications!.ToList()
+                    .FirstOrDefault(a => string.Equals(a.ProductId?.Trim('{', '}'), productId.Trim('{', '}'), StringComparison.OrdinalIgnoreCase));
+            }
+            catch (Exception ex)
+            {
+                Log.Error(LogCategory.AppList, $"[wpr-invite] could not read the application table: {ex.Message}");
+                return null;
+            }
+        }
     }
 }

@@ -76,7 +76,7 @@ namespace WPR.SilverlightCompability
             RowDefinitions = new RowDefinitionCollection(InvalidateMeasure);
         }
 
-        protected override Size MeasureOverride(Size availableSize)
+        internal override Size WprMeasure(Size availableSize)
         {
             ResolveColumns(availableSize.Width);
             ResolveRows(availableSize.Height);
@@ -89,10 +89,61 @@ namespace WPR.SilverlightCompability
                 child.Measure(new Size(w, h));
             }
 
-            return new Size(_columnWidths.Sum(), _rowHeights.Sum());
+            // A star row or column WANTS only what its content needs, as in Silverlight; the
+            // remainder is shared out at arrange. Reporting the share instead made every star Grid
+            // ask for all the space it was offered, so one aligned to Top or Center filled its
+            // parent anyway: Microsoft Mahjong's tutorial banner (Background #CC000000,
+            // VerticalAlignment Top, one implicit star row) darkened the whole board and took
+            // every tap meant for the tiles.
+            double[] rowDesired = DesiredExtents(_rowHeights, IsStarRow, c => (GetRow(c), GetRowSpan(c)), c => c.DesiredSize.Height);
+            double[] colDesired = DesiredExtents(_columnWidths, IsStarColumn, c => (GetColumn(c), GetColumnSpan(c)), c => c.DesiredSize.Width);
+            return new Size(colDesired.Sum(), rowDesired.Sum());
         }
 
-        protected override Size ArrangeOverride(Size finalSize)
+        private bool IsStarRow(int i) => RowDefinitions.Count == 0 || RowDefinitions[i].Height.IsStar;
+
+        private bool IsStarColumn(int i) => ColumnDefinitions.Count == 0 || ColumnDefinitions[i].Width.IsStar;
+
+        /// <summary>
+        /// The resolved extents with each star track replaced by what the children in it need
+        /// (a spanning child's need beyond its fixed tracks is shared among its star tracks),
+        /// never more than the track was resolved to.
+        /// </summary>
+        private double[] DesiredExtents(double[] resolved, Func<int, bool> isStar,
+            Func<UIElement, (int Start, int Span)> cell, Func<UIElement, double> desired)
+        {
+            var result = (double[])resolved.Clone();
+            for (int i = 0; i < result.Length; i++)
+            {
+                if (isStar(i)) result[i] = 0;
+            }
+
+            foreach (UIElement child in Children)
+            {
+                (int start, int span) = cell(child);
+                start = Clamp(start, 0, Math.Max(0, result.Length - 1));
+                int end = Math.Min(result.Length, start + Math.Max(1, span));
+                double fixedSum = 0;
+                int stars = 0;
+                for (int i = start; i < end; i++)
+                {
+                    if (isStar(i)) stars++;
+                    else fixedSum += resolved[i];
+                }
+
+                if (stars == 0) continue;
+                double each = (desired(child) - fixedSum) / stars;
+                if (each <= 0) continue;
+                for (int i = start; i < end; i++)
+                {
+                    if (isStar(i) && each > result[i]) result[i] = Math.Min(each, resolved[i]);
+                }
+            }
+
+            return result;
+        }
+
+        internal override Size WprArrange(Size finalSize)
         {
             ResolveColumns(finalSize.Width);
             ResolveRows(finalSize.Height);
@@ -142,11 +193,13 @@ namespace WPR.SilverlightCompability
                     _columnWidths[i] = ApplyMinMax(def.Width.Value, def.MinWidth, def.MaxWidth);
             }
 
-            // Pass 2: Auto — measure non-spanning children in each Auto column
+            // Pass 2: Auto — measure non-spanning children in each Auto column. With unbounded
+            // width a star column sizes to its content too (see ResolveRows).
+            bool infinite = double.IsInfinity(available);
             for (int i = 0; i < ColumnDefinitions.Count; i++)
             {
                 var def = ColumnDefinitions[i];
-                if (def.Width.IsAuto)
+                if (def.Width.IsAuto || (infinite && def.Width.IsStar))
                 {
                     double max = 0;
                     foreach (UIElement child in Children)
@@ -223,10 +276,14 @@ namespace WPR.SilverlightCompability
                     _rowHeights[i] = ApplyMinMax(def.Height.Value, def.MinHeight, def.MaxHeight);
             }
 
+            // Measured with unbounded height (inside a stack, a scroll viewer, an item template),
+            // a star row has no remainder to share and sizes to its content as Auto does, as in
+            // Silverlight. Minesweeper's mode tiles (rows "*" and "30") were 30px tall without it.
+            bool infinite = double.IsInfinity(available);
             for (int i = 0; i < RowDefinitions.Count; i++)
             {
                 var def = RowDefinitions[i];
-                if (def.Height.IsAuto)
+                if (def.Height.IsAuto || (infinite && def.Height.IsStar))
                 {
                     double max = 0;
                     foreach (UIElement child in Children)

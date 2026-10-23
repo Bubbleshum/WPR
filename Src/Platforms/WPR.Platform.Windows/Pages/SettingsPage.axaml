@@ -118,6 +118,15 @@
 					<TextBlock Foreground="#BFFFFFFF" FontSize="11" TextWrapping="Wrap"
 					           Text="When a game crashes, WPR sends WPR Hub the error, a stack trace and the end of the game's log, with your user name and paths removed. When you install a game, or one crashes, and the hub has no copy of that exact game package, WPR uploads the package in the background. Nothing is sent while this is off, and switching it off drops anything still waiting to be sent."/>
 
+					<!-- Pop-up notifications, one switch per kind (Configuration.Notify*). -->
+					<TextBlock Text="Notifications" Foreground="White" FontWeight="SemiBold" Margin="0,8,0,0"/>
+					<CheckBox Name="notifyMessagesCheckBox" Foreground="White" Content="New messages"/>
+					<CheckBox Name="notifyInvitesCheckBox" Foreground="White" Content="Game invites"/>
+					<CheckBox Name="notifyFriendRequestsCheckBox" Foreground="White" Content="Friend requests"/>
+					<CheckBox Name="notifyAchievementsCheckBox" Foreground="White" Content="Achievements"/>
+					<TextBlock Foreground="#BFFFFFFF" FontSize="11" TextWrapping="Wrap"
+					           Text="Pop-ups while WPR is running: new WPR Hub messages, game invites and friend requests, and achievements as you earn them. Turning one off only stops its pop-up."/>
+
 					<!-- Reporting a problem is "Play with logging" in a game's pane (MainWindowDesktop). -->
 					<TextBlock Text="Report a problem" Foreground="White" FontWeight="SemiBold" Margin="0,8,0,0"/>
 					<TextBlock Foreground="#BFFFFFFF" FontSize="11" TextWrapping="Wrap"

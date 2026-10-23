@@ -52,20 +52,38 @@ namespace WPR.SilverlightCompability
             }
             if (dpField?.GetValue(null) is DependencyProperty dp)
             {
+                // A setter's value may be a {Binding} (WP8 styles use them): it binds the property
+                // rather than being stored in it. Stored, it sat in a typed slot as a Binding, and
+                // the next read of the property (Margin, during layout) threw InvalidCastException.
+                if (value is Binding binding)
+                {
+                    target.SetBinding(dp, binding);
+                    return;
+                }
                 object? converted = ConvertForTarget(value, dp.PropertyType);
+                if (!Fits(converted, dp.PropertyType))
+                {
+                    System.Diagnostics.Trace.WriteLine(
+                        $"[wpr-style] setter {propName} on {t.Name}: a {converted!.GetType().Name} is not a {dp.PropertyType.Name}; skipped");
+                    return;
+                }
                 target.SetValue(dp, converted);
                 return;
             }
 
             // CLR property fallback.
-            PropertyInfo? prop = t.GetProperty(propName,
+            PropertyInfo? prop = ReflectionMembers.GetProperty(t, propName,
                 BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
             if (prop != null && prop.CanWrite)
             {
                 object? converted = ConvertForTarget(value, prop.PropertyType);
-                prop.SetValue(target, converted);
+                if (Fits(converted, prop.PropertyType)) prop.SetValue(target, converted);
             }
         }
+
+        /// <summary>Whether <paramref name="value"/> may be stored in a property of <paramref name="type"/>.</summary>
+        private static bool Fits(object? value, Type type) =>
+            value == null ? !type.IsValueType || Nullable.GetUnderlyingType(type) != null : type.IsInstanceOfType(value);
 
         private static object? ConvertForTarget(object? value, Type targetType)
         {

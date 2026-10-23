@@ -24,7 +24,8 @@ namespace WPR.Shell
         /// reference).</param>
         public static HubOnline? TryCreate(string platform, IGamePackageSource? packages, IOnlineLocalStore? local,
             Func<System.Collections.Generic.IReadOnlyCollection<string>, System.Threading.Tasks.Task>? prepareTitles = null,
-            Func<string, bool>? hasTitleArt = null, Action<string, byte[]>? saveTitleArt = null)
+            Func<string, bool>? hasTitleArt = null, Action<string, byte[]>? saveTitleArt = null,
+            Func<System.Collections.Generic.IEnumerable<TitleDetails>>? installedTitles = null)
         {
             if (Current != null) return Current;
             if (Configuration.Current is not { } config) return null;
@@ -34,7 +35,7 @@ namespace WPR.Shell
             // reads it back after a :game death) and :game (which writes it).
             CompatibilityProblems.RunFilePath = Path.Combine(config.DataPath("Online"), "compat-run.txt");
 
-            return Current = new HubOnline(new HubSettings
+            Current = new HubOnline(new HubSettings
             {
                 // Read live, so a changed setting applies without recomposing.
                 BaseUri = () => Configuration.Current?.HubUri,
@@ -51,6 +52,7 @@ namespace WPR.Shell
                 PrepareTitles = prepareTitles,
                 HasTitleArt = hasTitleArt,
                 SaveTitleArt = saveTitleArt,
+                InstalledTitles = installedTitles,
                 ProgressRestored = earned =>
                 {
                     try { ProgressRestored?.Invoke(earned); }
@@ -97,6 +99,8 @@ namespace WPR.Shell
                     System.Diagnostics.Trace.WriteLine(message);
                 },
             });
+            HubMessageNotifications.Attach(Current);
+            return Current;
         }
 
         /// <summary>

@@ -56,14 +56,42 @@ namespace WPR.SilverlightCompability
             }
         }
 
+        public static readonly DependencyProperty ContentTemplateProperty =
+            DependencyProperty.Register(nameof(ContentTemplate), typeof(DataTemplate), typeof(ContentControl),
+                new PropertyMetadata((object?)null, OnContentTemplateChanged));
+
+        /// <summary>How a <see cref="Content"/> that is not an element is drawn: the template, with the content as its DataContext.</summary>
+        public DataTemplate? ContentTemplate
+        {
+            get => (DataTemplate?)GetValue(ContentTemplateProperty);
+            set => SetValue(ContentTemplateProperty, value);
+        }
+
+        private static void OnContentTemplateChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is ContentControl cc && cc.Content is not UIElement && cc.Content != null)
+            {
+                cc._presenter?.SetParent(null);
+                cc._presenter = cc.BuildPresenter(cc.Content);
+                cc._presenter?.SetParent(cc);
+                cc.InvalidateMeasure();
+            }
+        }
+
         private UIElement? BuildPresenter(object? content)
         {
             if (content == null) return null;
             if (content is UIElement el) return el;
+            if (ContentTemplate?.LoadContent() is UIElement templated)
+            {
+                if (templated is FrameworkElement fe) fe.DataContext = content;
+                return templated;
+            }
+
             return new TextBlock { Text = content.ToString() ?? string.Empty };
         }
 
-        protected override Size MeasureOverride(Size availableSize)
+        internal override Size WprMeasure(Size availableSize)
         {
             UIElement? p = Presenter;
             Size ds = Size.Empty;
@@ -95,7 +123,7 @@ namespace WPR.SilverlightCompability
             return ds;
         }
 
-        protected override Size ArrangeOverride(Size finalSize)
+        internal override Size WprArrange(Size finalSize)
         {
             Presenter?.Arrange(new Rect(0, 0, finalSize.Width, finalSize.Height));
             return finalSize;

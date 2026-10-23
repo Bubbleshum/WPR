@@ -103,6 +103,15 @@ namespace WPR
             {
                 string scopeName = kv.Key;
                 var types = kv.Value;
+
+                // WPR ships this one for real (WPR.Framework.WinRT: Size, Point, Rect, Color,
+                // WindowsRuntimeSystemExtensions), and the runtime binds WPR's own assemblies before
+                // a game's install folder, so a per-game copy would never load.
+                if (string.Equals(scopeName, "System.Runtime.WindowsRuntime", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
                 try { SynthesizeAssembly(installFolder, scopeName, types, interfaceTypes); }
                 catch (Exception ex)
                 {

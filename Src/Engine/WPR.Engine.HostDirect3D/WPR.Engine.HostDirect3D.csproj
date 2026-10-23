@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Engine.HostDirect3D - Direct3D 11, DXGI and the few Win32 calls a MANAGED WP8 title reaches
+    through native code, implemented as host-native COM objects whose vtable slots are C#
+    [UnmanagedCallersOnly] functions. SharpDX (Gravity Guy 2, the Microsoft casual games) is plain IL
+    calling COM vtables and a handful of exports, so the title's own SharpDX runs unmodified on top of
+    this; only the native ARM component it asks for those exports (SharpDX.WP8) is replaced, by
+    Src/Core/WPR.Framework.SharpDXWP8.
+
+    Draws are recorded as the WP8 native runtime's GpuFrame and replayed on the framework's device by
+    Wp8GpuReplay, the same translator ARM titles use (Aon9 shaders, raw D3D11 state descs). TFMs mirror
+    WPR.Engine.Wp8Native.
+  -->
+
+  <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <TargetFrameworks>net10.0;net10.0-android</TargetFrameworks>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(OS)' == 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <TargetFrameworks>net10.0-windows10.0.17763.0;net10.0-android</TargetFrameworks>
+  </PropertyGroup>
+  <PropertyGroup>
+    <AssemblyName>WPR.Engine.HostDirect3D</AssemblyName>
+    <RootNamespace>WPR.HostDirect3D</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net10.0-android'">24.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Xna\WPR.Framework.Xna.csproj" />
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.WinRT\WPR.Framework.WinRT.csproj" />
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Wp8Native\WPR.Engine.Wp8Native.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Wp8ContractTests" />
+  </ItemGroup>
+
+</Project>

@@ -41,7 +41,7 @@ namespace WPR.SilverlightCompability.Tests
         public void ListBox_SelectContainer_SelectsTheTappedRow()
         {
             var list = new ListBox { ItemsSource = new[] { "a", "b", "c" } };
-            Assert.True(list.SelectContainer(list.Children[2]));
+            Assert.True(list.SelectContainer((UIElement)list.ItemContainerGenerator.ContainerFromIndex(2)!));
             Assert.Equal("c", list.SelectedItem);
         }
 

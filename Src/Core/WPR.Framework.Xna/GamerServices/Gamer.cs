@@ -109,24 +109,43 @@ namespace Microsoft.Xna.Framework.GamerServices
             return StubUtils.ForeverTask;
         }
 
-        // Synchronous partner-token fetch. WPR has no Xbox LIVE partner-service backend,
-        // so there is no real token to return. Battleship's XBOXLive.getPartnerToken() calls
-        // this statically (Gamer.GetPartnerToken(audienceUri)) from RESTRequest._start() on a
-        // background thread; without the method the game threw MissingMethodException and the
-        // whole process died. Return an empty token — the caller (ExtractTokenData) tolerates
-        // it (parses to nothing, yields ""), wraps it in an empty SAML assertion, and the
-        // ensuing REST call to the unreachable partner service fails gracefully in its own
-        // guarded async callback. Online partner features won't work offline; single-player is
-        // unaffected.
-        public static string GetPartnerToken(string audienceUri) => "";
+        /// <summary>
+        /// What WPR hands back for a partner token. WPR has no Xbox LIVE partner-service backend, so
+        /// there is no real token; but <see cref="SignedInGamer.IsSignedInToLive"/> answers true, and a
+        /// signed-in WP7 device always got a real one: a SAML <c>EncryptedAssertion</c> holding exactly
+        /// one xmlenc <c>EncryptedData</c>. So this is that shape with placeholder cipher data.
+        /// <para>
+        /// It must have that shape because the WP7 Xbox LIVE sample's extractor, which titles copied
+        /// verbatim, parses <c>"&lt;root&gt;" + token + "&lt;/root&gt;"</c> and takes the
+        /// <c>.Single()</c> descendant whose local name is <c>EncryptedData</c>. An empty token makes
+        /// that throw "Sequence contains no elements". Contract Killer (Glu, <c>XNAConnect.GetToken</c>)
+        /// has no guard: its login runs from <c>Update</c> once its dead server times out (~35 s in),
+        /// and as a variable-timestep game the throw ends the run. Battleship and DracoWP catch it.
+        /// With this token every one of them extracts the element, sends it to the long-dead
+        /// service, and takes its own "request failed" path, as on a phone with the servers gone.
+        /// </para>
+        /// </summary>
+        internal const string PlaceholderPartnerToken =
+            "<EncryptedAssertion xmlns=\"urn:oasis:names:tc:SAML:2.0:assertion\">" +
+            "<xenc:EncryptedData Type=\"http://www.w3.org/2001/04/xmlenc#Element\" xmlns:xenc=\"http://www.w3.org/2001/04/xmlenc#\">" +
+            "<xenc:EncryptionMethod Algorithm=\"http://www.w3.org/2001/04/xmlenc#aes256-cbc\" />" +
+            "<xenc:CipherData><xenc:CipherValue>V1BSIGhhcyBubyBYYm94IExJVkUgcGFydG5lciB0b2tlbg==</xenc:CipherValue></xenc:CipherData>" +
+            "</xenc:EncryptedData>" +
+            "</EncryptedAssertion>";
+
+        // Synchronous partner-token fetch. Battleship's XBOXLive.getPartnerToken() calls this
+        // statically from RESTRequest._start() on a background thread; without the method the game
+        // threw MissingMethodException and the whole process died. It used to return "", which a
+        // signed-in device never did: see PlaceholderPartnerToken.
+        public static string GetPartnerToken(string audienceUri) => PlaceholderPartnerToken;
 
         // The async half of the above. BeginGetPartnerToken hands back StubUtils.ForeverTask, so
         // this is only ever reached by a game that polls IsCompleted rather than blocking — but
         // it has to EXIST, because the reference is resolved when the calling method is JITted,
         // not when it runs. Skulls of the Shogun (AngelXNA.Net.NetAsyncGameManager) and Crimson
-        // Dragon (Microsoft.Phone.Marketplace.GamerContext) both reference it. Same empty token
-        // as the synchronous path, for the same reason.
-        public static string EndGetPartnerToken(IAsyncResult result) => "";
+        // Dragon (Microsoft.Phone.Marketplace.GamerContext) both reference it. Same token as the
+        // synchronous path.
+        public static string EndGetPartnerToken(IAsyncResult result) => PlaceholderPartnerToken;
 
         /// <summary>
         /// Look a gamer up by tag. WPR has no LIVE directory to query, so the only tag that can

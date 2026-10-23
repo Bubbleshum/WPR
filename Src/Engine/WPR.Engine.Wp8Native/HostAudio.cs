@@ -15,8 +15,10 @@ namespace WPR.Wp8Native
     /// ~170 over SDL's device, the old FAudio path). The game appears to fill its voice on its
     /// own clock, so what matters is how far ahead of the speaker the output consumes, and a
     /// track per voice consumes closest.
+    /// <para>Public for the host XAudio2 in <c>WPR.Engine.HostDirect3D</c>, which a managed title's
+    /// SharpDX reaches: its voices play through the same output.</para>
     /// </remarks>
-    internal interface IHostAudio : IAudioOutput, IDisposable
+    public interface IHostAudio : IAudioOutput, IDisposable
     {
         int VoicesCreated { get; }
 

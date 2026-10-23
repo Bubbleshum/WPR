@@ -17,5 +17,17 @@ namespace WPR.SilverlightCompability
     public class UserControl : ContentControl
     {
         public UserControl() { }
+
+        /// <summary>
+        /// Silverlight's UserControl declares its own <c>protected UIElement Content</c>, and a
+        /// user control setting its content in code calls that setter. It is the same value as
+        /// <see cref="ContentControl.Content"/>; protected, so XAML and reflection still find
+        /// the public one.
+        /// </summary>
+        protected new UIElement? Content
+        {
+            get => base.Content as UIElement;
+            set => base.Content = value;
+        }
     }
 }

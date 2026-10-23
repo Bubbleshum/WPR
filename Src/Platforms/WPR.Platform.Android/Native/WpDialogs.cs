@@ -9,10 +9,9 @@ namespace WPR.Platform.Android.Native
     /// <summary>
     /// Small async wrappers over <see cref="AlertDialog"/> for the launcher shell.
     ///
-    /// <para><c>MessageBoxUtils</c> already does this for the game-hosting path, but
-    /// it is typed against <c>MessageBox.Avalonia</c>'s button and icon enums and routes
-    /// through a single static activity — both wrong for a shell with several activities on
-    /// the stack. These take the host explicitly and return plain results.</para>
+    /// <para><c>MessageBoxUtils</c> already does this for the game-hosting path, but it
+    /// routes through a single static activity, which is wrong for a shell with several
+    /// activities on the stack. These take the host explicitly and return plain results.</para>
     /// </summary>
     internal static class WpDialogs
     {

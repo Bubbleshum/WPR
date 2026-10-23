@@ -45,6 +45,11 @@
     <None Remove="Native\**" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Wp8ContractTests: the replay's constant conversion (Wp8GpuReplay.Ordered). -->
+    <InternalsVisibleTo Include="Wp8ContractTests" />
+  </ItemGroup>
+
   <ItemGroup Condition="'$(TargetPlatformIdentifier)' != 'android' And Exists('Native\wprcpu.dll')">
     <None Include="Native\wprcpu.dll" Link="wprcpu.dll" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
@@ -55,6 +60,8 @@
     <!-- Launcher.LaunchUriAsync and VibrationDevice reach the platform through these (Wp8HostServices). -->
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Launchers\WPR.Engine.Launchers.csproj" />
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Vibration\WPR.Engine.Vibration.csproj" />
+    <!-- IXboxLiveHost: shared with the managed Microsoft.Xbox facade (WPR.Framework.Xbox). -->
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.XboxLive\WPR.Engine.XboxLive.csproj" />
   </ItemGroup>
 
 </Project>

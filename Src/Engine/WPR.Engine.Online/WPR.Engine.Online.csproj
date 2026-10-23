@@ -29,4 +29,9 @@
     <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net10.0-android'">24.0</SupportedOSPlatformVersion>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- The run-file tests stand in for a dead game process by dropping the run's lock. -->
+    <InternalsVisibleTo Include="WPR.SilverlightCompability.Tests" />
+  </ItemGroup>
+
 </Project>

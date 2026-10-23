@@ -665,6 +665,11 @@ namespace WPR
 
                 GameIconStore.Capture(app);
 
+                // Offer WPR Hub the game's name and icon, for titles it has no details for yet.
+                // Queued only (no-op with server logging off); the head's flush after install
+                // asks the hub what it lacks and sends just that. See HubTitleDetails.
+                OfferTitleDetails(app, appDataFolder);
+
                 if (package != null)
                 {
                     try
@@ -691,6 +696,52 @@ namespace WPR
             }
 
             return ApplicationInstallError.None;
+        }
+
+        /// <summary>
+        /// What an installed game tells WPR Hub about itself (<see cref="WPR.Engine.Online.TitleDetails"/>).
+        /// Null for a row with no product id. Shared with the heads' backfill of older installs.
+        /// </summary>
+        public static WPR.Engine.Online.TitleDetails? DescribeForHub(Application? app, string? installFolder)
+        {
+            if (app == null || string.IsNullOrWhiteSpace(app.ProductId)) return null;
+            string? icon = null;
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(app.IconPath) && Configuration.Current is { } config) icon = config.DataPath(app.IconPath);
+            }
+            catch (Exception) { /* no icon then */ }
+            return new WPR.Engine.Online.TitleDetails(app.ProductId, app.Name, app.Publisher, app.Author,
+                WPR.Engine.Online.TitleDetails.ReadPlatform(installFolder), icon);
+        }
+
+        /// <summary>
+        /// Every installed game, described for WPR Hub: the backfill <c>HubTitleDetails</c> runs at
+        /// a process's first flush. Reads its own database context, because it runs on a flush
+        /// thread and <see cref="ApplicationContext.Current"/> belongs to the UI.
+        /// </summary>
+        public static System.Collections.Generic.IEnumerable<WPR.Engine.Online.TitleDetails> InstalledTitlesForHub()
+        {
+            if (Configuration.Current is not { } config) yield break;
+            System.Collections.Generic.List<Application> apps;
+            using (var db = new ApplicationContext())
+            {
+                apps = db.Applications?.AsNoTracking().ToList() ?? new System.Collections.Generic.List<Application>();
+            }
+            foreach (Application app in apps)
+            {
+                string folder = Path.Combine(config.DataPath(Application.DataStoreFolder), (app.ProductId ?? "").Trim('{', '}'));
+                if (DescribeForHub(app, folder) is { } details) yield return details;
+            }
+        }
+
+        private static void OfferTitleDetails(Application? app, string? installFolder)
+        {
+            try
+            {
+                if (DescribeForHub(app, installFolder) is { } details) WPR.Engine.Online.OnlineBackend.TitleDetails?.Offer(details);
+            }
+            catch (Exception ex) { Log.Warn(LogCategory.AppInstall, $"Could not offer title details to WPR Hub (non-fatal): {ex.Message}"); }
         }
 
         /// <summary>
@@ -1000,6 +1051,9 @@ namespace WPR
                 //    it backfills every game installed before GameIconStore existed, in bulk via
                 //    --repatch-installed, rather than waiting for each one to be uninstalled.
                 GameIconStore.Capture(app);
+
+                //    Offer the hub the game's details too: a no-op once this title was sent.
+                OfferTitleDetails(app, installFolder);
 
                 progressSet(100);
                 return ApplicationInstallError.None;

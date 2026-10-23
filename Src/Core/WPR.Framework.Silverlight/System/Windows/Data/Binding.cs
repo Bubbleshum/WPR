@@ -7,7 +7,13 @@ namespace WPR.SilverlightCompability
     /// </summary>
     public class Binding
     {
-        public string Path { get; set; } = "";
+        /// <summary>Silverlight's type: game IL sets it as <c>set_Path(PropertyPath)</c> (the
+        /// toolkit's Pivot builds its header bindings so), which a string property could not
+        /// answer.</summary>
+        public PropertyPath? Path { get; set; }
+
+        /// <summary>The path as text; empty for none.</summary>
+        internal string PathText => Path?.Path ?? "";
         public BindingMode Mode { get; set; } = BindingMode.OneWay;
         public object? Source { get; set; }
 
@@ -28,7 +34,20 @@ namespace WPR.SilverlightCompability
         /// </summary>
         public RelativeSource? RelativeSource { get; set; }
 
+        /// <summary>Applied to the source value before it reaches the target (Converter=...).</summary>
+        public IValueConverter? Converter { get; set; }
+
+        public object? ConverterParameter { get; set; }
+
+        public System.Globalization.CultureInfo? ConverterCulture { get; set; }
+
+        /// <summary>The target's value when the path does not resolve.</summary>
+        public object? FallbackValue { get; set; }
+
+        /// <summary>The target's value when the path resolves to null.</summary>
+        public object? TargetNullValue { get; set; }
+
         public Binding() { }
-        public Binding(string path) { Path = path; }
+        public Binding(string path) { Path = new PropertyPath(path); }
     }
 }

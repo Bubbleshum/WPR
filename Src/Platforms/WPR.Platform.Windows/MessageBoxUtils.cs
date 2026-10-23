@@ -8,132 +8,60 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 
-using MessageBox.Avalonia;
-
 namespace WPR.Platform.Windows
 {
+    /// <summary>The buttons a launcher dialog shows.</summary>
+    public enum DialogButtons { Ok, OkCancel, YesNo, YesNoCancel }
+
+    /// <summary>What a launcher dialog answered; <see cref="None"/> when it was closed without a button.</summary>
+    public enum DialogAnswer { None, Ok, Cancel, Yes, No }
+
+    /// <summary>A launcher dialog's kind. Accepted for the callers' sake; the window draws no icon.</summary>
+    public enum DialogIcon { None, Info, Question, Warning, Error, Success }
+
+    /// <summary>
+    /// Every dialog the desktop head shows, built in code on plain Avalonia windows.
+    /// </summary>
+    /// <remarks>
+    /// This used to sit on MessageBox.Avalonia 2.2.0, which was built against an older Avalonia than
+    /// this head's: its windows cannot be constructed here (<c>MissingMethodException:
+    /// AvaloniaObjectExtensions.Bind(IAvaloniaObject, …)</c> from <c>MsBoxStandardWindow.!XamlIlPopulate</c>),
+    /// and the fallbacks that caught that never completed their task when the window was closed. That
+    /// was every XNA <c>Guide.BeginShowMessageBox</c> on the desktop (WPR Hub group 8bf2d758d13f: the
+    /// quit / rate-us / sign-in prompts of Plants vs. Zombies, Doodle Jump, Fruit Ninja, Sonic 4…).
+    /// The package is gone; do not bring it back for one dialog.
+    /// </remarks>
     public static class MessageBoxUtils
     {
         public static Window MainWindow { get; set; }
 
-        public static Task<MessageBox.Avalonia.Enums.ButtonResult> GetMessageDialogResult(string title,
-            string text, MessageBox.Avalonia.Enums.ButtonEnum buttons = MessageBox.Avalonia.Enums.ButtonEnum.Ok,
-            MessageBox.Avalonia.Enums.Icon icon = MessageBox.Avalonia.Enums.Icon.Info, IEnumerable<string> ?buttonTexts = null,
-            bool modalOnWindow = true, bool dispatchMain = false)
+        /// <summary>The labels, and the answer for each, that <paramref name="buttons"/> shows.</summary>
+        public static (string[] Labels, DialogAnswer[] Answers) Describe(DialogButtons buttons) => buttons switch
         {
-            Func<Task<MessageBox.Avalonia.Enums.ButtonResult>> returnTaskFunc = () =>
-            {
-                try
-                {
-                    var msgBox = MessageBoxManager.GetMessageBoxStandardWindow(
-                        title: title,
-                        text: text,
-                        icon: icon,
-                        @enum: buttons,
-                        windowStartupLocation: WindowStartupLocation.CenterScreen);
-                    
-                    return modalOnWindow ? msgBox.ShowDialog(MainWindow) : msgBox.Show();
-                }
-                catch (System.MissingMethodException)
-                {
-                    // MessageBox.Avalonia 2.2.0 predates this head's Avalonia, so this fallback is
-                    // what actually shows. It sizes to its text: a fixed height pushed the buttons of
-                    // a long question (the uninstall prompt) off the bottom of a window that cannot
-                    // be resized, leaving no way to answer it.
-                    var tcs = new TaskCompletionSource<MessageBox.Avalonia.Enums.ButtonResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+            DialogButtons.OkCancel => (new[] { "OK", "Cancel" }, new[] { DialogAnswer.Ok, DialogAnswer.Cancel }),
+            DialogButtons.YesNo => (new[] { "Yes", "No" }, new[] { DialogAnswer.Yes, DialogAnswer.No }),
+            DialogButtons.YesNoCancel => (new[] { "Yes", "No", "Cancel" },
+                new[] { DialogAnswer.Yes, DialogAnswer.No, DialogAnswer.Cancel }),
+            _ => (new[] { "OK" }, new[] { DialogAnswer.Ok }),
+        };
 
-                    var w = new Window
-                    {
-                        Title = title,
-                        Width = 480,
-                        SizeToContent = SizeToContent.Height,
-                        CanResize = false,
-                        WindowStartupLocation = WindowStartupLocation.CenterScreen
-                    };
-                    // Closing with the title bar's X (or Alt+F4) answers None, which every caller
-                    // reads as "no" / "cancel". Without this the caller waited for ever.
-                    w.Closed += (_, __) => tcs.TrySetResult(MessageBox.Avalonia.Enums.ButtonResult.None);
-                    
-                    var panel = new StackPanel
-                    {
-                        Orientation = Orientation.Vertical,
-                        Spacing = 12,
-                        Margin = new Thickness(16)
-                    };
-                    
-                    var content = new TextBlock
-                    {
-                        Text = text,
-                        TextWrapping = TextWrapping.Wrap,
-                        Foreground = Brushes.White
-                    };
-                    
-                    var buttonsPanel = new StackPanel
-                    {
-                        Orientation = Orientation.Horizontal,
-                        HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
-                        Spacing = 8
-                    };
-                    
-                    void CloseWith(MessageBox.Avalonia.Enums.ButtonResult r)
-                    {
-                        tcs.TrySetResult(r);
-                        w.Close();
-                    }
-                    
-                    void AddButton(string caption, MessageBox.Avalonia.Enums.ButtonResult r)
-                    {
-                        var b = new Button { Content = caption, MinWidth = 80 };
-                        b.Click += (_, __) => CloseWith(r);
-                        buttonsPanel.Children.Add(b);
-                    }
-                    
-                    switch (buttons)
-                    {
-                        case MessageBox.Avalonia.Enums.ButtonEnum.Ok:
-                            AddButton("OK", MessageBox.Avalonia.Enums.ButtonResult.Ok);
-                            break;
-                        case MessageBox.Avalonia.Enums.ButtonEnum.OkCancel:
-                            AddButton("Cancel", MessageBox.Avalonia.Enums.ButtonResult.Cancel);
-                            AddButton("OK", MessageBox.Avalonia.Enums.ButtonResult.Ok);
-                            break;
-                        case MessageBox.Avalonia.Enums.ButtonEnum.YesNo:
-                            AddButton("No", MessageBox.Avalonia.Enums.ButtonResult.No);
-                            AddButton("Yes", MessageBox.Avalonia.Enums.ButtonResult.Yes);
-                            break;
-                        case MessageBox.Avalonia.Enums.ButtonEnum.YesNoCancel:
-                            AddButton("Cancel", MessageBox.Avalonia.Enums.ButtonResult.Cancel);
-                            AddButton("No", MessageBox.Avalonia.Enums.ButtonResult.No);
-                            AddButton("Yes", MessageBox.Avalonia.Enums.ButtonResult.Yes);
-                            break;
-                        default:
-                            AddButton("OK", MessageBox.Avalonia.Enums.ButtonResult.Ok);
-                            break;
-                    }
-                    
-                    panel.Children.Add(content);
-                    panel.Children.Add(buttonsPanel);
-                    w.Content = panel;
-                    
-                    if (modalOnWindow && MainWindow != null)
-                    {
-                        _ = w.ShowDialog(MainWindow);
-                    }
-                    else
-                    {
-                        w.Show();
-                    }
-                    
-                    return tcs.Task;
-                }
-            };
-            
-            if (dispatchMain)
-            {
-                return Dispatcher.UIThread.InvokeAsync(returnTaskFunc);
-            }
+        /// <summary>Maps the window's answer (button index, or -1 for closed) to a <see cref="DialogAnswer"/>.</summary>
+        public static DialogAnswer Resolve(DialogButtons buttons, int chosen)
+        {
+            var (_, answers) = Describe(buttons);
+            return chosen >= 0 && chosen < answers.Length ? answers[chosen] : DialogAnswer.None;
+        }
 
-            return returnTaskFunc();
+        /// <summary>
+        /// A launcher dialog over <see cref="MainWindow"/>: completes with the answer for the button
+        /// pressed, or <see cref="DialogAnswer.None"/> when it was closed without one.
+        /// </summary>
+        public static async Task<DialogAnswer> GetMessageDialogResult(string title,
+            string text, DialogButtons buttons = DialogButtons.Ok, DialogIcon icon = DialogIcon.Info)
+        {
+            var (labels, _) = Describe(buttons);
+            int chosen = await ShowDialogWindowAsync(title, title, text, labels, 0, topmost: false, owner: MainWindow);
+            return Resolve(buttons, chosen);
         }
 
         /// <summary>
@@ -141,44 +69,61 @@ namespace WPR.Platform.Windows
         /// one button per label, completing with the index pressed or -1 when it was dismissed (Esc,
         /// closing the window). The shim maps that to a <c>MessageBoxResult</c>.
         /// </summary>
+        public static Task<int> ShowGameMessageBoxAsync(string caption, string text, IReadOnlyList<string> labels) =>
+            ShowGameMessageBoxAsync(caption, text, labels, 0);
+
+        /// <summary>
+        /// As the three-argument overload, with <paramref name="defaultIndex"/> the button Enter
+        /// presses. XNA's <c>Guide.BeginShowMessageBox</c> comes here with the game's own labels and
+        /// focus button; Guide maps -1 to the null XNA documents for a cancelled box.
+        /// </summary>
         /// <remarks>
-        /// Built directly rather than through MessageBox.Avalonia, whose 2.2.0 build predates the
-        /// Avalonia this head runs and lands in <see cref="GetMessageDialogResult"/>'s
-        /// MissingMethodException fallback, a window that never completes when it is closed. The
-        /// game thread waits on this task, so EVERY way out of the window has to complete it.
         /// The game window is SDL's, not Avalonia's, so the dialog cannot be owned by it: it is
         /// topmost instead, and the window that had the foreground (the game) gets it back on close.
         /// </remarks>
-        public static Task<int> ShowGameMessageBoxAsync(string caption, string text, IReadOnlyList<string> labels)
+        public static Task<int> ShowGameMessageBoxAsync(string caption, string text, IReadOnlyList<string> labels, int defaultIndex) =>
+            ShowDialogWindowAsync(string.IsNullOrEmpty(caption) ? "WPR" : caption, caption, text, labels, defaultIndex,
+                topmost: true, owner: null);
+
+        /// <summary>
+        /// The one dialog window: <paramref name="heading"/> over <paramref name="text"/> and a button
+        /// per label, completing with the index pressed or -1. EVERY way out completes it (a button,
+        /// Esc, the close button, Alt+F4, WPR shutting down), because callers wait on it, the game
+        /// thread included. With no <paramref name="owner"/> the foreground goes back on close to
+        /// whatever had it when the dialog opened.
+        /// </summary>
+        private static Task<int> ShowDialogWindowAsync(string windowTitle, string heading, string text,
+            IReadOnlyList<string> labels, int defaultIndex, bool topmost, Window? owner)
         {
             Func<Task<int>> show = () =>
             {
                 var tcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
-                IntPtr previousForeground = GetForegroundWindow();
+                bool owned = owner != null && owner.IsVisible;
+                IntPtr previousForeground = owned ? IntPtr.Zero : GetForegroundWindow();
 
                 var w = new Window
                 {
-                    Title = string.IsNullOrEmpty(caption) ? "WPR" : caption,
+                    Title = string.IsNullOrEmpty(windowTitle) ? "WPR" : windowTitle,
                     Width = 480,
                     SizeToContent = SizeToContent.Height,
                     CanResize = false,
-                    Topmost = true,
+                    Topmost = topmost,
                     ShowInTaskbar = false,
-                    WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                    WindowStartupLocation = owned ? WindowStartupLocation.CenterOwner : WindowStartupLocation.CenterScreen,
                 };
 
                 var panel = new StackPanel { Margin = new Thickness(24, 20), Spacing = 12 };
-                if (!string.IsNullOrEmpty(caption))
+                if (!string.IsNullOrEmpty(heading))
                 {
                     panel.Children.Add(new TextBlock
                     {
-                        Text = caption,
+                        Text = heading,
                         FontSize = 22,
                         FontWeight = FontWeight.Light,
                         TextWrapping = TextWrapping.Wrap,
                     });
                 }
-                panel.Children.Add(new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap });
+                panel.Children.Add(new TextBlock { Text = text ?? string.Empty, TextWrapping = TextWrapping.Wrap });
 
                 var buttons = new StackPanel
                 {
@@ -187,10 +132,11 @@ namespace WPR.Platform.Windows
                     Spacing = 8,
                     Margin = new Thickness(0, 8, 0, 0),
                 };
+                if (defaultIndex < 0 || defaultIndex >= labels.Count) defaultIndex = 0;
                 for (int i = 0; i < labels.Count; i++)
                 {
                     int index = i;
-                    var b = new Button { Content = labels[i], MinWidth = 120, IsDefault = i == 0 };
+                    var b = new Button { Content = labels[i] ?? string.Empty, MinWidth = 120, IsDefault = i == defaultIndex };
                     b.Click += (_, _) => { tcs.TrySetResult(index); w.Close(); };
                     buttons.Children.Add(b);
                 }
@@ -215,8 +161,20 @@ namespace WPR.Platform.Windows
                     }
                 };
 
-                w.Show();
-                w.Activate();
+                try
+                {
+                    if (owned)
+                        _ = w.ShowDialog(owner!);
+                    else
+                        w.Show();
+                    w.Activate();
+                }
+                catch
+                {
+                    // A window that never opened can never close: answer as dismissed.
+                    tcs.TrySetResult(-1);
+                    throw;
+                }
                 return tcs.Task;
             };
 
@@ -333,88 +291,91 @@ namespace WPR.Platform.Windows
             return Dispatcher.UIThread.InvokeAsync(returnTaskFunc);
         }
 
-        public static Task<string> GetInputResult(string title, string description, string defaultText, bool isModal = true, bool dispatchMain = false)
+
+        /// <summary>
+        /// XNA's <c>Guide.BeginShowKeyboardInput</c>: a text box over <paramref name="defaultText"/>,
+        /// completing with the text entered, or null when cancelled or closed (Guide then answers the
+        /// default text). Topmost and unowned for the same reason as the game message box.
+        /// </summary>
+        public static Task<string?> GetInputResult(string title, string description, string defaultText)
         {
-            Func<Task<string>> returnTaskFunc = async () =>
+            Func<Task<string?>> show = () =>
             {
+                var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+                IntPtr previousForeground = GetForegroundWindow();
+
+                var w = new Window
+                {
+                    Title = string.IsNullOrEmpty(title) ? "WPR" : title,
+                    Width = 480,
+                    SizeToContent = SizeToContent.Height,
+                    CanResize = false,
+                    Topmost = true,
+                    ShowInTaskbar = false,
+                    WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                };
+
+                var panel = new StackPanel { Margin = new Thickness(24, 20), Spacing = 12 };
+                if (!string.IsNullOrEmpty(title))
+                {
+                    panel.Children.Add(new TextBlock
+                    {
+                        Text = title,
+                        FontSize = 22,
+                        FontWeight = FontWeight.Light,
+                        TextWrapping = TextWrapping.Wrap,
+                    });
+                }
+                if (!string.IsNullOrEmpty(description))
+                    panel.Children.Add(new TextBlock { Text = description, TextWrapping = TextWrapping.Wrap });
+
+                var input = new TextBox { Text = defaultText ?? string.Empty };
+                panel.Children.Add(input);
+
+                var buttons = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left,
+                    Spacing = 8,
+                    Margin = new Thickness(0, 8, 0, 0),
+                };
+                var btnOk = new Button { Content = "OK", MinWidth = 120, IsDefault = true };
+                btnOk.Click += (_, _) => { tcs.TrySetResult(input.Text ?? string.Empty); w.Close(); };
+                var btnCancel = new Button { Content = "Cancel", MinWidth = 120, IsCancel = true };
+                btnCancel.Click += (_, _) => w.Close();
+                buttons.Children.Add(btnOk);
+                buttons.Children.Add(btnCancel);
+                panel.Children.Add(buttons);
+                w.Content = panel;
+
+                // Closed covers Cancel, Esc (IsCancel), the close button, Alt+F4 and shutdown.
+                w.Closed += (_, _) =>
+                {
+                    tcs.TrySetResult(null);
+                    if (previousForeground != IntPtr.Zero)
+                    {
+                        try { SetForegroundWindow(previousForeground); } catch { /* best effort */ }
+                    }
+                };
+                w.Opened += (_, _) => input.Focus();
+
                 try
                 {
-                    var msgBox = MessageBoxManager.GetMessageBoxInputWindow(
-                        new MessageBox.Avalonia.DTO.MessageBoxInputParams()
-                        {
-                            ContentTitle = title,
-                            ContentMessage = description,
-                            InputDefaultValue = defaultText,
-                            WindowStartupLocation = WindowStartupLocation.CenterScreen
-                        }
-                    );
-                    
-                    var result = await (isModal ? msgBox.ShowDialog(MainWindow) : msgBox.Show());
-                    return result.Message;
+                    w.Show();
+                    w.Activate();
                 }
-                catch (System.MissingMethodException)
+                catch
                 {
-                    var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-                    
-                    var w = new Window
-                    {
-                        Title = title,
-                        Width = 420,
-                        Height = 220,
-                        CanResize = false,
-                        WindowStartupLocation = WindowStartupLocation.CenterScreen
-                    };
-                    
-                    var panel = new StackPanel
-                    {
-                        Orientation = Orientation.Vertical,
-                        Spacing = 10,
-                        Margin = new Thickness(16)
-                    };
-                    
-                    var desc = new TextBlock { Text = description, TextWrapping = TextWrapping.Wrap, Foreground = Brushes.White };
-                    var input = new TextBox { Text = defaultText };
-                    
-                    var buttons = new StackPanel
-                    {
-                        Orientation = Orientation.Horizontal,
-                        HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
-                        Spacing = 8
-                    };
-                    
-                    var btnCancel = new Button { Content = "Cancel", MinWidth = 80 };
-                    btnCancel.Click += (_, __) => { tcs.TrySetResult(defaultText); w.Close(); };
-                    
-                    var btnOk = new Button { Content = "OK", MinWidth = 80 };
-                    btnOk.Click += (_, __) => { tcs.TrySetResult(input.Text ?? defaultText); w.Close(); };
-                    
-                    buttons.Children.Add(btnCancel);
-                    buttons.Children.Add(btnOk);
-                    
-                    panel.Children.Add(desc);
-                    panel.Children.Add(input);
-                    panel.Children.Add(buttons);
-                    w.Content = panel;
-                    
-                    if (isModal && MainWindow != null)
-                    {
-                        _ = w.ShowDialog(MainWindow);
-                    }
-                    else
-                    {
-                        w.Show();
-                    }
-                    
-                    return await tcs.Task;
+                    tcs.TrySetResult(null);
+                    throw;
                 }
+                return tcs.Task;
             };
-            
-            if (dispatchMain)
-            {
-                return Dispatcher.UIThread.InvokeAsync(returnTaskFunc);
-            }
 
-            return returnTaskFunc();
+            if (Dispatcher.UIThread.CheckAccess())
+                return show();
+
+            return Dispatcher.UIThread.InvokeAsync(show);
         }
     }
 }

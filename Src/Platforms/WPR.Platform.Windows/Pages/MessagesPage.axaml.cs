@@ -64,10 +64,40 @@ namespace WPR.Platform.Windows.Pages
             _poll.Tick += (_, _) => _ = PollAsync();
             AttachedToVisualTree += (_, _) =>
             {
+                _attached = true;
                 _ = LoadConversationsAsync();
                 if (_with != null) _poll.Start();
+                if (TopLevel.GetTopLevel(this) is Window window && window != _window)
+                {
+                    _window = window;
+                    window.Activated += (_, _) => UpdateActiveConversation();
+                    window.Deactivated += (_, _) => UpdateActiveConversation();
+                }
+                UpdateActiveConversation();
             };
-            DetachedFromVisualTree += (_, _) => _poll.Stop();
+            DetachedFromVisualTree += (_, _) =>
+            {
+                _attached = false;
+                _poll.Stop();
+                UpdateActiveConversation();
+            };
+        }
+
+        private Window? _window;
+        private bool _attached;
+
+        /// <summary>Opens <paramref name="username"/>'s conversation (from a message notification).</summary>
+        public void OpenConversation(string username) => _ = OpenAsync(username);
+
+        /// <summary>
+        /// The conversation counts as on screen (so it gets no pop-up) only while this page shows it
+        /// and WPR's window is the active one.
+        /// </summary>
+        private void UpdateActiveConversation()
+        {
+            bool showing = _with != null && _attached && _window?.IsActive == true;
+            if (showing) HubMessageNotifications.ActiveConversation = _with;
+            else if (HubMessageNotifications.ActiveConversation == _with) HubMessageNotifications.ActiveConversation = null;
         }
 
         private static bool SignedIn => !string.IsNullOrEmpty(Configuration.Current?.HubAccessToken) && HubSetup.Current != null;
@@ -191,6 +221,7 @@ namespace WPR.Platform.Windows.Pages
             if (generation != _openGeneration || thread == null) return;
 
             _with = thread.With;
+            UpdateActiveConversation();
             this.Get<TextBlock>("withText").Text = thread.With;
             ApplyFriendship(thread.IsFriend);
             SetThreadStatus(thread.Messages.Count == 0
@@ -287,7 +318,9 @@ namespace WPR.Platform.Windows.Pages
             var body = new SelectableTextBlock { Text = message.Body, TextWrapping = TextWrapping.Wrap, Foreground = Brushes.White, FontSize = 14 };
             string when = HubText.Ago(message.SentAt) + (message.Mine && message.ReadAt != null ? " · read" : "");
             var stack = new StackPanel { Spacing = 2 };
-            stack.Children.Add(new Border { Background = message.Mine ? accent : Theirs, CornerRadius = new CornerRadius(3), Padding = new Thickness(10, 6), Child = body });
+            stack.Children.Add(message.IsInvite
+                ? InviteCard(message, body, accent)
+                : new Border { Background = message.Mine ? accent : Theirs, CornerRadius = new CornerRadius(3), Padding = new Thickness(10, 6), Child = body });
             stack.Children.Add(new TextBlock { Text = when, FontSize = 10, Foreground = Subtle, HorizontalAlignment = message.Mine ? HorizontalAlignment.Right : HorizontalAlignment.Left });
 
             var wrap = new Border
@@ -371,6 +404,72 @@ namespace WPR.Platform.Windows.Pages
             if (bytes == null) return;
             try { target.Source = new Bitmap(new MemoryStream(bytes)); }
             catch (Exception) { /* leave the placeholder */ }
+        }
+
+        /// <summary>
+        /// A game invite as one entry: the game's tile on the left, the text on the right, and for
+        /// an invite from a friend a Play button under it when the game is installed here (the
+        /// friend is waiting in the game's own lobby).
+        /// </summary>
+        private Control InviteCard(ChatMessage message, SelectableTextBlock body, IBrush accent)
+        {
+            var tile = new Border { Width = 64, Height = 64, Background = Brushes.Black, VerticalAlignment = VerticalAlignment.Top };
+            if (InviteArt(message.TitleId!) is { } art) tile.Child = new Image { Source = art, Stretch = Stretch.UniformToFill };
+
+            var text = new StackPanel { Spacing = 2, Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            text.Children.Add(new TextBlock { Text = "GAME INVITE", FontSize = 10, LetterSpacing = 0.8, Foreground = message.Mine ? Brushes.White : accent });
+            text.Children.Add(body);
+            if (!message.Mine && FindInstalled(message.TitleId!) is { } game)
+            {
+                var play = new Button
+                {
+                    Content = "play", Background = accent, Foreground = Brushes.White, BorderThickness = new Thickness(0),
+                    CornerRadius = new CornerRadius(0), Padding = new Thickness(14, 3), Margin = new Thickness(0, 4, 0, 0),
+                };
+                play.Click += (_, _) => ApplicationLaunchRequest.Ask(game);
+                text.Children.Add(play);
+            }
+
+            var row = new DockPanel();
+            DockPanel.SetDock(tile, Dock.Left);
+            row.Children.Add(tile);
+            row.Children.Add(text);
+            return new Border { Background = message.Mine ? accent : Theirs, CornerRadius = new CornerRadius(3), Padding = new Thickness(8), Child = row };
+        }
+
+        private readonly Dictionary<string, Bitmap?> _inviteArt = new Dictionary<string, Bitmap?>(StringComparer.OrdinalIgnoreCase);
+
+        private Bitmap? InviteArt(string productId)
+        {
+            if (!_inviteArt.TryGetValue(productId, out Bitmap? art))
+            {
+                try
+                {
+                    WPR.Models.Application? app = FindInstalled(productId);
+                    string? relative = app != null ? GameIconStore.Resolve(app.ProductId, app.IconPath) : GameIconStore.Find(productId);
+                    string? full = string.IsNullOrWhiteSpace(relative) ? null : Configuration.Current!.DataPath(relative!);
+                    art = full != null && File.Exists(full) ? new Bitmap(full) : null;
+                }
+                catch (Exception)
+                {
+                    art = null;
+                }
+                _inviteArt[productId] = art;
+            }
+            return art;
+        }
+
+        private static WPR.Models.Application? FindInstalled(string productId)
+        {
+            try
+            {
+                return WPR.Models.ApplicationContext.Current.Applications!.ToList()
+                    .FirstOrDefault(a => string.Equals(a.ProductId?.Trim('{', '}'), productId.Trim('{', '}'), StringComparison.OrdinalIgnoreCase));
+            }
+            catch (Exception)
+            {
+                return null;
+            }
         }
 
         private static string OneLine(string text)

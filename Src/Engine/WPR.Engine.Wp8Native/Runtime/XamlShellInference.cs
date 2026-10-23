@@ -52,6 +52,30 @@ namespace WPR.Wp8Native
         }
 
         /// <summary>
+        /// The page the app starts on, from <c>WMAppManifest.xml</c>'s DefaultTask
+        /// (<c>NavigationPage="Views/MainPage.xaml"</c> is "MainPage"); null when it cannot be read.
+        /// </summary>
+        private static string? StartPage(string directory)
+        {
+            try
+            {
+                string manifest = Path.Combine(directory, "WMAppManifest.xml");
+                if (!File.Exists(manifest)) return null;
+                System.Xml.Linq.XElement? task = System.Xml.Linq.XDocument.Load(manifest).Descendants()
+                    .FirstOrDefault(e => e.Name.LocalName == "DefaultTask");
+                string? page = task?.Attribute("NavigationPage")?.Value;
+                if (string.IsNullOrWhiteSpace(page)) return null;
+                int query = page.IndexOf('?');
+                if (query >= 0) page = page.Substring(0, query);
+                return Path.GetFileNameWithoutExtension(page.Replace('\\', '/').Split('/').Last());
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
         /// Infers a shell for <paramref name="componentDll"/> from the managed assemblies beside it.
         /// Null when the component's metadata declares no class with <c>CreateContentProvider</c>.
         /// </summary>
@@ -86,11 +110,12 @@ namespace WPR.Wp8Native
             }
 
             ShellReading? reading = null;
+            string? startPage = StartPage(directory);
             foreach (string assembly in ManagedAssemblies(directory))
             {
                 try
                 {
-                    ShellReading candidate = ShellReading.Read(assembly, owners, candidates.ToHashSet(StringComparer.Ordinal));
+                    ShellReading candidate = ShellReading.Read(assembly, owners, candidates.ToHashSet(StringComparer.Ordinal), startPage);
                     if (candidate.Mentions.Count > 0 && (reading is null || candidate.Mentions.Count > reading.Mentions.Count))
                     {
                         reading = candidate;
@@ -112,6 +137,8 @@ namespace WPR.Wp8Native
             List<XamlShellStep> launch = builder.Steps(reading?.Launch, Phase.Launch);
             List<XamlShellStep> loaded = builder.Steps(reading?.Loaded, Phase.Loaded);
             loaded.AddRange(builder.Steps(reading?.Oriented, Phase.Loaded).Where(step => !loaded.Any(l => l.Method == step.Method)));
+            // A DispatcherTimer the page starts fires once the page is up, so after Loaded.
+            loaded.AddRange(builder.Steps(reading?.Timed, Phase.Loaded).Where(step => !loaded.Any(l => l.Method == step.Method)));
             if (!loaded.Any(s => s.Method == CreateContentProvider) && reading is not null)
             {
                 // No Loaded handler reaches the component (some shells do it from OnNavigatedTo).
@@ -159,6 +186,7 @@ namespace WPR.Wp8Native
                 Activated = builder.Steps(reading?.Activated, Phase.Lifecycle),
                 Inferred = true,
                 DrawingSurface = reading is { UsesDrawingSurface: true, UsesBackgroundGrid: false },
+                MandreelMessages = WinRtRuntime.HasMandreelMessages(metadata, classId),
             };
 
             log?.Invoke($"xaml inference: {Describe(shell)}");
@@ -172,7 +200,8 @@ namespace WPR.Wp8Native
             string instance = shell.InstanceFrom is { } from ? $"{from}()" : "ActivateInstance";
             return $"{shell.ClassId} via {instance}{(shell.DrawingSurface ? " on a DrawingSurface" : "")}; launch [{Steps(shell.Launch)}]; loaded [{Steps(shell.Loaded)}]; " +
                    $"deactivated [{Steps(shell.Deactivated)}]; activated [{Steps(shell.Activated)}]; " +
-                   $"back {(shell.BackKey is { } back ? $"{back.QuitIf} (quit when {back.QuitWhen})" : "closes")}";
+                   $"back {(shell.BackKey is { } back ? $"{back.QuitIf} (quit when {back.QuitWhen})" : "closes")}" +
+                   (shell.MandreelMessages ? "; Mandreel message thread" : "");
         }
 
         private static string PreferredCandidate(List<string> candidates, string componentDll)
@@ -482,6 +511,18 @@ namespace WPR.Wp8Native
             /// <summary>The page's OrientationChanged handler, run after Loaded.</summary>
             public List<ShellCall> Oriented { get; } = [];
 
+            /// <summary>
+            /// What a <c>DispatcherTimer.Tick</c> handler the app or start page subscribes calls,
+            /// run after Loaded. Ice Age Village shows its logo for two seconds and only then, from
+            /// the timer, calls InitGame and builds the surface; without it the game's singletons
+            /// were never made and its first lookup walked a map at a null address for ever.
+            /// </summary>
+            public List<ShellCall> Timed { get; } = [];
+
+            private readonly HashSet<MethodDefinitionHandle> _timedHandlers = [];
+
+            private readonly string? _startPage;
+
             /// <summary>A page of the shell declares <c>SupportedOrientations="Landscape"</c> in its XAML.</summary>
             public bool Landscape { get; private set; }
 
@@ -510,8 +551,9 @@ namespace WPR.Wp8Native
 
             private readonly HashSet<string> _drawing;
 
-            private ShellReading(PEReader pe, IReadOnlyDictionary<string, string> classes, HashSet<string> drawing)
+            private ShellReading(PEReader pe, IReadOnlyDictionary<string, string> classes, HashSet<string> drawing, string? startPage)
             {
+                _startPage = startPage;
                 _pe = pe;
                 _md = pe.GetMetadataReader();
                 _classes = classes;
@@ -520,11 +562,12 @@ namespace WPR.Wp8Native
 
             /// <param name="classes">Owner type name to the runtime class it stands for.</param>
             /// <param name="drawing">The classes with CreateContentProvider.</param>
-            public static ShellReading Read(string path, IReadOnlyDictionary<string, string> classes, HashSet<string> drawing)
+            /// <param name="startPage">The manifest's start page; only its handlers are read when a page has that name.</param>
+            public static ShellReading Read(string path, IReadOnlyDictionary<string, string> classes, HashSet<string> drawing, string? startPage = null)
             {
                 using FileStream stream = File.OpenRead(path);
                 using PEReader pe = new(stream, PEStreamOptions.PrefetchEntireImage);
-                ShellReading reading = new(pe, classes, drawing) { Path = path };
+                ShellReading reading = new(pe, classes, drawing, startPage) { Path = path };
                 reading.ReadAll();
                 return reading;
             }
@@ -550,6 +593,12 @@ namespace WPR.Wp8Native
                         pages.Add(type);
                     }
                 }
+
+                // The start page's handlers are what runs; another page's (Ice Age Village's Gameloft
+                // Live page, whose Loaded tells the game a web page is showing) run only if the app
+                // navigates there. With no start page known, every page is read, as before.
+                List<TypeDefinition> start = pages.Where(p => _md.GetString(p.Name) == _startPage).ToList();
+                if (start.Count > 0) pages = start;
 
                 foreach (TypeDefinition app in apps)
                 {
@@ -711,6 +760,12 @@ namespace WPR.Wp8Native
                         UsesBackgroundGrid = true;
                     }
 
+                    if (followCalls && owner == "System.Windows.Threading.DispatcherTimer" && memberName == "add_Tick"
+                        && TickHandler(code, i) is { } tick && _timedHandlers.Add(tick))
+                    {
+                        Collect(tick, Timed, 0, [], followCalls: true);
+                    }
+
                     if (owner is null || !_classes.TryGetValue(owner, out string? resolved))
                     {
                         continue;
@@ -755,6 +810,20 @@ namespace WPR.Wp8Native
                         Evaluated = op is ILOpCode.Call or ILOpCode.Callvirt or ILOpCode.Newobj ? EvaluateArguments(il, i, parameters) : [],
                     });
                 }
+            }
+
+            /// <summary>The handler of <c>timer.Tick += Handler</c>: the ldftn just before the add_.</summary>
+            private static MethodDefinitionHandle? TickHandler(List<(ILOpCode Op, int Token, object? Constant)> code, int at)
+            {
+                for (int i = at - 1; i >= Math.Max(0, at - 4); i--)
+                {
+                    if (code[i].Op is ILOpCode.Ldftn or ILOpCode.Ldvirtftn &&
+                        MetadataTokens.EntityHandle(code[i].Token) is { Kind: HandleKind.MethodDefinition } target)
+                    {
+                        return (MethodDefinitionHandle)target;
+                    }
+                }
+                return null;
             }
 
             /// <summary>The shell method a delegate is made from next to the add_ at <paramref name="at"/>.</summary>

@@ -129,7 +129,7 @@ namespace WPR.SilverlightCompability
             set => SetValue(StrokeDashArrayProperty, value);
         }
 
-        protected override Size MeasureOverride(Size availableSize)
+        internal override Size WprMeasure(Size availableSize)
         {
             Geometry? geometry = ShapeGeometry.GetDefiningGeometry(this);
             if (geometry == null) return Size.Empty; // Rectangle / Ellipse: no natural size

@@ -28,17 +28,48 @@ namespace WPR.SilverlightCompability
         /// <summary>The opaque manipulation-handler object the user app handed us.</summary>
         internal object? AttachedManipulationHandler { get; private set; }
 
-        /// <summary>Hand off the WinRT content provider. Remembered, never called.</summary>
+        /// <summary>
+        /// Set by the host for the launch: called with each provider a page hands over. A MANAGED
+        /// provider (the SharpDX Toolkit's GameWindowWP8) is driven by WPR.Engine.HostDirect3D's
+        /// DrawingSurfaceHost through it; with no host, or a provider it cannot drive, the
+        /// provider is only remembered.
+        /// </summary>
+        public static System.Action<object?>? ContentProviderSet { get; set; }
+
+        // The grid whose provider the host is driving. The host has one embedded loop, so a page
+        // clearing a grid it is leaving (Arkadium's renderer moves its provider between pages'
+        // grids) must not stop the provider another grid now holds.
+        private static DrawingSurfaceBackgroundGrid? _active;
+
+        /// <summary>Hand off the WinRT content provider, to <see cref="ContentProviderSet"/>.</summary>
         public void SetBackgroundContentProvider(object? contentProvider)
         {
             AttachedContentProvider = contentProvider;
             InvalidateMeasure();
+            if (contentProvider is null && !ReferenceEquals(_active, this))
+            {
+                return;
+            }
+
+            _active = contentProvider is null ? null : this;
+            ContentProviderSet?.Invoke(contentProvider);
         }
 
-        /// <summary>Hand off the WinRT manipulation handler (raw touch events). Remembered only.</summary>
+        /// <summary>The launch is over: no grid holds the host's provider.</summary>
+        public static void ResetActive() => _active = null;
+
+        /// <summary>
+        /// Set by the host for the launch: called with each manipulation handler a page hands over,
+        /// which it gives a <c>DrawingSurfaceManipulationHost</c> raising the grid's pointer events
+        /// (the Arkadium engine's only touch input).
+        /// </summary>
+        public static System.Action<object?>? ManipulationHandlerSet { get; set; }
+
+        /// <summary>Hand off the WinRT manipulation handler (raw touch events), to <see cref="ManipulationHandlerSet"/>.</summary>
         public void SetBackgroundManipulationHandler(object? manipulationHandler)
         {
             AttachedManipulationHandler = manipulationHandler;
+            ManipulationHandlerSet?.Invoke(manipulationHandler);
         }
     }
 }

@@ -92,9 +92,14 @@ namespace WPR.SilverlightCompability
         /// </remarks>
         private void SetOffset(double x, double y)
         {
+            double oldX = HorizontalOffset, oldY = VerticalOffset;
             HorizontalOffset = Clamp(x, 0, ScrollableWidth);
             VerticalOffset = Clamp(y, 0, ScrollableHeight);
+            if (oldX != HorizontalOffset || oldY != VerticalOffset) WprOffsetChanged?.Invoke();
         }
+
+        /// <summary>Raised when either offset changes (a list realising rows as they come into view).</summary>
+        internal event Action? WprOffsetChanged;
 
         /// <summary>Starts a coast after a flick, in pixels/second of CONTENT movement.</summary>
         internal void BeginFlick(double velocityX, double velocityY)
@@ -135,7 +140,7 @@ namespace WPR.SilverlightCompability
         /// Measures the content with the scrolling axes unbounded, so the extent is the content's
         /// natural size rather than the slot's.
         /// </summary>
-        protected override Size MeasureOverride(Size availableSize)
+        internal override Size WprMeasure(Size availableSize)
         {
             UIElement? content = Presenter;
 
@@ -175,7 +180,7 @@ namespace WPR.SilverlightCompability
         /// Arranges the content at its FULL extent, not the viewport — the renderer and the hit
         /// tester show a window onto it by applying <see cref="VerticalOffset"/>.
         /// </summary>
-        protected override Size ArrangeOverride(Size finalSize)
+        internal override Size WprArrange(Size finalSize)
         {
             ViewportWidth = finalSize.Width;
             ViewportHeight = finalSize.Height;

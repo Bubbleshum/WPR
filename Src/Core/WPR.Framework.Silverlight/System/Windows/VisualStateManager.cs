@@ -37,15 +37,34 @@ namespace WPR.SilverlightCompability
                 typeof(VisualStateManager), new PropertyMetadata((object?)null));
 
         /// <summary>
-        /// The state groups attached to <paramref name="obj"/>, or null.
+        /// The state groups attached to <paramref name="obj"/>, never null.
         /// </summary>
+        /// <remarks>
+        /// <para>Silverlight's signature: <c>IList GetVisualStateGroups(FrameworkElement)</c>. An
+        /// element with no groups gets an empty collection, stored, so code that adds to it (or
+        /// reads it again) sees the same list. LazyListBox's helper library binds exactly this; the
+        /// generic, nullable form this used to have did not resolve.</para>
+        /// </remarks>
+        public static IList GetVisualStateGroups(FrameworkElement obj)
+        {
+            if (obj == null) throw new ArgumentNullException(nameof(obj));
+            if (ReadGroups(obj) is List<VisualStateGroup> stored && ReferenceEquals(obj.GetValue(VisualStateGroupsProperty), stored))
+                return stored;
+            var list = new List<VisualStateGroup>();
+            if (ReadGroups(obj) is { } existing) list.AddRange(existing);
+            obj.SetValue(VisualStateGroupsProperty, list);
+            return list;
+        }
+
+        /// <summary>The groups attached to <paramref name="obj"/> in whatever shape the XAML
+        /// reader stored them, or null; nothing is created.</summary>
         /// <remarks>
         /// Tolerates a single <see cref="VisualStateGroup"/> in the slot as well as a list. The
         /// XAML reader's attached-property element path materialises the first child element and
         /// stores that, so a lone <c>&lt;VisualStateGroup&gt;</c> — the common case — arrives here
         /// unwrapped, and a strict cast would answer null for the very shape that occurs most.
         /// </remarks>
-        public static IList<VisualStateGroup>? GetVisualStateGroups(DependencyObject obj)
+        internal static IList<VisualStateGroup>? ReadGroups(DependencyObject obj)
         {
             object? raw = obj?.GetValue(VisualStateGroupsProperty);
             switch (raw)
@@ -90,7 +109,7 @@ namespace WPR.SilverlightCompability
             {
                 foreach (DependencyObject candidate in SelfAndDescendants(control, MaxSearchDepth))
                 {
-                    IList<VisualStateGroup>? groups = GetVisualStateGroups(candidate);
+                    IList<VisualStateGroup>? groups = ReadGroups(candidate);
                     if (groups == null) continue;
 
                     foreach (VisualStateGroup group in groups)

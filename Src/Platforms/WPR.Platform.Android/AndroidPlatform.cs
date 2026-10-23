@@ -148,7 +148,14 @@ namespace WPR.Platform.Android
                 // persisted, it just went unseen.
                 caps.Notifications(
                     new WPR.Notifications.AndroidChannel.AndroidNotificationManager(
-                        _context, Resource.Drawable.ic_stat_wpr));
+                        _context, Resource.Drawable.ic_stat_wpr,
+                        // A message or invite notification opens its conversation, over whatever
+                        // is in front (a game included; Back returns to it).
+                        activation => WPR.Shell.HubMessageNotifications.ConversationFrom(activation) is { } from
+                            ? Native.ConversationActivity.IntentFor(_context!, from).AddFlags(global::Android.Content.ActivityFlags.NewTask)
+                            : activation == WPR.Shell.HubMessageNotifications.ActivationFriends
+                                ? Native.SocialActivity.IntentFor(_context!, Native.SocialActivity.PivotFriends).AddFlags(global::Android.Content.ActivityFlags.NewTask)
+                                : null));
 
                 // The handset's vibration motor. Microsoft.Devices.VibrateController was an empty
                 // method body until this landed, so every WP7 title that buzzed did nothing at all.
@@ -170,8 +177,13 @@ namespace WPR.Platform.Android
                 WPR.Shell.HubSetup.ProductVersion ??= Native.UpdateNotifier.InstalledVersion(_context);
                 Hub ??= WPR.Shell.HubSetup.TryCreate("android", new Online.AndroidGamePackageSource(_context),
                     new WPR.Database.Online.EfOnlineLocalStore(), WPR.XnaAchievementSeeder.SeedCataloguesAsync,
-                    id => WPR.GameIconStore.Find(id) != null, WPR.GameIconStore.SaveDownloaded);
+                    id => WPR.GameIconStore.Find(id) != null, WPR.GameIconStore.SaveDownloaded,
+                    WPR.ApplicationInstaller.InstalledTitlesForHub);
                 if (Hub != null) caps.Online(Hub.Services);
+
+                // A game process that died without ending its run is a native crash only if
+                // Android does not say otherwise: an APK install or a force stop kills it too.
+                WPR.Engine.Online.CompatibilityProblems.ProcessExitLookup ??= new Online.AndroidProcessExits(_context).Lookup;
             }
 
             caps.Achievements(new WPR.Database.Achievements.EfAchievementStore());

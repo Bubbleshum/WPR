@@ -253,6 +253,11 @@ namespace WPR.SilverlightCompability
                     if (progress < 0) progress = 0;
                     if (progress > 1) progress = 1;
 
+                    if (frame is DiscreteDoubleKeyFrame)
+                    {
+                        return progress >= 1 ? frame.Value : startValue;
+                    }
+
                     IEasingFunction? easing = (frame as EasingDoubleKeyFrame)?.EasingFunction;
                     return startValue + (frame.Value - startValue) * Ease(easing, progress);
                 }
@@ -399,14 +404,35 @@ namespace WPR.SilverlightCompability
             for (int i = 0; i < segments.Count - 1 && current != null; i++)
             {
                 string name = segments[i];
-                int dot = name.LastIndexOf('.');
-                if (dot >= 0) name = name.Substring(dot + 1);
 
-                PropertyInfo? step = current.GetType().GetProperty(
-                    name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
-                if (step == null) return null;
+                // An indexer: "[3]" on its own (after a parenthesised segment, as in Blend's
+                // "(TransformGroup.Children)[3]") or trailing a bare name ("Children[3]").
+                int? index = null;
+                int open = name.IndexOf('[');
+                if (open >= 0 && name.EndsWith("]", StringComparison.Ordinal)
+                    && int.TryParse(name.AsSpan(open + 1, name.Length - open - 2), out int parsed))
+                {
+                    index = parsed;
+                    name = name.Substring(0, open);
+                }
 
-                current = step.GetValue(current);
+                if (name.Length > 0)
+                {
+                    int dot = name.LastIndexOf('.');
+                    if (dot >= 0) name = name.Substring(dot + 1);
+
+                    PropertyInfo? step = current.GetType().GetProperty(
+                        name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
+                    if (step == null) return null;
+
+                    current = step.GetValue(current);
+                }
+
+                if (index is int at)
+                {
+                    if (current is not System.Collections.IList list || at < 0 || at >= list.Count) return null;
+                    current = list[at];
+                }
             }
 
             return current;

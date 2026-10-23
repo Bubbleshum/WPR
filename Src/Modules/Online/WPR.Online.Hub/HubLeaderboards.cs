@@ -24,8 +24,9 @@ public sealed class HubLeaderboards : ILeaderboardService
 {
     private const int MaxPendingPerBoard = 20;
 
+    // BoardName is last and optional so a score queued by an older build still reads back.
     internal sealed record PendingScore(string TitleId, string? TitleName, string Key, long Score,
-        DateTimeOffset AchievedAt, Dictionary<string, string>? Columns);
+        DateTimeOffset AchievedAt, Dictionary<string, string>? Columns, string? BoardName = null);
 
     private readonly HubConnection _connection;
     private readonly DiskQueue<PendingScore> _queue;
@@ -42,7 +43,8 @@ public sealed class HubLeaderboards : ILeaderboardService
 
     public bool CanRead => _connection.IsSignedIn;
 
-    public void Submit(string titleId, string? titleName, string boardKey, long score, IReadOnlyDictionary<string, string>? columns = null)
+    public void Submit(string titleId, string? titleName, string boardKey, long score, IReadOnlyDictionary<string, string>? columns = null,
+        string? boardName = null)
     {
         if (string.IsNullOrEmpty(titleId) || string.IsNullOrEmpty(boardKey)) return;
 
@@ -50,7 +52,8 @@ public sealed class HubLeaderboards : ILeaderboardService
         {
             string id = TitleIds.Normalize(titleId);
             var item = new PendingScore(id, titleName, boardKey, score, DateTimeOffset.UtcNow,
-                columns is null || columns.Count == 0 ? null : new Dictionary<string, string>(columns));
+                columns is null || columns.Count == 0 ? null : new Dictionary<string, string>(columns),
+                string.IsNullOrWhiteSpace(boardName) ? null : boardName);
             _queue.Enqueue(item, prefix: BoardPrefix(id, boardKey));
             TrimBoard(id, boardKey);
             _connection.Log($"score queued: {id} {boardKey} = {score}");
@@ -68,21 +71,24 @@ public sealed class HubLeaderboards : ILeaderboardService
     // every time its leaderboard screen opens; one call per board per launch is enough.
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _registered = new();
 
-    public void EnsureBoard(string titleId, string? titleName, string boardKey)
+    public void EnsureBoard(string titleId, string? titleName, string boardKey, string? boardName = null)
     {
         if (string.IsNullOrEmpty(titleId) || string.IsNullOrEmpty(boardKey)) return;
         HubClient? hub = _connection.Client();
         if (hub is null) return;
 
         string id = TitleIds.Normalize(titleId);
-        string key = id + "\n" + boardKey;
+        if (string.IsNullOrWhiteSpace(boardName)) boardName = null;
+        // The name is part of the key: a board first asked for without one is asked again with it.
+        string key = id + "\n" + boardKey + "\n" + boardName;
         if (!_registered.TryAdd(key, 0)) return;
 
         _ = Task.Run(async () =>
         {
             try
             {
-                BoardRegistrations result = await hub.RegisterBoardsAsync(id, new[] { boardKey }, titleName).ConfigureAwait(false);
+                BoardRegistrations result = await hub.RegisterBoardsAsync(id, new[] { boardKey }, titleName,
+                    boardName is null ? null : new[] { new BoardName(boardKey, boardName) }).ConfigureAwait(false);
                 foreach (BoardRegistration r in result.Leaderboards)
                     _connection.Log($"board {id} {r.Key}: {r.Status}{(r.Defined ? " (defined)" : "")}{(r.Reason is { } why ? $" ({why})" : "")}");
             }
@@ -149,7 +155,7 @@ public sealed class HubLeaderboards : ILeaderboardService
                 {
                     List<ScoreSubmission> scores = chunk
                         .Select(p => new ScoreSubmission(p.Item.Key, p.Item.Score, p.Item.AchievedAt,
-                            p.Item.Columns?.ToDictionary(kv => kv.Key, kv => (object)kv.Value)))
+                            p.Item.Columns?.ToDictionary(kv => kv.Key, kv => (object)kv.Value), p.Item.BoardName))
                         .ToList();
 
                     ScoreResults results = await hub.SubmitScoresAsync(title.Key, scores, chunk[0].Item.TitleName)

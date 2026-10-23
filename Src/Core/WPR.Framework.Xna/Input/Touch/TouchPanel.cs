@@ -177,6 +177,24 @@ namespace Microsoft.Xna.Framework.Input.Touch
 		private static TouchLocation[] prevTouches = new TouchLocation[MAX_TOUCHES];
 		private static List<TouchLocation> validTouches = new List<TouchLocation>();
 
+		/* WPR: the id a SOURCE gave each slot's finger (an SDL finger, the mouse, the synthetic
+		 * finger). TouchLocation.Id is not that id: on Windows Phone every new touch got a new id,
+		 * and the sources here reuse theirs (the mouse and synthetic finger are constants, Android
+		 * pointer ids restart at 0 with every first finger). Games key per-touch state by Id and
+		 * can rely on never seeing one again: AE Fruit Slash forgets a released id in only two of
+		 * its three dictionaries, so a reused id threw from every Update after the first slash.
+		 */
+		private static int[] sourceIds = new int[MAX_TOUCHES];
+		private static int[] prevSourceIds = new int[MAX_TOUCHES];
+		private static int nextTouchId = 1;
+
+		private static int NewTouchId()
+		{
+			int id = nextTouchId;
+			nextTouchId = id == int.MaxValue ? 1 : id + 1;
+			return id;
+		}
+
 		#endregion
 
 		#region Public Static Methods
@@ -312,9 +330,11 @@ namespace Microsoft.Xna.Framework.Input.Touch
 			}
 			if (fingerId == NO_FINGER)
 			{
-				// Was there a finger here before and the user just released it?
-				if (prevTouches[index].State != TouchLocationState.Invalid
-					&& prevTouches[index].State != TouchLocationState.Released)
+				// Was there a finger here before and the user just released it? Not if that finger
+				// is still down in another slot this frame: the SDL drain packs fingers by index,
+				// so when one lifts the ones after it move down a slot (see FindMovedFinger).
+				if (IsDown(prevTouches[index].State)
+					&& !StillDownElsewhere(index, prevSourceIds[index]))
 				{
 					touches[index] = new TouchLocation(
 						prevTouches[index].Id,
@@ -336,15 +356,23 @@ namespace Microsoft.Xna.Framework.Input.Touch
 						Vector2.Zero
 					);
 				}
+				writtenFrame[index] = touchFrame;
 
 				return;
 			}
 
-			// Is this a newly pressed finger?
-			if (prevTouches[index].State == TouchLocationState.Invalid)
+			// The same source finger as last frame, in this slot or (shifted) in another one, is
+			// the same touch: it keeps its id and moves. Anything else is a new touch with a new
+			// id. A slot whose last state was Released held a finger that has gone, so a press
+			// landing there the next frame (a quick double tap; the synthetic finger's next
+			// gesture) is Pressed too: only Invalid used to count, and it was reported as Moved.
+			int from = IsDown(prevTouches[index].State) && prevSourceIds[index] == fingerId
+				? index
+				: FindMovedFinger(fingerId);
+			if (from < 0)
 			{
 				touches[index] = new TouchLocation(
-					fingerId,
+					NewTouchId(),
 					TouchLocationState.Pressed,
 					fingerPos
 				);
@@ -353,13 +381,46 @@ namespace Microsoft.Xna.Framework.Input.Touch
 			{
 				// This finger was already down, so it's "moved"
 				touches[index] = new TouchLocation(
-					fingerId,
+					prevTouches[from].Id,
 					TouchLocationState.Moved,
 					fingerPos,
-					prevTouches[index].State,
-					prevTouches[index].Position
+					prevTouches[from].State,
+					prevTouches[from].Position
 				);
 			}
+			sourceIds[index] = fingerId;
+			writtenFrame[index] = touchFrame;
+		}
+
+		private static int[] writtenFrame = new int[MAX_TOUCHES];
+		private static int touchFrame;
+
+		private static bool IsDown(TouchLocationState state) =>
+			state == TouchLocationState.Pressed || state == TouchLocationState.Moved;
+
+		private static int FindMovedFinger(int fingerId)
+		{
+			for (int i = 0; i < MAX_TOUCHES; i += 1)
+			{
+				if (IsDown(prevTouches[i].State) && prevSourceIds[i] == fingerId)
+				{
+					return i;
+				}
+			}
+			return -1;
+		}
+
+		private static bool StillDownElsewhere(int index, int fingerId)
+		{
+			for (int i = 0; i < MAX_TOUCHES; i += 1)
+			{
+				if (i != index && writtenFrame[i] == touchFrame
+					&& IsDown(touches[i].State) && sourceIds[i] == fingerId)
+				{
+					return true;
+				}
+			}
+			return false;
 		}
 
 		/// <summary>
@@ -410,6 +471,8 @@ namespace Microsoft.Xna.Framework.Input.Touch
 
 			// Remember the last frame's touches
 			touches.CopyTo(prevTouches, 0);
+			sourceIds.CopyTo(prevSourceIds, 0);
+			touchFrame += 1;
 
 			// Get the latest finger data
 			XnaBackend.Input.UpdateTouchPanelState();

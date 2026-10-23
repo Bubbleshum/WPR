@@ -1,18 +1,32 @@
 using System;
-using System.Collections.Generic;
 
 namespace WPR.SilverlightCompability
 {
     /// <summary>
-    /// Shim for <c>System.Windows.Media.CompositionTarget</c>. The only WP7 use we
-    /// see is subscribing to <see cref="Rendering"/> for per-frame callbacks
-    /// (Panorama's entrance animation in design-tool mode). We never raise it.
+    /// Shim for <c>System.Windows.Media.CompositionTarget</c>. <see cref="Rendering"/> is raised
+    /// once a frame by the Silverlight host (<c>SilverlightGame.Update</c>), after the storyboard
+    /// clock, as Silverlight raised it before each composition. Arkadium's engine (Microsoft
+    /// Mahjong, Minesweeper) is ticked from nothing else: its <c>EngineThread.RequestUpdate</c>
+    /// is called only from a Rendering handler, so without it the game page draws nothing.
     /// </summary>
     public static class CompositionTarget
     {
-#pragma warning disable CS0067
         public static event EventHandler? Rendering;
-#pragma warning restore CS0067
+
+        /// <summary>Raises <see cref="Rendering"/> with the time since the host started.</summary>
+        public static void RaiseRendering(TimeSpan renderingTime)
+        {
+            EventHandler? handlers = Rendering;
+            if (handlers is null) return;
+            var args = new RenderingEventArgs(renderingTime);
+            foreach (EventHandler handler in handlers.GetInvocationList())
+            {
+                // One faulty subscriber must not stop the others (an engine tick behind a
+                // throwing animation helper), as each handler is its own frame callback.
+                try { handler(null, args); }
+                catch (Exception ex) { System.Diagnostics.Trace.WriteLine($"[wpr-mixed] CompositionTarget.Rendering handler threw: {ex}"); }
+            }
+        }
 
         /// <summary>
         /// Drops subscribers left behind by an exited game. A STATIC event that game code subscribes to

@@ -292,31 +292,30 @@ namespace Microsoft.Xna.Framework.GamerServices
                         Trace.WriteLine($"[wpr-achievement] '{achievementKey}' already earned for product " +
                             $"'{productId}' — re-award ignored, no notification.");
                     }
+                    else if (WPR.Common.Configuration.Current?.NotifyAchievements == false)
+                    {
+                        // Turned off in settings: still earned and uploaded, just no pop-up.
+                        Trace.WriteLine($"[wpr-achievement] '{achievementKey}' earned; achievement notifications are off.");
+                    }
                     else
                     {
                         try
                         {
-                            // The desktop toast momentarily steals the game window's focus, which
-                            // SDL reports as FOCUS_LOST/GAINED → FNA flips Game.IsActive →
-                            // OnDeactivated/OnActivated mid-tick. Some WP7 ports throw in those
-                            // overrides (Fruit Ninja 2013 surfaces a bogus "memory error" and exits).
-                            // Tell FNA to ignore the focus blip for a short window around the toast.
-                            WPR.Xna.Rhi.XnaBackend.SuppressFocusActivation(TimeSpan.FromSeconds(8));
-
-                            await NotificationBackend.Manager.ShowNotification(new Notification()
-                            {
-                                Title = Properties.Resources.AchievementUnlocked,
-                                Body = $"{newlyEarned.GamerScore}G - {newlyEarned.Name}",
+                            // Drawn over the game's own frame for a few seconds
+                            // (WPR.Xna.Rhi.AchievementToast), as the Xbox did. It used to be a system
+                            // notification, which took the game window's focus on the desktop (some
+                            // WP7 ports throw in OnDeactivated) and covered the screen on a phone.
+                            WPR.Xna.Rhi.AchievementToast.Show(new WPR.Xna.Rhi.AchievementToastRequest(
+                                newlyEarned.Name ?? achievementKey,
+                                newlyEarned.GamerScore,
                                 // A row with no icon (WP8 native catalogues ship none) still gets
-                                // its toast: Path.Combine(null) would throw and lose it.
-                                ImagePath = string.IsNullOrEmpty(newlyEarned._IconPath)
+                                // its pop-up: Path.Combine(null) would throw and lose it.
+                                string.IsNullOrEmpty(newlyEarned._IconPath)
                                     ? null
-                                    : Configuration.Current!.DataPath(newlyEarned._IconPath),
-                                SoundUri = "AchievementUnlocked"
-                            }, DateTime.Now + TimeSpan.FromDays(1));
+                                    : Configuration.Current!.DataPath(newlyEarned._IconPath)));
                         } catch (Exception ex)
                         {
-                            Log.Error(LogCategory.GamerServices, $"Fail to display Achievement notification with exception:\n {ex}");
+                            Log.Error(LogCategory.GamerServices, $"Fail to show the achievement pop-up:\n {ex}");
                         }
                     }
                 }

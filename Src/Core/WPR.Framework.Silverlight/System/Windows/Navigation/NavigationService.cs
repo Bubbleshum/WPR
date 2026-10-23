@@ -27,6 +27,32 @@ namespace WPR.SilverlightCompability
 
         public bool Navigate(Uri source) => _frame.Navigate(source);
 
+        // The frame's own navigation events: NavigationService is the page-facing view of it, and
+        // a page subscribing here (IdentityMine's navigation helpers, the WP Toolkit) means the frame.
+        public event NavigatingCancelEventHandler? Navigating
+        {
+            add => _frame.Navigating += value;
+            remove => _frame.Navigating -= value;
+        }
+
+        public event NavigatedEventHandler? Navigated
+        {
+            add => _frame.Navigated += value;
+            remove => _frame.Navigated -= value;
+        }
+
+        public event NavigationFailedEventHandler? NavigationFailed
+        {
+            add => _frame.NavigationFailed += value;
+            remove => _frame.NavigationFailed -= value;
+        }
+
+        public event NavigationStoppedEventHandler? NavigationStopped
+        {
+            add => _frame.NavigationStopped += value;
+            remove => _frame.NavigationStopped -= value;
+        }
+
         public void GoBack() => _frame.GoBack();
         public void GoForward() => _frame.GoForward();
 

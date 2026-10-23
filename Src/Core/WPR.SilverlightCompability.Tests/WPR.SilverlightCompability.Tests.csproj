@@ -23,12 +23,23 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- ToolkitTemplateTests: a default style found by DefaultStyleKey, as a toolkit assembly ships it. -->
+    <EmbeddedResource Include="themes\generic.xaml" LogicalName="themes/generic.xaml" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\WPR.Framework.Silverlight\WPR.Framework.Silverlight.csproj" />
     <!-- PhoneApplicationFrame/Page + gesture types moved here from SL. -->
     <!-- References the impl assembly directly (not the Microsoft.Phone forwarder shim) —
          the tests reach internals exposed via WPR.Framework.Phone's InternalsVisibleTo,
          which a forwarder can't surface. -->
     <ProjectReference Include="..\WPR.Framework.Phone\WPR.Framework.Phone.csproj" />
+    <!-- XboxLiveFacadeTests: Microsoft.Xbox over a fake IXboxLiveHost, and the WinRT async types. -->
+    <ProjectReference Include="..\WPR.Framework.Xbox\WPR.Framework.Xbox.csproj" />
+    <!-- GameNetworkRoutesTests: the hub directory's routes (HubGameServices.ToRoutes). -->
+    <ProjectReference Include="..\..\Modules\Online\WPR.Online.Hub\WPR.Online.Hub.csproj" />
+    <!-- SyntheticTouchTests: the reserved synthetic-finger slot over TouchPanel. -->
+    <ProjectReference Include="..\..\Engine\WPR.Engine.Input\WPR.Engine.Input.csproj" />
   </ItemGroup>
 
 </Project>

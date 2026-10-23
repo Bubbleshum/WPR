@@ -15,7 +15,31 @@ namespace WPR.Notifications.WindowsToast
             // The ctor of WindowsApplicationContext registers the AppUserModelID and writes
             // a Start Menu shortcut — without that, Win32 toast notifications silently no-op.
             _applicationContext = applicationContext ?? WindowsApplicationContext.FromCurrentProcess();
+
+            // A click on a toast that carries an activation id (Notification.ActivationId) is
+            // reported as NotificationActivated with that id. The toolkit handles the COM
+            // activation itself for an unpackaged app; it raises this on a worker thread while
+            // WPR is running (a click after WPR has closed just starts it).
+            try
+            {
+                ToastNotificationManagerCompat.OnActivated += args =>
+                {
+                    ToastArguments arguments = ToastArguments.Parse(args.Argument);
+                    string? id = arguments.TryGetValue(ActivationArgument, out string? a) ? a
+                        : arguments.TryGetValue("action", out string? b) ? b : null;
+                    if (id != null)
+                    {
+                        NotificationActivated?.Invoke(this, new NotificationActivatedEventArgs(new Notification(), id));
+                    }
+                };
+            }
+            catch (Exception)
+            {
+                // No activation on this machine: toasts still show, a click just does nothing.
+            }
         }
+
+        private const string ActivationArgument = "wpr";
 
         public event EventHandler<NotificationActivatedEventArgs>? NotificationActivated;
         public event EventHandler<NotificationDismissedEventArgs>? NotificationDismissed;
@@ -37,10 +61,7 @@ namespace WPR.Notifications.WindowsToast
                     toast.ExpirationTime = expirationTime.Value;
             });
 
-            // Mark the events as referenced so the compiler doesn't warn that they're never
-            // raised — wiring activation/dismissal callbacks through the Win32 COM activator
-            // would require a CLSID-registered activator class, which is out of scope here.
-            _ = NotificationActivated;
+            // Dismissal isn't reported (the toolkit has no callback for it without a packaged app).
             _ = NotificationDismissed;
 
             return Task.CompletedTask;
@@ -103,6 +124,9 @@ namespace WPR.Notifications.WindowsToast
 
             if (!string.IsNullOrWhiteSpace(notification.AttributionText))
                 builder.AddAttributionText(notification.AttributionText);
+
+            if (!string.IsNullOrEmpty(notification.ActivationId))
+                builder.AddArgument(ActivationArgument, notification.ActivationId);
 
             foreach (var (title, actionId) in notification.Buttons)
             {

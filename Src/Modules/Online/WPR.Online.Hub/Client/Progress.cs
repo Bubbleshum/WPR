@@ -6,7 +6,9 @@ namespace WPR.Online.Hub.Client;
 
 public sealed record PlaySession(string SessionId, string TitleId, string? TitleName, DateTimeOffset StartedAt, DateTimeOffset EndedAt, long Seconds);
 
-public sealed record PresenceBeat(int NextHeartbeatSeconds, int FriendsOnline, int UnreadMessages, int PendingFriendRequests);
+/// <param name="LatestMessageId">The newest message the player can see, sent or received; how WPR notices new ones.</param>
+public sealed record PresenceBeat(int NextHeartbeatSeconds, int FriendsOnline, int UnreadMessages, int PendingFriendRequests,
+    long? LatestMessageId = null);
 
 public static class PresenceStatuses
 {

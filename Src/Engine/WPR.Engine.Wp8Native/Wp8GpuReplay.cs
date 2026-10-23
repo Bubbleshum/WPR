@@ -5,6 +5,14 @@ using Microsoft.Xna.Framework.Graphics;
 
 namespace WPR.Wp8Native
 {
+    /// <summary>How <see cref="Wp8GpuReplay.Present(int, int, PresentTurn)"/> turns the portrait back buffer.</summary>
+    public enum PresentTurn
+    {
+        Anticlockwise,
+        Clockwise,
+        None,
+    }
+
     /// <summary>
     /// Replays a <see cref="GpuFrame"/> on the host GPU with the game's own shaders: the 3D path.
     /// </summary>
@@ -20,7 +28,7 @@ namespace WPR.Wp8Native
     /// the shader's own register map, and every piece of fixed-function state is set on the
     /// device directly.</para>
     /// </remarks>
-    internal sealed class Wp8GpuReplay : IDisposable
+    public sealed class Wp8GpuReplay : IDisposable
     {
         private readonly GraphicsDevice _device;
         private readonly Action<string>? _log;
@@ -375,6 +383,47 @@ namespace WPR.Wp8Native
             }
         }
 
+        /// <summary>
+        /// Shows the last replayed back buffer on the window, turned as <paramref name="turn"/> says.
+        /// </summary>
+        /// <remarks>
+        /// The back buffer is the phone's portrait screen. The native runtime's titles draw for a
+        /// landscape page turned anticlockwise (<see cref="Present(int, int)"/>); a managed title on
+        /// a DrawingSurfaceBackgroundGrid (the SharpDX Toolkit, WPR.Engine.HostDirect3D) draws for
+        /// LandscapeLeft, clockwise, and a portrait page is shown as it is.
+        /// </remarks>
+        public void Present(int windowWidth, int windowHeight, PresentTurn turn)
+        {
+            if (turn == PresentTurn.Anticlockwise)
+            {
+                Present(windowWidth, windowHeight);
+                return;
+            }
+
+            _device.SetRenderTarget(null);
+            _device.Clear(Color.Black);
+            if (_lastBackBuffer is not { IsDisposed: false } backBuffer)
+            {
+                return;
+            }
+
+            _blit.Begin(SpriteSortMode.Immediate, BlendState.Opaque, SamplerState.LinearClamp, DepthStencilState.None, RasterizerState.CullNone);
+            if (turn == PresentTurn.Clockwise)
+            {
+                // Portrait (px, py) lands at (height - py, px): rotate +90 degrees about the
+                // top-left, then move right by the portrait height.
+                float scale = Math.Min(windowWidth / (float)backBuffer.Height, windowHeight / (float)backBuffer.Width);
+                _blit.Draw(backBuffer, new Vector2(backBuffer.Height * scale, 0), null, Color.White, MathHelper.PiOver2, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            }
+            else
+            {
+                float scale = Math.Min(windowWidth / (float)backBuffer.Width, windowHeight / (float)backBuffer.Height);
+                _blit.Draw(backBuffer, Vector2.Zero, null, Color.White, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            }
+
+            _blit.End();
+        }
+
         /// <summary>Shows the last replayed back buffer on the window, rotated to landscape.</summary>
         public void Present(int windowWidth, int windowHeight)
         {
@@ -594,8 +643,33 @@ namespace WPR.Wp8Native
         /// picks texture x colour on D3D11 and the bare vertex colour on Vulkan and GLES, so every
         /// sprite was white (Android: a white screen; desktop GL: only the text, which uses another
         /// shader). -MaxValue is what D3D's answer amounts to for cmp and sge; a NaN carried no number.
+        /// <para>The other way a bool arrives is as the INTEGER 1: a C# <c>bool</c> copied into the
+        /// buffer byte for byte, which as a float is a denormal (1.4e-45). GPUs flush denormals, so
+        /// <c>cmp r, -c0.x, colour, textured</c> saw -0 &gt;= 0 and took the untextured side, where the
+        /// phone took the textured one. Gravity Guy 2's Cocos2D sprite shader (<c>istexture</c>) is the
+        /// case: every CCSprite drew as a white box of its vertex colour. A denormal is read as the
+        /// integer it is (1 for that bool), signed: the smallest normal float would do on D3D11, but
+        /// GLES runs fragment shaders at medium precision, where it flushes to zero as well. A real
+        /// denormal float is nothing to arithmetic, so no title can depend on its value.</para>
         /// </remarks>
-        private static float Ordered(float value) => float.IsNaN(value) ? -float.MaxValue : value;
+        /// <summary><c>WPR_WP8_CONSTANT_INTS=0</c> passes denormal constants through unchanged (an A/B switch).</summary>
+        private static readonly bool ConstantInts = Environment.GetEnvironmentVariable("WPR_WP8_CONSTANT_INTS") != "0";
+
+        internal static float Ordered(float value)
+        {
+            if (float.IsNaN(value))
+            {
+                return -float.MaxValue;
+            }
+
+            if (!float.IsSubnormal(value) || !ConstantInts)
+            {
+                return value;
+            }
+
+            int mantissa = BitConverter.SingleToInt32Bits(value) & 0x7FFFFF;
+            return value < 0 ? -mantissa : mantissa;
+        }
 
         /// <summary>Register scratch by length: SetValue copies, so one array per size serves every draw.</summary>
         private readonly Dictionary<int, Vector4[]> _registerScratch = new();
@@ -988,6 +1062,29 @@ namespace WPR.Wp8Native
             }
 
             return _scratch;
+        }
+
+        /// <summary>
+        /// Forgets every vertex array uploaded from <paramref name="data"/>: its owner is about to
+        /// reuse the array for different contents (WPR.Engine.HostDirect3D's HostBuffer), and the
+        /// stream cache knows an array only by its identity.
+        /// </summary>
+        public void ForgetStream(byte[] data)
+        {
+            List<(byte[], int, string)>? stale = null;
+            foreach (var (key, uploaded) in _uploaded)
+            {
+                if (ReferenceEquals(key.Data, data))
+                {
+                    uploaded.Buffer?.Dispose();
+                    (stale ??= []).Add(key);
+                }
+            }
+
+            foreach (var key in stale ?? [])
+            {
+                _uploaded.Remove(key);
+            }
         }
 
         /// <summary>Releases uploaded vertex arrays the game has stopped drawing.</summary>

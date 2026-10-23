@@ -25,11 +25,20 @@ namespace WPR.Platform.Windows.Views
             () => new AboutPage(),
         };
 
+        private const int HubTab = 2;
+        private const int MessagesTab = 3;
+
+        /// <summary>The main window's navigator, once it exists.</summary>
+        public static MainViewNavigator? Current { get; private set; }
+
+        private TabControl? _Tabs;
         private int _CurrentIndex = -1;
         private readonly UserControl?[] _Pages = new UserControl?[PageFactories.Length];
 
         public void SetupNavigation(TabControl control, TransitioningContentControl contentControl)
         {
+            Current = this;
+            _Tabs = control;
             _CurrentIndex = 0;
             SetPageContent(contentControl, PageAt(0));
 
@@ -44,6 +53,20 @@ namespace WPR.Platform.Windows.Views
         }
 
         private UserControl PageAt(int index) => _Pages[index] ??= PageFactories[index]();
+
+        /// <summary>The HUB tab (friends and requests), from a friend request's notification.</summary>
+        public void ShowHub()
+        {
+            if (_Tabs != null) _Tabs.SelectedIndex = HubTab;
+        }
+
+        /// <summary>The MESSAGES tab, opened on <paramref name="username"/>'s conversation (a message notification's click).</summary>
+        public void ShowConversation(string username)
+        {
+            if (_Tabs == null) return;
+            _Tabs.SelectedIndex = MessagesTab; // builds and shows the page through SelectionChanged
+            if (PageAt(MessagesTab) is MessagesPage page) page.OpenConversation(username);
+        }
 
         private static void SetPageContent(TransitioningContentControl contentControl, UserControl page)
         {

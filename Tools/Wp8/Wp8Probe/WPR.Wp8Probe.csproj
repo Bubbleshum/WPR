@@ -37,6 +37,8 @@
     <Compile Include="..\..\..\Src\Engine\WPR.Engine.Wp8Native\Runtime\*.cs"
              Exclude="..\..\..\Src\Engine\WPR.Engine.Wp8Native\Runtime\UnicornConst.cs"
              Link="Runtime\%(Filename)%(Extension)" />
+    <!-- The runtime's Xbox Live contract lives in its own engine project (shared with the managed facade). -->
+    <Compile Include="..\..\..\Src\Engine\WPR.Engine.XboxLive\IXboxLiveHost.cs" Link="Runtime\IXboxLiveHost.cs" />
   </ItemGroup>
 
   <ItemGroup>

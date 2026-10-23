@@ -83,6 +83,10 @@
          project was deleted on 2026-08-29 and its last two types moved here. No cycle:
          WPR.Framework.Xna references nothing. -->
     <ProjectReference Include="$(SolutionDir)\Core\WPR.Framework.Xna\WPR.Framework.Xna.csproj" />
+    <!-- WPR.Framework.WinRT (assembly System.Runtime.WindowsRuntime): ApplicationPatcher rescopes a
+         game's typeref to every WinRT type it defines (WinRtImplementedTypes), read off the
+         assembly so that implementing a type there is all it takes. It references nothing. -->
+    <ProjectReference Include="$(SolutionDir)\Core\WPR.Framework.WinRT\WPR.Framework.WinRT.csproj" />
   </ItemGroup>
 
 </Project>

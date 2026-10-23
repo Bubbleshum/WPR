@@ -44,6 +44,9 @@ namespace WPR.Wp8Native
             /// <summary>What it is blocked on, when it is.</summary>
             public string? Why { get; set; }
 
+            /// <summary>When a timed wait it is blocked in runs out (Stopwatch ticks); 0 for an untimed wait.</summary>
+            public long WakeAt { get; set; }
+
             /// <summary>Instructions retired while this thread held the CPU (WPR_WP8_CALLSTATS only).</summary>
             public long Retired { get; set; }
 
@@ -74,6 +77,9 @@ namespace WPR.Wp8Native
         public int GuestThreadsStarted => _threads.Count - 1;
 
         public int ThreadSwitches { get; private set; }
+
+        /// <summary>Times a thread ended with nothing runnable and the run waited out another's timed wait.</summary>
+        public int TimedWaitsWaitedOut { get; private set; }
 
         private GuestThread CurrentThread
         {
@@ -172,7 +178,7 @@ namespace WPR.Wp8Native
             me.Finished = true;
             ThreadNote($"thread {me.Id} '{me.Name}' ended: {why}");
             GuestThreadAbandoned?.Invoke(me.Id);
-            if (PickNext(me) is not { } next)
+            if (NextAfterExit(me) is not { } next)
             {
                 return false;
             }
@@ -181,14 +187,40 @@ namespace WPR.Wp8Native
             return true;
         }
 
-        private void OnThreadExit()
+        private void OnThreadExit() => FinishCurrentThread(_cpu.RegRead(Arm.UC_ARM_REG_R0));
+
+        /// <summary>
+        /// Ends the current thread with <paramref name="exitCode"/> and hands the CPU on; stops the run
+        /// only when nothing could ever run again.
+        /// </summary>
+        /// <remarks>
+        /// "Nothing is runnable at this instant" is not that. A thread in a timed wait becomes runnable
+        /// when its time runs out, and FMOD sleeps exactly that way - <c>WaitForSingleObjectEx</c> on an
+        /// event nobody sets, for 2 ms - from Halo: Spartan Assault's main thread, many times a second.
+        /// A worker that exited inside those 2 ms used to stop the run with "no thread is runnable"
+        /// (the top WPR Hub crash group of 0.2.06, every report on Android, where the window is
+        /// widest). Queued deferred work is the other thing that can still wake a thread; it runs on
+        /// this thread before the thread ends, as a wait with nothing to switch to already does
+        /// (<see cref="YieldToDeferredWork"/>).
+        /// </remarks>
+        private void FinishCurrentThread(long exitCode)
         {
             GuestThread me = CurrentThread;
             me.Finished = true;
-            me.ExitCode = _cpu.RegRead(Arm.UC_ARM_REG_R0);
-            ThreadNote($"thread {me.Id} '{me.Name}' exited with {me.ExitCode}");
+            GuestThread? next = NextAfterExit(me);
+            if (next is null && _deferred.Count > 0)
+            {
+                me.Finished = false;
+                if (RunOneDeferredCall(() => FinishCurrentThread(exitCode)))
+                {
+                    return;
+                }
 
-            GuestThread? next = PickNext(me);
+                me.Finished = true;
+            }
+
+            me.ExitCode = exitCode;
+            ThreadNote($"thread {me.Id} '{me.Name}' exited with {me.ExitCode}");
             if (next is null)
             {
                 Stop($"guest thread {me.Id} exited and no thread is runnable");
@@ -196,6 +228,62 @@ namespace WPR.Wp8Native
             }
 
             SwitchTo(next);
+        }
+
+        /// <summary>
+        /// The thread to hand the CPU to once <paramref name="leaving"/> has ended, waiting (in real
+        /// time) for the earliest timed wait to run out if nothing can run now. Null when every other
+        /// thread is in an untimed wait nobody is left to satisfy: a deadlock.
+        /// </summary>
+        private GuestThread? NextAfterExit(GuestThread leaving)
+        {
+            GuestThread? next = PickNext(leaving);
+            bool waited = false;
+            while (next is null && EarliestTimedWait(leaving) is { } waiter)
+            {
+                waited = true;
+                long now = System.Diagnostics.Stopwatch.GetTimestamp();
+                long due = waiter.WakeAt - now;
+                if (due > 0)
+                {
+                    Thread.Sleep(TimeSpan.FromSeconds((double)due / System.Diagnostics.Stopwatch.Frequency) + TimeSpan.FromMilliseconds(1));
+                }
+                else if (-due > System.Diagnostics.Stopwatch.Frequency / 10)
+                {
+                    // Its time ran out a while ago and it still cannot run: it is waiting for
+                    // something besides the clock (the lock a condition wait retakes). Not a sleeper.
+                    waiter.WakeAt = 0;
+                }
+                else
+                {
+                    Thread.Sleep(1);
+                }
+
+                next = PickNext(leaving);
+            }
+
+            if (waited && next is not null)
+            {
+                TimedWaitsWaitedOut++;
+                ThreadNote($"thread {leaving.Id} '{leaving.Name}' ended with every other thread waiting; thread {next.Id}'s timed wait ran out");
+            }
+
+            return next;
+        }
+
+        private GuestThread? EarliestTimedWait(GuestThread except)
+        {
+            GuestThread? earliest = null;
+            foreach (GuestThread t in _threads)
+            {
+                if (t != except && !t.Finished && t.Registers is not null && t.Ready is not null && t.WakeAt != 0
+                    && (earliest is null || t.WakeAt < earliest.WakeAt))
+                {
+                    earliest = t;
+                }
+            }
+
+            return earliest;
         }
 
         /// <summary>
@@ -207,7 +295,11 @@ namespace WPR.Wp8Native
         /// no switch happened: either nothing else could run and the wait is already satisfied, or
         /// it never will be (a deadlock, logged) and the caller should carry on as best it can.
         /// </returns>
-        public bool BlockCurrentThread(Func<bool> ready, Action? onResume = null, string? why = null)
+        /// <param name="timeout">
+        /// How long a timed wait lasts; null for an untimed one. A thread that ends with every other
+        /// thread blocked waits for the earliest of these to run out rather than calling it a deadlock.
+        /// </param>
+        public bool BlockCurrentThread(Func<bool> ready, Action? onResume = null, string? why = null, TimeSpan? timeout = null)
         {
             GuestThread me = CurrentThread;
             GuestThread? next = PickNext(me);
@@ -226,6 +318,9 @@ namespace WPR.Wp8Native
             me.Ready = ready;
             me.OnResume = onResume;
             me.Why = why;
+            me.WakeAt = timeout is { } t
+                ? System.Diagnostics.Stopwatch.GetTimestamp() + Math.Max(1, (long)(t.TotalSeconds * System.Diagnostics.Stopwatch.Frequency))
+                : 0;
             Save(me);
             SwitchTo(next);
             return true;
@@ -414,6 +509,7 @@ namespace WPR.Wp8Native
             // RestoreRegisters put the thread's own r12 - its resume address - back, which is
             // what the trap's bx r12 jumps to.
             thread.Ready = null;
+            thread.WakeAt = 0;
             Action? resumed = thread.OnResume;
             thread.OnResume = null;
             _currentThread = thread;

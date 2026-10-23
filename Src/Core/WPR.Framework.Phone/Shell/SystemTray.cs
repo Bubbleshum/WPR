@@ -75,5 +75,17 @@ namespace Microsoft.Phone.Shell
         public static void SetProgressIndicator(DependencyObject element, object? value)
         {
         }
+
+        // WP8 added static properties for the current page's tray beside the attached ones; a
+        // WP8 page sets them in code (Gravity Guy 2's MainPage: SystemTray.IsVisible = false from
+        // its Loaded handler). Stored and ignored like the rest.
+
+        public static bool IsVisible { get; set; }
+
+        public static double Opacity { get; set; } = 1.0;
+
+        public static Color BackgroundColor { get; set; }
+
+        public static Color ForegroundColor { get; set; }
     }
 }

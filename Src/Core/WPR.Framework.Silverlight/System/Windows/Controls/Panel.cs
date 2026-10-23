@@ -23,12 +23,15 @@ namespace WPR.SilverlightCompability
 
         public UIElementCollection Children { get; }
 
+        /// <summary>The ItemsControl this panel hosts the containers of, if any.</summary>
+        internal ItemsControl? ItemsOwner { get; set; }
+
         public Panel()
         {
             Children = new UIElementCollection(this, InvalidateMeasure);
         }
 
-        protected override Size MeasureOverride(Size availableSize)
+        internal override Size WprMeasure(Size availableSize)
         {
             double maxW = 0, maxH = 0;
             foreach (UIElement child in Children)
@@ -41,7 +44,7 @@ namespace WPR.SilverlightCompability
             return new Size(maxW, maxH);
         }
 
-        protected override Size ArrangeOverride(Size finalSize)
+        internal override Size WprArrange(Size finalSize)
         {
             foreach (UIElement child in Children)
             {

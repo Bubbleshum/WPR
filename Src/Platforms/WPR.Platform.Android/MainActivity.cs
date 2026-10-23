@@ -27,7 +27,7 @@ namespace WPR.Platform.Android
     /// games, achievements, settings, about — is now plain <c>android.app.Activity</c> with
     /// XML layouts, which is what makes the phone chrome (tile tilt, app bar, list momentum,
     /// system back) behave like the platform instead of approximating it. Avalonia remains
-    /// on the reference graph only for <c>MessageBox.Avalonia</c>'s enums and the AndroidX
+    /// on the reference graph only for the AndroidX
     /// theme resources; nothing in this process initialises it.</para>
     ///
     /// <para>LaunchMode is SingleTask, NOT SingleInstance. A singleInstance activity is the
@@ -148,6 +148,7 @@ namespace WPR.Platform.Android
             // and the tiles said 0 until the next time Start was resumed.
             _StartupFinished = true;
             RefreshTileCounts();
+            _ = PushSetup.StartAsync(this);
 
             global::Android.Util.Log.Info("WPR", "MainActivity OnCreate completed (native shell)");
         }
@@ -226,6 +227,9 @@ namespace WPR.Platform.Android
             // underneath it — so repaint here rather than leaving stale tiles behind.
             PaintAccent();
             RefreshTileCounts();
+
+            // Push notifications from WPR Hub: set up once signed in, forgotten once signed out.
+            if (_StartupFinished) _ = PushSetup.StartAsync(this);
 
             // Coming back from reading messages (or a game): beat now rather than at the next
             // interval, so the unread and online counts on the tiles catch up in seconds.

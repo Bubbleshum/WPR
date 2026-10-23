@@ -16,10 +16,12 @@
     <TargetFramework>net10.0-windows10.0.17763.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\Src\Engine\WPR.Engine.Wp8Native\WPR.Engine.Wp8Native.csproj" />
+    <ProjectReference Include="..\..\..\Src\Engine\WPR.Engine.HostDirect3D\WPR.Engine.HostDirect3D.csproj" />
   </ItemGroup>
 
 </Project>

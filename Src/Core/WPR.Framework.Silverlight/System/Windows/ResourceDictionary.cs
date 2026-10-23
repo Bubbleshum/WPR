@@ -36,8 +36,15 @@ namespace WPR.WindowsCompability
         /// <para>Lookups DO fall through to the merged dictionaries — see
         /// <see cref="TryGetDeep"/>. Anything reading a resource should go through that rather than
         /// the base <c>Dictionary.TryGetValue</c>, which only sees this file's own keys.</para>
+        ///
+        /// <para><b>The type is Silverlight's, <c>PresentationFrameworkCollection&lt;ResourceDictionary&gt;</c>,
+        /// and must stay so.</b> Game IL names the getter with that return type (the patcher rescopes
+        /// it to our <c>PresentationFrameworkCollection`1</c>); a <c>List</c> here was a
+        /// MissingMethodException in every app that merges from code, e.g. the PointAbout "Mashup"
+        /// framework's <c>Application.LoadConfig</c> (Fox News, YouTube).</para>
         /// </remarks>
-        public List<ResourceDictionary> MergedDictionaries { get; } = new List<ResourceDictionary>();
+        public WPR.SilverlightCompability.PresentationFrameworkCollection<ResourceDictionary> MergedDictionaries { get; }
+            = new WPR.SilverlightCompability.PresentationFrameworkCollection<ResourceDictionary>();
 
         /// <summary>Guards a dictionary that merges itself, directly or in a cycle.</summary>
         private const int MaxMergeDepth = 16;
@@ -125,6 +132,18 @@ namespace WPR.WindowsCompability
             return false;
         }
 
+        /// <summary>
+        /// Silverlight's <c>Keys</c>, typed <see cref="System.Collections.ICollection"/>. The
+        /// generic base's <c>KeyCollection</c> is a different return type, so game IL naming
+        /// <c>ICollection get_Keys()</c> was a MissingMethodException: Arkadium's
+        /// <c>ApplicationBase.SetCustomTheme</c> walks the app's keys in its constructor, so
+        /// Microsoft Mahjong, Solitaire and Minesweeper never got past <c>App..ctor</c>.
+        /// </summary>
+        public new System.Collections.ICollection Keys => base.Keys;
+
+        /// <summary>Silverlight's <c>Values</c>, typed <see cref="System.Collections.ICollection"/>; see <see cref="Keys"/>.</summary>
+        public new System.Collections.ICollection Values => base.Values;
+
         public bool Contains(object obj)
         {
             return obj is string s && TryGetDeep(s, out _);
@@ -157,10 +176,22 @@ namespace WPR.WindowsCompability
         }
 
         /// <summary>Silverlight's object-keyed <c>Remove</c>, for symmetry with <see cref="Add"/>.</summary>
-        public bool Remove(object key)
+        /// <remarks>
+        /// Both overloads return <c>void</c>, as Silverlight's do: game IL binds them by signature,
+        /// and the inherited <c>bool Dictionary.Remove(string)</c> was a MissingMethodException in
+        /// PointAbout Mashup's <c>Application.LoadConfig</c>.
+        /// </remarks>
+        public void Remove(object key)
         {
-            if (key == null) return false;
-            return base.Remove(key as string ?? key.ToString()!);
+            if (key == null) return;
+            base.Remove(key as string ?? key.ToString()!);
+        }
+
+        /// <summary>Silverlight's string-keyed <c>Remove</c> (returns void, unlike the base's).</summary>
+        public new void Remove(string key)
+        {
+            if (key == null) return;
+            base.Remove(key);
         }
     }
 }

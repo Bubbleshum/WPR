@@ -297,6 +297,10 @@ namespace WPR.WindowsCompability
         {
             if (uri == null || assembly == null) return null;
 
+            // "/Library;component/x" is a resource of Library, not of the caller: Arkadium's pages,
+            // styles and images live in Arkadium.Common.WP8 and are named that way from the app.
+            assembly = WPR.SilverlightCompability.Frame.ComponentAssembly(uri, assembly);
+
             string path = uri.OriginalString.TrimStart('/');
 
             // Silverlight pack URI: "AssemblyName;component/Path/To.xaml" → strip the prefix.

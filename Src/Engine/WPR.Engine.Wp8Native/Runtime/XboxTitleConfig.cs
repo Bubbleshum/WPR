@@ -48,6 +48,41 @@ namespace WPR.Wp8Native
 
         public Board? Find(uint id) => Boards.FirstOrDefault(b => b.Id == id);
 
+        /// <summary>
+        /// What WPR Hub should call a board: its en-US display name, or, where that is only the
+        /// game's internal identifier (Seasons' and Star Wars' service boards, which draw their own
+        /// artwork instead), that identifier made readable: <c>TOTALSCOREEPISODE3</c> is
+        /// "Total Score, Episode 3", <c>HOTH_1_LBNAME</c> "Hoth 1". Null for an unknown board.
+        /// </summary>
+        public string? HubName(uint id) => Find(id) is { } board ? HubName(board) : null;
+
+        public static string HubName(Board board)
+        {
+            string name = board.DisplayName.Trim();
+            if (name.Length == 0 || !IsIdentifier(name))
+            {
+                return name.Length == 0 ? board.FriendlyName : name;
+            }
+
+            // An identifier: drop the decorations Rovio puts round its board names, then words.
+            string text = name;
+            if (text.EndsWith("_LBNAME", StringComparison.Ordinal)) text = text[..^"_LBNAME".Length];
+            if (text.StartsWith("LEADERBOARD_", StringComparison.Ordinal)) text = text["LEADERBOARD_".Length..];
+
+            System.Text.RegularExpressions.Match episode = System.Text.RegularExpressions.Regex.Match(text, @"^TOTALSCOREEPISODE(\d+)$");
+            if (episode.Success) return "Total Score, Episode " + episode.Groups[1].Value;
+            if (text == "TOTALSCORE") return "Total Score";
+
+            IEnumerable<string> words = text.Split('_', StringSplitOptions.RemoveEmptyEntries)
+                .Select(w => w.Length <= 3 && !w.All(char.IsDigit) ? w : char.ToUpperInvariant(w[0]) + w[1..].ToLowerInvariant());
+            string readable = string.Join(' ', words);
+            return readable.Length == 0 ? name : readable;
+        }
+
+        /// <summary>An upper-case identifier (<c>TOTALSCORE</c>, <c>HOTH_1_LBNAME</c>) rather than a display name.</summary>
+        private static bool IsIdentifier(string name) =>
+            name.All(c => c is (>= 'A' and <= 'Z') or (>= '0' and <= '9') or '_') && name.Any(char.IsLetter);
+
         /// <summary>Reads the first gameconfig found among the package's top-level modules. Never throws.</summary>
         public static XboxTitleConfig Load(string packageRoot)
         {

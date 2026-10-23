@@ -319,7 +319,97 @@ namespace WPR
         // MouseLeftButtonDown in its constructor, so with the WP7 scope left on the delegate the
         // game screen could never be built. Not identity-binding; --repatch-installed is enough
         // and Android repatches on next launch.
-        public static int Version => 42;
+        // Bumped to 43: an assembly reference to "mscorlib, Version=255.255.255.255" (the WinRT
+        // metadata pseudo-reference, which WinmdStubber used to copy into every .winmd stub) is
+        // retargeted to the mscorlib 4.0.0.0 facade. Unbindable otherwise, so any WP8 managed
+        // title touching a stubbed WinRT component (Microsoft.Xbox, SharpDX.WP8) failed with
+        // FileNotFoundException; Gravity Guy 2 (eaa1ee62-073a-4520-831f-08691889f7f1) is the
+        // measured case. Not identity-binding; --repatch-installed is enough (it patches the
+        // stub's .dll.original) and Android repatches on next launch.
+        // Bumped to 44: an assembly reference to WP7's "mscorlib.Extensions" is retargeted to the
+        // runtime's mscorlib 4.0.0.0 facade instead of System.Runtime, which does not forward
+        // System.Threading.Mutex. AE Fruit Slash (0456cf7d-1802-4e07-8120-304a06cbdbf1, the
+        // AEMobile framework) threw TypeLoadException in AEGame..ctor. Not identity-binding;
+        // --repatch-installed is enough and Android repatches on next launch.
+        // Bumped to 45: Windows.Foundation's async family (IAsyncAction, IAsyncOperation`1, their
+        // handlers, AsyncStatus) and mscorlib's EventRegistrationToken / WindowsRuntimeMarshal are
+        // rescoped to System.Runtime.WindowsRuntime (WPR.Framework.WinRT), which implements them;
+        // System.Runtime.WindowsRuntime references are normalised to 4.0.0.0. That is what lets a
+        // managed WP8 title's Xbox Live calls reach the Microsoft.Xbox facade (WPR.Framework.Xbox,
+        // WPR Hub) and complete: Gravity Guy 2 sets IAsyncAction.Completed in MainPage's ctor.
+        // Not identity-binding; --repatch-installed is enough and Android repatches on next launch.
+        // Bumped to 46: Windows.ApplicationModel.Package, Windows.Storage.StorageFolder and
+        // Windows.Graphics.Display's DisplayProperties / ResolutionScale / DisplayOrientations join
+        // WinRtProjectionTypes. WPR.Framework.WinRT implements them; before, they bound per-game
+        // empty shells (a shell class for an enum, a Package with no Current), and
+        // SharpDX.Toolkit.Game's boot read Package.Current.InstalledLocation.Path for its content
+        // root: Gravity Guy 2's MainPage failed there. Not identity-binding.
+        // Bumped to 47: every assembly reference loses ContentType=WindowsRuntime in the patcher
+        // itself. WinRtRefStripper did it only at install, on the live DLL, and its Cecil write
+        // threw wherever WPR's DLLs were not in the working directory (always on Android), so
+        // a WP8 managed title kept WinRT-flagged refs and threw PlatformNotSupported in every
+        // method naming Windows.* or Microsoft.Xbox (Microsoft Mahjong's Arkadium.Common.WP8).
+        // Not identity-binding; --repatch-installed is enough and Android repatches on launch.
+        // Bumped to 48: a typeref into Silverlight's System.Windows assembly that Patches does not
+        // list binds the shim of the same name (SilverlightShimTypes). Arkadium.Common.WP8 named
+        // ControlTemplate, Setter and RoutedPropertyChangedEventArgs`1, whose shims existed with no
+        // table entry; GamePanoramaControl's static constructor threw, and Microsoft Solitaire's
+        // main page lost its panorama. Not identity-binding.
+        // Bumped to 49: no table changed, but SilverlightShimTypes gained DiscreteDoubleKeyFrame
+        // (and RenderingEventArgs), which only a repatch binds. Microsoft Minesweeper's difficulty
+        // tiles threw TypeLoadException on every tap. Not identity-binding.
+        // Bumped to 50 (written as 47 on branch toolkit-gestures): the WP Toolkit gesture redirects are gone, so a game's own
+        // Microsoft.Phone.Controls.Toolkit.dll gesture engine runs (see the note where the entries
+        // were). The redirected typerefs were dangling (scoped to the game module), so every
+        // GestureListener handler failed to bind: Minesweeper (0b00c4a3-eda9-e011-a53c-78e7d1fa76f8)
+        // and Sudoku took no menu taps, and Hold/Drag/Pinch never reached any game. Also
+        // System.Windows.Media.Matrix / MatrixTransform, which the Toolkit's drag code casts to.
+        // Not identity-binding; --repatch-installed is enough and Android repatches on next launch.
+        // Bumped to 51: no table changed, but SilverlightShimTypes gained SkewTransform, which game
+        // IL binds only on a repatch (XAML resolves it without one). Not identity-binding.
+        // Bumped to 52: no table changed, but SilverlightShimTypes gained VirtualizingStackPanel
+        // and VirtualizationMode, which game IL binds only on a repatch. PointAbout Mashup (Fox
+        // News Latest Headlines, 3c10c9db-9a3d-4b7f-8794-cf023e3d8a32) names VirtualizingStackPanel
+        // from its bundled LazyListBox, which then failed to load. Not identity-binding.
+        // Bumped to 53: WP8's Microsoft.Xna.Framework.Media.PhoneExtensions.MediaLibraryExtensions
+        // joins WprFrameworkXnaTypes (it used to fall to the blanket Microsoft.Xna -> FNA rescope,
+        // and FNA defines no XNA API, so YouTube (dcbb1ac6-a89a-df11-a490-00237de2db9e) died with
+        // an unhandled TypeLoadException), and WPR.Framework.WinRT gained ApplicationProfile,
+        // VoiceCommandService and Windows.System.Threading.ThreadPool, which game IL binds only on
+        // a repatch. Not identity-binding; --repatch-installed is enough and Android repatches on
+        // next launch.
+        // Bumped to 54: System.Windows.Threading.DispatcherSynchronizationContext joins the table
+        // (the Silverlight host now installs one on its thread, so BackgroundWorker completion and
+        // await continuations return to the UI thread). Not identity-binding.
+        // Bumped to 55 (written as 54 on 0.2.07, a number branch xbox-live-hub had also taken):
+        // every Socket.ConnectAsync / SendAsync / ReceiveAsync / SendToAsync / ReceiveFromAsync call site goes to WPR.WindowsCompability.SilverlightSockets, which keeps
+        // Silverlight's "always completes asynchronously" contract (see RedirectSocketCalls). Pool
+        // Pro Online 3 hung for ever on "Connecting to server" without it. Rewrites game IL, so a
+        // v54 install keeps hanging until repatched; not identity-binding.
+        // Bumped to 56: SocketAsyncEventArgs.Completed += / -= go to SilverlightSockets.AddCompleted /
+        // RemoveCompleted, which run a receive's callback between the game's frames
+        // (GameFrameGate). Pool Pro Online 3's receive callback raced its frame on a multi-core
+        // machine and lost packets, hanging matches on "waiting for player". Rewrites game IL;
+        // not identity-binding.
+        // Bumped to 57 (written as 56 on branch ae-fruit-slash, a number 0.2.07 had also taken): every Module.get_Name call site goes to
+        // WPR.WindowsCompability.ReflectionModules.GetName (RedirectModuleNameCalls): a
+        // stream-loaded module is "<Unknown>" to .NET and was its file name on the phone. AE Fruit
+        // Slash (0456cf7d-1802-4e07-8120-304a06cbdbf1) never saved anything without it. And
+        // Assembly.Load(string) goes to WPR.WindowsCompability.Assembly2, which hands back an
+        // assembly already loaded in any context (the ad SDK's AdManager..cctor asks for the
+        // entry assembly from the Default context). Rewrites game IL; not identity-binding.
+        // Bumped to 58 (written as 57 on branch ae-fruit-slash): named Mutex constructors and Mutex.OpenExisting go to
+        // WPR.WindowsCompability.NamedMutex (RedirectNamedMutexCalls). Android cannot create a
+        // named mutex (the runtime's shared-memory directory is /data/local/tmp), so AE Fruit
+        // Slash died in AEGame..ctor on a phone. Rewrites game IL; not identity-binding.
+        // Bumped to 59: Windows.ApplicationModel.Store's LicenseInformation, ListingInformation,
+        // ProductLicense, ProductListing and ProductType joined WPR.Framework.WinRT
+        // (WinRtImplementedTypes), so their typerefs leave the per-game synthesized Windows.dll.
+        // iRunner's bundled StoreWrapper.dll stopped its first scene on CurrentApp's missing
+        // LoadListingInformationAsync. And Deployment.Parts is Silverlight's AssemblyPartCollection of
+        // AssemblyPart (it was DeploymentPartCollection, a name no game binds): OpenXLive enumerates it.
+        // Not identity-binding.
+        public static int Version => 59;
 
         private AssemblyNameReference FnaBackendRef;
         private AssemblyNameReference FNARef;
@@ -331,6 +421,7 @@ namespace WPR
         private AssemblyNameReference WprFrameworkXnaRef;
         private AssemblyNameReference ServiceModelPrimitivesRef;
         private AssemblyNameReference ServiceModelHTTPRef;
+        private AssemblyNameReference JsonSerializationRef;
 
         private class TypePatchInfo
         {
@@ -606,6 +697,7 @@ namespace WPR
             "Microsoft.Xna.Framework.Media.ArtistCollection",
             "Microsoft.Xna.Framework.Media.Genre",
             "Microsoft.Xna.Framework.Media.MediaLibrary",
+            "Microsoft.Xna.Framework.Media.PhoneExtensions.MediaLibraryExtensions",
             "Microsoft.Xna.Framework.Media.MediaPlayer",
             "Microsoft.Xna.Framework.Media.MediaQueue",
             "Microsoft.Xna.Framework.Media.MediaSource",
@@ -638,6 +730,141 @@ namespace WPR
             "Microsoft.Xna.Framework.WprDebugTrace",
         };
 
+        /// <summary>
+        /// WinRT types WPR implements for real in WPR.Framework.WinRT (assembly
+        /// <c>System.Runtime.WindowsRuntime</c>): Windows.Foundation's async family, which WP8 user
+        /// IL scopes to <c>Windows</c> (per-device Windows.winmd), and the two interop types WP8
+        /// kept in mscorlib. Their typerefs are rescoped there, wherever they point, because
+        /// otherwise they bind WindowsTypeSynthesizer's per-game empty shells (no members, so
+        /// <c>IAsyncAction.put_Completed</c> is a MissingMethodException) or nothing at all (.NET 5
+        /// removed EventRegistrationToken and WindowsRuntimeMarshal). Version 45.
+        /// </summary>
+        internal static readonly HashSet<string> WinRtProjectionTypes = new(StringComparer.Ordinal)
+        {
+            "Windows.Foundation.AsyncStatus",
+            "Windows.Foundation.IAsyncInfo",
+            "Windows.Foundation.IAsyncAction",
+            "Windows.Foundation.IAsyncOperation`1",
+            "Windows.Foundation.IAsyncActionWithProgress`1",
+            "Windows.Foundation.IAsyncOperationWithProgress`2",
+            "Windows.Foundation.AsyncActionCompletedHandler",
+            "Windows.Foundation.AsyncOperationCompletedHandler`1",
+            "Windows.Foundation.AsyncActionProgressHandler`1",
+            "Windows.Foundation.AsyncActionWithProgressCompletedHandler`1",
+            "Windows.Foundation.AsyncOperationProgressHandler`2",
+            "Windows.Foundation.AsyncOperationWithProgressCompletedHandler`2",
+            "System.Runtime.InteropServices.WindowsRuntime.EventRegistrationToken",
+            "System.Runtime.InteropServices.WindowsRuntime.EventRegistrationTokenTable`1",
+            "System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeMarshal",
+            // Version 46: the package and display classes WP8 SharpDX titles read at boot.
+            "Windows.ApplicationModel.Package",
+            "Windows.Storage.StorageFolder",
+            "Windows.Graphics.Display.DisplayProperties",
+            "Windows.Graphics.Display.ResolutionScale",
+            "Windows.Graphics.Display.DisplayOrientations",
+        };
+
+        /// <summary>
+        /// Every public top-level type WPR.Framework.WinRT defines, by full name: a typeref to any of
+        /// them is rescoped there, like <see cref="WinRtProjectionTypes"/>, which it supersedes as
+        /// the source of truth (the hand-kept list stays for the types WP8 kept in mscorlib, whose
+        /// names would match anyway). Implementing a WinRT class in that assembly is therefore all
+        /// it takes for game IL to bind it. Version 47: the storage, stream, network, Online ID and
+        /// pointer/gesture classes the Microsoft casual games (Arkadium) use.
+        /// </summary>
+        internal static readonly HashSet<string> WinRtImplementedTypes = BuildWinRtImplementedTypes();
+
+        private static HashSet<string> BuildWinRtImplementedTypes()
+        {
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            // WinRtHost, not a Windows.* type: on Windows the SDK projection defines those names too.
+            foreach (Type t in typeof(WPR.WinRT.WinRtHost).Assembly.GetExportedTypes())
+            {
+                if (!t.IsNested && t.FullName != null && !(t.Namespace ?? string.Empty).StartsWith("WPR.", StringComparison.Ordinal))
+                {
+                    names.Add(t.FullName);
+                }
+            }
+
+            return names;
+        }
+
+        /// <summary>
+        /// Every public top-level type the Silverlight shim assembly defines, by name (generic arity
+        /// included) to the WPR namespace it lives in. A typeref into Silverlight's own
+        /// <c>System.Windows</c> assembly that <see cref="Patches"/> does not list is rescoped to
+        /// the shim of the same name, so writing a shim is all it takes for game IL to bind it.
+        /// The shim namespace is flat, so a name is unique there. Version 48: Arkadium's shared
+        /// library named <c>ControlTemplate</c>, <c>Setter</c> and the
+        /// <c>RoutedPropertyChanged</c> family, whose shims existed with no table entry.
+        /// </summary>
+        internal static readonly Dictionary<string, string> SilverlightShimTypes = BuildSilverlightShimTypes();
+
+        private static Dictionary<string, string> BuildSilverlightShimTypes()
+        {
+            var names = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (Type t in typeof(WPR.SilverlightCompability.UIElement).Assembly.GetExportedTypes())
+            {
+                if (t.IsNested || t.Namespace is not ("WPR.SilverlightCompability" or "WPR.WindowsCompability")) continue;
+                // A name in both namespaces keeps the SilverlightCompability one, as Patches mostly does.
+                if (!names.ContainsKey(t.Name) || t.Namespace == "WPR.SilverlightCompability")
+                    names[t.Name] = t.Namespace;
+            }
+
+            return names;
+        }
+
+        /// <summary>The identity WPR.Framework.WinRT is built as; see <see cref="WinRtProjectionTypes"/>.</summary>
+        internal const string WinRtProjectionAssembly = "System.Runtime.WindowsRuntime";
+
+        /// <summary>Namespaces the patcher's by-name rules redirect (XNA, Silverlight, the phone, WinRT).</summary>
+        private static readonly System.Text.RegularExpressions.Regex FrameworkNamespace =
+            new(@"^(System|Microsoft\.(Xna|Phone|Devices)|Windows)(\.|$)", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+        /// <summary>
+        /// Assembly names that are copies of the platform (or of toolkits WPR replaces), never a
+        /// package's own implementation, even when a package ships one: Pool Pro bundles
+        /// System.Windows.dll and Microsoft.Phone.dll reference copies, and CleanupUnreferencedBundledDlls
+        /// relies on refs into Microsoft.Expression.Interactions being redirected.
+        /// </summary>
+        private static readonly System.Text.RegularExpressions.Regex FrameworkAssemblyName =
+            new(@"^(System|mscorlib|Microsoft\.(Xna|Phone|Devices|Xbox|Expression|Advertising)|Windows)(\.|$)",
+                System.Text.RegularExpressions.RegexOptions.CultureInvariant | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        private readonly Dictionary<string, HashSet<string>> _packageAssembliesByFolder = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// True when <paramref name="assemblyName"/> is one of the package's own assemblies (a
+        /// .dll beside <paramref name="modulePath"/>, or its pristine .dll.original) and not a
+        /// framework copy. A typeref scoped to it names code the package ships.
+        /// </summary>
+        private bool PackageOwnsScope(string modulePath, string assemblyName)
+        {
+            if (FrameworkAssemblyName.IsMatch(assemblyName)) return false;
+            string folder = Path.GetDirectoryName(modulePath) ?? string.Empty;
+            if (!_packageAssembliesByFolder.TryGetValue(folder, out HashSet<string>? names))
+            {
+                names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                try
+                {
+                    foreach (string file in Directory.EnumerateFiles(folder))
+                    {
+                        string name = Path.GetFileName(file);
+                        if (name.EndsWith(".dll.original", StringComparison.OrdinalIgnoreCase)) name = name[..^".original".Length];
+                        if (name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)) names.Add(name[..^4]);
+                    }
+                }
+                catch (IOException)
+                {
+                }
+                catch (UnauthorizedAccessException)
+                {
+                }
+                _packageAssembliesByFolder[folder] = names;
+            }
+            return names.Contains(assemblyName);
+        }
+
         public ApplicationPatcher()
         {
             FNARef = AssemblyNameReference.Parse("FNA");
@@ -649,6 +876,7 @@ namespace WPR
 
             ServiceModelPrimitivesRef = AssemblyNameReference.Parse("System.ServiceModel.Primitives");
             ServiceModelHTTPRef = AssemblyNameReference.Parse("System.ServiceModel.Http");
+            JsonSerializationRef = AssemblyNameReference.Parse("System.Runtime.Serialization.Json");
 
             // (There is no longer a dedicated GamerServices assembly ref. Version 19 dissolved
             //  Microsoft.Xna.Framework.GamerServices into WPR.Framework.Xna, so the whole surface
@@ -876,47 +1104,15 @@ namespace WPR
                     Reference = SilverlightCompRef,
                 }
                 },
-                // Toolkit gesture types: on real WP7 these ship in
-                // Microsoft.Phone.Controls.Toolkit.dll (namespace Microsoft.Phone.Controls), so
-                // user IL references them from THAT assembly — unlike PhoneApplicationPage/Shell
-                // (canonically in Microsoft.Phone.dll, which now resolve natively), the gesture
-                // typerefs would otherwise bind the user-bundled toolkit dll. Retarget the
-                // assembly scope to our Microsoft.Phone shim (namespace unchanged).
-                { "Microsoft.Phone.Controls.GestureService", new TypePatchInfo()
-                {
-                    Reference = MicrosoftPhoneRef,
-                }
-                },
-                { "Microsoft.Phone.Controls.GestureListener", new TypePatchInfo()
-                {
-                    Reference = MicrosoftPhoneRef,
-                }
-                },
-                { "Microsoft.Phone.Controls.GestureEventArgs", new TypePatchInfo()
-                {
-                    Reference = MicrosoftPhoneRef,
-                }
-                },
-                { "Microsoft.Phone.Controls.FlickGestureEventArgs", new TypePatchInfo()
-                {
-                    Reference = MicrosoftPhoneRef,
-                }
-                },
-                { "Microsoft.Phone.Controls.DragStartedGestureEventArgs", new TypePatchInfo()
-                {
-                    Reference = MicrosoftPhoneRef,
-                }
-                },
-                { "Microsoft.Phone.Controls.DragDeltaGestureEventArgs", new TypePatchInfo()
-                {
-                    Reference = MicrosoftPhoneRef,
-                }
-                },
-                { "Microsoft.Phone.Controls.DragCompletedGestureEventArgs", new TypePatchInfo()
-                {
-                    Reference = MicrosoftPhoneRef,
-                }
-                },
+                // NO entries for the WP Toolkit's gesture types (GestureService, GestureListener and
+                // the *GestureEventArgs), as of version 47. They ship in the game's own
+                // Microsoft.Phone.Controls.Toolkit.dll and now bind there, so the Toolkit's own
+                // engine runs: Touch.FrameReported + TouchPanel.ReadGesture, which WPR implements
+                // underneath it. The old redirect to Microsoft.Phone never worked: its fresh
+                // AssemblyNameReference was not the module's own "Microsoft.Phone" ref, so Cecil
+                // wrote those typerefs scoped to the game module itself, which defines none of
+                // them. Every XAML Tap="..." handler then failed to bind (signature mismatch) and
+                // Minesweeper's and Sudoku's menus ignored every tap.
                 { "System.Windows.Controls.Frame", new TypePatchInfo()
                 {
                     Reference = SilverlightCompRef,
@@ -1425,6 +1621,11 @@ namespace WPR
                 { "System.Windows.Media.TransformGroup", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
                 { "System.Windows.Media.TranslateTransform", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
                 { "System.Windows.Media.CompositeTransform", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                // Version 47. The WP Toolkit's GestureListener casts TransformToVisual's result to
+                // MatrixTransform and zeroes its offset to map drag deltas; without the types that
+                // method fails to compile and every drag throws.
+                { "System.Windows.Media.MatrixTransform", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+                { "System.Windows.Media.Matrix", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
                 // The two most-used transforms, and the two that were missing. A transform type
                 // with no entry keeps its WP7 scope, so the whole method naming it fails to
                 // compile — Galactic Reign's ArmadaClient.MenuPage died on RotateTransform before
@@ -1530,9 +1731,12 @@ namespace WPR
                 { "System.Windows.PropertyPath", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
                 { "System.Windows.Deployment", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
                 { "System.Windows.PresentationFrameworkCollection`1", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
+            // Version 47: the base of System.Windows.Interactivity's behavior/trigger collections.
+            { "System.Windows.DependencyObjectCollection`1", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability" } },
                 // Bulk: threading
                 { "System.Windows.Threading.Dispatcher", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability.Threading" } },
                 { "System.Windows.Threading.DispatcherOperation", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability.Threading" } },
+                { "System.Windows.Threading.DispatcherSynchronizationContext", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability.Threading" } },
                 { "System.Windows.Threading.DispatcherTimer", new TypePatchInfo() { Reference = SilverlightCompRef, NewNamespace = "WPR.SilverlightCompability.Threading" } },
                 { "System.Windows.Controls.ListBox", new TypePatchInfo()
                 {
@@ -1766,6 +1970,19 @@ namespace WPR
                     Reference = ServiceModelHTTPRef
                 }
                 },
+                // Version 47: the HTTP channel types live in System.ServiceModel.Http too, not
+                // Primitives (which the System.ServiceModel scope is rewritten to). Arkadium's
+                // NetworkManager builds its own binding from them in its Xbox service setup, so
+                // Microsoft Mahjong / Solitaire / Minesweeper sat on their splash for ever.
+                { "System.ServiceModel.Channels.HttpTransportBindingElement", new TypePatchInfo() { Reference = ServiceModelHTTPRef } },
+                { "System.ServiceModel.Channels.HttpsTransportBindingElement", new TypePatchInfo() { Reference = ServiceModelHTTPRef } },
+                { "System.ServiceModel.Channels.IHttpCookieContainerManager", new TypePatchInfo() { Reference = ServiceModelHTTPRef } },
+                { "System.ServiceModel.Channels.HttpRequestMessageProperty", new TypePatchInfo() { Reference = ServiceModelHTTPRef } },
+                { "System.ServiceModel.Channels.HttpResponseMessageProperty", new TypePatchInfo() { Reference = ServiceModelHTTPRef } },
+                { "System.ServiceModel.HttpTransportSecurity", new TypePatchInfo() { Reference = ServiceModelHTTPRef } },
+                { "System.ServiceModel.HttpClientCredentialType", new TypePatchInfo() { Reference = ServiceModelHTTPRef } },
+                // WP8 compiled it against System.ServiceModel.Web, whose .NET facade predates it.
+                { "System.Runtime.Serialization.Json.DataContractJsonSerializerSettings", new TypePatchInfo() { Reference = JsonSerializationRef } },
                 //!
                 { "System.Security.Cryptography.ProtectedData", new TypePatchInfo()
                 {
@@ -2088,6 +2305,12 @@ namespace WPR
                 {
                     "System.Type System.Type::GetType(System.String,System.Boolean)",
                     typeof(WPR.WindowsCompability.Type2)
+                },
+                {
+                    // A library asking for the entry assembly by name (the ad SDK's
+                    // AdManager..cctor) cannot bind into the game's collectible load context.
+                    "System.Reflection.Assembly System.Reflection.Assembly::Load(System.String)",
+                    typeof(WPR.WindowsCompability.Assembly2)
                 },
                 {
                     "Microsoft.Xna.Framework.Graphics.DisplayMode Microsoft.Xna.Framework.Graphics.GraphicsDevice::get_DisplayMode()",
@@ -3387,6 +3610,243 @@ namespace WPR
         }
 
         /// <summary>
+        /// Every <see cref="System.Net.Sockets.Socket"/> <c>*Async(SocketAsyncEventArgs)</c> call
+        /// site in <paramref name="module"/> is retargeted to the matching static on
+        /// <see cref="WPR.WindowsCompability.SilverlightSockets"/>, the socket becoming argument
+        /// zero (the static <c>ConnectAsync(SocketType, ProtocolType, e)</c> keeps its arity).
+        /// That type explains why: on Silverlight these always completed asynchronously and
+        /// raised <c>Completed</c>; .NET may finish at once, return false and raise nothing.
+        ///
+        /// <para>A call-site rewrite because the game constructs the <c>Socket</c> itself, so no
+        /// subclass can stand where the instance is.</para>
+        /// </summary>
+        private static void RedirectSocketCalls(ModuleDefinition module)
+        {
+            const string SocketTypeName = "System.Net.Sockets.Socket";
+            Dictionary<string, MethodReference?> imported = new Dictionary<string, MethodReference?>();
+            int rewritten = 0;
+
+            foreach (TypeDefinition type in module.GetTypes())
+            {
+                foreach (MethodDefinition method in type.Methods)
+                {
+                    if (!method.HasBody)
+                    {
+                        continue;
+                    }
+
+                    foreach (Instruction ins in method.Body.Instructions)
+                    {
+                        if ((ins.OpCode == OpCodes.Callvirt || ins.OpCode == OpCodes.Call)
+                            && ins.Operand is MethodReference handlerRef
+                            && handlerRef.DeclaringType?.FullName == "System.Net.Sockets.SocketAsyncEventArgs"
+                            && handlerRef.HasThis && handlerRef.Parameters.Count == 1
+                            && (handlerRef.Name == "add_Completed" || handlerRef.Name == "remove_Completed"))
+                        {
+                            // e.Completed += handler: the shim wraps it so a receive's callback
+                            // runs between the game's frames.
+                            string shimName = handlerRef.Name == "add_Completed" ? "AddCompleted" : "RemoveCompleted";
+                            if (!imported.TryGetValue(shimName, out MethodReference? handlerShim))
+                            {
+                                handlerShim = module.ImportReference(typeof(WPR.WindowsCompability.SilverlightSockets).GetMethod(shimName)!);
+                                imported[shimName] = handlerShim;
+                            }
+                            ins.OpCode = OpCodes.Call;
+                            ins.Operand = handlerShim;
+                            rewritten += 1;
+                            continue;
+                        }
+
+                        if ((ins.OpCode != OpCodes.Callvirt && ins.OpCode != OpCodes.Call)
+                            || ins.Operand is not MethodReference callee
+                            || callee.DeclaringType?.FullName != SocketTypeName
+                            || !SocketAsyncRedirects.Contains(callee.Name)
+                            || callee.Parameters.Count == 0
+                            || callee.Parameters[^1].ParameterType.FullName != "System.Net.Sockets.SocketAsyncEventArgs"
+                            || callee.ReturnType.FullName != "System.Boolean")
+                        {
+                            continue;
+                        }
+
+                        int shimArity = callee.Parameters.Count + (callee.HasThis ? 1 : 0);
+                        string key = callee.Name + "/" + shimArity;
+                        if (!imported.TryGetValue(key, out MethodReference? target))
+                        {
+                            System.Reflection.MethodInfo? shim =
+                                typeof(WPR.WindowsCompability.SilverlightSockets)
+                                    .GetMethods(System.Reflection.BindingFlags.Public
+                                        | System.Reflection.BindingFlags.Static)
+                                    .FirstOrDefault(m => m.Name == callee.Name
+                                        && m.GetParameters().Length == shimArity
+                                        && (callee.HasThis
+                                            ? m.GetParameters()[0].ParameterType == typeof(System.Net.Sockets.Socket)
+                                            : m.GetParameters()[0].ParameterType != typeof(System.Net.Sockets.Socket)));
+
+                            target = shim == null ? null : module.ImportReference(shim);
+                            imported[key] = target;
+                            if (shim == null)
+                            {
+                                Debug.WriteLine($"[socket-fixup] no shim for {SocketTypeName}::{callee.Name}"
+                                    + $" with {callee.Parameters.Count} arg(s) — left as-is.");
+                            }
+                        }
+
+                        if (target == null)
+                        {
+                            continue;
+                        }
+
+                        ins.OpCode = OpCodes.Call;
+                        ins.Operand = target;
+                        rewritten += 1;
+                    }
+                }
+            }
+
+            if (rewritten > 0)
+            {
+                Log.Info(LogCategory.AppInstall,
+                    $"[socket-fixup] {module.Name}: {rewritten} Socket *Async call(s) now always complete asynchronously.");
+            }
+        }
+
+        /// <summary>
+        /// Every <c>System.Reflection.Module::get_Name</c> call site in <paramref name="module"/>
+        /// is retargeted to <see cref="WPR.WindowsCompability.ReflectionModules.GetName"/>, the
+        /// module becoming argument zero. Game assemblies are loaded from a stream, so .NET names
+        /// their modules <c>"&lt;Unknown&gt;"</c> where the phone gave the file name; that type
+        /// has the account. A call-site rewrite because <c>Module</c>'s runtime type is the
+        /// runtime's own, so nothing can be substituted for the instance on the stack.
+        /// </summary>
+        private static void RedirectModuleNameCalls(ModuleDefinition module)
+        {
+            MethodReference? target = null;
+            int rewritten = 0;
+
+            foreach (TypeDefinition type in module.GetTypes())
+            {
+                foreach (MethodDefinition method in type.Methods)
+                {
+                    if (!method.HasBody)
+                    {
+                        continue;
+                    }
+
+                    foreach (Instruction ins in method.Body.Instructions)
+                    {
+                        if ((ins.OpCode != OpCodes.Callvirt && ins.OpCode != OpCodes.Call)
+                            || ins.Operand is not MethodReference callee
+                            || callee.Name != "get_Name"
+                            || !callee.HasThis
+                            || callee.Parameters.Count != 0
+                            || callee.DeclaringType?.FullName != "System.Reflection.Module")
+                        {
+                            continue;
+                        }
+
+                        target ??= module.ImportReference(
+                            typeof(WPR.WindowsCompability.ReflectionModules).GetMethod(
+                                nameof(WPR.WindowsCompability.ReflectionModules.GetName))!);
+                        ins.OpCode = OpCodes.Call;
+                        ins.Operand = target;
+                        rewritten += 1;
+                    }
+                }
+            }
+
+            if (rewritten > 0)
+            {
+                Log.Info(LogCategory.AppInstall,
+                    $"[module-name-fixup] {module.Name}: {rewritten} Module.Name call(s) now report the file name.");
+            }
+        }
+
+        /// <summary>
+        /// Every named <c>System.Threading.Mutex</c> constructor (<c>(bool, string)</c>,
+        /// <c>(bool, string, out bool)</c>) becomes a call to
+        /// <see cref="WPR.WindowsCompability.NamedMutex.Create(bool, string)"/>, and
+        /// <c>Mutex.OpenExisting(string)</c> goes to its twin. Android cannot create a named mutex
+        /// at all; that type has the account. A call-site rewrite because <c>Mutex</c> is sealed:
+        /// <c>newobj</c> becomes a static <c>call</c> with the same arguments and the same result
+        /// on the stack.
+        /// </summary>
+        private static void RedirectNamedMutexCalls(ModuleDefinition module)
+        {
+            const string MutexTypeName = "System.Threading.Mutex";
+            Dictionary<int, MethodReference> creators = new Dictionary<int, MethodReference>();
+            MethodReference? openExisting = null;
+            int rewritten = 0;
+
+            foreach (TypeDefinition type in module.GetTypes())
+            {
+                foreach (MethodDefinition method in type.Methods)
+                {
+                    if (!method.HasBody)
+                    {
+                        continue;
+                    }
+
+                    foreach (Instruction ins in method.Body.Instructions)
+                    {
+                        if (ins.Operand is not MethodReference callee
+                            || callee.DeclaringType?.FullName != MutexTypeName)
+                        {
+                            continue;
+                        }
+
+                        if (ins.OpCode == OpCodes.Newobj
+                            && callee.Name == ".ctor"
+                            && callee.Parameters.Count is 2 or 3
+                            && callee.Parameters[0].ParameterType.FullName == "System.Boolean"
+                            && callee.Parameters[1].ParameterType.FullName == "System.String"
+                            && (callee.Parameters.Count == 2
+                                || callee.Parameters[2].ParameterType.FullName == "System.Boolean&"))
+                        {
+                            int arity = callee.Parameters.Count;
+                            if (!creators.TryGetValue(arity, out MethodReference? target))
+                            {
+                                System.Type[] parameters = arity == 2
+                                    ? new[] { typeof(bool), typeof(string) }
+                                    : new[] { typeof(bool), typeof(string), typeof(bool).MakeByRefType() };
+                                target = module.ImportReference(
+                                    typeof(WPR.WindowsCompability.NamedMutex).GetMethod(
+                                        nameof(WPR.WindowsCompability.NamedMutex.Create), parameters)!);
+                                creators[arity] = target;
+                            }
+
+                            ins.OpCode = OpCodes.Call;
+                            ins.Operand = target;
+                            rewritten += 1;
+                        }
+                        else if (ins.OpCode == OpCodes.Call
+                            && callee.Name == "OpenExisting"
+                            && !callee.HasThis
+                            && callee.Parameters.Count == 1)
+                        {
+                            openExisting ??= module.ImportReference(
+                                typeof(WPR.WindowsCompability.NamedMutex).GetMethod(
+                                    nameof(WPR.WindowsCompability.NamedMutex.OpenExisting))!);
+                            ins.Operand = openExisting;
+                            rewritten += 1;
+                        }
+                    }
+                }
+            }
+
+            if (rewritten > 0)
+            {
+                Log.Info(LogCategory.AppInstall,
+                    $"[mutex-fixup] {module.Name}: {rewritten} named Mutex call(s) now go through NamedMutex.");
+            }
+        }
+
+        private static readonly HashSet<string> SocketAsyncRedirects =
+            new HashSet<string>(StringComparer.Ordinal)
+            {
+                "ConnectAsync", "SendAsync", "ReceiveAsync", "SendToAsync", "ReceiveFromAsync",
+            };
+
+        /// <summary>
         /// The <c>IsolatedStorageFile</c> members whose call sites are redirected. Every one of
         /// them takes at least one store-relative path or search pattern, which is the entire
         /// reason they are listed: a WP7 title may spell any of them with a Windows separator, and
@@ -4038,10 +4498,21 @@ namespace WPR
             Dictionary<string, AssemblyNameReference> assemblyScopesByOriginalName =
                 new Dictionary<string, AssemblyNameReference>(StringComparer.Ordinal);
 
+            // The module's reference to WPR.Framework.WinRT, found below or added on first use by
+            // RescopeTypeReference (WinRtProjectionTypes). One instance, so no duplicate AssemblyRef.
+            AssemblyNameReference? winRtScope = null;
+
             // module.AssemblyReferences cycle
             foreach (var refer in module.AssemblyReferences)
             {
                 assemblyScopesByOriginalName[refer.Name] = refer;
+
+                // A reference compiled against a .winmd carries ContentType=WindowsRuntime, and
+                // .NET throws PlatformNotSupported for every method naming a type through it.
+                // WinRtRefStripper clears it at install, but only on the live DLL: the patcher
+                // reads the .original, so a strip that failed (or any repatch) left the flag in.
+                // Clearing it here covers install, repatch and Android's launch-time repatch. v47.
+                refer.IsWindowsRuntime = false;
 
                 if (refer.Name.Contains("Microsoft.Xna"))
                 {
@@ -4079,12 +4550,30 @@ namespace WPR
                         refer.PublicKey = FNARef.PublicKey;
                     }
                 }
+                else if (WinmdStubber.RetargetWinRtMscorlib(refer))
+                {
+                    // Version 43: a WinRT stub written before WinmdStubber retargeted this itself.
+                }
+                else if (refer.Name.Equals(WinRtProjectionAssembly, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Version 45: WPR.Framework.WinRT is built as 4.0.0.0 with no strong name. WP8
+                    // user IL names 4.0.0.0 with Microsoft's token, and WinmdStubber's stubs named
+                    // 8.0.0.0; a request above what is loaded does not bind.
+                    WinmdStubber.RetargetWinRtProjection(refer);
+                    winRtScope = refer;
+                }
                 else if (refer.Name.Equals("mscorlib.Extensions",
                     StringComparison.OrdinalIgnoreCase))
                 {
-                    refer.Name = SystemRunTimeRef.Name;
-                    refer.Version = SystemRunTimeRef.Version;
-                    refer.PublicKey = SystemRunTimeRef.PublicKey;
+                    // Version 44: the runtime's mscorlib facade, not System.Runtime. WP7 keeps
+                    // System.Threading.Mutex here, and System.Runtime does not forward it (it lives
+                    // in System.Threading); the mscorlib facade forwards it, and every other type
+                    // games take from mscorlib.Extensions resolves no worse. AE Fruit Slash's
+                    // AEGame..ctor news a Mutex, so the game died before its first frame.
+                    refer.Name = "mscorlib";
+                    refer.Version = new Version(4, 0, 0, 0);
+                    refer.PublicKey = null;
+                    refer.PublicKeyToken = new byte[] { 0xb7, 0x7a, 0x5c, 0x56, 0x19, 0x34, 0xe0, 0x89 };
                 }
                 else if (refer.Name.Equals("System.ServiceModel",
                     StringComparison.OrdinalIgnoreCase))
@@ -4109,6 +4598,7 @@ namespace WPR
             module.AssemblyReferences.Add(SystemRunTimeRef);
             module.AssemblyReferences.Add(ServiceModelPrimitivesRef);
             module.AssemblyReferences.Add(ServiceModelHTTPRef);
+            module.AssemblyReferences.Add(JsonSerializationRef);
 
             // create Ref. Patch Cache
             Dictionary<string, TypeReference> typeRefPatchCache
@@ -4150,6 +4640,7 @@ namespace WPR
             }
 
             // cycle existing refs...
+            int ownImplementationRefs = 0;
             foreach (var existingRef in module.GetTypeReferences())
             {
                 RescopeTypeReference(existingRef);
@@ -4161,12 +4652,33 @@ namespace WPR
              * exactly the same rescoping, so hand the same function over them. */
             RescopeCustomAttributeTypeArguments(module, RescopeTypeReference);
 
+            if (ownImplementationRefs > 0)
+            {
+                Log.Info(LogCategory.AppInstall,
+                    $"[own-impl] {Path.GetFileName(modulePath)}: {ownImplementationRefs} framework-named typeref(s) left on the package's own assembly");
+            }
+
             // Points one typeref at whatever WPR assembly owns that type now. A local function so
             // the blob walk above and the table walk share one set of rules; they must agree, or a
             // typeof() in an attribute resolves somewhere its IL counterpart does not.
             void RescopeTypeReference(TypeReference existingRef)
             {
                 existingRef.Name = AssemblyNameStandardization.Process(existingRef.Name);
+
+                // Version 45: a framework-named type the PACKAGE itself implements stays the
+                // package's. Every rule below matches by full name, whatever assembly the ref
+                // points at, so Gravity Guy 2's SharpDXCommon.dll (its own managed
+                // Microsoft.Xna.Framework.Game, Texture2D ... over SharpDX) was being swapped for
+                // WPR.Framework.Xna's, and the game's code never ran. Only refs scoped to a package
+                // assembly that is not itself a framework copy are kept (PackageOwnsScope);
+                // game-specific redirects (SWTheBattleForHoth.*) are not framework-named and still apply.
+                if (existingRef.Scope is AssemblyNameReference owner
+                    && FrameworkNamespace.IsMatch(existingRef.Namespace ?? string.Empty)
+                    && PackageOwnsScope(modulePath, owner.Name))
+                {
+                    ownImplementationRefs++;
+                    return;
+                }
 
                 if (existingRef.FullName
                     == "Microsoft.Xna.Framework.GamerServices.GamerServicesComponent")
@@ -4196,6 +4708,15 @@ namespace WPR
                     // resolve (ContainmentType / PlaneIntersectionType / CurveLoopType / …).
                     existingRef.Scope = WprFrameworkXnaRef;
                 }
+                else if (WinRtProjectionTypes.Contains(existingRef.FullName) || WinRtImplementedTypes.Contains(existingRef.FullName))
+                {
+                    if (winRtScope is null)
+                    {
+                        winRtScope = new AssemblyNameReference(WinRtProjectionAssembly, new Version(4, 0, 0, 0));
+                        module.AssemblyReferences.Add(winRtScope);
+                    }
+                    existingRef.Scope = winRtScope;
+                }
                 else
                 {
                     if (Patches.ContainsKey(existingRef.FullName))
@@ -4218,6 +4739,15 @@ namespace WPR
                                 existingRef.Scope = patch.Reference;
                             }
                         }
+                    }
+                    else if (existingRef.DeclaringType == null
+                        && existingRef.Scope is AssemblyNameReference silverlightScope
+                        && string.Equals(silverlightScope.Name, "System.Windows", StringComparison.OrdinalIgnoreCase)
+                        && (existingRef.Namespace ?? string.Empty).StartsWith("System.Windows", StringComparison.Ordinal)
+                        && SilverlightShimTypes.TryGetValue(existingRef.Name, out string? shimNamespace))
+                    {
+                        existingRef.Namespace = shimNamespace;
+                        existingRef.Scope = SilverlightCompRef;
                     }
                     else if (existingRef.Scope is AssemblyNameReference blobScope
                         && assemblyScopesByOriginalName.TryGetValue(
@@ -4244,6 +4774,16 @@ namespace WPR
             // Must run after the reference tables, so the shim assembly is already referenced and
             // ImportReference reuses that ref instead of adding a second one.
             RedirectIsolatedStorageCalls(module);
+
+            // Same shape for sockets: Silverlight's *Async(SocketAsyncEventArgs) always completed
+            // asynchronously, .NET's may not.
+            RedirectSocketCalls(module);
+
+            // Module.Name of a stream-loaded assembly is "<Unknown>"; on the phone it was the file.
+            RedirectModuleNameCalls(module);
+
+            // Android cannot create a named Mutex; NamedMutex falls back to a process-local one.
+            RedirectNamedMutexCalls(module);
 
             // Hand a game back the metadata tokens its own assembly shipped with. Same placement
             // reasoning as the call above: the shim assembly is already referenced by now. Must

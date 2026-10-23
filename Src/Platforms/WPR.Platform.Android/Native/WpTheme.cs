@@ -238,7 +238,14 @@ namespace WPR.Platform.Android.Native
                 global::AndroidX.Core.Graphics.Insets bars =
                     insets.GetInsets(WindowInsetsCompat.Type.SystemBars());
 
-                view.SetPadding(_Left, _Top + bars.Top, _Right, _Bottom + bars.Bottom);
+                // Under edge-to-edge the window is no longer resized for the keyboard, whatever
+                // adjustResize says, so a page with a text box at the bottom (a conversation's
+                // reply box) ends up under it. The keyboard's inset includes the navigation bar
+                // beneath it, so the bottom is whichever of the two is taller.
+                global::AndroidX.Core.Graphics.Insets ime =
+                    insets.GetInsets(WindowInsetsCompat.Type.Ime());
+
+                view.SetPadding(_Left, _Top + bars.Top, _Right, _Bottom + Math.Max(bars.Bottom, ime.Bottom));
                 return insets;
             }
         }

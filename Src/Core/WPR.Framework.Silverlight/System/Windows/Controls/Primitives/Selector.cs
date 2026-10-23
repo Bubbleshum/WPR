@@ -43,7 +43,7 @@ namespace WPR.SilverlightCompability
         // other changing.
         private bool _syncing;
 
-        private IEnumerable SelectableItems => (IEnumerable?)ItemsSource ?? Children;
+        private IEnumerable SelectableItems => (IEnumerable?)ItemsSource ?? HostChildren;
 
         private static void OnSelectedIndexChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
@@ -117,7 +117,7 @@ namespace WPR.SilverlightCompability
         /// </summary>
         internal bool SelectContainer(UIElement container)
         {
-            int index = Children.IndexOf(container);
+            int index = HostChildren.IndexOf(container);
             if (index < 0) return false;
             SelectedIndex = index;
             return true;

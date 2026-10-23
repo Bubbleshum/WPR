@@ -4,7 +4,19 @@ namespace WPR.Online.Hub.Client;
 // MessageController and Message::toClientArray. The hub only lets friends message each other;
 // a conversation with someone who is no longer a friend is read-only history (IsFriend false).
 
-public sealed record ChatMessage(long Id, string? From, bool Mine, string Body, DateTimeOffset SentAt, DateTimeOffset? ReadAt);
+/// <param name="Kind">"text", or "invite" for a game invite (<see cref="MessageKinds"/>); null from an older hub.</param>
+/// <param name="TitleId">The invited game's product id, for an invite.</param>
+public sealed record ChatMessage(long Id, string? From, bool Mine, string Body, DateTimeOffset SentAt, DateTimeOffset? ReadAt,
+    string? Kind = null, string? TitleId = null)
+{
+    public bool IsInvite => Kind == MessageKinds.Invite && !string.IsNullOrEmpty(TitleId);
+}
+
+public static class MessageKinds
+{
+    public const string Text = "text";
+    public const string Invite = "invite";
+}
 
 public sealed record Conversation(string With, string? GamerpicUrl, bool IsFriend, ChatMessage LastMessage, int Unread);
 
@@ -42,6 +54,11 @@ public static class HubMessageExtensions
     /// <summary>Throws HubException <c>not_friends</c> (403) unless you are friends.</summary>
     public static Task<ChatMessage> SendMessageAsync(this HubClient hub, string username, string body, CancellationToken ct = default) =>
         hub.SendAuthedAsync<ChatMessage>(HttpMethod.Post, $"api/conversations/{Uri.EscapeDataString(username)}", new { body }, ct);
+
+    /// <summary>A game invite: the hub writes "Invited you to play &lt;game&gt;." as the body.</summary>
+    public static Task<ChatMessage> SendInviteAsync(this HubClient hub, string username, string titleId, string? titleName, CancellationToken ct = default) =>
+        hub.SendAuthedAsync<ChatMessage>(HttpMethod.Post, $"api/conversations/{Uri.EscapeDataString(username)}",
+            new { invite = new { title_id = titleId, title_name = titleName } }, ct);
 
     public static Task MarkReadAsync(this HubClient hub, string username, long? upToId = null, CancellationToken ct = default) =>
         hub.SendAuthedNoContentAsync(HttpMethod.Post, $"api/conversations/{Uri.EscapeDataString(username)}/read",

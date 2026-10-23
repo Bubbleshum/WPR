@@ -27,6 +27,28 @@ namespace WPR.WindowsCompability
         {
         }
 
+        private Uri? _uriSource;
+
+        /// <summary>The image's address; resolved like the <see cref="BitmapImage(Uri)"/> constructor's.</summary>
+        public Uri? UriSource
+        {
+            get => _uriSource;
+            set
+            {
+                _uriSource = value;
+                Path = UriToPath(value);
+            }
+        }
+
+        /// <summary>
+        /// Raised when the image has loaded. WPR decodes lazily when the image is first drawn, so
+        /// these never fire; a game that waits on them treats the image as still loading.
+        /// </summary>
+        public event EventHandler<RoutedEventArgs>? ImageOpened { add { } remove { } }
+
+        /// <summary>Raised when the image cannot be loaded. Never raised; see <see cref="ImageOpened"/>.</summary>
+        public event EventHandler<ExceptionRoutedEventArgs>? ImageFailed { add { } remove { } }
+
         /// <summary>
         /// Silverlight's <c>new BitmapImage(uri)</c>. Resolves the URI to a path
         /// the <c>Image</c> shim's lazy <c>File.Exists</c> loader can use:

@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Framework.WinRT - the parts of .NET's WinRT projection a managed WP8 title compiles
+    against, implemented over Task. Built as assembly System.Runtime.WindowsRuntime 4.0.0.0, the
+    identity WP8 user IL names for WindowsRuntimeSystemExtensions (await on a WinRT operation),
+    AsyncInfo and the relocated value types (Size, Point, Rect, Color); same facade trick as
+    WPR.Framework.Phone -> Microsoft.Phone. .NET 5 dropped that assembly, so before this a
+    title's "await XboxLIVEService.SignInAsync()" could not even be compiled by the JIT.
+
+    It also owns Windows.Foundation's async family (IAsyncAction, IAsyncOperation<T>, AsyncStatus,
+    the completed handlers) and the two WinRT interop types WP8 kept in mscorlib
+    (EventRegistrationToken, WindowsRuntimeMarshal). ApplicationPatcher rescopes those typerefs
+    here (WinRtProjectionTypes), because on a phone they came from per-device Windows.winmd and
+    WPR otherwise has only per-game empty shells for them (WindowsTypeSynthesizer).
+
+    Real objects matter: WPR.Framework.Xbox (Microsoft.Xbox) returns these, and a game sets
+    Completed on them or awaits them.
+
+    No references. A game-facing identity; nothing in WPR's engine tier is named here.
+  -->
+
+  <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+  </PropertyGroup>
+  <PropertyGroup>
+    <TargetFrameworks>net10.0;net10.0-android</TargetFrameworks>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <AssemblyName>System.Runtime.WindowsRuntime</AssemblyName>
+    <RootNamespace>WPR.WinRT</RootNamespace>
+    <AssemblyVersion>4.0.0.0</AssemblyVersion>
+    <FileVersion>4.0.0.0</FileVersion>
+    <Nullable>enable</Nullable>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net10.0-android'">24.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="WPR.SilverlightCompability.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -28,7 +28,11 @@ public sealed record LeaderboardHeader(string Key, string Name, string Sort, str
 
 public sealed record LeaderboardPage(LeaderboardHeader Leaderboard, string View, IReadOnlyList<LeaderboardEntryDto> Entries, LeaderboardEntryDto? Me);
 
-public sealed record ScoreSubmission(string Key, long Score, DateTimeOffset AchievedAt, Dictionary<string, object>? Extra = null);
+/// <param name="Name">The game's own name for the board, when WPR knows it; fills a board the hub could only name from its key.</param>
+public sealed record ScoreSubmission(string Key, long Score, DateTimeOffset AchievedAt, Dictionary<string, object>? Extra = null, string? Name = null);
+
+/// <summary>A board's name as the game calls it, sent with a registration.</summary>
+public sealed record BoardName(string Key, string Name);
 
 /// <summary>Status: new_best | not_better | rejected (Reason: out_of_range, too_many_undefined_boards).</summary>
 public sealed record ScoreResult(string Key, string Status, long? Best, int? Rank, string? Reason);
@@ -62,12 +66,14 @@ public static class HubLeaderboardExtensions
 
     /// <summary>
     /// Anonymous: make sure these boards exist on the hub (created undefined if not). Reveals
-    /// nothing about players, which is why it needs no sign-in.
+    /// nothing about players, which is why it needs no sign-in. <paramref name="names"/> are the
+    /// game's own names for some of them: the hub fills a board named only from its key, never one
+    /// an admin or the definitions repo named.
     /// </summary>
     public static Task<BoardRegistrations> RegisterBoardsAsync(this HubClient hub, string titleId, IReadOnlyList<string> keys,
-        string? titleName = null, CancellationToken ct = default) =>
+        string? titleName = null, IReadOnlyList<BoardName>? names = null, CancellationToken ct = default) =>
         hub.SendPublicAsync<BoardRegistrations>(HttpMethod.Post, $"api/leaderboards/{Uri.EscapeDataString(TitleIds.Normalize(titleId))}/boards",
-            new { title_name = titleName, keys }, ct);
+            new { title_name = titleName, keys, names = names is { Count: > 0 } ? names : null }, ct);
 
     public static Task<ScoreResults> SubmitScoresAsync(this HubClient hub, string titleId, IReadOnlyList<ScoreSubmission> scores,
         string? titleName = null, CancellationToken ct = default) =>

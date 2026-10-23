@@ -31,7 +31,7 @@ namespace WPR.SilverlightCompability
         public static int GetZIndex(UIElement element) => (int)element.GetValue(ZIndexProperty)!;
         public static void SetZIndex(UIElement element, int value) => element.SetValue(ZIndexProperty, value);
 
-        protected override Size MeasureOverride(Size availableSize)
+        internal override Size WprMeasure(Size availableSize)
         {
             // Canvas does not constrain or size to its children.
             var unbounded = new Size(double.PositiveInfinity, double.PositiveInfinity);
@@ -40,7 +40,7 @@ namespace WPR.SilverlightCompability
             return Size.Empty;
         }
 
-        protected override Size ArrangeOverride(Size finalSize)
+        internal override Size WprArrange(Size finalSize)
         {
             foreach (UIElement child in Children)
             {

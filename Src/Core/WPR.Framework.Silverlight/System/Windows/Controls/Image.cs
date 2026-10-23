@@ -70,7 +70,7 @@ namespace WPR.SilverlightCompability
             return false;
         }
 
-        protected override Size MeasureOverride(Size availableSize)
+        internal override Size WprMeasure(Size availableSize)
         {
             if (!TryGetNaturalSize(out double naturalW, out double naturalH)) return Size.Empty;
 

@@ -47,42 +47,24 @@ namespace WPR.Platform.Android
                 return await MessageBoxUtils.GetInputResult(title, description, defaultText, false, true);
             };
 
-            Guide.ShowMessageBoxFunc = async (title, description, buttonNames, currentActiveButton, icon) =>
-            {
-                MessageBox.Avalonia.Enums.Icon messageBoxIcon = MessageBox.Avalonia.Enums.Icon.None;
-                switch (icon)
-                {
-                    case MessageBoxIcon.Error:
-                        messageBoxIcon = MessageBox.Avalonia.Enums.Icon.Error;
-                        break;
-
-                    case MessageBoxIcon.Alert:
-                    case MessageBoxIcon.Warning:
-                        messageBoxIcon = MessageBox.Avalonia.Enums.Icon.Warning;
-                        break;
-
-                    default:
-                        break;
-                }
-
-                var result = await MessageBoxUtils.GetMessageDialogResult(title, description, (buttonNames.Count() <= 1) 
-                        ? MessageBox.Avalonia.Enums.ButtonEnum.Ok
-                        : MessageBox.Avalonia.Enums.ButtonEnum.YesNo, 
-                    messageBoxIcon, buttonNames, false, true);
-
-                if (result == MessageBox.Avalonia.Enums.ButtonResult.None)
-                {
-                    return currentActiveButton;
-                }
-
-                return (result == MessageBox.Avalonia.Enums.ButtonResult.Ok) ? 0 :
-                    (result == MessageBox.Avalonia.Enums.ButtonResult.Yes) ? 1 : 0;
-            };
+            // XNA's Guide.BeginShowMessageBox: the game's own labels, and the index pressed back, or
+            // -1 when the dialog was closed with Back or a tap outside (Guide answers null then, as XNA
+            // documents). The same AlertDialog as Silverlight's MessageBox.Show, which completes on
+            // every exit; the old MessageBox.Avalonia-typed dialog never completed on Back.
+            Guide.ShowMessageBoxFunc = (title, description, buttonNames, focusButton, icon) =>
+                MessageBoxUtils.ShowGameMessageBoxAsync(title, description, buttonNames.ToList());
 
             // Silverlight's blocking MessageBox.Show. The shim owns the WP7 button/result mapping
             // (WPR.WindowsCompability.MessageBox.Describe); this head only shows labelled buttons on
             // its UI thread and reports the index pressed, or -1 when the dialog was dismissed.
             WPR.WindowsCompability.MessageBox.Presenter = MessageBoxUtils.ShowGameMessageBoxAsync;
+            WPR.Engine.Online.GameInvites.Picker = Native.InvitePicker.ShowAsync;
+            // A game invite's notification shows the game's tile.
+            // A device the hub pushes to gets its pop-ups from the push, not the heartbeat.
+            WPR.Shell.HubMessageNotifications.PushHandlesThisDevice = () =>
+                Native.PushSetup.Registered(global::Android.App.Application.Context);
+            WPR.Shell.HubMessageNotifications.GameIconPath = titleId =>
+                WPR.GameIconStore.Find(titleId) is { } relative ? WPR.Common.Configuration.Current?.DataPath(relative) : null;
         }
     }
 }

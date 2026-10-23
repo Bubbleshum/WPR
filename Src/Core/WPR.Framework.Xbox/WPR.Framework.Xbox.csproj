@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Framework.Xbox - Xbox Live for MANAGED WP8 titles, served by WPR Hub.
+
+    Built as assembly Microsoft.Xbox 255.255.255.255: the identity a WP8 title's C# names (WinRT
+    metadata references carry version 255.255.255.255), the same facade trick as
+    WPR.Framework.Phone -> Microsoft.Phone. Because it is one of WPR's own assemblies, the runtime
+    binds it before looking in a game's install folder, so it also replaces the do-nothing stub
+    WinmdStubber wrote into installs made before it existed. No reinstall needed for that.
+
+    41 packages in the library call Microsoft.Xbox from C# (Gravity Guy 2, Bad Piggies, Rayman
+    Jungle/Fiesta Run, the Microsoft casual games, Lara Croft Relic Run ...). All 23 copies of
+    Microsoft.Xbox.winmd in the library have the same 365-member surface, which this mirrors with
+    .NET's WinRT projection applied (DateTime -> DateTimeOffset, IVectorView -> IReadOnlyList,
+    HResult -> Exception, EventHandler -> System.EventHandler).
+
+    Behind it is IXboxLiveHost (WPR.Engine.XboxLive), reached through XboxLiveBackend, which
+    ApplicationLaunch fills per launch with the same Wp8NativeXboxHost a WP8 native title uses:
+    sign-in is the WPR Hub account (or the guest gamertag), achievements go to achievements.db and
+    the hub, leaderboards to the hub. Multiplayer, user messages and marketplace fail the way an
+    unreachable Xbox Live did.
+  -->
+
+  <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+  </PropertyGroup>
+  <PropertyGroup>
+    <TargetFrameworks>net10.0;net10.0-android</TargetFrameworks>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <AssemblyName>Microsoft.Xbox</AssemblyName>
+    <RootNamespace>Microsoft.Xbox</RootNamespace>
+    <AssemblyVersion>255.255.255.255</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Nullable>enable</Nullable>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net10.0-android'">24.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WPR.Framework.WinRT\WPR.Framework.WinRT.csproj" />
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.XboxLive\WPR.Engine.XboxLive.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="WPR.SilverlightCompability.Tests" />
+  </ItemGroup>
+
+</Project>

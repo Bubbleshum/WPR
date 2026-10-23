@@ -240,11 +240,19 @@ namespace WPR.Platform.Android.Native
         /// <summary>When <see cref="LastLaunched"/> was handed over, for how long it ran (the rating prompt's minimum).</summary>
         private static DateTime LastLaunchedAt;
 
+        /// <summary>
+        /// How long to wait for the run lock of a :game process that has just gone. The result
+        /// arrives when its binder closes, which can be a moment before its other files are closed.
+        /// A lock still held after this belongs to a live run (a game started since): left alone.
+        /// </summary>
+        private static readonly TimeSpan ExitedGameLockWait = TimeSpan.FromSeconds(1.5);
+
         private static void ReportNativeCrash(WprApplication? app)
         {
             // Taken whatever happens next: the :game process is gone, so the file is this run's or
-            // an older leftover, and either way it must not be reported twice.
-            WPR.Engine.Online.PersistedRun? run = WPR.Engine.Online.CompatibilityProblems.TakeRunFile(force: true);
+            // an older leftover, and either way it must not be reported twice. A file whose run
+            // lock is still held is a live run's and is not taken (TakeRunFile).
+            WPR.Engine.Online.PersistedRun? run = WPR.Engine.Online.CompatibilityProblems.TakeRunFile(force: true, ExitedGameLockWait);
             if (WPR.Engine.Online.OnlineBackend.Crashes is not { } reporter) return;
 
             if (run != null && (app == null || SameProduct(run.Run.ProductId, app.ProductId)))
@@ -264,10 +272,16 @@ namespace WPR.Platform.Android.Native
             }
             if (app == null) return;
 
-            reporter.Report(WPR.Engine.Online.CompatibilityProblems.NativeCrashReport(
+            // No run file to name the pid: ask about the newest :game death since the launch.
+            WPR.Engine.Online.ProcessExit? exit = WPR.Engine.Online.CompatibilityProblems.ExitOf(0, LastLaunchedAt);
+            if (exit is { IsCrash: false }) return; // ended on purpose (an update, a force stop): not a crash
+
+            WPR.Engine.Online.CrashReport crash = WPR.Engine.Online.CompatibilityProblems.NativeCrashReport(
                 app.ProductId, app.Name,
                 Path.Combine(Configuration.Current!.DataPath(WprApplication.DataStoreFolder), app.ProductId!),
-                WPR.Engine.Graphics.GraphicsDriverPreference.ResolveDriverName()));
+                WPR.Engine.Graphics.GraphicsDriverPreference.ResolveDriverName());
+            WPR.Engine.Online.CompatibilityProblems.AttachExit(crash, exit);
+            reporter.Report(crash);
         }
 
         /// <summary>
@@ -278,7 +292,7 @@ namespace WPR.Platform.Android.Native
         {
             try
             {
-                if (WPR.Engine.Online.CompatibilityProblems.TakeRunFile(force: true) is not { } run) return;
+                if (WPR.Engine.Online.CompatibilityProblems.TakeRunFile(force: true, ExitedGameLockWait) is not { } run) return;
                 if (WPR.Engine.Online.OnlineBackend.Crashes is not { } reporter || run.Problems.Count == 0) return;
                 WPR.Engine.Online.CompatibilityProblems.ReportProblems(reporter, run.Problems, 0,
                     "ended (recovered by the launcher)", run.Age,

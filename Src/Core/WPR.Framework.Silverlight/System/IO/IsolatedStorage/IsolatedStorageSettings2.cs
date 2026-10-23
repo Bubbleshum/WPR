@@ -58,8 +58,12 @@ namespace WPR.WindowsCompability
                 {
                     using (StreamReader sr = new StreamReader(fs))
                     {
+                        // Save() names each value's runtime type as a known type; a read has no
+                        // such list, so a game's own class (iRunner's Classes.Model.AppSetting)
+                        // was unknown to it and every setting was thrown away on each launch.
                         DataContractSerializer reader = new DataContractSerializer(
-                            typeof(Dictionary<string, object>));
+                            typeof(Dictionary<string, object>),
+                            new DataContractSerializerSettings { DataContractResolver = new LoadedTypeContractResolver() });
                         try
                         {
                             _Settings = (reader.ReadObject(fs) as Dictionary<string, object>)!;

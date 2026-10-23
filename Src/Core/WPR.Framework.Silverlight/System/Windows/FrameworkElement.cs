@@ -146,28 +146,38 @@ namespace WPR.SilverlightCompability
         /// </summary>
         public BindingExpressionBase SetBinding(DependencyProperty dp, Binding binding)
         {
-            _bindings ??= new System.Collections.Generic.List<BindingExpression>();
-            for (int i = _bindings.Count - 1; i >= 0; i--)
-            {
-                if (ReferenceEquals(GetBindingTargetProp(_bindings[i]), dp))
-                {
-                    _bindings[i].Detach();
-                    _bindings.RemoveAt(i);
-                }
-            }
-
-            var expr = new BindingExpression(this, dp, binding);
-            _bindings.Add(expr);
-            expr.Refresh();
+            AttachBinding(new BindingExpression(this, dp, binding), this, dp, null);
             // SL's SetBinding returns a BindingExpression (a BindingExpressionBase
             // subclass). We don't expose our internal BindingExpression at that
             // hierarchy yet, so hand back a fresh BindingExpressionBase wrapper.
             return new BindingExpressionBase();
         }
 
-        // Reflection-free access to the private target-property field of an expression.
-        // Avoided by exposing a property on BindingExpression directly.
-        private static DependencyProperty GetBindingTargetProp(BindingExpression e) => e.TargetProperty;
+        /// <summary>
+        /// Binds a property of an object inside this element that is not an element itself (a
+        /// <c>BitmapImage</c> in its <c>Source</c>, a brush): it takes this element's DataContext
+        /// and is refreshed with this element's own bindings.
+        /// </summary>
+        internal void SetInnerBinding(object target, DependencyProperty? dp,
+            System.Reflection.PropertyInfo? clrProperty, Binding binding) =>
+            AttachBinding(new BindingExpression(this, target, dp, clrProperty, binding), target, dp, clrProperty);
+
+        private void AttachBinding(BindingExpression expr, object target, DependencyProperty? dp,
+            System.Reflection.PropertyInfo? clrProperty)
+        {
+            _bindings ??= new System.Collections.Generic.List<BindingExpression>();
+            for (int i = _bindings.Count - 1; i >= 0; i--)
+            {
+                if (_bindings[i].Writes(target, dp, clrProperty))
+                {
+                    _bindings[i].Detach();
+                    _bindings.RemoveAt(i);
+                }
+            }
+
+            _bindings.Add(expr);
+            expr.Refresh();
+        }
 
         private static void OnDataContextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
@@ -237,22 +247,31 @@ namespace WPR.SilverlightCompability
                 case Panel p:
                     foreach (UIElement c in p.Children)
                     {
-                        if (c is FrameworkElement cfe && cfe.GetValue(DataContextProperty) == null
-                            && cfe._bindings != null)
-                        {
-                            foreach (var b in cfe._bindings) b.Refresh();
-                        }
+                        if (c is FrameworkElement cfe) RefreshInherited(cfe);
                         RefreshDescendantBindings(c);
                     }
                     break;
                 case ContentControl cc when cc.Presenter != null:
-                    if (cc.Presenter is FrameworkElement pfe && pfe.GetValue(DataContextProperty) == null
-                        && pfe._bindings != null)
-                    {
-                        foreach (var b in pfe._bindings) b.Refresh();
-                    }
+                    if (cc.Presenter is FrameworkElement pfe) RefreshInherited(pfe);
                     RefreshDescendantBindings(cc.Presenter);
                     break;
+            }
+        }
+
+        /// <summary>
+        /// The bindings of <paramref name="element"/> that read the context its parent just
+        /// changed: all of them when it has no DataContext of its own, else only a binding ON its
+        /// DataContext, which reads the parent's (<c>DataContext="{Binding FavoriteModules[0]}"</c>,
+        /// whose parent context Fox News sets after the page is built).
+        /// </summary>
+        private static void RefreshInherited(FrameworkElement element)
+        {
+            if (element._bindings == null) return;
+            bool own = element.GetValue(DataContextProperty) != null;
+            foreach (var b in element._bindings.ToArray())
+            {
+                if (own && !(ReferenceEquals(b.TargetProperty, DataContextProperty) && ReferenceEquals(b.Target, element))) continue;
+                b.Refresh();
             }
         }
 
@@ -556,6 +575,10 @@ namespace WPR.SilverlightCompability
             if (root is FrameworkElement fe && !fe._loadedRaised)
             {
                 fe._loadedRaised = true;
+                // Silverlight applies templates and prepares item containers in the layout pass
+                // before Loaded; here Loaded can come first (a page is laid out after its
+                // navigation), so do that part of the pass now.
+                fe.WprBeforeMeasure();
                 bool hasSubscribers = fe.Loaded != null;
                 if (hasSubscribers)
                     Console.WriteLine($"[Loaded] firing on {fe.GetType().Name}");
@@ -660,7 +683,7 @@ namespace WPR.SilverlightCompability
             }
         }
 
-        private static System.Collections.Generic.IEnumerable<UIElement> EnumerateLogicalChildren(UIElement el)
+        internal static System.Collections.Generic.IEnumerable<UIElement> EnumerateLogicalChildren(UIElement el)
         {
             // Order matters: more-specific subclasses first. ScrollViewer derives
             // from ContentControl so it'd be caught by the ContentControl arm
@@ -698,6 +721,7 @@ namespace WPR.SilverlightCompability
 
         protected override Size MeasureCore(Size availableSize)
         {
+            WprBeforeMeasure();
             Thickness m = Margin;
 
             double availW = Math.Max(0, availableSize.Width - m.Left - m.Right);
@@ -790,8 +814,23 @@ namespace WPR.SilverlightCompability
             ActualHeight = finalSize.Height;
         }
 
-        protected virtual Size MeasureOverride(Size availableSize) => Size.Empty;
+        // A game's override that calls base.MeasureOverride / base.ArrangeOverride compiles to a
+        // non-virtual call on FrameworkElement whenever its Silverlight base declares neither
+        // (ItemsControl, UserControl, Control). Silverlight's FrameworkElement then lays out the
+        // template; WPR has no template, so these hand over to the layout WPR's own class does
+        // (WprMeasure / WprArrange) and the children still get arranged. Arkadium's UniformGrid
+        // arranged nothing, and its game tiles drew at size 0.
+        protected virtual Size MeasureOverride(Size availableSize) => WprMeasure(availableSize);
 
-        protected virtual Size ArrangeOverride(Size finalSize) => finalSize;
+        protected virtual Size ArrangeOverride(Size finalSize) => WprArrange(finalSize);
+
+        /// <summary>Runs at the start of every measure; a control applies its template here.</summary>
+        internal virtual void WprBeforeMeasure() => Control.EnsureTemplateApplied(this);
+
+        /// <summary>The layout WPR's own class does; see <see cref="MeasureOverride"/>.</summary>
+        internal virtual Size WprMeasure(Size availableSize) => Size.Empty;
+
+        /// <summary>The layout WPR's own class does; see <see cref="MeasureOverride"/>.</summary>
+        internal virtual Size WprArrange(Size finalSize) => finalSize;
     }
 }

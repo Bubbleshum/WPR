@@ -20,6 +20,12 @@ namespace WPR.Engine.Online
     ///
     /// <para><b>Board keys</b> are <c>&lt;LeaderboardKey&gt;:&lt;GameMode&gt;</c>, e.g.
     /// <c>BestScoreLifeTime:0</c>, which is what the hub's definitions repo uses.</para>
+    ///
+    /// <para><b>Board names</b> (<c>boardName</c>) are the game's own name for a board, passed only
+    /// where WPR can read it from the game (a WP8 title's Xbox SPA). The hub uses it for a board
+    /// that has only a name made from its key, and never replaces one an admin or the definitions
+    /// repo set. Null is normal: a WP7 title names its boards by key alone, and the hub then makes
+    /// a readable name from the key itself.</para>
     /// </remarks>
     public interface ILeaderboardService
     {
@@ -27,7 +33,8 @@ namespace WPR.Engine.Online
         bool CanRead { get; }
 
         /// <summary>Queue a score. Must not throw, and must not wait on the network.</summary>
-        void Submit(string titleId, string? titleName, string boardKey, long score, IReadOnlyDictionary<string, string>? columns = null);
+        void Submit(string titleId, string? titleName, string boardKey, long score, IReadOnlyDictionary<string, string>? columns = null,
+            string? boardName = null);
 
         /// <summary>
         /// Make sure the board exists on the hub, creating it if nobody has yet. Called whenever
@@ -35,7 +42,7 @@ namespace WPR.Engine.Online
         /// first time it asks for one. Fire-and-forget: must not throw or wait on the network,
         /// and repeated calls for the same board are cheap.
         /// </summary>
-        void EnsureBoard(string titleId, string? titleName, string boardKey);
+        void EnsureBoard(string titleId, string? titleName, string boardKey, string? boardName = null);
 
         Task<LeaderboardPage?> ReadAsync(string titleId, string boardKey, LeaderboardView view, int offset, int limit, CancellationToken ct = default);
 

@@ -19,9 +19,14 @@ namespace WPR.SilverlightCompability
             if (d is StackPanel sp) sp.InvalidateMeasure();
         }
 
-        protected override Size MeasureOverride(Size availableSize)
+        internal override Size WprMeasure(Size availableSize) => MeasureStack(Children, Orientation, availableSize);
+
+        internal override Size WprArrange(Size finalSize) => ArrangeStack(Children, Orientation, finalSize);
+
+        // Shared with VirtualizingStackPanel, which is not a StackPanel in Silverlight's hierarchy.
+        internal static Size MeasureStack(UIElementCollection children, Orientation orientation, Size availableSize)
         {
-            bool vertical = Orientation == Orientation.Vertical;
+            bool vertical = orientation == Orientation.Vertical;
 
             // Children get unbounded extent along the stacking axis, the slot's extent on the cross axis.
             Size childAvail = vertical
@@ -31,7 +36,7 @@ namespace WPR.SilverlightCompability
             double main = 0;
             double cross = 0;
 
-            foreach (UIElement child in Children)
+            foreach (UIElement child in children)
             {
                 child.Measure(childAvail);
                 Size d = child.DesiredSize;
@@ -50,12 +55,12 @@ namespace WPR.SilverlightCompability
             return vertical ? new Size(cross, main) : new Size(main, cross);
         }
 
-        protected override Size ArrangeOverride(Size finalSize)
+        internal static Size ArrangeStack(UIElementCollection children, Orientation orientation, Size finalSize)
         {
-            bool vertical = Orientation == Orientation.Vertical;
+            bool vertical = orientation == Orientation.Vertical;
             double offset = 0;
 
-            foreach (UIElement child in Children)
+            foreach (UIElement child in children)
             {
                 Size d = child.DesiredSize;
                 Rect slot = vertical

@@ -208,6 +208,10 @@ namespace WPR
 
             _trace($"[wpr-mixed] booting mixed-mode app: {_entryPointTypeName}");
 
+            // Dispatcher.BeginInvoke posts from here on run on this thread, from Update, as on
+            // the phone: a post made while the app boots runs once the first frame starts.
+            WPR.SilverlightCompability.Threading.Dispatcher.AttachToCurrentThread();
+
             SilverlightAppHost.HostResult result = SilverlightAppHost.BootInContext(
                 _installFolder,
                 _userAssembly,
@@ -226,7 +230,9 @@ namespace WPR
             // frame, on the page where the game actually is.
             if (RootFrame != null)
             {
-                RootFrame.Navigated += OnFrameNavigated;
+                // Not Navigated: that is raised before the page's OnNavigatedTo (as on the phone),
+                // and the page's orientation is only settled once OnNavigatedTo has run.
+                RootFrame.WprNavigationCompleted += OnFrameNavigated;
                 // A page swapped in by writing Frame.Content (Flowerz does every screen change
                 // this way) needs the same layout and orientation as a navigated one.
                 RootFrame.WprContentReplaced += (_, _) => OnFrameNavigated(RootFrame, null!);
@@ -315,6 +321,11 @@ namespace WPR
             // Silverlight input, for a page this host is drawing itself. Before the page's own
             // update, so a tap and the frame that reacts to it are the same frame.
             PumpSilverlightTouch();
+            PumpTouchFrameReported();
+
+            // The background grid's pointers (Arkadium). Before the embedded game's update, which
+            // is where such a title consumes what its handler queued.
+            PumpManipulationInput();
 
             // A flick keeps moving after the finger leaves, and nothing in the Silverlight tree
             // has a clock of its own to move it.
@@ -344,6 +355,10 @@ namespace WPR
             // page that reads an animated property this tick sees this tick's value.
             AnimationClock.Tick(gameTime.ElapsedGameTime);
 
+            // CompositionTarget.Rendering, once a frame after the animations, as Silverlight
+            // raised it before composing. Some titles tick their whole engine from it.
+            CompositionTarget.RaiseRendering(gameTime.TotalGameTime);
+
             // EXACTLY ONE FrameworkDispatcher.Update per tick, and the app gets first refusal.
             //
             // A mixed-mode app has no Game, so the WP7 template makes the app pump: its
@@ -363,6 +378,27 @@ namespace WPR
             MatchHostRateToTimers();
 
             GameTimer.PumpUpdate(gameTime.ElapsedGameTime);
+
+            // A game embedded in the page (a SharpDX Toolkit Game behind a WP8
+            // DrawingSurfaceBackgroundGrid) gets its update after the page's, as the grid's own
+            // frame callback came after the page's input on WP8.
+            if (WPR.Xna.Rhi.EmbeddedGameLoop.Current is { } embedded)
+            {
+                embedded.SetActive(IsActive);
+                embedded.Update(gameTime);
+                if (embedded.ExitRequested)
+                {
+                    _trace("[wpr-mixed] the embedded game asked to exit.");
+                    Exit();
+                }
+            }
+
+            // The UI thread's queue: what was posted with Dispatcher.BeginInvoke, run after the
+            // code that posted it has returned (see Dispatcher), and within this tick. Not at the
+            // top of the tick: Gravity Guy 2's Cocos2D posts FrameworkDispatcher.Update from its
+            // update, and run before pumpsBefore below that pump went uncounted, the fallback
+            // pumped a second time, and every tap's release was lost (PLAY stayed pressed).
+            WPR.SilverlightCompability.Threading.Dispatcher.PumpQueued();
 
             // Components only — the pump is suppressed.
             base.Update(gameTime);
@@ -468,6 +504,12 @@ namespace WPR
             bool landscape =
                 (page.Orientation & PageOrientation.Landscape) == PageOrientation.Landscape ||
                 page.SupportedOrientations == SupportedPageOrientation.Landscape;
+
+            // Which way round the device is, for a background grid's portrait frame and its
+            // pointers. Plain Landscape is presented as LandscapeRight, as Arkadium's engine reads
+            // it (Microsoft Mahjong); Microsoft Minesweeper's game page says LandscapeLeft, and
+            // drew upside down with the right-hand turn.
+            WPR.Xna.Rhi.EmbeddedGameLoop.PageLandscapeLeft = landscape && page.Orientation == PageOrientation.LandscapeLeft;
 
             // Only touch the device when the way round actually changes. This runs on every
             // navigation now, and ApplyChanges is a device reset — re-issuing it per page would
@@ -624,15 +666,25 @@ namespace WPR
             // Draw handler may touch the device. See GameTimer's class remarks.
             UIElementRenderer.BeginHostFrame();
             int drawnBefore = GraphicsDevice.WprDrawCallsThisFrame;
+            // Under the page, as the background grid was: its draws count as the game painting.
+            WPR.Xna.Rhi.EmbeddedGameLoop.Current?.Draw(gameTime, GraphicsDevice);
+            int drawnByGrid = GraphicsDevice.WprDrawCallsThisFrame - drawnBefore;
             GameTimer.PumpDraw(gameTime.ElapsedGameTime);
             bool gamePaintedTheFrame = GraphicsDevice.WprDrawCallsThisFrame != drawnBefore;
+
+            // A WP8 DrawingSurfaceBackgroundGrid is UNDER its page: the phone composed the XAML
+            // over the Direct3D frame every frame (Microsoft Mahjong's hint bar and buttons are
+            // XAML over its board). So a frame painted only by the background grid still gets the
+            // page, drawn over it rather than over a cleared screen. A GameTimer draw (WP7
+            // mixed mode) keeps the old rule below.
+            bool onlyTheGridPainted = drawnByGrid > 0 && GraphicsDevice.WprDrawCallsThisFrame - drawnBefore == drawnByGrid;
 
             // Two ways the page is already accounted for, and NEITHER may be composited over.
             UIElement? root = _layoutRoot;
             bool gameRasterisedIt = UIElementRenderer.GameCompositedThisFrame(root);
-            bool hostDraws = !gameRasterisedIt && !gamePaintedTheFrame;
+            bool hostDraws = !gameRasterisedIt && (!gamePaintedTheFrame || onlyTheGridPainted);
 
-            ReportCompositingBranch(gameRasterisedIt, gamePaintedTheFrame);
+            ReportCompositingBranch(gameRasterisedIt, gamePaintedTheFrame, onlyTheGridPainted);
 
             // Latched for PumpSilverlightTouch, which runs in Update and so cannot ask the
             // question itself: whoever presents the page owns its input.
@@ -640,7 +692,7 @@ namespace WPR
             if (hostDraws)
             {
                 if (_isPureSilverlight) RelayoutIfInvalidated();
-                CompositeSilverlightPage();
+                CompositeSilverlightPage(overBackground: onlyTheGridPainted);
             }
         }
 
@@ -688,20 +740,143 @@ namespace WPR
         /// current PAGE: a title whose menu is plain Silverlight and whose board is XNA flips it
         /// on every navigation, and that transition is exactly what is worth seeing.</para>
         /// </remarks>
-        private void ReportCompositingBranch(bool gameRasterisedIt, bool gamePaintedTheFrame)
+        private void ReportCompositingBranch(bool gameRasterisedIt, bool gamePaintedTheFrame, bool overBackground)
         {
-            int state = (gameRasterisedIt ? 1 : 0) | (gamePaintedTheFrame ? 2 : 0);
+            int state = (gameRasterisedIt ? 1 : 0) | (gamePaintedTheFrame ? 2 : 0) | (overBackground ? 4 : 0);
             if (_compositingBranchReported == state + 1) return;
             _compositingBranchReported = state + 1;
 
             string line = gameRasterisedIt
                 ? "[wpr-mixed] the game rasterises this page itself — not compositing."
+                : overBackground
+                    ? "[wpr-mixed] the background grid painted this frame — compositing the page over it."
                 : gamePaintedTheFrame
                     ? "[wpr-mixed] the game painted this frame — not compositing."
                     : "[wpr-mixed] nothing else painted this frame — compositing the page.";
             _trace(line);
             // Also to Trace, which reaches the session log in a Release build; _trace does not.
             System.Diagnostics.Trace.WriteLine(line);
+        }
+
+        /// <summary>
+        /// Raises <c>Touch.FrameReported</c> for this frame's touches (see <see cref="TouchFrameReporter"/>).
+        /// </summary>
+        /// <remarks>
+        /// <para><b>Every subscriber, whoever draws the page</b>, so it is not behind
+        /// <see cref="PumpSilverlightTouch"/>'s gate: on the phone FrameReported fired for every
+        /// touch, and the WP Toolkit's GestureListener (the usual subscriber) needs it on pages a
+        /// mixed-mode game draws too.</para>
+        ///
+        /// <para><b>After the routed input, not before.</b> A list selects the tapped row on the
+        /// release, and the Toolkit raises Tap from this event; raised first, Tap reaches the game
+        /// with nothing selected, and Sudoku's and Minesweeper's mode lists ignore it. On the
+        /// phone the gesture arrived after the mouse-up for the same reason.</para>
+        ///
+        /// <para><b>The read count is resynchronised after it.</b> The Toolkit's handler reads
+        /// TouchPanel gestures itself, and charging those reads to the game would make a page the
+        /// game draws stop getting routed input. (Reads from the Toolkit's own 100 ms timer during
+        /// a touch are still counted; they only matter on such a page, and only while a finger is
+        /// down.)</para>
+        /// </remarks>
+        private void PumpTouchFrameReported()
+        {
+            if (!TouchFrameReporter.HasSubscribers) return;
+            try
+            {
+                TouchCollection frame = TouchPanel.GetState();
+                TouchFrameReporter.Report(_layoutRoot, frame);
+            }
+            catch (Exception ex)
+            {
+                if (!_touchFailed)
+                {
+                    _touchFailed = true;
+                    _trace("[wpr-mixed] Touch.FrameReported failed (reported once): " + ex);
+                }
+            }
+            finally
+            {
+                _touchReadsSeen = TouchPanel.WprReadCount;
+            }
+        }
+
+        /// <summary>
+        /// Pointer events for a DrawingSurfaceBackgroundGrid's manipulation host (WinRT, Arkadium's
+        /// input source), from this tick's TouchPanel samples, every finger. Reading TouchPanel here
+        /// does not count as the game reading it. (Touch.FrameReported is TouchFrameReporter's.)
+        /// </summary>
+        private readonly System.Collections.Generic.Dictionary<int, (double X, double Y)> _framedFingers = new();
+
+        private void PumpManipulationInput()
+        {
+            if (!WPR.WinRT.ManipulationInput.IsAttached)
+            {
+                return;
+            }
+
+            try
+            {
+                TouchCollection touches = TouchPanel.GetState();
+                _touchReadsSeen = TouchPanel.WprReadCount;
+                var points = new System.Collections.Generic.List<(int, TouchAction, double, double)>(touches.Count + _framedFingers.Count);
+                var seen = new System.Collections.Generic.HashSet<int>();
+                foreach (TouchLocation touch in touches)
+                {
+                    seen.Add(touch.Id);
+                    bool wasDown = _framedFingers.ContainsKey(touch.Id);
+                    TouchAction action = touch.State switch
+                    {
+                        TouchLocationState.Released => TouchAction.Up,
+                        // A finger first seen as Moved (the press fell between ticks) still goes down first.
+                        _ when !wasDown => TouchAction.Down,
+                        _ => TouchAction.Move,
+                    };
+
+                    if (action == TouchAction.Up)
+                    {
+                        if (!_framedFingers.Remove(touch.Id))
+                        {
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        _framedFingers[touch.Id] = (touch.Position.X, touch.Position.Y);
+                    }
+
+                    points.Add((touch.Id, action, touch.Position.X, touch.Position.Y));
+                }
+
+                // A lift can arrive as the finger simply vanishing (the drain clears the slot on the
+                // tick it lifts): it still owes the handler its Up, or the game holds the press for ever.
+                foreach (int id in System.Linq.Enumerable.ToArray(System.Linq.Enumerable.Where(_framedFingers.Keys, id => !seen.Contains(id))))
+                {
+                    (double x, double y) = _framedFingers[id];
+                    _framedFingers.Remove(id);
+                    points.Add((id, TouchAction.Up, x, y));
+                }
+
+                // The background grid does not rotate with its page: WP8 reported its pointers
+                // in the device's portrait frame, and a landscape title turns them itself
+                // (Arkadium's ProcessPoint). The pointer must therefore go through the inverse
+                // of the turn the host presents the grid's portrait frame with
+                // (DrawingSurfaceHost.Draw). LandscapeRight (and plain Landscape) is a quarter
+                // turn clockwise, so a page point (x, y) was the portrait point
+                // (y, pageWidth - x); LandscapeLeft is anticlockwise, (pageHeight - y, x).
+                // Microsoft Mahjong's tiles took no tap before this.
+                double pageWidth = GraphicsDevice.PresentationParameters.BackBufferWidth;
+                double pageHeight = GraphicsDevice.PresentationParameters.BackBufferHeight;
+                bool left = WPR.Xna.Rhi.EmbeddedGameLoop.PageLandscapeLeft;
+                foreach ((int id, TouchAction action, double x, double y) in points)
+                {
+                    (double px, double py) = !_landscape ? (x, y) : left ? (pageHeight - y, x) : (y, pageWidth - x);
+                    WPR.WinRT.ManipulationInput.Report(id, action == TouchAction.Down ? 0 : action == TouchAction.Move ? 1 : 2, px, py);
+                }
+            }
+            catch (Exception ex)
+            {
+                _trace("[wpr-mixed] a manipulation pointer handler threw: " + ex);
+            }
         }
 
         /// <summary>
@@ -746,6 +921,7 @@ namespace WPR
             // TouchPanel on such a page (Pirates!, Big Buck Hunter, The Game of Life) keep the
             // old behaviour, which is what the double-delivery note above is about.
             bool gameIsQuiet = _ticksSinceGameReadTouch >= GameTouchQuietTicks;
+
             if (!_hostCompositesPage && !gameIsQuiet) return;
 
             UIElement? root = _layoutRoot;
@@ -860,7 +1036,7 @@ namespace WPR
         /// <c>UIElementRenderer.Render</c> is itself gated on a signature of the tree, so a static
         /// page costs a walk of a few nodes and no GPU traffic.</para>
         /// </remarks>
-        private void CompositeSilverlightPage()
+        private void CompositeSilverlightPage(bool overBackground = false)
         {
             UIElement? root = _layoutRoot;
             if (root == null) return;
@@ -889,7 +1065,7 @@ namespace WPR
                 _pageBatch ??= new SpriteBatch(GraphicsDevice);
 
                 // Qualified: both frameworks in scope here define Color and Rectangle.
-                GraphicsDevice.Clear(Microsoft.Xna.Framework.Color.Black);
+                if (!overBackground) GraphicsDevice.Clear(Microsoft.Xna.Framework.Color.Black);
                 _pageBatch.Begin();
                 _pageBatch.Draw(
                     texture,

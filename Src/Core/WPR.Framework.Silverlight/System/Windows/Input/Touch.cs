@@ -4,18 +4,23 @@ using System.Collections.Generic;
 namespace WPR.SilverlightCompability
 {
     /// <summary>
-    /// Stub for <c>System.Windows.Input.Touch</c>. WP/Silverlight apps subscribe to
-    /// <see cref="FrameReported"/> to receive raw multi-touch frames. WPR currently routes
-    /// touch through Avalonia/FNA's pointer pipeline rather than this static, so the event
-    /// is never fired — but the type must exist so the user's hookup IL JITs and runs.
+    /// Shim for <c>System.Windows.Input.Touch</c>. WP/Silverlight apps subscribe to
+    /// <see cref="FrameReported"/> to receive raw multi-touch frames; the Silverlight host raises it
+    /// once a frame while a finger is down, and once more when the last one lifts, through
+    /// <see cref="TouchFrameReporter"/>.
     /// </summary>
+    /// <remarks>
+    /// The WP Toolkit's GestureListener is built on this event (plus <c>TouchPanel.ReadGesture</c>),
+    /// so a game's own Microsoft.Phone.Controls.Toolkit.dll raises its Tap/Hold/Drag/Pinch events
+    /// from here. It was declared and never raised until patcher version 47.
+    /// </remarks>
     public static class Touch
     {
         public static event TouchFrameEventHandler? FrameReported;
 
-        // Suppress "never used" warning while the event isn't raised yet — we want the
-        // event member around so user code that subscribes to it works.
-        internal static void RaiseFrameReportedForFutureUse(object? sender, TouchFrameEventArgs e)
+        internal static bool HasSubscribers => FrameReported != null;
+
+        internal static void Raise(object? sender, TouchFrameEventArgs e)
         {
             FrameReported?.Invoke(sender, e);
         }
@@ -28,6 +33,7 @@ namespace WPR.SilverlightCompability
         public static void ResetForNewLaunch()
         {
             FrameReported = null;
+            TouchFrameReporter.ResetForNewLaunch();
         }
     }
 }

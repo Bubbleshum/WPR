@@ -78,7 +78,7 @@ namespace WPR.SilverlightCompability
             if (d is TextBlock tb) tb.InvalidateMeasure();
         }
 
-        protected override Size MeasureOverride(Size availableSize)
+        internal override Size WprMeasure(Size availableSize)
         {
             string text = Text ?? string.Empty;
             if (text.Length == 0) return Size.Empty;

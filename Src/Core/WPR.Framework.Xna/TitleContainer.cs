@@ -58,6 +58,10 @@ namespace Microsoft.Xna.Framework
 				{
 					return File.OpenRead(safeName);
 				}
+				catch (DirectoryNotFoundException ex)
+				{
+					throw AsFileNotFound(safeName, ex);
+				}
 				catch (Exception ex)
 				{
 					WprDebugTrace.WriteLine($"[wpr-ex] TitleContainer.OpenStream rooted path threw for \"{safeName}\": {ex.GetType().Name}: {ex.Message}");
@@ -69,6 +73,13 @@ namespace Microsoft.Xna.Framework
 			try
 			{
 				return File.OpenRead(full);
+			}
+			catch (DirectoryNotFoundException ex)
+			{
+				// See AsFileNotFound. No Scenes/ fallback here: that one only applies to a
+				// direct child of Content/, which cannot be missing its directory.
+				WprDebugTrace.WriteLine($"[wpr-ex] TitleContainer.OpenStream FAILED full=\"{full}\": directory missing — throwing FileNotFoundException, as WP7 did");
+				throw AsFileNotFound(full, ex);
 			}
 			catch (FileNotFoundException)
 			{
@@ -131,6 +142,19 @@ namespace Microsoft.Xna.Framework
 				throw;
 			}
 		}
+
+		/// <summary>
+		/// WP7's title storage threw <see cref="FileNotFoundException"/> for every name it did
+		/// not have, whether or not the folder existed, and games were written against that:
+		/// SPY Mouse's <c>ManagerFiles.open</c> catches only <c>FileNotFoundException</c> and asks
+		/// for <c>res/sound/sound/amb/&lt;scheme&gt;/amb.xml.brd</c>, which is not in its package
+		/// (there is no <c>res/sound</c> at all). .NET throws <see cref="DirectoryNotFoundException"/>
+		/// for that, which is not a <c>FileNotFoundException</c>, so it escaped the game's catch
+		/// and aborted the level load in <c>Game.Update</c>. The original is kept as the inner
+		/// exception.
+		/// </summary>
+		internal static FileNotFoundException AsFileNotFound(string path, DirectoryNotFoundException ex) =>
+			new FileNotFoundException("Could not find file '" + path + "'.", path, ex);
 
 		#endregion
 

@@ -62,14 +62,17 @@ namespace WPR.SilverlightCompability
 
         private const string PhoneAssemblyName = "Microsoft.Phone";
 
+        /// <summary>The WP Toolkit a game ships; its types win over WPR's same-named ones (see ResolveType).</summary>
+        private const string ToolkitAssemblyName = "Microsoft.Phone.Controls.Toolkit";
+
         /// <summary>
         /// Compatibility redirects for un-patched XAML resources (e.g. straight from a XAP).
         /// Maps a source CLR namespace to (target namespace, target assembly name). Resolved by
         /// assembly NAME because the WP control/shell/gesture types now live in the
         /// Microsoft.Phone assembly, which this reader (in WPR.SilverlightCompability) cannot
-        /// reference — doing so would recreate the dependency cycle. Redirecting the phone
-        /// namespaces here also keeps OUR shim winning over any user-bundled
-        /// Microsoft.Phone.Controls.Toolkit.dll that ships its own GestureListener etc.
+        /// reference — doing so would recreate the dependency cycle. A game's own
+        /// Microsoft.Phone.Controls.Toolkit.dll is the exception: since patcher version 47 its
+        /// same-named gesture types win (see ResolveType).
         /// </summary>
         private static readonly Dictionary<string, (string Namespace, string AssemblyName)> ClrNsRedirects =
             new(StringComparer.Ordinal)
@@ -81,6 +84,11 @@ namespace WPR.SilverlightCompability
                 ["System.Windows.Media"] = (SlcNamespace, SlcAssemblyName),
                 ["System.Windows.Navigation"] = (SlcNamespace, SlcAssemblyName),
             };
+
+        private static readonly HashSet<string> ToolkitControlsMovedToPhone = new(StringComparer.Ordinal)
+        {
+            "Panorama", "PanoramaItem", "Pivot", "PivotItem",
+        };
 
         public static object Load(string xaml)
         {
@@ -108,10 +116,21 @@ namespace WPR.SilverlightCompability
         /// Re-process a previously captured XElement (used by DataTemplate to materialize
         /// its deferred visual tree).
         /// </summary>
-        public static object LoadElement(XElement element)
+        public static object LoadElement(XElement element) => LoadElement(element, null);
+
+        /// <summary>
+        /// As <see cref="LoadElement(XElement)"/>, with <paramref name="handlerHost"/> answering
+        /// the event handlers the tree names (<c>Tap="OnItemTap"</c>): the page or user control
+        /// whose XAML declared the template.
+        /// </summary>
+        internal static object LoadElement(XElement element, object? handlerHost, IReadOnlyList<FrameworkElement>? scopes = null)
         {
             if (element == null) throw new ArgumentNullException(nameof(element));
-            return ProcessElement(element, new ParseContext());
+            return ProcessElement(element, new ParseContext
+            {
+                HandlerHost = handlerHost,
+                InheritedScopes = scopes ?? Array.Empty<FrameworkElement>(),
+            });
         }
 
         /// <summary>
@@ -190,6 +209,15 @@ namespace WPR.SilverlightCompability
             /// </summary>
             public object? ComponentRoot { get; set; }
 
+            /// <summary>
+            /// What answers event handlers when there is no <see cref="ComponentRoot"/>: the
+            /// component a template was declared in, when the template is materialised.
+            /// </summary>
+            public object? HandlerHost { get; set; }
+
+            /// <summary>The object event handler names are looked up on.</summary>
+            public object? EventHandlerHost => ComponentRoot ?? HandlerHost;
+
             /// <summary>True for the very first call into ProcessElement only.</summary>
             public bool IsRoot { get; set; } = true;
 
@@ -211,6 +239,27 @@ namespace WPR.SilverlightCompability
             /// by document order; it was simply unreachable.</para>
             /// </remarks>
             public List<FrameworkElement> ResourceScopes { get; } = new List<FrameworkElement>();
+
+            /// <summary>
+            /// The resource dictionaries currently being filled, outermost first. A
+            /// <c>{StaticResource}</c> inside a dictionary names keys declared earlier in that same
+            /// dictionary, and a standalone resources file has no element above it whose
+            /// <c>Resources</c> could answer: YouTube's <c>datatemplates.xaml</c> defines
+            /// <c>HomePageView</c> and then, further down, a <c>TemplateType</c> with
+            /// <c>Template="{StaticResource HomePageView}"</c>, which resolved to null.
+            /// </summary>
+            public List<WPR.WindowsCompability.ResourceDictionary> DictionaryScopes { get; } = new();
+
+            /// <summary>
+            /// For a template being materialised, the elements it was DECLARED inside (outermost
+            /// first). Searched after <see cref="ResourceScopes"/>: a template is built long after
+            /// its page finished parsing, and its {StaticResource} may name the page's resources
+            /// (Mahjong's choose-puzzle pivot item template names the page's PuzzleItemTemplate).
+            /// </summary>
+            public IReadOnlyList<FrameworkElement> InheritedScopes { get; init; } = Array.Empty<FrameworkElement>();
+
+            /// <summary>Every scope a template declared here should remember, outermost first.</summary>
+            public FrameworkElement[] CaptureScopes() => [.. InheritedScopes, .. ResourceScopes];
         }
 
         private static void WireFields(object component, ParseContext ctx)
@@ -224,8 +273,16 @@ namespace WPR.SilverlightCompability
                     f = cur.GetField(kv.Key,
                         BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
                 }
-                if (f != null && f.FieldType.IsAssignableFrom(kv.Value.GetType()))
-                    f.SetValue(component, kv.Value);
+                if (f == null || !f.FieldType.IsAssignableFrom(kv.Value.GetType())) continue;
+                try { f.SetValue(component, kv.Value); }
+                catch (TargetInvocationException ex)
+                {
+                    // The declaring type's static constructor ran first and threw. Leave this one
+                    // field null rather than losing the whole component.
+                    Exception inner = ex.InnerException ?? ex;
+                    System.Diagnostics.Trace.WriteLine(
+                        $"[XamlReader] could not set {t.Name}.{f.Name}: {inner.GetType().FullName}: {inner.Message}\n{inner}");
+                }
             }
         }
 
@@ -252,6 +309,16 @@ namespace WPR.SilverlightCompability
             else
             {
                 type = ResolveType(element.Name);
+
+                // XAML's intrinsic values - <sys:String x:Key="AppName">Fox News</sys:String>,
+                // sys:Double, sys:Int32, sys:Boolean - take their value from the element text.
+                // string has no default constructor, so Activator could never make one.
+                if (type == typeof(string) || type.IsPrimitive || type == typeof(decimal))
+                {
+                    string text = element.Value;
+                    return type == typeof(string) ? text : XamlTypeConverter.Convert(text.Trim(), type)!;
+                }
+
                 try { instance = Activator.CreateInstance(type)!; }
                 catch (Exception ex)
                 {
@@ -276,6 +343,12 @@ namespace WPR.SilverlightCompability
             {
                 ctx.ResourceScopes.Add(scopeElement);
                 pushedScope = true;
+            }
+            bool pushedDictionary = false;
+            if (instance is WPR.WindowsCompability.ResourceDictionary scopeDictionary)
+            {
+                ctx.DictionaryScopes.Add(scopeDictionary);
+                pushedDictionary = true;
             }
 
             try
@@ -310,6 +383,8 @@ namespace WPR.SilverlightCompability
                     if (node is XElement el) { firstChild = el; break; }
                 }
                 dt.VisualTreeRoot = firstChild;
+                dt.HandlerHost = ctx.EventHandlerHost;
+                dt.Scopes = ctx.CaptureScopes();
                 return instance;
             }
 
@@ -325,6 +400,17 @@ namespace WPR.SilverlightCompability
                     if (node is XElement el) { templateRoot = el; break; }
                 }
                 ct.VisualTree = templateRoot;
+                ct.HandlerHost = ctx.EventHandlerHost;
+                ct.Scopes = ctx.CaptureScopes();
+                return instance;
+            }
+
+            if (instance is ItemsPanelTemplate ipt)
+            {
+                foreach (XNode node in element.Nodes())
+                {
+                    if (node is XElement el) { ipt.VisualTree = el; break; }
+                }
                 return instance;
             }
 
@@ -355,6 +441,7 @@ namespace WPR.SilverlightCompability
             finally
             {
                 if (pushedScope) ctx.ResourceScopes.RemoveAt(ctx.ResourceScopes.Count - 1);
+                if (pushedDictionary) ctx.DictionaryScopes.RemoveAt(ctx.DictionaryScopes.Count - 1);
             }
         }
 
@@ -408,11 +495,11 @@ namespace WPR.SilverlightCompability
             EventInfo? ev = type.GetEvent(local, BindingFlags.Public | BindingFlags.Instance);
             if (ev != null)
             {
-                if (ctx.ComponentRoot == null)
+                if (ctx.EventHandlerHost == null)
                     throw new XamlParseException(
                         $"Event '{local}' on '{type.Name}' set to '{attr.Value}', but no component root is available to look up the handler. " +
                         "This usually means LoadComponent wasn't used.");
-                BindEventHandler(instance, ev, attr.Value, ctx.ComponentRoot);
+                BindEventHandler(instance, ev, attr.Value, ctx.EventHandlerHost);
                 return;
             }
 
@@ -535,7 +622,7 @@ namespace WPR.SilverlightCompability
                     d.SetValue(dp, resolved);
                     return true;
                 }
-                PropertyInfo? prop = type.GetProperty(memberName,
+                PropertyInfo? prop = ReflectionMembers.GetProperty(type, memberName,
                     BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
                 if (prop != null && prop.CanWrite &&
                     (resolved == null || prop.PropertyType.IsAssignableFrom(resolved.GetType())))
@@ -548,18 +635,29 @@ namespace WPR.SilverlightCompability
 
             if (parsed.TypeName == "Binding" || parsed.TypeName == "TemplateBinding")
             {
-                if (instance is not FrameworkElement fe)
+                // A target that is not an element (a BitmapImage, a brush) takes the DataContext of
+                // the element it sits in, the innermost one still being parsed.
+                FrameworkElement? fe = instance as FrameworkElement
+                    ?? (ctx.ResourceScopes.Count > 0 ? ctx.ResourceScopes[^1] : null);
+                if (fe == null)
                     throw new XamlParseException(
-                        $"{{Binding}} on member '{memberName}' requires a FrameworkElement target (got '{type.Name}').");
+                        $"{{Binding}} on member '{memberName}' has no element to take a DataContext from (target '{type.Name}').");
 
                 FieldInfo? dpField = FindStaticField(type, memberName + "Property");
-                if (dpField?.GetValue(null) is not DependencyProperty dp)
-                    throw new XamlParseException(
-                        $"{{Binding}} on member '{memberName}' requires a DependencyProperty (no '{memberName}Property' on '{type.Name}').");
+                DependencyProperty? dp = instance is DependencyObject ? dpField?.GetValue(null) as DependencyProperty : null;
+                PropertyInfo? clrTarget = null;
+                if (dp == null)
+                {
+                    clrTarget = instance is FrameworkElement ? null : ReflectionMembers.GetProperty(type, memberName,
+                        BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
+                    if (clrTarget == null || !clrTarget.CanWrite)
+                        throw new XamlParseException(
+                            $"{{Binding}} on member '{memberName}' requires a DependencyProperty (no '{memberName}Property' on '{type.Name}').");
+                }
 
                 var binding = new Binding();
-                if (parsed.PositionalArgs.Count > 0) binding.Path = parsed.PositionalArgs[0];
-                if (parsed.NamedArgs.TryGetValue("Path", out var path)) binding.Path = path;
+                if (parsed.PositionalArgs.Count > 0) binding.Path = new PropertyPath(parsed.PositionalArgs[0]);
+                if (parsed.NamedArgs.TryGetValue("Path", out var path)) binding.Path = new PropertyPath(path);
                 if (parsed.NamedArgs.TryGetValue("Mode", out var mode) &&
                     Enum.TryParse(typeof(BindingMode), mode, true, out var modeObj))
                 {
@@ -631,7 +729,29 @@ namespace WPR.SilverlightCompability
                     }
                 }
 
-                fe.SetBinding(dp, binding);
+                // Converter={StaticResource X}: the converter, usually declared in the page's or the
+                // app's resources. ConverterParameter is kept as the string XAML wrote, as Silverlight
+                // does. Microsoft Minesweeper binds Visibility through BooleanToVisibility converters.
+                if (parsed.NamedArgs.TryGetValue("Converter", out var converterArg))
+                {
+                    object? converter = MarkupExtensionParser.IsMarkupExtension(converterArg)
+                        ? ResolveMarkupResource(fe, converterArg, ctx)
+                        : null;
+                    binding.Converter = converter as IValueConverter;
+                }
+
+                if (parsed.NamedArgs.TryGetValue("ConverterParameter", out var converterParameter))
+                {
+                    binding.ConverterParameter = MarkupExtensionParser.IsMarkupExtension(converterParameter)
+                        ? ResolveMarkupResource(fe, converterParameter, ctx)
+                        : converterParameter;
+                }
+
+                if (parsed.NamedArgs.TryGetValue("FallbackValue", out var fallback)) binding.FallbackValue = fallback;
+                if (parsed.NamedArgs.TryGetValue("TargetNullValue", out var nullValue)) binding.TargetNullValue = nullValue;
+
+                if (ReferenceEquals(instance, fe)) fe.SetBinding(dp!, binding);
+                else fe.SetInnerBinding(instance, dp, clrTarget, binding);
                 return true;
             }
 
@@ -646,6 +766,16 @@ namespace WPR.SilverlightCompability
         /// circular project ref). Null when no app singleton is available.
         /// </summary>
         public static Func<string, object?>? ApplicationResourceLookup;
+
+        /// <summary>The value of a nested <c>{StaticResource X}</c> (or ThemeResource) inside a markup extension; null otherwise.</summary>
+        private static object? ResolveMarkupResource(FrameworkElement fe, string markup, ParseContext ctx)
+        {
+            var inner = MarkupExtensionParser.Parse(markup);
+            if (inner.TypeName != "StaticResource" && inner.TypeName != "ThemeResource") return null;
+            string key = inner.PositionalArgs.Count > 0 ? inner.PositionalArgs[0]
+                : inner.NamedArgs.TryGetValue("ResourceKey", out var k) ? k : "";
+            return ResolveResource(fe, key, ctx);
+        }
 
         /// <summary>
         /// Looks up a StaticResource by key. Walks: this element's Resources →
@@ -678,11 +808,32 @@ namespace WPR.SilverlightCompability
                     if (scope.HasResources && scope.Resources.TryGetDeep(key, out var scopeHit) && scopeHit != null)
                         return scopeHit;
                 }
+
+                // A template being materialised: the elements it was declared inside.
+                for (int i = ctx.InheritedScopes.Count - 1; i >= 0; i--)
+                {
+                    FrameworkElement scope = ctx.InheritedScopes[i];
+                    if (scope.HasResources && scope.Resources.TryGetDeep(key, out var inheritedHit) && inheritedHit != null)
+                        return inheritedHit;
+                }
             }
 
             // Application-wide scope, via the registered callback.
-            try { return ApplicationResourceLookup?.Invoke(key); }
-            catch { return null; }
+            object? applicationHit = null;
+            try { applicationHit = ApplicationResourceLookup?.Invoke(key); }
+            catch { applicationHit = null; }
+            if (applicationHit != null || ctx == null) return applicationHit;
+
+            // Last: a dictionary still being filled, for the keys declared above this one in it.
+            // Searched only when nothing else answers, because an element's or the application's
+            // resource of the same name is what Silverlight resolves first, and consulting the
+            // dictionary earlier changed what Arkadium's menus resolved (every bound label went).
+            for (int i = ctx.DictionaryScopes.Count - 1; i >= 0; i--)
+            {
+                if (ctx.DictionaryScopes[i].TryGetDeep(key, out var dictionaryHit) && dictionaryHit != null)
+                    return dictionaryHit;
+            }
+            return null;
         }
 
         private static void ApplyAttachedProperty(object instance, XAttribute attr)
@@ -832,6 +983,17 @@ namespace WPR.SilverlightCompability
                             {
                                 attachedVal = materialised[0];
                             }
+                            else if (typeof(System.Collections.IList).IsAssignableFrom(attachedDp.PropertyType)
+                                     && !attachedDp.PropertyType.IsInterface
+                                     && AttachedCollection(attachedDp, parentDo) is System.Collections.IList existing)
+                            {
+                                // A concrete collection the owner hands out through its Get accessor
+                                // (System.Windows.Interactivity's Interaction.GetBehaviors creates and
+                                // attaches a BehaviorCollection): the children are added to it.
+                                foreach (object? item in materialised)
+                                    if (item != null) existing.Add(item);
+                                return;
+                            }
                             else
                             {
                                 attachedVal = TryBuildCollectionValue(attachedDp.PropertyType, materialised)
@@ -856,7 +1018,7 @@ namespace WPR.SilverlightCompability
 
                 // Read-only properties are collection-typed by convention (RowDefinitions, ColumnDefinitions, Children).
                 // Append each child to the existing collection.
-                PropertyInfo? prop = type.GetProperty(propName,
+                PropertyInfo? prop = ReflectionMembers.GetProperty(type, propName,
                     BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
                 if (prop != null && !prop.CanWrite)
                 {
@@ -957,11 +1119,71 @@ namespace WPR.SilverlightCompability
                     return;
                 }
 
+                // Writable but collection-typed: the children are ADDED to the collection the
+                // property holds (or to a new one when it holds none), as Silverlight's parser does,
+                // unless the one child is itself the collection. Arkadium's ApplicationBarBehavior
+                // creates its Buttons/MenuItems collections in its constructor and the XAML lists
+                // items under them; setting the property to the first item instead made its getter
+                // throw InvalidCastException, and Microsoft Solitaire's game page never initialised.
+                if (prop != null && prop.CanRead && typeof(System.Collections.IList).IsAssignableFrom(prop.PropertyType)
+                    && !(valueElements.Count == 1 && valueElements[0].Name.LocalName == prop.PropertyType.Name))
+                {
+                    var items = new List<object>();
+                    foreach (XElement ce in valueElements)
+                    {
+                        try { items.Add(ProcessElement(ce, ctx)); }
+                        catch (Exception xex)
+                        {
+                            Console.WriteLine($"[XamlReader] SKIP item '{ce.Name}' of '{propName}': {xex.GetType().Name}: {xex.Message}");
+                        }
+                    }
+
+                    if (items.Count == 1 && prop.PropertyType.IsInstanceOfType(items[0]))
+                    {
+                        SetMember(instance, type, propName, items[0]);
+                        return;
+                    }
+
+                    var target = prop.GetValue(instance) as System.Collections.IList;
+                    if (target == null && !prop.PropertyType.IsAbstract && !prop.PropertyType.IsInterface
+                        && prop.PropertyType.GetConstructor(Type.EmptyTypes) != null)
+                    {
+                        target = (System.Collections.IList)Activator.CreateInstance(prop.PropertyType)!;
+                        SetMember(instance, type, propName, target);
+                    }
+
+                    if (target != null)
+                    {
+                        foreach (object item in items)
+                        {
+                            try
+                            {
+                                if (!TryAddToCollection(target, item, valueElements[0]))
+                                    Console.WriteLine($"[XamlReader] SKIP add '{item.GetType().Name}' to '{propName}': no Add accepts it.");
+                            }
+                            catch (Exception aex)
+                            {
+                                Console.WriteLine($"[XamlReader] SKIP add '{item.GetType().Name}' to '{propName}': {aex.GetType().Name}: {aex.Message}");
+                            }
+                        }
+
+                        return;
+                    }
+                }
+
                 // Writable property — single value.
                 if (valueElements.Count > 1)
                     throw new XamlParseException(
                         $"Single-valued property '{propName}' on '{type.Name}' had {valueElements.Count} child elements.");
                 object value = ProcessElement(valueElements[0], ctx);
+
+                // <Grid.Margin><Binding Path="…"/></Grid.Margin>: the element form of {Binding}.
+                // It binds the property, as the attribute form does; stored as the value, the
+                // Binding sat in a typed slot (Margin, Width) and layout threw InvalidCastException
+                // reading it back (YouTube's TrendingControl).
+                if (value is Binding elementBinding && TryBindPropertyElement(instance, type, propName, elementBinding, ctx))
+                    return;
+
                 SetMember(instance, type, propName, value);
                 return;
             }
@@ -1000,6 +1222,30 @@ namespace WPR.SilverlightCompability
             // Direct child element. Look up the type's [ContentProperty]; if it points
             // at a collection-typed property, append the child to that collection.
             string? contentPropName = FindContentPropertyName(type);
+
+            // A collection object with no content property: XAML makes each child element an
+            // item of the object itself. An app's own resource collections are written this way
+            // (YouTube's <base:TemplateTypeCollection><base:TemplateType …/>…</base:TemplateTypeCollection>,
+            // a List<TemplateType>), and rejecting the children left the collection empty, so
+            // IdentityMine's ContentFrame found no template for any page and drew nothing.
+            if (contentPropName == null && IsItemCollection(type))
+            {
+                object item;
+                try { item = ProcessElement(child, ctx); }
+                catch (Exception iex)
+                {
+                    Console.WriteLine(
+                        $"[XamlReader] SKIP item '{child.Name}' of '{type.Name}': {iex.GetType().Name}: {iex.Message}");
+                    return;
+                }
+                if (!TryAddToCollection(instance, item, child))
+                {
+                    Console.WriteLine(
+                        $"[XamlReader] SKIP item '{child.Name}' of '{type.Name}': no Add that accepts it.");
+                }
+                return;
+            }
+
             if (contentPropName == null)
             {
                 throw new XamlParseException(
@@ -1009,7 +1255,7 @@ namespace WPR.SilverlightCompability
 
             object childInstance = ProcessElement(child, ctx);
 
-            PropertyInfo? contentProp = type.GetProperty(contentPropName,
+            PropertyInfo? contentProp = ReflectionMembers.GetProperty(type, contentPropName,
                 BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
             if (contentProp == null)
             {
@@ -1050,6 +1296,17 @@ namespace WPR.SilverlightCompability
             {
                 string? key = sourceElement?.Attribute(XName.Get("Key", XamlDirectiveNs))?.Value
                               ?? sourceElement?.Attribute(XName.Get("Name", XamlDirectiveNs))?.Value;
+                if (key == null
+                    && collection is WPR.WindowsCompability.ResourceDictionary parent
+                    && item is WPR.WindowsCompability.ResourceDictionary unkeyed)
+                {
+                    // An un-keyed dictionary BESIDE keyed resources (Microsoft Mahjong's App.xaml:
+                    // a <ResourceDictionary> of merges, then LocalizedStrings and the rest) is a
+                    // merge, not an entry: its contents become reachable from the parent.
+                    parent.MergedDictionaries.Add(unkeyed);
+                    return true;
+                }
+
                 if (key == null)
                 {
                     System.Diagnostics.Debug.WriteLine(
@@ -1101,6 +1358,30 @@ namespace WPR.SilverlightCompability
         /// every other unresolved thing here behaves. Returns null for a non-collection target so
         /// the caller can fall back to its single-value path unchanged.</para>
         /// </remarks>
+        /// <summary>
+        /// The collection an attached collection property holds on <paramref name="target"/>: what
+        /// its owner's <c>Get&lt;Name&gt;</c> accessor answers (which may create it), else the
+        /// stored value, else a new one stored there.
+        /// </summary>
+        private static object? AttachedCollection(DependencyProperty dp, DependencyObject target)
+        {
+            MethodInfo? getter = dp.OwnerType.GetMethod("Get" + dp.Name,
+                BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(DependencyObject) }, null);
+            try
+            {
+                if (getter?.Invoke(null, new object[] { target }) is object fromGetter) return fromGetter;
+                if (target.GetValue(dp) is object stored) return stored;
+                object created = Activator.CreateInstance(dp.PropertyType)!;
+                target.SetValue(dp, created);
+                return created;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[XamlReader] attached collection {dp}: {ex.GetType().Name}: {ex.Message}");
+                return null;
+            }
+        }
+
         private static object? TryBuildCollectionValue(Type targetType, List<object?> items)
         {
             Type? elementType = null;
@@ -1136,6 +1417,43 @@ namespace WPR.SilverlightCompability
             {
                 return null;
             }
+        }
+
+        /// <summary>Binds <paramref name="propName"/> of <paramref name="instance"/> to a Binding given
+        /// in property-element form; false when the property itself takes a Binding object.</summary>
+        private static bool TryBindPropertyElement(object instance, Type type, string propName, Binding binding, ParseContext ctx)
+        {
+            FieldInfo? dpField = FindStaticField(type, propName + "Property");
+            DependencyProperty? dp = instance is DependencyObject ? dpField?.GetValue(null) as DependencyProperty : null;
+            PropertyInfo? clr = dp == null
+                ? ReflectionMembers.GetProperty(type, propName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy)
+                : null;
+            Type? propertyType = dp?.PropertyType ?? clr?.PropertyType;
+            if (propertyType == null || propertyType.IsAssignableFrom(typeof(Binding))) return false;
+
+            if (instance is FrameworkElement fe && dp != null)
+            {
+                fe.SetBinding(dp, binding);
+                return true;
+            }
+            FrameworkElement? context = instance as FrameworkElement
+                ?? (ctx.ResourceScopes.Count > 0 ? ctx.ResourceScopes[^1] : null);
+            if (context == null || (dp == null && (clr == null || !clr.CanWrite))) return false;
+            context.SetInnerBinding(instance, dp, clr, binding);
+            return true;
+        }
+
+        /// <summary>Whether <paramref name="type"/> is a collection XAML adds items to directly:
+        /// an <see cref="System.Collections.IList"/>, or something with an <c>ICollection&lt;T&gt;</c>.</summary>
+        private static bool IsItemCollection(Type type)
+        {
+            if (typeof(System.Collections.IList).IsAssignableFrom(type)) return true;
+            foreach (Type iface in type.GetInterfaces())
+            {
+                if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(System.Collections.Generic.ICollection<>))
+                    return true;
+            }
+            return false;
         }
 
         private static string? FindContentPropertyName(Type type)
@@ -1177,7 +1495,7 @@ namespace WPR.SilverlightCompability
                 }
             }
 
-            PropertyInfo? prop = type.GetProperty(memberName,
+            PropertyInfo? prop = ReflectionMembers.GetProperty(type, memberName,
                 BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
             if (prop != null && prop.CanWrite)
             {
@@ -1253,6 +1571,36 @@ namespace WPR.SilverlightCompability
                 // user-bundled Microsoft.Phone.Controls.Toolkit.dll, which ships its own
                 // copy of GestureEventArgs etc.) must not steal the lookup — that's exactly
                 // why the Microsoft.Phone.Controls redirect points at OUR Microsoft.Phone asm.
+                // Except the controls WP8 moved from the toolkit into Microsoft.Phone. A WP7 title
+                // ships the toolkit's Microsoft.Phone.Controls.dll with its OWN Panorama, and its
+                // code-behind fields name that type, so XAML must build the same one. A WP8
+                // title's copy only forwards them to Microsoft.Phone, which GetType follows.
+                if (asmName != null && ToolkitControlsMovedToPhone.Contains(local))
+                {
+                    Assembly? own = EnumerateRelevantAssemblies()
+                        .FirstOrDefault(a => string.Equals(a.GetName().Name, asmName, StringComparison.Ordinal))
+                        ?? TryLoadSiblingAssembly(asmName);
+                    Type? t = own == null ? null : SafeGetType(own, ns + "." + local);
+                    if (t != null) return t;
+                }
+
+                // First match wins.
+                //
+                // EXCEPT the game's own WP Toolkit (patcher version 47). Its GestureService,
+                // GestureListener and *GestureEventArgs share names with WPR's in Microsoft.Phone,
+                // and the game's IL now binds the Toolkit's; resolving the XAML to WPR's instead
+                // makes every Tap="handler" fail to bind (the handler takes the Toolkit's
+                // GestureEventArgs) and attaches a listener nothing raises. So an xmlns that names
+                // that assembly is looked up there first.
+                if (asmName == ToolkitAssemblyName)
+                {
+                    Assembly? toolkit = EnumerateRelevantAssemblies()
+                        .FirstOrDefault(a => string.Equals(a.GetName().Name, asmName, StringComparison.Ordinal))
+                        ?? TryLoadSiblingAssembly(asmName);
+                    Type? fromToolkit = toolkit == null ? null : SafeGetType(toolkit, ns + "." + local);
+                    if (fromToolkit != null) return fromToolkit;
+                }
+
                 if (ClrNsRedirects.TryGetValue(ns, out var redir))
                 {
                     Assembly? ra = FindRedirectAssembly(redir.AssemblyName);
@@ -1353,6 +1701,12 @@ namespace WPR.SilverlightCompability
         /// <para>Answers null on any failure. A name that genuinely does not resolve must still
         /// produce the caller's <c>XamlParseException</c>, which names the type.</para>
         /// </remarks>
+        /// <summary>WP assemblies WPR builds under their own names, so XAML may name them before anything loaded them.</summary>
+        private static readonly HashSet<string> WprProvidedAssemblies = new(StringComparer.Ordinal)
+        {
+            "Microsoft.Devices.Sensors",
+        };
+
         private static Assembly? TryLoadSiblingAssembly(string simpleName)
         {
             try
@@ -1364,6 +1718,15 @@ namespace WPR.SilverlightCompability
                 // not exist. Those resolve through the namespace sweep below the call site; all an
                 // attempted load adds is a first-chance FileNotFoundException in every launch's log,
                 // which is exactly the noise that makes a real one hard to spot.
+                // A WP assembly WPR provides itself, under its WP name (the Microsoft.Devices.Sensors
+                // facade): not in the install folder, and not loaded yet when App.xaml is parsed.
+                // Microsoft Minesweeper declares <sensors:Accelerometer x:Key="Acc"/> there and
+                // reads it on the first tile tap; unresolved, every tap threw.
+                if (WprProvidedAssemblies.Contains(simpleName))
+                {
+                    return System.Runtime.Loader.AssemblyLoadContext.Default.LoadFromAssemblyName(new AssemblyName(simpleName));
+                }
+
                 string? installFolder = HostContext.CurrentInstallFolder;
                 if (string.IsNullOrEmpty(installFolder)) return null;
 

@@ -36,9 +36,8 @@
            * Avalonia.Diagnostics also stops at 11.3.x (it can simply go: nothing ever called
              AttachDevTools).
            * Avalonia 12 DROPPED netstandard2.0, so the vendored Projektanker.Icons.Avalonia
-             projects must retarget; MessageBox.Avalonia becomes 12.0.0 with the namespace
-             MsBox.Avalonia and GetMessageBoxStandardWindow -> GetMessageBoxStandard returning a
-             box with ShowWindowDialogAsync/ShowWindowAsync; DialogHost.Avalonia needs 0.12.3;
+             projects must retarget (MessageBox.Avalonia, which also broke here, is gone: MessageBoxUtils builds its windows in code);
+             DialogHost.Avalonia needs 0.12.3;
              and Tmds.DBus.Protocol's security pin has to rise from 0.21.3 to 0.94.1.
          A trial run reached 84 compile errors with more behind them, and XAML/theme breaks in
          Avalonia 12 do not surface at compile time at all. Worth doing deliberately, not
@@ -98,9 +97,6 @@
     <None Update="FNA3D.dll">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="FNWP72.dll">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
     <None Update="SDL2.dll">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
@@ -134,10 +130,8 @@
     <!--Condition below is needed to remove Avalonia.Diagnostics package from build output in Release configuration.-->
     <PackageReference Include="XamlNameReferenceGenerator" Version="1.3.4" />
     <!-- Below came in transitively from the old WPR.UI project; they back code that now
-         lives in this head: DialogHost (App.axaml + MainWindowDesktop), MessageBox.Avalonia
-         (MessageBoxUtils), EF Core (the achievements / application-listing view-models). -->
+         lives in this head: DialogHost (App.axaml + MainWindowDesktop), EF Core (the achievements / application-listing view-models). -->
     <PackageReference Include="DialogHost.Avalonia" Version="0.10.4" />
-    <PackageReference Include="MessageBox.Avalonia" Version="2.2.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="$(EFVersion)" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="$(EFVersion)" />
     <!-- Moved here from WPR.Loader on 2026-08-31, with FFMpegCoreAudioTranscoder. FFMpegCore drives

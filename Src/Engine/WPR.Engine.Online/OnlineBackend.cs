@@ -10,6 +10,15 @@ namespace WPR.Engine.Online
         public IProgressSync? Progress { get; init; }
         public IPresence? Presence { get; init; }
         public IOnlineLocalStore? Local { get; init; }
+
+        /// <summary>Where games' retired online services live now (see <see cref="GameNetworkRoutes"/>).</summary>
+        public IGameServiceDirectory? GameServices { get; init; }
+
+        /// <summary>Sends game invites as hub messages (see <see cref="GameInvites"/>).</summary>
+        public IGameInviteService? Invites { get; init; }
+
+        /// <summary>Installed games' names and icons, offered to the hub (see <see cref="ITitleDetailsSync"/>).</summary>
+        public ITitleDetailsSync? TitleDetails { get; init; }
     }
 
     /// <summary>
@@ -43,6 +52,15 @@ namespace WPR.Engine.Online
         /// <summary>The local database's queue of unlocks and sessions (what <see cref="PlaytimeTracker"/> writes to).</summary>
         public static IOnlineLocalStore? Local { get; private set; }
 
+        /// <summary>The hub's directory of game services, read by <see cref="GameNetworkRoutes"/> when a game starts.</summary>
+        public static IGameServiceDirectory? GameServices { get; private set; }
+
+        /// <summary>Friends and invite messages for <see cref="GameInvites"/>.</summary>
+        public static IGameInviteService? Invites { get; private set; }
+
+        /// <summary>Installed games' details for the hub's title pages; the installer offers, the flush sends.</summary>
+        public static ITitleDetailsSync? TitleDetails { get; private set; }
+
         public static void Set(OnlineServices services)
         {
             Leaderboards = services.Leaderboards;
@@ -50,6 +68,9 @@ namespace WPR.Engine.Online
             Progress = services.Progress;
             Presence = services.Presence;
             Local = services.Local;
+            GameServices = services.GameServices;
+            Invites = services.Invites;
+            TitleDetails = services.TitleDetails;
         }
 
         public static void SetLeaderboards(ILeaderboardService? service) => Leaderboards = service;
@@ -58,7 +79,8 @@ namespace WPR.Engine.Online
 
         /// <summary>
         /// Send whatever is queued: crash reports and the game packages the hub asked for,
-        /// leaderboard scores, achievement unlocks and play sessions. The launcher calls this at
+        /// leaderboard scores, achievement unlocks and play sessions, and installed games' details
+        /// the hub lacks. The launcher calls this at
         /// startup, after every game run and after sign-in. Never throws.
         /// </summary>
         public static Task FlushAsync()
@@ -70,7 +92,8 @@ namespace WPR.Engine.Online
             Task crashes = Crashes?.FlushAsync() ?? Task.CompletedTask;
             Task scores = Leaderboards?.FlushAsync() ?? Task.CompletedTask;
             Task progress = Progress?.FlushAsync() ?? Task.CompletedTask;
-            return Task.WhenAll(crashes, scores, progress);
+            Task details = TitleDetails?.FlushAsync() ?? Task.CompletedTask;
+            return Task.WhenAll(crashes, scores, progress, details);
         }
     }
 }

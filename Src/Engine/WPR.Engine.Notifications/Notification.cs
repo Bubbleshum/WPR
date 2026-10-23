@@ -34,5 +34,11 @@ namespace WPR.Engine.Notifications
         public string? SoundUri { get; set; }
 
         public List<(string Title, string ActionId)> Buttons { get; }
+
+        /// <summary>
+        /// What tapping the notification opens, as the platform's activation handler understands it
+        /// (e.g. <c>conversation:&lt;gamertag&gt;</c>). Null: tapping just dismisses it.
+        /// </summary>
+        public string? ActivationId { get; set; }
     }
 }

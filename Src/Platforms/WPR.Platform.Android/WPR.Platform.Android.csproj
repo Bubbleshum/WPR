@@ -182,16 +182,15 @@
          this package still supplies the AndroidX AppCompat resources that
          @style/MyTheme.NoActionBar parents onto for GameActivity and the splash. -->
     <PackageReference Include="Avalonia.Android" Version="$(AvaloniaVersion)" />
-    <!-- MessageBoxUtils / ServicesSetup are typed against MessageBox.Avalonia's button and
-         icon enums (the shared vocabulary Guide.ShowMessageBoxFunc speaks); the Android
-         implementation renders them with AlertDialog. Came in transitively from WPR.UI. -->
-    <PackageReference Include="MessageBox.Avalonia" Version="2.2.0" />
     <!-- Backs the staged Notifications/AndroidNotificationManager.cs (NotificationManagerCompat,
          IconCompat). Kept so the file compiles even though the wiring in MainActivity is
          currently commented out. Pinned to match the version Avalonia.Android already pulls in
          transitively (a lower version triggers NU1605 downgrade-as-error), so this tracks the
          Avalonia bump: 11.3.9 wanted 1.12.0.2, 12.1.3 -> AppCompat 1.7.1.3 -> 1.17.0.2. -->
     <PackageReference Include="Xamarin.AndroidX.Core" Version="1.17.0.2" />
+    <!-- WPR Hub push notifications (Native/PushSetup, Native/WprMessagingService). No
+         google-services.json: the client settings come from the hub (GET /api/push/config). -->
+    <PackageReference Include="Xamarin.Firebase.Messaging" Version="125.0.1.2" />
     <!-- Bumped 2.0.6 -> 2.1.13 alongside the SQLitePCLRaw.bundle_e_sqlite3 pin in WPR.Loader /
          GamerServices (CVE-2025-6965). Keeping the explicit provider ref on the same version as
          the bundle avoids a split graph where the android leg loads a 2.0.x provider against a

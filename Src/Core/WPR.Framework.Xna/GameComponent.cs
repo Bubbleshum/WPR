@@ -69,6 +69,7 @@ namespace Microsoft.Xna.Framework
 
 		bool _enabled = true;
 		int _updateOrder;
+		bool _disposing;
 
 		#endregion
 
@@ -105,7 +106,26 @@ namespace Microsoft.Xna.Framework
 		/// </summary>
 		public void Dispose()
 		{
-			Dispose(true);
+			// WPR: a Dispose that reaches this component's own Dispose() again returns. The
+			// Microsoft Ad SDK's AdComponentCommon.Dispose calls Dispose() on the AdGameComponent
+			// that is disposing it, so Game.Dispose (which disposes every component, as XNA's did)
+			// recursed until the stack overflowed and took the whole launcher down (iRunner, at
+			// teardown). On the phone the shell ended the process without disposing the game.
+			if (_disposing)
+			{
+				return;
+			}
+
+			_disposing = true;
+			try
+			{
+				Dispose(true);
+			}
+			finally
+			{
+				_disposing = false;
+			}
+
 			GC.SuppressFinalize(this);
 		}
 

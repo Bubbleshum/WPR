@@ -662,6 +662,8 @@ namespace Microsoft.Xna.Framework.Graphics
 			{
 				_wprDrawCallsThisFrame = 0;
 			}
+			// WPR: the achievement pop-up goes over the finished frame (AchievementToast).
+			AchievementToast.Draw(this);
 			FrameCapture.Raise(this);
 			// WPR: a desktop game running fullscreen is letterboxed to its own aspect ratio; null
 			// (windowed, and every phone) fills the drawable exactly as before.
@@ -713,6 +715,8 @@ namespace Microsoft.Xna.Framework.Graphics
 			{
 				overrideWindowHandle = PresentationParameters.DeviceWindowHandle;
 			}
+			// WPR: the achievement pop-up goes over the finished frame (AchievementToast).
+			AchievementToast.Draw(this);
 			FrameCapture.Raise(this);
 			XnaBackend.Graphics.SwapBuffers(
 				GLDevice,

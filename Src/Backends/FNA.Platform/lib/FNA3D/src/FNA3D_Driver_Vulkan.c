@@ -992,6 +992,15 @@ typedef struct VulkanSwapchainData
 
 	/* Swapchain images */
 	VkExtent2D extent;
+
+	/* What the surface reported when this swapchain was built. A present that
+	 * comes back VK_SUBOPTIMAL_KHR while both are unchanged is only telling us
+	 * the swapchain is not pre-rotated, which is deliberate (see preTransform
+	 * in VULKAN_INTERNAL_CreateSwapchain), so it must not trigger a rebuild.
+	 */
+	VkSurfaceTransformFlagBitsKHR createdTransform;
+	VkExtent2D createdSurfaceExtent;
+	uint8_t loggedKeptSuboptimal;
 	VkImage *images;
 	VkImageView *views;
 	VulkanResourceAccessType *resourceAccessTypes;
@@ -1857,6 +1866,7 @@ static inline const char* VkErrorMessages(VkResult code)
 		ERR_TO_STR(VK_ERROR_SURFACE_LOST_KHR)
 		ERR_TO_STR(VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT)
 		ERR_TO_STR(VK_SUBOPTIMAL_KHR)
+		ERR_TO_STR(VK_SUCCESS)
 		default: return "Unhandled VkResult!";
 	}
 	#undef ERR_TO_STR
@@ -5235,6 +5245,32 @@ static uint8_t VULKAN_INTERNAL_AllocateDescriptorSets(
 
 	SDL_stack_free(descriptorSetLayouts);
 
+	/* WPR: a full or fragmented pool is an expected answer, not an error. The spec's remedy is to
+	 * allocate from another pool, and every caller that can meet it does
+	 * (VULKAN_INTERNAL_AllocateUniformDescriptorSet grows the uniform pool,
+	 * ShaderResources_FetchDescriptorSet halves its request). Through VULKAN_ERROR_CHECK it went
+	 * to FNA3D_LogError, whose managed hook throws InvalidOperationException, so the process
+	 * aborted at the first full pool and the recovery never ran. AE Fruit Slash: every shader
+	 * keeps one uniform set for life, two per effect, and the game makes an effect per particle
+	 * draw, so the 1024-set uniform pool ran out after ~512 effects, about forty seconds of hard
+	 * slashing on a Galaxy S24 (Adreno 750). Desktop drivers that do not enforce maxSets never
+	 * report it. */
+	if (	vulkanResult == VK_ERROR_OUT_OF_POOL_MEMORY ||
+		vulkanResult == VK_ERROR_FRAGMENTED_POOL	)
+	{
+		static uint8_t reported = 0;
+		if (!reported)
+		{
+			reported = 1;
+			FNA3D_LogWarn(
+				"%s %s (allocating from a new pool; reported once)",
+				"vkAllocateDescriptorSets",
+				VkErrorMessages(vulkanResult)
+			);
+		}
+		return 0;
+	}
+
 	VULKAN_ERROR_CHECK(vulkanResult, vkAllocateDescriptorSets, 0)
 
 	return 1;
@@ -6525,14 +6561,61 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	/* Now that commands are totally done, check if we need new swapchain */
 	if (present)
 	{
-		if (	!validSwapchainExists ||
+		/* VK_SUBOPTIMAL_KHR on its own does not always mean "rebuild me". On
+		 * Android it is what every present returns when preTransform differs
+		 * from the surface's currentTransform, and it always does for a
+		 * landscape game on a portrait-native panel, because this driver asks
+		 * for IDENTITY on purpose. Rebuilding on it rebuilt the swapchain on
+		 * EVERY frame of every landscape game; a new swapchain asks for a new
+		 * set of images, so this was a hidden cost on phones and it froze
+		 * the whole emulator (gfxstream) within about a second of the first
+		 * frame. So a suboptimal present is ignored when the surface still
+		 * reports the transform and extent this swapchain was built against;
+		 * a real rotation or resize changes one of them and still rebuilds.
+		 */
+		uint8_t keepSuboptimal = 0;
+		if (	validSwapchainExists &&
+			swapchainData != NULL &&
+			(acquireResult == VK_SUBOPTIMAL_KHR || presentResult == VK_SUBOPTIMAL_KHR) &&
+			(acquireResult == VK_SUCCESS || acquireResult == VK_SUBOPTIMAL_KHR) &&
+			(presentResult == VK_SUCCESS || presentResult == VK_SUBOPTIMAL_KHR)	)
+		{
+			VkSurfaceCapabilitiesKHR capabilities;
+			if (	renderer->vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+					renderer->physicalDevice,
+					swapchainData->surface,
+					&capabilities
+				) == VK_SUCCESS &&
+				capabilities.currentTransform == swapchainData->createdTransform &&
+				capabilities.currentExtent.width == swapchainData->createdSurfaceExtent.width &&
+				capabilities.currentExtent.height == swapchainData->createdSurfaceExtent.height	)
+			{
+				keepSuboptimal = 1;
+				if (!swapchainData->loggedKeptSuboptimal)
+				{
+					swapchainData->loggedKeptSuboptimal = 1;
+					FNA3D_LogInfo(
+						"Vulkan: present is suboptimal only because the swapchain is not pre-rotated (surface transform 0x%x); keeping it",
+						(unsigned int) capabilities.currentTransform
+					);
+				}
+			}
+		}
+
+		if (	!keepSuboptimal && (
+			!validSwapchainExists ||
 			acquireResult == VK_ERROR_OUT_OF_DATE_KHR ||
 			acquireResult == VK_SUBOPTIMAL_KHR ||
 			acquireResult == VK_ERROR_SURFACE_LOST_KHR ||
 			presentResult == VK_ERROR_OUT_OF_DATE_KHR ||
 			presentResult == VK_SUBOPTIMAL_KHR ||
-			presentResult == VK_ERROR_SURFACE_LOST_KHR	)
+			presentResult == VK_ERROR_SURFACE_LOST_KHR	)	)
 		{
+			FNA3D_LogInfo(
+				"Vulkan: recreating the swapchain (acquire %s, present %s)",
+				VkErrorMessages(acquireResult),
+				VkErrorMessages(presentResult)
+			);
 			/* SURFACE_LOST is not the same as OUT_OF_DATE, and on Android it is
 			 * the normal case rather than an exotic one: backgrounding the app
 			 * destroys the ANativeWindow, which takes the VkSurfaceKHR built over
@@ -6833,6 +6916,9 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 
 	swapchainData->extent.width = drawableWidth;
 	swapchainData->extent.height = drawableHeight;
+	swapchainData->createdTransform = swapchainSupportDetails.capabilities.currentTransform;
+	swapchainData->createdSurfaceExtent = swapchainSupportDetails.capabilities.currentExtent;
+	swapchainData->loggedKeptSuboptimal = 0;
 
 	swapchainData->imageCount = swapchainSupportDetails.capabilities.minImageCount + 1;
 

@@ -843,315 +843,331 @@ namespace Microsoft.Xna.Framework
 				}
 			}
 
-			// Now that we are going to perform an update, let's poll events.
-			WPR.Xna.Rhi.XnaBackend.Platform.PollEvents(
-				this,
-				ref currentAdapter,
-				textInputControlDown,
-				ref textInputSuppress
-			);
-
-			// NOTE: do NOT call FrameworkDispatcher.Update() here. Stock FNA's
-			// Game.Update (the virtual at the bottom of this file) already calls
-			// FrameworkDispatcher.Update() at its end — that gets the per-tick pump
-			// WP7 games expect. Adding a second pump here makes TouchPanel.Update run
-			// twice per Tick, and the second invocation immediately promotes
-			// touches[0] from Pressed to Moved (because between the two pumps,
-			// touches.CopyTo(prevTouches, 0) makes prev=Pressed). The game's
-			// TouchPanel.GetState() then only ever returns Moved — never Pressed —
-			// so touch dispatchers that switch on State==Pressed silently swallow
-			// every tap. Asphalt 5 splash → main menu transition was the surfaced
-			// case (h2.b "press" path never recorded a finger because the game
-			// dispatched op 2 (move) instead of op 0 (press), so h2.d's release
-			// guard `if (i > 0)` failed and `be.ey.fm` never flipped).
-
-			// WPR: a host overlay (a MediaPlayerLauncher movie) has the screen. The game is not
-			// updated or drawn until it ends, and the time it was up is not handed to the game
-			// afterwards as one enormous step.
-			// WPR: a failure to put on the screen (a WP8 guest that stopped, or frames that throw and
-			// draw nothing). Shown as a host overlay, so the game stops running underneath it.
-			WPR.Xna.Rhi.GameErrorReport errorReport = WPR.Xna.Rhi.ErrorScreen.TakePending();
-			if (errorReport != null)
+			// WPR: the frame's work (input, Update, Draw) holds GameFrameGate, so a game's socket
+			// receive callbacks run between frames, as they effectively did on a single-core WP7
+			// phone (see GameFrameGate). Not held while the loop sleeps above.
+			WPR.Xna.Rhi.GameFrameGate.EnterFrame();
+			try
 			{
-				ShowErrorScreen(errorReport);
-			}
+				// Now that we are going to perform an update, let's poll events.
+				WPR.Xna.Rhi.XnaBackend.Platform.PollEvents(
+					this,
+					ref currentAdapter,
+					textInputControlDown,
+					ref textInputSuppress
+				);
 
-			WPR.Xna.Rhi.IHostOverlay hostOverlay = WPR.Xna.Rhi.HostOverlay.Current;
-			if (hostOverlay != null)
-			{
-				accumulatedElapsedTime = TimeSpan.Zero;
-				RunHostOverlay(hostOverlay);
-				return;
-			}
+				// NOTE: do NOT call FrameworkDispatcher.Update() here. Stock FNA's
+				// Game.Update (the virtual at the bottom of this file) already calls
+				// FrameworkDispatcher.Update() at its end — that gets the per-tick pump
+				// WP7 games expect. Adding a second pump here makes TouchPanel.Update run
+				// twice per Tick, and the second invocation immediately promotes
+				// touches[0] from Pressed to Moved (because between the two pumps,
+				// touches.CopyTo(prevTouches, 0) makes prev=Pressed). The game's
+				// TouchPanel.GetState() then only ever returns Moved — never Pressed —
+				// so touch dispatchers that switch on State==Pressed silently swallow
+				// every tap. Asphalt 5 splash → main menu transition was the surfaced
+				// case (h2.b "press" path never recorded a finger because the game
+				// dispatched op 2 (move) instead of op 0 (press), so h2.d's release
+				// guard `if (i > 0)` failed and `be.ey.fm` never flipped).
 
-			// Do not allow any update to take longer than our maximum.
-			if (accumulatedElapsedTime > MaxElapsedTime)
-			{
-				accumulatedElapsedTime = MaxElapsedTime;
-			}
-
-			if (IsFixedTimeStep)
-			{
-				gameTime.ElapsedGameTime = TargetElapsedTime;
-				int stepCount = 0;
-
-				// Perform as many full fixed length time steps as we can.
-				while (accumulatedElapsedTime >= TargetElapsedTime)
+				// WPR: a host overlay (a MediaPlayerLauncher movie) has the screen. The game is not
+				// updated or drawn until it ends, and the time it was up is not handed to the game
+				// afterwards as one enormous step.
+				// WPR: a failure to put on the screen (a WP8 guest that stopped, or frames that throw and
+				// draw nothing). Shown as a host overlay, so the game stops running underneath it.
+				WPR.Xna.Rhi.GameErrorReport errorReport = WPR.Xna.Rhi.ErrorScreen.TakePending();
+				if (errorReport != null)
 				{
-					gameTime.TotalGameTime += TargetElapsedTime;
-					accumulatedElapsedTime -= TargetElapsedTime;
-					stepCount += 1;
+					ShowErrorScreen(errorReport);
+				}
 
-					AssertNotDisposed();
+				WPR.Xna.Rhi.IHostOverlay hostOverlay = WPR.Xna.Rhi.HostOverlay.Current;
+				if (hostOverlay != null)
+				{
+					accumulatedElapsedTime = TimeSpan.Zero;
+					RunHostOverlay(hostOverlay);
+					return;
+				}
 
-					try
+				// Do not allow any update to take longer than our maximum.
+				if (accumulatedElapsedTime > MaxElapsedTime)
+				{
+					accumulatedElapsedTime = MaxElapsedTime;
+				}
+
+				if (IsFixedTimeStep)
+				{
+					gameTime.ElapsedGameTime = TargetElapsedTime;
+					int stepCount = 0;
+
+					// Perform as many full fixed length time steps as we can.
+					while (accumulatedElapsedTime >= TargetElapsedTime)
 					{
-						if (wprTraceThisTick)
+						gameTime.TotalGameTime += TargetElapsedTime;
+						accumulatedElapsedTime -= TargetElapsedTime;
+						stepCount += 1;
+
+						AssertNotDisposed();
+
+						// WPR: a Back press is the first Update's, not every catch-up Update's.
+						WprPhoneBackButton.HiddenFromCatchUpUpdates = stepCount > 1;
+
+						try
 						{
-							WprDebugTrace.WriteLine($"[wpr-trace] Game.Update #{wprTraceIndex} (fixed) starting; RunApplication={RunApplication}");
+							if (wprTraceThisTick)
+							{
+								WprDebugTrace.WriteLine($"[wpr-trace] Game.Update #{wprTraceIndex} (fixed) starting; RunApplication={RunApplication}");
+							}
+							Update(gameTime);
+							if (wprTraceThisTick)
+							{
+								WprDebugTrace.WriteLine($"[wpr-trace] Game.Update #{wprTraceIndex} (fixed) done; RunApplication={RunApplication}");
+							}
 						}
-						Update(gameTime);
-						if (wprTraceThisTick)
+						catch (Exception ex)
 						{
-							WprDebugTrace.WriteLine($"[wpr-trace] Game.Update #{wprTraceIndex} (fixed) done; RunApplication={RunApplication}");
+							WprDebugTrace.WriteLine("[wpr-ex] Game.Update (fixed timestep) threw: " + ex);
+
+							/* WP7 Silverlight titles quit by THROWING — there was no exit API, so they
+							 * raise a private exception, do their save-on-close work in
+							 * Application.UnhandledException, and leave e.Handled false so the shell
+							 * terminates them. Offer it to the game's handler and honour that answer.
+							 *
+							 * Deliberately NOT applied to the Draw catch below. This is the path a
+							 * quit is raised from, and Draw throwing every frame is a documented
+							 * diagnostic shape here (a game that renders nothing but is otherwise
+							 * alive), which should stay inspectable rather than exiting.
+							 *
+							 * A pure XNA title registers no reporter, so Report returns true and this
+							 * is exactly the swallow-and-continue it has always been. */
+							WPR.Xna.Rhi.GameUnhandledException.ReportFrameException(ex);
 						}
 					}
-					catch (Exception ex)
-					{
-						WprDebugTrace.WriteLine("[wpr-ex] Game.Update (fixed timestep) threw: " + ex);
 
-						/* WP7 Silverlight titles quit by THROWING — there was no exit API, so they
-						 * raise a private exception, do their save-on-close work in
-						 * Application.UnhandledException, and leave e.Handled false so the shell
-						 * terminates them. Offer it to the game's handler and honour that answer.
-						 *
-						 * Deliberately NOT applied to the Draw catch below. This is the path a
-						 * quit is raised from, and Draw throwing every frame is a documented
-						 * diagnostic shape here (a game that renders nothing but is otherwise
-						 * alive), which should stay inspectable rather than exiting.
-						 *
-						 * A pure XNA title registers no reporter, so Report returns true and this
-						 * is exactly the swallow-and-continue it has always been. */
-						WPR.Xna.Rhi.GameUnhandledException.ReportFrameException(ex);
-					}
-				}
+					WprPhoneBackButton.HiddenFromCatchUpUpdates = false;
 
-				// Every update after the first accumulates lag
-				updateFrameLag += Math.Max(0, stepCount - 1);
+					// Every update after the first accumulates lag
+					updateFrameLag += Math.Max(0, stepCount - 1);
 
-				/* If we think we are running slowly, wait
-				 * until the lag clears before resetting it
-				 */
-				if (gameTime.IsRunningSlowly)
-				{
-					if (updateFrameLag == 0)
-					{
-						gameTime.IsRunningSlowly = false;
-					}
-				}
-				else if (updateFrameLag >= 5)
-				{
-					/* If we lag more than 5 frames,
-					 * start thinking we are running slowly.
+					/* If we think we are running slowly, wait
+					 * until the lag clears before resetting it
 					 */
-					gameTime.IsRunningSlowly = true;
-				}
+					if (gameTime.IsRunningSlowly)
+					{
+						if (updateFrameLag == 0)
+						{
+							gameTime.IsRunningSlowly = false;
+						}
+					}
+					else if (updateFrameLag >= 5)
+					{
+						/* If we lag more than 5 frames,
+						 * start thinking we are running slowly.
+						 */
+						gameTime.IsRunningSlowly = true;
+					}
 
-				/* Every time we just do one update and one draw,
-				 * then we are not running slowly, so decrease the lag.
-				 */
-				if (stepCount == 1 && updateFrameLag > 0)
-				{
-					updateFrameLag -= 1;
-				}
-
-				/* Draw needs to know the total elapsed time
-				 * that occured for the fixed length updates.
-				 */
-				gameTime.ElapsedGameTime = TimeSpan.FromTicks(TargetElapsedTime.Ticks * stepCount);
-			}
-			else
-			{
-				// Perform a single variable length update.
-				if (forceElapsedTimeToZero)
-				{
-					/* When ResetElapsedTime is called,
-					 * Elapsed is forced to zero and
-					 * Total is ignored entirely.
-					 * -flibit
+					/* Every time we just do one update and one draw,
+					 * then we are not running slowly, so decrease the lag.
 					 */
-					gameTime.ElapsedGameTime = TimeSpan.Zero;
-					forceElapsedTimeToZero = false;
+					if (stepCount == 1 && updateFrameLag > 0)
+					{
+						updateFrameLag -= 1;
+					}
+
+					/* Draw needs to know the total elapsed time
+					 * that occured for the fixed length updates.
+					 */
+					gameTime.ElapsedGameTime = TimeSpan.FromTicks(TargetElapsedTime.Ticks * stepCount);
 				}
 				else
 				{
-					gameTime.ElapsedGameTime = accumulatedElapsedTime;
-					gameTime.TotalGameTime += gameTime.ElapsedGameTime;
-				}
+					// Perform a single variable length update.
+					if (forceElapsedTimeToZero)
+					{
+						/* When ResetElapsedTime is called,
+						 * Elapsed is forced to zero and
+						 * Total is ignored entirely.
+						 * -flibit
+						 */
+						gameTime.ElapsedGameTime = TimeSpan.Zero;
+						forceElapsedTimeToZero = false;
+					}
+					else
+					{
+						gameTime.ElapsedGameTime = accumulatedElapsedTime;
+						gameTime.TotalGameTime += gameTime.ElapsedGameTime;
+					}
 
-				accumulatedElapsedTime = TimeSpan.Zero;
-				AssertNotDisposed();
+					accumulatedElapsedTime = TimeSpan.Zero;
+					AssertNotDisposed();
 
-                // Plan A
-                //Update(gameTime);
-                // Plan B
-                try
-                {
-                    if (wprTraceThisTick)
-                    {
-                        WprDebugTrace.WriteLine($"[wpr-trace] Game.Update #{wprTraceIndex} starting (elapsed={gameTime.ElapsedGameTime.TotalMilliseconds:F2}ms)");
-                    }
-                    Update(gameTime);
-                }
-                catch (Exception ex2)
-                {
-                    WprDebugTrace.WriteLine("[wpr-ex] Game.Update (variable timestep) threw: " + ex2);
-                    WPR.Engine.Online.CompatibilityProblems.NoteFrameException(WPR.Engine.Online.CompatibilityProblems.Categories.UpdateThrew, ex2);
-                    WPR.Xna.Rhi.ErrorScreen.NoteFrameException(ex2);
+	                // Plan A
+	                //Update(gameTime);
+	                // Plan B
+	                try
+	                {
+	                    if (wprTraceThisTick)
+	                    {
+	                        WprDebugTrace.WriteLine($"[wpr-trace] Game.Update #{wprTraceIndex} starting (elapsed={gameTime.ElapsedGameTime.TotalMilliseconds:F2}ms)");
+	                    }
+	                    Update(gameTime);
+	                }
+	                catch (Exception ex2)
+	                {
+	                    WprDebugTrace.WriteLine("[wpr-ex] Game.Update (variable timestep) threw: " + ex2);
+	                    WPR.Engine.Online.CompatibilityProblems.NoteFrameException(WPR.Engine.Online.CompatibilityProblems.Categories.UpdateThrew, ex2);
+	                    WPR.Xna.Rhi.ErrorScreen.NoteFrameException(ex2);
+						Exit();
+	                }
+	            }
+
+				/* Acted on here, after both timestep branches, rather than at the throw site: a
+				 * mixed-mode title's update runs under GameTimer.RaiseUpdate, which catches before
+				 * this loop ever sees the exception. Every site reports to the same place and this is
+				 * the one that acts, so the game's UnhandledException handler is never raised twice
+				 * for one throw and there is a single Exit(). */
+				if (WPR.Xna.Rhi.GameUnhandledException.TerminationRequested)
+				{
+					// Not logged here: Report already wrote the [wpr-quit] line, and that one survives
+					// a Release build where WprDebugTrace does not.
 					Exit();
-                }
-            }
-
-			/* Acted on here, after both timestep branches, rather than at the throw site: a
-			 * mixed-mode title's update runs under GameTimer.RaiseUpdate, which catches before
-			 * this loop ever sees the exception. Every site reports to the same place and this is
-			 * the one that acts, so the game's UnhandledException handler is never raised twice
-			 * for one throw and there is a single Exit(). */
-			if (WPR.Xna.Rhi.GameUnhandledException.TerminationRequested)
-			{
-				// Not logged here: Report already wrote the [wpr-quit] line, and that one survives
-				// a Release build where WprDebugTrace does not.
-				Exit();
-			}
-
-			// Draw unless the update suppressed it.
-			if (suppressDraw)
-			{
-				suppressDraw = false;
-
-				// ...but a suppressed frame must still present if another thread is sitting
-				// inside a GPU call. FNA3D's OpenGL driver defers off-thread resource calls to
-				// the device thread and blocks the caller until SwapBuffers drains that queue,
-				// so skipping the frame outright deadlocks any game that loads content on a
-				// worker thread behind a static screen — a very common WP7 shape. Presenting
-				// costs a blit of the unchanged backbuffer and drains the queue; the game's own
-				// Draw stays suppressed, which is what it actually asked for.
-				// See WPR.Xna.Rhi.OffThreadGpuCalls.
-				if (WPR.Xna.Rhi.OffThreadGpuCalls.AnyInFlight)
-				{
-					try
-					{
-						if (BeginDraw())
-						{
-							EndDraw();
-						}
-					}
-					catch (Exception ex)
-					{
-						WprDebugTrace.WriteLine("[wpr-ex] Game.Tick off-thread GPU pump present threw: " + ex);
-					}
 				}
-			}
-			else
-			{
-				/* Draw/EndDraw should not be called if BeginDraw returns false.
-				 * http://stackoverflow.com/questions/4054936/manual-control-over-when-to-redraw-the-screen/4057180#4057180
-				 * http://stackoverflow.com/questions/4235439/xna-3-1-to-4-0-requires-constant-redraw-or-will-display-a-purple-screen
-				 */
-				bool beginOk = false;
-				try
-				{
-					beginOk = BeginDraw();
-				}
-				catch (Exception ex)
-				{
-					WprDebugTrace.WriteLine("[wpr-ex] Game.BeginDraw threw: " + ex);
-				}
-				if (wprTraceThisTick)
-				{
-					WprDebugTrace.WriteLine($"[wpr-trace] Game.Tick #{wprTraceIndex}: BeginDraw -> {beginOk}");
-				}
-				if (beginOk)
-				{
-					// Preemptively clear any SpriteBatch left in Begin state from a
-					// prior tick whose Draw threw mid-batch. Without this, every frame
-					// after a mid-batch NRE wastes itself on InvalidOperationException
-					// at the next Begin() — that's exactly what produced the PvZ flicker
-					// (NRE frame leaves batch wedged → next frame all-or-nothing).
-					try
-					{
-						int preReset = Microsoft.Xna.Framework.Graphics.SpriteBatch.WprForceEndAll();
-						if (preReset > 0)
-						{
-							WprDebugTrace.WriteLine($"[wpr-trace] Game.Draw #{wprTraceIndex} pre-clean: reset {preReset} stale SpriteBatch(es) from prior tick");
-						}
-					}
-					catch { }
 
-					try
+				// Draw unless the update suppressed it.
+				if (suppressDraw)
+				{
+					suppressDraw = false;
+
+					// ...but a suppressed frame must still present if another thread is sitting
+					// inside a GPU call. FNA3D's OpenGL driver defers off-thread resource calls to
+					// the device thread and blocks the caller until SwapBuffers drains that queue,
+					// so skipping the frame outright deadlocks any game that loads content on a
+					// worker thread behind a static screen — a very common WP7 shape. Presenting
+					// costs a blit of the unchanged backbuffer and drains the queue; the game's own
+					// Draw stays suppressed, which is what it actually asked for.
+					// See WPR.Xna.Rhi.OffThreadGpuCalls.
+					if (WPR.Xna.Rhi.OffThreadGpuCalls.AnyInFlight)
 					{
-						if (wprTraceThisTick)
-						{
-							WprDebugTrace.WriteLine($"[wpr-trace] Game.Draw #{wprTraceIndex} starting");
-						}
-						if (WPR.Xna.Rhi.ErrorScreen.ForceFrameFailure) throw new InvalidOperationException("WPR_TEST_FORCE_FRAME_FAILURE: Draw forced to throw by the test hook");
-						Draw(gameTime);
-						if (wprTraceThisTick)
-						{
-							WprDebugTrace.WriteLine($"[wpr-trace] Game.Draw #{wprTraceIndex} done");
-						}
-					}
-					catch (Exception ex)
-					{
-						WprDebugTrace.WriteLine("[wpr-ex] Game.Draw threw: " + ex);
-						WPR.Engine.Online.CompatibilityProblems.NoteFrameException(WPR.Engine.Online.CompatibilityProblems.Categories.DrawThrew, ex);
-						WPR.Xna.Rhi.ErrorScreen.NoteFrameException(ex);
 						try
 						{
-							int reset = Microsoft.Xna.Framework.Graphics.SpriteBatch.WprForceEndAll();
-							if (reset > 0)
+							if (BeginDraw())
 							{
-								WprDebugTrace.WriteLine($"[wpr-trace] Game.Draw recovery: force-ended {reset} SpriteBatch(es) left in Begin state");
+								EndDraw();
 							}
 						}
-						catch (Exception recoveryEx)
+						catch (Exception ex)
 						{
-							WprDebugTrace.WriteLine("[wpr-ex] Game.Draw SpriteBatch recovery threw: " + recoveryEx);
+							WprDebugTrace.WriteLine("[wpr-ex] Game.Tick off-thread GPU pump present threw: " + ex);
 						}
 					}
-
-					// The frame watch: a frame that threw and drew nothing, for long enough, is put on
-					// the screen. Read before EndDraw, whose Present resets the count.
-					WPR.Xna.Rhi.ErrorScreen.EndFrame(Microsoft.Xna.Framework.Graphics.GraphicsDevice.WprDrawCallsThisFrame);
-
+				}
+				else
+				{
+					/* Draw/EndDraw should not be called if BeginDraw returns false.
+					 * http://stackoverflow.com/questions/4054936/manual-control-over-when-to-redraw-the-screen/4057180#4057180
+					 * http://stackoverflow.com/questions/4235439/xna-3-1-to-4-0-requires-constant-redraw-or-will-display-a-purple-screen
+					 */
+					bool beginOk = false;
 					try
-                    {
-                        EndDraw();
-                        if (wprTraceThisTick)
-                        {
-                            WprDebugTrace.WriteLine($"[wpr-trace] Game.EndDraw #{wprTraceIndex} done");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        WprDebugTrace.WriteLine("[wpr-ex] Game.EndDraw threw: " + ex);
-                    }
+					{
+						beginOk = BeginDraw();
+					}
+					catch (Exception ex)
+					{
+						WprDebugTrace.WriteLine("[wpr-ex] Game.BeginDraw threw: " + ex);
+					}
+					if (wprTraceThisTick)
+					{
+						WprDebugTrace.WriteLine($"[wpr-trace] Game.Tick #{wprTraceIndex}: BeginDraw -> {beginOk}");
+					}
+					if (beginOk)
+					{
+						// Preemptively clear any SpriteBatch left in Begin state from a
+						// prior tick whose Draw threw mid-batch. Without this, every frame
+						// after a mid-batch NRE wastes itself on InvalidOperationException
+						// at the next Begin() — that's exactly what produced the PvZ flicker
+						// (NRE frame leaves batch wedged → next frame all-or-nothing).
+						try
+						{
+							int preReset = Microsoft.Xna.Framework.Graphics.SpriteBatch.WprForceEndAll();
+							if (preReset > 0)
+							{
+								WprDebugTrace.WriteLine($"[wpr-trace] Game.Draw #{wprTraceIndex} pre-clean: reset {preReset} stale SpriteBatch(es) from prior tick");
+							}
+						}
+						catch { }
 
-                }
+						try
+						{
+							if (wprTraceThisTick)
+							{
+								WprDebugTrace.WriteLine($"[wpr-trace] Game.Draw #{wprTraceIndex} starting");
+							}
+							if (WPR.Xna.Rhi.ErrorScreen.ForceFrameFailure) throw new InvalidOperationException("WPR_TEST_FORCE_FRAME_FAILURE: Draw forced to throw by the test hook");
+							Draw(gameTime);
+							if (wprTraceThisTick)
+							{
+								WprDebugTrace.WriteLine($"[wpr-trace] Game.Draw #{wprTraceIndex} done");
+							}
+						}
+						catch (Exception ex)
+						{
+							WprDebugTrace.WriteLine("[wpr-ex] Game.Draw threw: " + ex);
+							WPR.Engine.Online.CompatibilityProblems.NoteFrameException(WPR.Engine.Online.CompatibilityProblems.Categories.DrawThrew, ex);
+							WPR.Xna.Rhi.ErrorScreen.NoteFrameException(ex);
+							try
+							{
+								int reset = Microsoft.Xna.Framework.Graphics.SpriteBatch.WprForceEndAll();
+								if (reset > 0)
+								{
+									WprDebugTrace.WriteLine($"[wpr-trace] Game.Draw recovery: force-ended {reset} SpriteBatch(es) left in Begin state");
+								}
+							}
+							catch (Exception recoveryEx)
+							{
+								WprDebugTrace.WriteLine("[wpr-ex] Game.Draw SpriteBatch recovery threw: " + recoveryEx);
+							}
+						}
+
+						// The frame watch: a frame that threw and drew nothing, for long enough, is put on
+						// the screen. Read before EndDraw, whose Present resets the count.
+						WPR.Xna.Rhi.ErrorScreen.EndFrame(Microsoft.Xna.Framework.Graphics.GraphicsDevice.WprDrawCallsThisFrame);
+
+						try
+	                    {
+	                        EndDraw();
+	                        if (wprTraceThisTick)
+	                        {
+	                            WprDebugTrace.WriteLine($"[wpr-trace] Game.EndDraw #{wprTraceIndex} done");
+	                        }
+	                    }
+	                    catch (Exception ex)
+	                    {
+	                        WprDebugTrace.WriteLine("[wpr-ex] Game.EndDraw threw: " + ex);
+	                    }
+
+	                }
+				}
+
+				if (!_wprInitialActivatedFired)
+				{
+					_wprInitialActivatedFired = true;
+					try
+					{
+						WprDebugTrace.WriteLine("[wpr-trace] Game.Tick: firing initial OnActivated post-first-tick; subscribers=" + (Activated?.GetInvocationList().Length ?? 0));
+						OnActivated(this, EventArgs.Empty);
+					}
+					catch (Exception ex)
+					{
+						WprDebugTrace.WriteLine("[wpr-ex] Game - initial OnActivated threw: " + ex);
+					}
+				}
 			}
-
-			if (!_wprInitialActivatedFired)
+			finally
 			{
-				_wprInitialActivatedFired = true;
-				try
-				{
-					WprDebugTrace.WriteLine("[wpr-trace] Game.Tick: firing initial OnActivated post-first-tick; subscribers=" + (Activated?.GetInvocationList().Length ?? 0));
-					OnActivated(this, EventArgs.Empty);
-				}
-				catch (Exception ex)
-				{
-					WprDebugTrace.WriteLine("[wpr-ex] Game - initial OnActivated threw: " + ex);
-				}
+				WPR.Xna.Rhi.GameFrameGate.ExitFrame();
 			}
 		}
 

@@ -29,11 +29,17 @@ namespace WPR.SilverlightCompability
         /// <summary>The XML element that becomes the root of every materialised instance.</summary>
         public XElement? VisualTree { get; set; }
 
+        /// <summary>The page or control whose XAML declared this template; it answers the event handlers the template names.</summary>
+        internal object? HandlerHost { get; set; }
+
+        /// <summary>The elements this template was declared inside; their resources stay in reach.</summary>
+        internal FrameworkElement[]? Scopes { get; set; }
+
         public UIElement? LoadContent()
         {
             if (VisualTree == null) return null;
 
-            object root = XamlReader.LoadElement(VisualTree);
+            object root = XamlReader.LoadElement(VisualTree, HandlerHost, Scopes);
             return root as UIElement;
         }
     }

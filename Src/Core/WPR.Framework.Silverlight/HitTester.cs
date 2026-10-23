@@ -187,6 +187,42 @@ namespace WPR.SilverlightCompability
             }
         }
 
+        /// <summary>
+        /// Where <paramref name="element"/>'s (0,0) is in the coordinates of the root of its tree,
+        /// by the same rules <see cref="HitTest"/> descends with: each ArrangedRect's offset, less a
+        /// ScrollViewer's scroll and a PanoramaItem's vertical scroll over the content they show.
+        /// </summary>
+        /// <remarks>
+        /// Shared with <see cref="UIElement.TransformToVisual"/> on purpose: a position the WP
+        /// Toolkit maps into an element and the element a hit test found there must agree, and they
+        /// only can if one walk decides both. RenderTransforms are not included, which is also
+        /// what hit testing does.
+        /// </remarks>
+        internal static Point OriginInRoot(UIElement element)
+        {
+            double x = 0, y = 0;
+            int guard = 0;
+            for (UIElement? el = element; el != null && guard++ < 256; el = el.Parent)
+            {
+                x += el.ArrangedRect.X;
+                y += el.ArrangedRect.Y;
+
+                switch (el.Parent)
+                {
+                    case ScrollViewer scroller when ReferenceEquals(scroller.Presenter, el):
+                        x -= scroller.HorizontalOffset;
+                        y -= scroller.VerticalOffset;
+                        break;
+                    case ContentControl cc when ReferenceEquals(cc.Presenter, el)
+                                                && cc.GetType().FullName == "Microsoft.Phone.Controls.PanoramaItem":
+                        var st = PanoramaItemScrollTable.TryGet(cc);
+                        if (st != null) y -= st.ScrollY;
+                        break;
+                }
+            }
+            return new Point(x, y);
+        }
+
         private static bool IsHitTestable(UIElement el)
         {
             if (!el.IsHitTestVisible) return false;

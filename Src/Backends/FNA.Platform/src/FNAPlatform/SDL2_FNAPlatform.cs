@@ -2469,7 +2469,7 @@ namespace Microsoft.Xna.Framework
 			{
 				GamePadState padState = new GamePadState();
 
-				if ((index == 0) && PhoneBackButtonPressed)
+				if ((index == 0) && PhoneBackButtonPressed && !WprPhoneBackButton.HiddenFromCatchUpUpdates)
 				{
 					padState.Buttons = new GamePadButtons(Buttons.Back);
 				}
@@ -2622,7 +2622,7 @@ namespace Microsoft.Xna.Framework
 			 * one-tick edge contract is unchanged — PhoneBackButtonPressed is assigned once per
 			 * PollEvents and cleared on the next one.
 			 */
-			if (index == 0 && PhoneBackButtonPressed)
+			if (index == 0 && PhoneBackButtonPressed && !WprPhoneBackButton.HiddenFromCatchUpUpdates)
 			{
 				gc_buttonState |= Buttons.Back;
 			}

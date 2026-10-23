@@ -92,6 +92,9 @@ namespace WPR.SilverlightCompability
             set => SetValue(IsHitTestVisibleProperty, value);
         }
 
+        /// <summary>Stored; the rasteriser snaps to pixels regardless.</summary>
+        public bool UseLayoutRounding { get; set; } = true;
+
         public Transform? RenderTransform
         {
             get => (Transform?)GetValue(RenderTransformProperty);
@@ -193,6 +196,32 @@ namespace WPR.SilverlightCompability
             return args.Handled;
         }
 
+        /// <summary>WP 7.1's tap gesture on this element, bubbled up the hit chain by the touch router.</summary>
+        public event System.EventHandler<GestureEventArgs>? Tap;
+
+#pragma warning disable CS0067
+        // Not recognised yet; declared so the add_/remove_ accessors a page names resolve.
+        public event System.EventHandler<GestureEventArgs>? DoubleTap;
+        public event System.EventHandler<GestureEventArgs>? Hold;
+#pragma warning restore CS0067
+
+        /// <summary>Delivers a tap to this element. Returns true if a handler marked it handled.</summary>
+        internal bool RaiseTap(Point pagePosition, UIElement originalSource)
+        {
+            System.EventHandler<GestureEventArgs>? handler = Tap;
+            if (handler == null) return false;
+
+            var args = new GestureEventArgs { OriginalSource = originalSource, PagePosition = pagePosition };
+            try { handler(this, args); }
+            catch (System.Exception ex)
+            {
+                System.Diagnostics.Trace.WriteLine(
+                    $"[wpr-tap] Tap handler on {GetType().Name} threw {ex.GetType().Name}: {ex.Message}");
+                return false;
+            }
+            return args.Handled;
+        }
+
         /// <summary>Stub for <c>UIElement.ReleaseMouseCapture()</c> — no capture model yet.</summary>
         public void ReleaseMouseCapture() { }
 
@@ -216,20 +245,40 @@ namespace WPR.SilverlightCompability
 
         /// <summary>
         /// Returns a transform that maps points from this element's coords to
-        /// <paramref name="relativeTo"/>'s coords. We don't track transforms yet;
-        /// returning the identity is correct as long as no element has a non-identity
-        /// RenderTransform applied — close enough for the WP Toolkit code paths that
-        /// use this for hit-testing.
+        /// <paramref name="relativeTo"/>'s coords (the root of the tree when null).
         /// </summary>
-        public GeneralTransform TransformToVisual(UIElement? relativeTo) => new IdentityTransform();
-
-        private sealed class IdentityTransform : GeneralTransform
+        /// <remarks>
+        /// A translation, from the same layout walk hit testing uses
+        /// (<see cref="HitTester.OriginInRoot"/>); RenderTransforms are not included, which is also
+        /// true of hit testing. A <see cref="MatrixTransform"/>, as Silverlight's was: the WP
+        /// Toolkit's GestureListener type-tests for it. This returned the identity until patcher
+        /// version 47, which put every Toolkit gesture position in root coordinates whatever element
+        /// a game asked about.
+        /// </remarks>
+        public GeneralTransform TransformToVisual(UIElement? relativeTo)
         {
-            public override Point Transform(Point point) => point;
-            public override GeneralTransform? Inverse => this;
+            Point from = HitTester.OriginInRoot(this);
+            Point to = relativeTo == null ? new Point(0, 0) : HitTester.OriginInRoot(relativeTo);
+            return new MatrixTransform(new Matrix(1, 0, 0, 1, from.X - to.X, from.Y - to.Y));
         }
 
         public Size DesiredSize { get; private set; }
+
+        /// <summary>The size this element was last arranged at (Silverlight's RenderSize).</summary>
+        public Size RenderSize => new(ArrangedRect.Width, ArrangedRect.Height);
+
+        /// <summary>Where this element's top-left lies in the root's coordinates: the arranged offsets summed up the tree.</summary>
+        internal Point OffsetInRoot()
+        {
+            double x = 0, y = 0;
+            for (UIElement? element = this; element != null; element = element.Parent)
+            {
+                x += element.ArrangedRect.X;
+                y += element.ArrangedRect.Y;
+            }
+
+            return new Point(x, y);
+        }
 
         /// <summary>
         /// The rect this element was arranged into, in its parent's coordinate space.

@@ -2,7 +2,7 @@ namespace WPR.SilverlightCompability
 {
     public class PropertyMetadata
     {
-        public object? DefaultValue { get; }
+        public object? DefaultValue { get; internal set; }
         public PropertyChangedCallback? PropertyChangedCallback { get; }
 
         public PropertyMetadata(object? defaultValue)

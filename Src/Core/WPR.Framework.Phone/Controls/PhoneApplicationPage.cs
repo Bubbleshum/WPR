@@ -43,6 +43,12 @@ namespace Microsoft.Phone.Controls
             return args.Cancel;
         }
 
+        /// <summary>
+        /// The page's application bar. WPR draws none (see <see cref="Microsoft.Phone.Shell.ApplicationBar"/>);
+        /// it is kept so a page that builds or updates its bar in code or XAML runs.
+        /// </summary>
+        public Microsoft.Phone.Shell.IApplicationBar? ApplicationBar { get; set; }
+
         public static readonly DependencyProperty TitleProperty =
             DependencyProperty.Register(nameof(Title), typeof(string), typeof(PhoneApplicationPage),
                 new PropertyMetadata(string.Empty));

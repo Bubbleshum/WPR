@@ -325,7 +325,12 @@ namespace Microsoft.Phone.Controls
         {
             for (int i = 0; i + 1 < chain.Count; i++)
             {
-                if (chain[i + 1] is Selector selector && ReferenceEquals(chain[i].Parent, selector))
+                // The row is a container: a child of the selector itself, or of its items panel
+                // (a ListBox's, under its ScrollViewer and ItemsPresenter).
+                UIElement? parent = chain[i].Parent;
+                Selector? selector = parent as Selector
+                                     ?? (parent != null ? ItemsControl.GetItemsOwner(parent) as Selector : null);
+                if (selector != null && selector.HostChildren.Contains(chain[i]))
                 {
                     try { selector.SelectContainer(chain[i]); }
                     catch (Exception ex)
@@ -348,6 +353,20 @@ namespace Microsoft.Phone.Controls
         /// </remarks>
         private static void DispatchTap(IReadOnlyList<UIElement> chain, Point position)
         {
+            System.Diagnostics.Trace.WriteLine(
+                $"[wpr-tap] tap at ({position.X:F0},{position.Y:F0}) on " +
+                string.Join(" < ", System.Linq.Enumerable.Take(System.Linq.Enumerable.Select(chain, e => e.GetType().Name), 8)));
+
+            // WP 7.1's UIElement.Tap is a routed event: it bubbles from the element under the
+            // finger until a handler marks it handled, and a button still clicks unless one did.
+            if (chain.Count > 0)
+            {
+                foreach (UIElement element in chain)
+                {
+                    if (element.RaiseTap(position, chain[0])) return;
+                }
+            }
+
             foreach (UIElement element in chain)
             {
                 GestureListener? listener = GestureService.GetGestureListener(element);

@@ -120,7 +120,26 @@ namespace WPR.Platform.Windows
             var ctx = WindowsApplicationContext.FromCurrentProcess(
                 customName: WindowsAppDisplayName,
                 iconPath: iconPath);
-            NotificationBackend.SetManager(new WindowsNotificationManager(ctx));
+            var manager = new WindowsNotificationManager(ctx);
+            // A click on a message or invite toast brings WPR forward on that conversation.
+            manager.NotificationActivated += (_, e) =>
+            {
+                string? from = WPR.Shell.HubMessageNotifications.ConversationFrom(e.ActionId);
+                bool friends = e.ActionId == WPR.Shell.HubMessageNotifications.ActivationFriends;
+                if (from == null && !friends) return;
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    if (Avalonia.Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime { MainWindow: { } window })
+                    {
+                        if (window.WindowState == Avalonia.Controls.WindowState.Minimized) window.WindowState = Avalonia.Controls.WindowState.Normal;
+                        window.Show();
+                        window.Activate();
+                    }
+                    if (from != null) Views.MainViewNavigator.Current?.ShowConversation(from);
+                    else Views.MainViewNavigator.Current?.ShowHub();
+                });
+            };
+            NotificationBackend.SetManager(manager);
 
             // Remove the stale "WPR.UI.Desktop.lnk" from older builds that used the
             // .exe filename as the app name. Without this, the Start Menu / search

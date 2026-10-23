@@ -145,6 +145,30 @@
         android:text="when a game crashes, send the error, a stack trace and the end of its log to WPR Hub, with your user name and paths removed. when you install a game, or one crashes, and the hub has no copy of that exact game package, the package is uploaded in the background. nothing is sent while this is off." />
 
 
+    <!-- Pop-up notifications, one switch per kind. The rows are built in code (SettingsActivity.BuildNotificationToggles). -->
+    <TextView
+        style="@style/WpSectionHeader"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="28dp"
+        android:text="NOTIFICATIONS" />
+
+    <LinearLayout
+        android:id="@+id/notificationToggles"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:fontFamily="sans-serif"
+        android:textColor="@color/wp_subtle"
+        android:textSize="13sp"
+        android:lineSpacingExtra="3dp"
+        android:text="pop-ups while WPR is running: new WPR Hub messages, game invites and friend requests, and achievements as you earn them. turning one off only stops its pop-up." />
+
     <!-- Automatic update checks (WPR.Shell.AppUpdates): the same on/off row as vibration. -->
     <TextView
         style="@style/WpSectionHeader"

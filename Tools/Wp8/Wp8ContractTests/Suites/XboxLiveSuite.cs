@@ -4,6 +4,7 @@ using WPR.Common;
 using WPR.Engine.Notifications;
 using WPR.Engine.Online;
 using WPR.Wp8Native;
+using WPR.XboxLive;
 using WPR.Xna.Achievements;
 using WPR.Xna.Rhi;
 
@@ -222,20 +223,26 @@ public sealed class XboxLiveSuite : IContractSuite
         h.Check("...a board with no localized name falls back to its friendly name, and keeps its aggregation",
             boards[1] == new XboxTitleConfig.Board(4, "LAP", "LAP", "Best Time", "Min"), boards.Count > 1 ? boards[1].ToString() : "");
 
-        // As an SPA carries it: XDBF somewhere, then a gzipped UTF-16 document with a BOM.
-        using var gz = new MemoryStream();
-        using (var z = new System.IO.Compression.GZipStream(gz, System.IO.Compression.CompressionLevel.Fastest, leaveOpen: true))
-        {
-            byte[] text = System.Text.Encoding.Unicode.GetPreamble().Concat(System.Text.Encoding.Unicode.GetBytes(Xml)).ToArray();
-            z.Write(text);
-        }
-
-        byte[] module = [.. "MZ padding XDBF"u8.ToArray(), .. new byte[37], .. gz.ToArray(), .. new byte[64]];
+        byte[] module = SpaModule(Xml);
         h.Check("FindGameConfig digs the document out of a module", XboxTitleConfig.FindGameConfig(module)?.Contains("TOTALSCORE") == true);
-        h.Check("...and finds nothing in one without an XDBF table", XboxTitleConfig.FindGameConfig([.. gz.ToArray()]) is null);
+        h.Check("...and finds nothing in one without an XDBF table", XboxTitleConfig.FindGameConfig(Gzip(Xml)) is null);
         h.Check("a missing package folder is an empty configuration", XboxTitleConfig.Load(Path.Combine(h.Sandbox, "nope")).Boards.Count == 0);
 
         ServiceBoards(h, Xml);
+    }
+
+    /// <summary>A module as an SPA carries its gameconfig: XDBF somewhere, then a gzipped UTF-16 document with a BOM.</summary>
+    private static byte[] SpaModule(string xml) => [.. "MZ padding XDBF"u8.ToArray(), .. new byte[37], .. Gzip(xml), .. new byte[64]];
+
+    private static byte[] Gzip(string xml)
+    {
+        using var gz = new MemoryStream();
+        using (var z = new System.IO.Compression.GZipStream(gz, System.IO.Compression.CompressionLevel.Fastest, leaveOpen: true))
+        {
+            z.Write([.. System.Text.Encoding.Unicode.GetPreamble(), .. System.Text.Encoding.Unicode.GetBytes(xml)]);
+        }
+
+        return gz.ToArray();
     }
 
     /// <summary>
@@ -291,6 +298,15 @@ public sealed class XboxLiveSuite : IContractSuite
             XboxTitleConfig.FromGameConfig(Spa("0x12345678"), "xbl.dll").Boards.Count == 0);
         h.Check("boards the SPA defines win over the table",
             XboxTitleConfig.FromGameConfig(withViews.Replace("<GameConfigProject ", """<GameConfigProject titleId="0x314C1392" """), "x").Boards.Count == 2);
+
+        // What WPR Hub is told each board is called.
+        h.Check("a display name goes to the hub as it is",
+            starWars2.HubName(0) == "Total Score" && starWars2.HubName(16) == "Naboo Invasion - Light Side Best");
+        h.Check("...an internal identifier is made readable",
+            seasons.HubName(0) == "Total Score" && seasons.HubName(304) == "Total Score, Episode 19" &&
+            starWars.HubName(64) == "Hoth 1" && starWars.HubName(48) == "IAP 1" && starWars.HubName(128) == "Deathstar 2",
+            $"'{seasons.HubName(304)}' '{starWars.HubName(64)}' '{starWars.HubName(48)}' '{starWars.HubName(128)}'");
+        h.Check("...and an unknown board has none", seasons.HubName(9999) is null);
     }
 
     // -------------------------------------------------------------------------------------------
@@ -366,10 +382,20 @@ public sealed class XboxLiveSuite : IContractSuite
         public List<(string Board, LeaderboardView View)> ReadsDone { get; } = new();
         public bool CanRead => true;
 
-        public void Submit(string titleId, string? titleName, string boardKey, long score, IReadOnlyDictionary<string, string>? columns = null) =>
-            Submitted.Add((boardKey, score, columns));
+        public Dictionary<string, string?> Names { get; } = new();
 
-        public void EnsureBoard(string titleId, string? titleName, string boardKey) => Ensured.Add(boardKey);
+        public void Submit(string titleId, string? titleName, string boardKey, long score, IReadOnlyDictionary<string, string>? columns = null,
+            string? boardName = null)
+        {
+            Submitted.Add((boardKey, score, columns));
+            Names[boardKey] = boardName;
+        }
+
+        public void EnsureBoard(string titleId, string? titleName, string boardKey, string? boardName = null)
+        {
+            Ensured.Add(boardKey);
+            Names[boardKey] = boardName;
+        }
 
         public Task<LeaderboardPage?> ReadAsync(string titleId, string boardKey, LeaderboardView view, int offset, int limit, CancellationToken ct = default)
         {
@@ -410,7 +436,18 @@ public sealed class XboxLiveSuite : IContractSuite
             OnlineBackend.Set(new OnlineServices { Leaderboards = boards, Progress = progress });
             WprHostEnvironment.CurrentProductId = Product;
 
-            var host = new Wp8NativeXboxHost(Product, "Test Title");
+            // The install folder carries an SPA naming board 1.
+            string package = Path.Combine(h.Sandbox, "xbox-host-package");
+            Directory.CreateDirectory(package);
+            File.WriteAllBytes(Path.Combine(package, "xbl.dll"), SpaModule("""
+                <?xml version="1.0" encoding="utf-16"?>
+                <GameConfigProject xmlns="http://www.xboxlive.com/xlast">
+                  <LocalizedStrings><LocalizedString id="84"><Translation locale="en-US">Total Score</Translation></LocalizedString></LocalizedStrings>
+                  <StatsViews><StatsView stringId="84" friendlyName="TOTALSCORE" id="1" viewType="Leaderboard" /></StatsViews>
+                </GameConfigProject>
+                """));
+
+            var host = new Wp8NativeXboxHost(Product, "Test Title", package);
             h.Check("GetAchievements reads the catalogue", host.GetAchievements() is [{ Id: 4, Name: "Catalogued", Gamerscore: 15, IsEarned: false }]);
 
             host.UnlockAchievement(4);
@@ -431,9 +468,12 @@ public sealed class XboxLiveSuite : IContractSuite
 
             host.PostResult(1, 3, 500);
             h.Check("Max posts go to BestScore<id>:0 as they come", boards.Submitted.LastOrDefault() is ("BestScore1:0", 500, null));
+            h.Check("...named for the hub as the title's SPA names the board", boards.Names.GetValueOrDefault("BestScore1:0") == "Total Score",
+                boards.Names.GetValueOrDefault("BestScore1:0") ?? "null");
             host.PostResult(2, 0, 30);
             host.PostResult(2, 0, 12);
             h.Check("Add posts are summed and the total sent", boards.Submitted.TakeLast(2).Select(s => s.Score).SequenceEqual([30L, 42L]));
+            h.Check("...a board the SPA does not describe goes without a name", boards.Names.TryGetValue("BestScore2:0", out string? none) && none is null);
             int before = boards.Submitted.Count;
             host.PostResult(3, 3, 0);
             host.PostResult(5, 2, 0);
@@ -450,6 +490,10 @@ public sealed class XboxLiveSuite : IContractSuite
             again.ReadLeaderboard(5, 0, 10, true);
             h.Check("a Min board read in a later run, before any post, still names BestTime",
                 boards.ReadsDone.LastOrDefault() == ("BestTime5:0", LeaderboardView.Top), boards.ReadsDone.LastOrDefault().ToString());
+            host.ReadLeaderboard(1, 0, 10, true);
+            h.Check("a read registers the board with its name", boards.Ensured.LastOrDefault() == "BestScore1:0" && boards.Names["BestScore1:0"] == "Total Score");
+            again.PostResult(1, 3, 600);
+            h.Check("a host given no package sends no name", boards.Names["BestScore1:0"] is null);
             again.PostResult(2, 0, 8);
             h.Check("an Add board's total carries over runs", boards.Submitted.LastOrDefault() is ("BestScore2:0", 50, null));
             h.Check("the boards posted to are the known boards", again.KnownLeaderboards().SequenceEqual([1u, 2u, 3u, 5u, 6u]),

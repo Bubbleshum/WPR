@@ -32,6 +32,10 @@ namespace WPR.SilverlightCompability
                 this, new DependencyPropertyChangedEventArgs(dp, oldValue, value));
         }
 
+        /// <summary>The value set on this object, or <see cref="DependencyProperty.UnsetValue"/>.</summary>
+        public object? ReadLocalValue(DependencyProperty dp) =>
+            _values != null && _values.TryGetValue(dp, out var v) ? v : DependencyProperty.UnsetValue;
+
         public void ClearValue(DependencyProperty dp)
         {
             if (_values == null || !_values.TryGetValue(dp, out var oldValue))

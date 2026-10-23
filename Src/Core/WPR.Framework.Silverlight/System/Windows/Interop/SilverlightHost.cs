@@ -46,8 +46,24 @@ namespace WPR.WindowsCompability
         public double ActualHeight { get; internal set; } = 800;
         public double ZoomFactor { get; internal set; } = 1.0;
 
-        /// <summary>WP devices report a per-resolution scale factor (e.g. 100 for WVGA).</summary>
-        public int ScaleFactor { get; internal set; } = 100;
+        /// <summary>
+        /// WP devices report a per-resolution scale factor (100 for WVGA). A WP7 title always ran
+        /// at 100; a WP8 title gets the WP8 display's (<see cref="PlatformScaleFactor"/>), because
+        /// it sizes its Direct3D work from it: Arkadium's renderer (Microsoft Mahjong) picks a
+        /// 768x1280 back buffer for 160 and 480x800 for 100, and at 100 drew its board into a
+        /// corner of the 768x1280 surface the background grid really hands it. ActualWidth and
+        /// ActualHeight stay logical (480x800), as on the phone.
+        /// </summary>
+        public int ScaleFactor
+        {
+            get => _scaleFactor ?? PlatformScaleFactor;
+            internal set => _scaleFactor = value;
+        }
+
+        private int? _scaleFactor;
+
+        /// <summary>Set per launch by the host: 100 for WP7 titles, the WP8 display's for WP8 ones.</summary>
+        public static int PlatformScaleFactor { get; set; } = 100;
 
         public bool IsFullScreen { get; internal set; } = true;
 

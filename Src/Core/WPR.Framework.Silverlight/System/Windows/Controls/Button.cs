@@ -18,13 +18,13 @@ namespace WPR.SilverlightCompability
         /// against the text. Mirrors the default Style's BorderThickness /
         /// Padding / MinHeight which our XAML reader doesn't fully apply.
         /// </summary>
-        protected override Size MeasureOverride(Size availableSize)
+        internal override Size WprMeasure(Size availableSize)
         {
             const double horizontalPad = 26;   // 3 DIP border + 10 DIP padding × 2
             const double verticalPad = 16;     // border + padding (top + bottom)
             const double minHeight = 72;       // WP7 button min tap-target
 
-            Size baseSize = base.MeasureOverride(availableSize);
+            Size baseSize = base.WprMeasure(availableSize);
             double w = baseSize.Width + horizontalPad;
             double h = Math.Max(baseSize.Height + verticalPad, minHeight);
 

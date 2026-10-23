@@ -82,7 +82,7 @@ namespace WPR.SilverlightCompability
             }
         }
 
-        protected override Size MeasureOverride(Size availableSize)
+        internal override Size WprMeasure(Size availableSize)
         {
             if (Child == null) return Size.Empty;
             // Subtract border + padding from the available slot.
@@ -95,7 +95,7 @@ namespace WPR.SilverlightCompability
             return new Size(Child.DesiredSize.Width + padW, Child.DesiredSize.Height + padH);
         }
 
-        protected override Size ArrangeOverride(Size finalSize)
+        internal override Size WprArrange(Size finalSize)
         {
             if (Child == null) return finalSize;
             double left = BorderThickness.Left + Padding.Left;

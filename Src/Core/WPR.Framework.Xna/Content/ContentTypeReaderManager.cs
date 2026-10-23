@@ -195,25 +195,28 @@ namespace Microsoft.Xna.Framework.Content
 						// Need to resolve namespace differences
 						string readerTypeString = originalReaderTypeString;
 						readerTypeString = PrepareType(readerTypeString);
+						// The installer renamed any game assembly whose name has punctuation in it
+						// ("Zuma's Revenge!" is installed as "Zuma_s Revenge_"), and the runtime's
+						// parser rejects the original name outright. See InstalledAssemblyNames.
+						readerTypeString = WPR.Xna.Compat.InstalledAssemblyNames.StandardiseTypeName(readerTypeString);
 
 						Type l_readerType = null;
-						try
 						{
-							l_readerType = Type.GetType(readerTypeString);
-						} catch { }
-
-						if (l_readerType == null)
-						{
-							// Workaround for .NET Core + user-game collectible ALC: the user
-							// assembly (e.g. PressPlay.FFWD) is loaded into a separate ALC,
-							// which Type.GetType() can't see from the default ALC. Also, the
-							// inner generic-argument string of a type like
+							// The user assembly (e.g. PressPlay.FFWD) is loaded into the game's
+							// collectible ALC, which a plain Type.GetType() from this (Default ALC)
+							// assembly cannot bind: the runtime refuses with a FileLoadException
+							// ("Operation is not supported"). That plain call used to be tried
+							// first and swallowed, but the throw is first-chance, so every custom
+							// reader reached WPR Hub as a "missing-assembly" compatibility problem
+							// while the call below found it. So WPR supplies the assemblies itself,
+							// from every loaded assembly across all ALCs
+							// (AppDomain.CurrentDomain.GetAssemblies() returns them all, default +
+							// user), and lets the Default binder load anything not yet loaded
+							// (mscorlib and the other facades). The parser also keeps the commas
+							// inside a generic argument like
 							//   ReflectiveReader`1[[PressPlay.FFWD.Scene, PressPlay.FFWD,
 							//     Version=…, Culture=…, PublicKeyToken=…]]
-							// contains commas, so splitting on comma was breaking the outer
-							// type name. Use Type.GetType's resolver overload to walk every
-							// loaded assembly across all ALCs (AppDomain.CurrentDomain
-							// .GetAssemblies() returns them all, default + user).
+							// apart, which splitting on commas did not.
 							try
 							{
 								l_readerType = Type.GetType(
@@ -224,7 +227,14 @@ namespace Microsoft.Xna.Framework.Content
 										{
 											if (a.GetName().Name == name.Name) return a;
 										}
-										return null;
+										try
+										{
+											return System.Runtime.Loader.AssemblyLoadContext.Default.LoadFromAssemblyName(name);
+										}
+										catch
+										{
+											return null;
+										}
 									},
 									typeResolver: (asm, typeName, ignoreCase) =>
 									{

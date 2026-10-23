@@ -73,6 +73,11 @@
     <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Xna\WPR.Framework.Xna.csproj" />
     <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Phone\WPR.Framework.Phone.csproj" />
     <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Silverlight\WPR.Framework.Silverlight.csproj" />
+    <!-- Microsoft.Xbox and System.Runtime.WindowsRuntime, the identities managed WP8 titles bind:
+         nothing here names them; the reference is what ships them in both heads, where the runtime
+         binds them ahead of a game's install folder. -->
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Xbox\WPR.Framework.Xbox.csproj" />
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.WinRT\WPR.Framework.WinRT.csproj" />
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Input\WPR.Engine.Input.csproj" />
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Sensors\WPR.Engine.Sensors.csproj" />
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Vibration\WPR.Engine.Vibration.csproj" />
@@ -84,6 +89,10 @@
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Graphics\WPR.Engine.Graphics.csproj" />
     <!-- WP8 "Modern Native" titles: Wp8NativeGame, constructed here like SilverlightGame. -->
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Wp8Native\WPR.Engine.Wp8Native.csproj" />
+    <!-- Managed WP8 SharpDX titles: SharpDX.WP8 (the component SharpDX reaches native code through)
+         and the Direct3D 11 / DXGI / Win32 host behind it. Referenced here so both heads ship them. -->
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.HostDirect3D\WPR.Engine.HostDirect3D.csproj" />
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.SharpDXWP8\WPR.Framework.SharpDXWP8.csproj" />
   </ItemGroup>
 
 </Project>

@@ -420,7 +420,7 @@ namespace WPR.SilverlightCompability
         /// puts its movie at <c>VerticalAlignment="Top"</c>) measures to nothing and the film
         /// plays into a zero-height slot.
         /// </summary>
-        protected override Size MeasureOverride(Size availableSize)
+        internal override Size WprMeasure(Size availableSize)
         {
             if (FrameWidth <= 0 || FrameHeight <= 0) return Size.Empty;
             double nw = FrameWidth, nh = FrameHeight;

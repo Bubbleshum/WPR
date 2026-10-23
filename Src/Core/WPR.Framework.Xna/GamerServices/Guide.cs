@@ -11,7 +11,25 @@ namespace Microsoft.Xna.Framework.GamerServices
     {
         public static bool _SimulateTrialMode = false;
 
+        /// <summary>
+        /// Filled by the platform head: shows <c>(title, text, buttons, focusButton, icon)</c> and
+        /// completes with the index of the button pressed, or <see cref="MessageBoxDismissed"/> when
+        /// the box went away without one (Back, Esc, closing it). Every way out must complete the
+        /// task: a game that polls <see cref="IsVisible"/> or waits on the result would otherwise
+        /// wait for ever. Null means no UI, and every box answers as dismissed.
+        /// </summary>
         public static Func<string, string, IEnumerable<string>, int, MessageBoxIcon, Task<int>> ShowMessageBoxFunc;
+
+        /// <summary>What <see cref="ShowMessageBoxFunc"/> answers for a box closed without a button.</summary>
+        public const int MessageBoxDismissed = -1;
+
+        /// <summary>
+        /// XNA's answer for a presenter's <paramref name="chosen"/>: the button's index, or null when
+        /// the player backed out ("null if the user cancelled", as documented for
+        /// <see cref="EndShowMessageBox"/>). An index outside the buttons shown counts as cancelled.
+        /// </summary>
+        public static int? ResolveMessageBoxResult(int chosen, int buttonCount) =>
+            chosen >= 0 && chosen < buttonCount ? chosen : null;
         public static Func<string, string, string, Task<string?>> ShowInputBoxFunc;
 
         static Guide() {
@@ -58,7 +76,8 @@ namespace Microsoft.Xna.Framework.GamerServices
 
         public static IAsyncResult BeginShowMessageBox(string title, string text, IEnumerable<string> buttons, int focusButton, MessageBoxIcon icon, AsyncCallback callback, object state)
         {
-            if (buttons.Count() > 2)
+            List<string> labels = buttons?.ToList() ?? new List<string>();
+            if (labels.Count > 2)
             {
                 throw new ArgumentException("Show message box can't handle more than two buttons!");
             }
@@ -66,14 +85,41 @@ namespace Microsoft.Xna.Framework.GamerServices
             return Task.Run(async () =>
             {
                 IsVisible = true;
+                int chosen = MessageBoxDismissed;
+                try
+                {
+                    var show = ShowMessageBoxFunc;
+                    if (show == null)
+                    {
+                        Trace.WriteLine($"[wpr-guide] no message box on this host; \"{title}\" answered as dismissed.");
+                    }
+                    else
+                    {
+                        // The box takes focus from the game window. WP7 raised no Deactivated /
+                        // Activated for its own message box, and a spurious resume re-raises the
+                        // game's Activated, so absorb the blip on both sides (same as Silverlight's
+                        // MessageBox.Show).
+                        WPR.Xna.Rhi.XnaBackend.SuppressFocusActivation(TimeSpan.FromSeconds(2));
+                        chosen = await show(title, text, labels, focusButton, icon).ConfigureAwait(false);
+                        WPR.Xna.Rhi.XnaBackend.SuppressFocusActivation(TimeSpan.FromSeconds(2));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Trace.WriteLine($"[wpr-guide] message box failed; answered as dismissed: {ex}");
+                    chosen = MessageBoxDismissed;
+                }
+                finally
+                {
+                    IsVisible = false;
+                }
 
-                int result = await ShowMessageBoxFunc(title, text, buttons, focusButton, icon);
-
-                IsVisible = false;
+                int? result = ResolveMessageBoxResult(chosen, labels.Count);
+                Trace.WriteLine($"[wpr-guide] \"{title}\" -> {(result is int i ? "\"" + labels[i] + "\" (" + i + ")" : "dismissed (null)")}");
 
                 if (callback != null)
                 {
-                    TaskCompletionSource<int> compSource = new TaskCompletionSource<int>(state);
+                    TaskCompletionSource<int?> compSource = new TaskCompletionSource<int?>(state);
                     compSource.SetResult(result);
 
                     callback.Invoke(compSource.Task);
@@ -124,7 +170,7 @@ namespace Microsoft.Xna.Framework.GamerServices
 
         public static int? EndShowMessageBox(IAsyncResult result)
         {
-            return (result as Task<int>)!.Result;
+            return (result as Task<int?>)!.Result;
         }
 
         // The Xbox LIVE overlay screens. On the phone each opened a system page over the game and
@@ -143,7 +189,36 @@ namespace Microsoft.Xna.Framework.GamerServices
 
         public static void ShowFriends(PlayerIndex player) => OverlayUnavailable(nameof(ShowFriends));
 
-        public static void ShowGameInvite(PlayerIndex player, IEnumerable<Gamer> recipients) => OverlayUnavailable(nameof(ShowGameInvite));
+        // Game invites go to WPR Hub friends as hub messages, through the platform's friend picker
+        // (WPR.Engine.Online.GameInvites). The Xbox LIVE recipients a game passes can't be reached,
+        // so both overloads open the picker.
+        public static void ShowGameInvite(PlayerIndex player, IEnumerable<Gamer> recipients) => ShowGameInvite(sessionId: null);
+
+        // The Windows Phone 7.1 overload: invite friends to the session the game names. Pool Pro
+        // Online 3 calls it from its online lobby's Invite button.
+        public static void ShowGameInvite(string sessionId)
+        {
+            // WP7 threw GuideAlreadyVisibleException here, but its invite page covered the game, so
+            // a game could not ask twice. The picker here is a window over the game, and on the
+            // desktop the game still takes clicks: a second press of the Invite button would throw
+            // into a game that never expected it (Pool Pro Online 3 doesn't catch it). Ignore it.
+            if (IsVisible)
+            {
+                Trace.WriteLine("[wpr-invite] the invite picker is already open; ignoring the second request.");
+                return;
+            }
+            // As on WP7 it returns at once and the game keeps running under the picker.
+            IsVisible = true;
+            WPR.Xna.Rhi.XnaBackend.SuppressFocusActivation(TimeSpan.FromSeconds(2));
+            _ = WPR.Engine.Online.GameInvites.ShowAsync(
+                WPR.Common.WprHostEnvironment.CurrentProductId,
+                WPR.Common.WprHostEnvironment.CurrentTitleName,
+                onClosed: () =>
+                {
+                    WPR.Xna.Rhi.XnaBackend.SuppressFocusActivation(TimeSpan.FromSeconds(2));
+                    IsVisible = false;
+                });
+        }
 
         public static void ShowGamerCard(PlayerIndex player, Gamer gamer) => OverlayUnavailable(nameof(ShowGamerCard));
 

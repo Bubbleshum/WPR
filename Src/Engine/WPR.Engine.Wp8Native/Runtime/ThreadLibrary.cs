@@ -343,7 +343,8 @@ namespace WPR.Wp8Native
             bool switched = _emulator.BlockCurrentThread(
                 () => (Signalled() || (deadline is { } at && Now() >= at)) && Free(),
                 Resume,
-                why: $"condition 0x{condition:X8}");
+                why: $"condition 0x{condition:X8}",
+                timeout: deadline is { } due ? TimeSpan.FromTicks(Math.Max(0, due - Now())) : null);
             if (!switched)
             {
                 // Nothing else can run, so nothing can signal. An untimed wait wakes spuriously,
@@ -386,7 +387,8 @@ namespace WPR.Wp8Native
             _emulator.BlockCurrentThread(
                 () => !_mutexes.TryGetValue(mutex, out var s) || s.Count == 0 || Now() >= deadline,
                 () => _frame.Return(TryTake(mutex) ? ThrdSuccess : ThrdTimedout),
-                why: $"timed lock 0x{mutex:X8} held by thread {_mutexes[mutex].Owner}");
+                why: $"timed lock 0x{mutex:X8} held by thread {_mutexes[mutex].Owner}",
+                timeout: TimeSpan.FromTicks(Math.Max(0, deadline - Now())));
         }
 
         /// <summary>Carries out the at-thread-exit duties of every registered thread that has finished.</summary>

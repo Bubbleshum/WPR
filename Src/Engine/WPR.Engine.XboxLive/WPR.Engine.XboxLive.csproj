@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Engine.XboxLive - the Xbox Live subsystem's contract: IXboxLiveHost, its records, and
+    XboxLiveBackend, the per-launch registry.
+
+    Two consumers. The WP8 native runtime (WPR.Engine.Wp8Native/Runtime) answers a native title's
+    Microsoft.Xbox WinRT calls through it; the managed Microsoft.Xbox facade (WPR.Framework.Xbox)
+    answers a managed WP8 title's. Both are served by Wp8NativeXboxHost (achievements.db + WPR Hub),
+    so the two kinds of WP8 title earn achievements and post scores the same way.
+
+    It used to live in WPR.Engine.Wp8Native/Runtime. It moved so the facade, which is framework
+    tier, does not have to reference the whole WP8 runtime. The WP8 probe and its tools compile
+    the runtime's files directly, so they compile IXboxLiveHost.cs from here too (never
+    XboxLiveBackend.cs: the native runtime takes its host through its constructor).
+
+    No references: the contract speaks uint, long, string and records.
+  -->
+
+  <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+  </PropertyGroup>
+  <PropertyGroup>
+    <TargetFrameworks>net10.0;net10.0-android</TargetFrameworks>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <AssemblyName>WPR.Engine.XboxLive</AssemblyName>
+    <RootNamespace>WPR.XboxLive</RootNamespace>
+    <Nullable>enable</Nullable>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net10.0-android'">24.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+</Project>

@@ -73,12 +73,38 @@ namespace WPR.Engine.GameLoop
             };
 
         /// <summary>
+        /// Games that get WP7's cold start exactly: one <c>Launching</c>, after the first tick, and
+        /// no boot <c>Activated</c>. WPR otherwise raises Launching+Activated twice at a cold start
+        /// (the pre-Run priming pass, then the first synthesised Activated), which suits titles that
+        /// set up idempotently and breaks ones whose Launching handler starts work it does not
+        /// expect to start again.
+        /// </summary>
+        private static readonly HashSet<string> SingleColdStartProducts =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                // iRunner (525de61b…, Droidhen). Its Launching and Activated handlers both call the
+                // bundled Umeng analytics' onLaunching, which starts a session and a thread that
+                // copies the session's date/time/id. Each later call rebuilds the session object the
+                // thread is reading, so the thread's string.Copy(null) killed the process (the whole
+                // launcher on the desktop) in about one cold start in four. On the phone it ran once.
+                "525de61b-526a-4ba3-b188-815c81e1a373",
+            };
+
+        /// <summary>
         /// True when <paramref name="productId"/> must not receive the synthetic cold-start
         /// <c>Activated</c>. Braces are tolerated on either side: the catalogue stores ids
         /// trimmed, a manifest carries them wrapped.
         /// </summary>
         public static bool SuppressesBootActivated(string? productId) =>
-            productId != null && SuppressBootActivatedProducts.Contains(Normalise(productId));
+            productId != null &&
+            (SuppressBootActivatedProducts.Contains(Normalise(productId)) || SingleColdStartProducts.Contains(Normalise(productId)));
+
+        /// <summary>
+        /// True when <paramref name="productId"/> gets no pre-Run lifecycle priming, so its cold
+        /// start is the post-first-tick one alone (see <see cref="SingleColdStartProducts"/>).
+        /// </summary>
+        public static bool SkipsPreRunPriming(string? productId) =>
+            productId != null && SingleColdStartProducts.Contains(Normalise(productId));
 
         private static string Normalise(string productId) => productId.Trim().Trim('{', '}');
     }

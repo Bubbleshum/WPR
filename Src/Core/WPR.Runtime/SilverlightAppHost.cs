@@ -172,6 +172,13 @@ namespace WPR
                 afterAppCreated(appInstance);
             }
 
+            // What the app posted with Dispatcher.BeginInvoke while it was constructed and
+            // launched runs before its first page: on the phone the framework's own navigation
+            // to the start page was queued behind those posts. Galactic Reign posts the creation
+            // of its armada objects from App startup, and its MenuPage's view model reads them in
+            // its constructor (NullReferenceException, black screen, when the page came first).
+            WPR.SilverlightCompability.Threading.Dispatcher.PumpQueued();
+
             UIElement? rootVisual = SLApplication.Current.RootVisual;
             PhoneApplicationFrame? rootFrame = rootVisual as PhoneApplicationFrame;
 

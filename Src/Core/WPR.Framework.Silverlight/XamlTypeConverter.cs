@@ -97,6 +97,7 @@ namespace WPR.SilverlightCompability
             if (targetType == typeof(FontWeight)) return ParseFontWeight(s);
             if (targetType == typeof(PropertyPath)) return new PropertyPath(s);
             if (targetType == typeof(KeyTime)) return ParseKeyTime(s);
+            if (targetType == typeof(RepeatBehavior)) return ParseRepeatBehavior(s);
 
             // CacheMode — XAML strings "BitmapCache" / "None" produce concrete instances.
             if (targetType == typeof(CacheMode) || typeof(CacheMode).IsAssignableFrom(targetType))
@@ -145,7 +146,14 @@ namespace WPR.SilverlightCompability
             // instance directly rather than going through string-attribute XAML, but
             // a string fallback is the least-surprising option.
             if (targetType == typeof(ImageSource) || typeof(ImageSource).IsAssignableFrom(targetType))
+            {
+                // A BitmapSource- or BitmapImage-typed property (a game control's own) needs one of
+                // those; a plain ImageSource could not be assigned to it.
+                if (targetType.IsAssignableFrom(typeof(WPR.WindowsCompability.BitmapImage))
+                    && targetType != typeof(ImageSource))
+                    return new WPR.WindowsCompability.BitmapImage(new Uri(s, UriKind.RelativeOrAbsolute));
                 return new ImageSource(s);
+            }
 
             if (targetType == typeof(object)) return s;
 
@@ -198,6 +206,24 @@ namespace WPR.SilverlightCompability
                 return Duration.Forever;
             // "0:0:1.5" — hh:mm:ss[.ff]
             return new Duration(TimeSpan.Parse(s, CultureInfo.InvariantCulture));
+        }
+
+        /// <summary>
+        /// Silverlight's RepeatBehavior syntax: <c>Forever</c>, an iteration count <c>3x</c>, or a
+        /// TimeSpan. Without it every XAML storyboard ran once: Microsoft Solitaire's
+        /// RepeatBehavior="Forever" loading animation stopped on its last frame.
+        /// </summary>
+        public static RepeatBehavior ParseRepeatBehavior(string s)
+        {
+            s = s.Trim();
+            if (s.Equals("Forever", StringComparison.OrdinalIgnoreCase)) return RepeatBehavior.Forever;
+            if (s.EndsWith("x", StringComparison.OrdinalIgnoreCase)
+                && double.TryParse(s.AsSpan(0, s.Length - 1), NumberStyles.Float, CultureInfo.InvariantCulture, out double count))
+            {
+                return new RepeatBehavior(count);
+            }
+
+            return new RepeatBehavior(TimeSpan.Parse(s, CultureInfo.InvariantCulture));
         }
 
         public static KeyTime ParseKeyTime(string s)

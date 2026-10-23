@@ -1,117 +1,16 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 using Android.App;
 using Android.Widget;
-
-using MessageBox.Avalonia;
 
 namespace WPR.Platform.Android
 {
     public static class MessageBoxUtils
     {
         public static Activity MainActivity { get; set; }
-
-        public static Task<MessageBox.Avalonia.Enums.ButtonResult> GetMessageDialogResult(string title,
-            string text, MessageBox.Avalonia.Enums.ButtonEnum buttons = MessageBox.Avalonia.Enums.ButtonEnum.Ok,
-            MessageBox.Avalonia.Enums.Icon icon = MessageBox.Avalonia.Enums.Icon.Info, IEnumerable<string> ?buttonTexts = null,
-            bool modalOnWindow = true, bool dispatchMain = false)
-        {
-            TaskCompletionSource<MessageBox.Avalonia.Enums.ButtonResult> source = new TaskCompletionSource<MessageBox.Avalonia.Enums.ButtonResult>(
-                TaskCreationOptions.RunContinuationsAsynchronously);
-
-            MainActivity.RunOnUiThread(() =>
-            {
-                AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity)!
-                    .SetTitle(title)!
-                    .SetMessage(text)!;
-
-                switch (buttons)
-                {
-                    case MessageBox.Avalonia.Enums.ButtonEnum.Ok:
-                        if (buttonTexts != null)
-                        {
-                            var enumerable = buttonTexts.GetEnumerator();
-                            enumerable.MoveNext();
-
-                            builder = builder.SetPositiveButton(enumerable.Current, (dialog, which) =>
-                            {
-                                Common.Log.Error(Common.LogCategory.AppList, "OK reported");
-                                source.SetResult(MessageBox.Avalonia.Enums.ButtonResult.Ok);
-                                (dialog as AlertDialog)!.Dismiss();
-                            })!;
-                        }
-                        else
-                        {
-                            builder = builder.SetPositiveButton(global::Android.Resource.String.Ok, (dialog, which) =>
-                            {
-                                Common.Log.Error(Common.LogCategory.AppList, "OK reported");
-                                source.SetResult(MessageBox.Avalonia.Enums.ButtonResult.Ok);
-                                (dialog as AlertDialog)!.Dismiss();
-                            })!;
-                        }
-
-                        break;
-
-                    case MessageBox.Avalonia.Enums.ButtonEnum.YesNo:
-                        if (buttonTexts != null)
-                        {
-                            var enumerable = buttonTexts.GetEnumerator();
-                            enumerable.MoveNext();
-
-                            builder = builder.SetNegativeButton(enumerable.Current, (dialog, which) =>
-                                {
-                                    source.SetResult(MessageBox.Avalonia.Enums.ButtonResult.No);
-                                    (dialog as AlertDialog)!.Dismiss();
-                                })!;
-
-                            enumerable.MoveNext();
-
-                            builder = builder
-                                .SetPositiveButton(enumerable.Current, (dialog, which) =>
-                                {
-                                    source.SetResult(MessageBox.Avalonia.Enums.ButtonResult.Yes);
-                                    (dialog as AlertDialog)!.Dismiss();
-                                })!;
-                            
-                        } else
-                        {
-                            builder = builder
-                                .SetPositiveButton(global::Android.Resource.String.Yes, (dialog, which) =>
-                                {
-                                    source.SetResult(MessageBox.Avalonia.Enums.ButtonResult.Yes);
-                                    (dialog as AlertDialog)!.Dismiss();
-                                })!
-                                .SetNegativeButton(global::Android.Resource.String.No, (dialog, which) =>
-                                {
-                                    source.SetResult(MessageBox.Avalonia.Enums.ButtonResult.No);
-                                    (dialog as AlertDialog)!.Dismiss();
-                                })!;
-                        }
-                        break;
-
-                }
-
-                switch (icon)
-                {
-                    case MessageBox.Avalonia.Enums.Icon.Warning:
-                        builder = builder.SetIcon(global::Android.Resource.Drawable.IcDialogAlert)!;
-                        break;
-
-                    case MessageBox.Avalonia.Enums.Icon.Info:
-                        builder = builder.SetIcon(global::Android.Resource.Drawable.IcDialogInfo)!;
-                        break;
-
-                    default:
-                        break;
-                }
-
-                builder.Create()!.Show();
-            });
-
-            return source.Task;
-        }
 
         /// <summary>
         /// The presenter behind a game's Silverlight <c>MessageBox.Show</c>: an AlertDialog with one
@@ -187,15 +86,11 @@ namespace WPR.Platform.Android
         /// <summary>
         /// Shows an error dialog whose body is a read-only, selectable, multi-line TextBox so
         /// the user can copy the text. A "Copy" button copies the full body to the clipboard.
-        /// Resizable. Falls back to <see cref="GetMessageDialogResult"/> on Android.
+        /// On Android this is a plain AlertDialog with one OK button (no copy button).
         /// </summary>
         public static Task ShowSelectableErrorAsync(string title, string body)
         {
-            return GetMessageDialogResult(
-                title: title,
-                text: body,
-                buttons: MessageBox.Avalonia.Enums.ButtonEnum.Ok,
-                icon: MessageBox.Avalonia.Enums.Icon.Error);
+            return ShowGameMessageBoxAsync(title, body, new[] { "OK" });
         }
 
         public static Task<string> GetInputResult(string title, string description, string defaultText, bool isModal = true, bool dispatchMain = false)
@@ -214,14 +109,20 @@ namespace WPR.Platform.Android
                     .SetView(editField)!
                     .SetPositiveButton(global::Android.Resource.String.Ok, (dialog, which) =>
                     {
-                        source.SetResult(editField.Text!);
+                        source.TrySetResult(editField.Text!);
                         (dialog as AlertDialog)!.Dismiss();
                     })!
                     .SetNegativeButton(global::Android.Resource.String.Cancel, (dialog, which) =>
                     {
-                        source.SetResult(defaultText);
+                        source.TrySetResult(defaultText);
                         (dialog as AlertDialog)!.Dismiss();
                     })!;
+
+                // Back, a tap outside and the activity going away close the dialog without a button;
+                // each must still complete the task, or the caller waits for ever.
+                builder = builder
+                    .SetOnCancelListener(new DialogListener(() => source.TrySetResult(defaultText)))!
+                    .SetOnDismissListener(new DialogListener(() => source.TrySetResult(defaultText)))!;
 
                 builder.Create()!.Show();
             });

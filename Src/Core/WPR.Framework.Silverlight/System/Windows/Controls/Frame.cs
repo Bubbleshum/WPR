@@ -61,6 +61,14 @@ namespace WPR.SilverlightCompability
         public event EventHandler? WprContentReplaced;
 
         /// <summary>
+        /// Raised once a navigation has committed AND the new page's <c>OnNavigatedTo</c> has run,
+        /// before Loaded. WPR-only: what a host needs to lay the page out, because a page settles
+        /// its orientation and content in OnNavigatedTo (Arkadium's game pages). The app-facing
+        /// <see cref="Navigated"/> is raised earlier, before OnNavigatedTo, as on the phone.
+        /// </summary>
+        public event NavigatedEventHandler? WprNavigationCompleted;
+
+        /// <summary>
         /// The <c>Frame.Content = page</c> path: a page swap with no journal entry, no navigation
         /// events and no URI. Silverlight's Frame inherits this from ContentControl. The game
         /// raises the page's own OnNavigatedTo/From itself if it wants them (Flowerz's
@@ -242,6 +250,12 @@ namespace WPR.SilverlightCompability
             Assembly? userAsm = HostContext.UserAssembly;
             if (userAsm == null) return null;
 
+            // "/Library;component/Page.xaml" names a page in another of the package's assemblies.
+            // Arkadium's titles (Microsoft Mahjong, Minesweeper) map every start page to
+            // Arkadium.Common.WP8's NavigationWrapperPage, so looking only in the app's assembly
+            // failed the very first navigation.
+            userAsm = ComponentAssembly(source, userAsm);
+
             string xaml = ReadEmbeddedXaml(source, userAsm);
             if (xaml == null) return null;
 
@@ -278,6 +292,40 @@ namespace WPR.SilverlightCompability
                     sb.AppendLine($"StackTrace:\n{e.StackTrace}");
                 }
                 throw new InvalidOperationException(sb.ToString(), inner);
+            }
+        }
+
+        /// <summary>
+        /// The assembly a <c>/Name;component/</c> uri names, loaded in the game's own context;
+        /// <paramref name="fallback"/> when the uri names none or it cannot be loaded.
+        /// </summary>
+        internal static Assembly ComponentAssembly(Uri source, Assembly fallback)
+        {
+            string path = source.OriginalString.TrimStart('/');
+            int compIdx = path.IndexOf(";component/", StringComparison.OrdinalIgnoreCase);
+            if (compIdx <= 0) return fallback;
+
+            string name = path.Substring(0, compIdx);
+            int version = name.IndexOf(';');
+            if (version >= 0) name = name.Substring(0, version);
+            // The generated InitializeComponent escapes the name ("/Microsoft%20Solitaire.WP8;component/App.xaml").
+            name = Uri.UnescapeDataString(name);
+            if (string.Equals(name, fallback.GetName().Name, StringComparison.OrdinalIgnoreCase)) return fallback;
+
+            try
+            {
+                var context = System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(fallback)
+                              ?? System.Runtime.Loader.AssemblyLoadContext.Default;
+                foreach (Assembly loaded in context.Assemblies)
+                {
+                    if (string.Equals(loaded.GetName().Name, name, StringComparison.OrdinalIgnoreCase)) return loaded;
+                }
+
+                return context.LoadFromAssemblyName(new AssemblyName(name));
+            }
+            catch (Exception)
+            {
+                return fallback;
             }
         }
 
@@ -439,6 +487,14 @@ namespace WPR.SilverlightCompability
             // no failed navigation anywhere in the log to say why.
             //
             // The exception is still rethrown, so what the CALLER sees is unchanged.
+            //
+            // ORDER: Navigated is raised BEFORE the page's OnNavigatedTo, as on the phone
+            // (Navigating, OnNavigatingFrom, OnNavigatedFrom, Navigated, OnNavigatedTo, Loaded).
+            // Apps depend on it: YouTube's App takes the page's NavigationService in its Navigated
+            // handler (CompleteInitializePhoneApplication) and the page's OnNavigatedTo reads it
+            // back; raised after, it was null and the process died on the first page.
+            Navigated?.Invoke(this, new NavigationEventArgs(newPage, newUri, mode));
+
             Exception? navigatedToFailure = null;
             try
             {
@@ -452,7 +508,7 @@ namespace WPR.SilverlightCompability
                     "the navigation still committed.\n" + ex.StackTrace);
             }
 
-            Navigated?.Invoke(this, new NavigationEventArgs(newPage, newUri, mode));
+            WprNavigationCompleted?.Invoke(this, new NavigationEventArgs(newPage, newUri, mode));
 
             if (navigatedToFailure != null)
                 System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(navigatedToFailure).Throw();

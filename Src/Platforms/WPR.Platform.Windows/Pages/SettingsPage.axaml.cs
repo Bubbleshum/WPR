@@ -11,7 +11,6 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Microsoft.Xna.Framework.GamerServices;
-using MessageBox.Avalonia;
 
 namespace WPR.Platform.Windows.Pages
 {
@@ -42,13 +41,10 @@ namespace WPR.Platform.Windows.Pages
                     Configuration.Current.DataStorePath = resultFolder;
                     Configuration.Current.Save();
 
-                    var msgBox = MessageBoxManager.GetMessageBoxStandardWindow(
+                    await MessageBoxUtils.GetMessageDialogResult(
                         title: WPR.Shell.Resources.SuccessfullyChanged,
                         text: WPR.Shell.Resources.SuccessfullyChangedDataPathMsg,
-                        icon: MessageBox.Avalonia.Enums.Icon.Success,
-                        windowStartupLocation: WindowStartupLocation.CenterScreen);
-
-                    await msgBox.ShowDialog(GetWindow());
+                        icon: DialogIcon.Success);
                 }
             };
 
@@ -59,13 +55,10 @@ namespace WPR.Platform.Windows.Pages
 
                 Configuration.Current.Save();
 
-                var msgBox = MessageBoxManager.GetMessageBoxStandardWindow(
+                await MessageBoxUtils.GetMessageDialogResult(
                     title: WPR.Shell.Resources.SuccessfullyChanged,
                     text: WPR.Shell.Resources.SuccessfullyChangedDataPathMsg,
-                    icon: MessageBox.Avalonia.Enums.Icon.Success,
-                    windowStartupLocation: WindowStartupLocation.CenterScreen);
-
-                await msgBox.ShowDialog(GetWindow());
+                    icon: DialogIcon.Success);
             };
 
             TextBox libraryPathTextBox = this.Get<TextBox>("gameLibraryPathText");
@@ -136,6 +129,26 @@ namespace WPR.Platform.Windows.Pages
 
             WireRatingCooldown();
             WireAccount();
+            WireNotifications();
+        }
+
+        /// <summary>One switch per kind of pop-up; saved at once, read live when something would pop up.</summary>
+        private void WireNotifications()
+        {
+            void Wire(string name, bool on, Action<bool> save)
+            {
+                CheckBox box = this.Get<CheckBox>(name);
+                box.IsChecked = on;
+                box.IsCheckedChanged += (_, _) =>
+                {
+                    save(box.IsChecked == true);
+                    Configuration.Current.Save();
+                };
+            }
+            Wire("notifyMessagesCheckBox", Configuration.Current.NotifyMessages, v => Configuration.Current.NotifyMessages = v);
+            Wire("notifyInvitesCheckBox", Configuration.Current.NotifyGameInvites, v => Configuration.Current.NotifyGameInvites = v);
+            Wire("notifyFriendRequestsCheckBox", Configuration.Current.NotifyFriendRequests, v => Configuration.Current.NotifyFriendRequests = v);
+            Wire("notifyAchievementsCheckBox", Configuration.Current.NotifyAchievements, v => Configuration.Current.NotifyAchievements = v);
         }
 
         /// <summary>How often "how did it run?" may be asked: the shared choices, saved on change.</summary>

@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPR.Framework.SharpDXWP8 - builds as assembly SharpDX.WP8 255.255.255.255, replacing the native
+    ARM WinRT component of that name that every managed WP8 SharpDX title ships (Gravity Guy 2, the
+    Microsoft casual games). That component is SharpDX's ONLY way into native code: each static
+    method of SharpDX.WP8.Interop returns the address of a system export (D3D11CreateDevice,
+    CreateFile2, XAudio2Create ...) as an int, and SharpDX calls it. Here those addresses are
+    WPR.Engine.HostDirect3D's implementations, so the title's own SharpDX assemblies run unmodified.
+
+    Being one of WPR's own assemblies, it binds before the install folder (the Microsoft.Xbox facade
+    trick); WinmdStubber leaves SharpDX.WP8 alone (Implemented). TFMs mirror WPR.Engine.HostDirect3D.
+  -->
+
+  <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <TargetFrameworks>net10.0;net10.0-android</TargetFrameworks>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(OS)' == 'Windows_NT' ">
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <TargetFrameworks>net10.0-windows10.0.17763.0;net10.0-android</TargetFrameworks>
+  </PropertyGroup>
+  <PropertyGroup>
+    <AssemblyName>SharpDX.WP8</AssemblyName>
+    <RootNamespace>SharpDX.WP8</RootNamespace>
+    <AssemblyVersion>255.255.255.255</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Nullable>enable</Nullable>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net10.0-android'">24.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.HostDirect3D\WPR.Engine.HostDirect3D.csproj" />
+  </ItemGroup>
+
+</Project>

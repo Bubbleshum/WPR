@@ -495,7 +495,8 @@ namespace WPR.Wp8Native
                             _frame.Return(WaitTimeout);
                         }
                     },
-                    why: string.Join(", ", objects.Select((o, i) => o is null ? $"0x{handles[i]:X8}" : $"{o.Kind.ToString().ToLowerInvariant()} {(o.Name.Length > 0 ? o.Name : $"0x{handles[i]:X8}")}")));
+                    why: string.Join(", ", objects.Select((o, i) => o is null ? $"0x{handles[i]:X8}" : $"{o.Kind.ToString().ToLowerInvariant()} {(o.Name.Length > 0 ? o.Name : $"0x{handles[i]:X8}")}")),
+                    timeout: milliseconds == Infinite ? null : TimeSpan.FromMilliseconds(milliseconds));
                 if (switched)
                 {
                     return;
@@ -884,7 +885,8 @@ namespace WPR.Wp8Native
                     Reacquire();
                     Answer(waiter.Woken);
                 },
-                why: $"condition variable 0x{condition:X8}");
+                why: $"condition variable 0x{condition:X8}",
+                timeout: milliseconds == Infinite ? null : TimeSpan.FromMilliseconds(milliseconds));
             if (switched)
             {
                 return;
