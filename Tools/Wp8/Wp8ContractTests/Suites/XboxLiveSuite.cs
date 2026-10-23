@@ -86,6 +86,13 @@ public sealed class XboxLiveSuite : IContractSuite
         long user = Activate(userFactory);
         h.Check("Microsoft.Xbox.User activates", user != 0);
 
+        // Jetpack Joyride takes IsOnline false as "Xbox not signed in", straight after SignInAsync.
+        long status = Scalar(user, Slot6 + 1);
+        h.Check("the signed-in player's Status.IsOnline is true while an Xbox Live host is attached", Bool(status, Slot6 + 0));
+        E.WinRt.XboxHost = null;
+        h.Check("...and false without one", !Bool(status, Slot6 + 0));
+        E.WinRt.XboxHost = host;
+
         long op = h.Buffer(8);
         h.Check("UnlockAchievementAsync(17) answers S_OK with an operation",
             h.CallMethod(user, Slot6 + 6, 17, op) == 0 && h.U32(op) != 0);

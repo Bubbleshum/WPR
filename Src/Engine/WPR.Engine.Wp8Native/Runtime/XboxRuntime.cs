@@ -350,7 +350,17 @@ namespace WPR.Wp8Native
                 slotCount: 12,
                 known: new Dictionary<int, (string, Action)>
                 {
-                    [InspectableSlots + 0] = ("get_IsOnline", Boolean(false)),
+                    // Boolean get_IsOnline(): the signed-in player's own presence, which on a phone
+                    // signed in to Xbox Live is true. Jetpack Joyride reads it straight after
+                    // SignInAsync and shows "Xbox not signed in", with no achievements or
+                    // leaderboards, while it is false. True when an Xbox Live host is attached
+                    // (achievements and leaderboards are served), the rule SparkHostObjects'
+                    // IsInternetAvailable follows; false without one.
+                    [InspectableSlots + 0] = ("get_IsOnline", () =>
+                    {
+                        XboxCalls.Add($"IsOnline -> {XboxHost is not null}");
+                        ReturnBoolean(XboxHost is not null);
+                    }),
                     [InspectableSlots + 2] = ("get_TitleId", () => ReturnUInt32(1)),
                     [InspectableSlots + 3] = ("get_RichPresence", () => ReturnString(string.Empty)),
                     [InspectableSlots + 5] = ("get_DeviceType", () => ReturnString("WindowsPhone")),

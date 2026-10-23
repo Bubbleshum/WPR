@@ -606,9 +606,30 @@ namespace WPR.Wp8Native
             }
         }
 
+        /// <summary>
+        /// The longest gap between two guest frames, and the gaps over 50 ms, since the last
+        /// statistics line: a hitch every few seconds averages away in a 5 s fps figure.
+        /// </summary>
+        private long _lastFrameTicks, _longestGapTicks;
+        private int _hitches;
+        private TimeSpan _statsGcPause;
+
+        private void NoteFrameGap()
+        {
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            long gap = _lastFrameTicks == 0 ? 0 : now - _lastFrameTicks;
+            _lastFrameTicks = now;
+            _longestGapTicks = Math.Max(_longestGapTicks, gap);
+            if (gap > System.Diagnostics.Stopwatch.Frequency / 20)
+            {
+                _hitches++;
+            }
+        }
+
         private void OnGpuFrameBuilt(GpuFrame frame)
         {
             _presented++;
+            NoteFrameGap();
             TestStopHook();
             LogScreenQueries();
             lock (_gate)
@@ -670,6 +691,7 @@ namespace WPR.Wp8Native
         private void OnFrameBuilt(FrameDrawList frame)
         {
             _presented++;
+            NoteFrameGap();
             TestStopHook();
             lock (_gate)
             {
@@ -1060,7 +1082,9 @@ namespace WPR.Wp8Native
             }
 
             long build = _emulator?.Direct3D.RasteriseTicks ?? 0;
+            TimeSpan gcPause = GC.GetTotalPauseDuration();
             Log($"guest fps={(_presented - _statsPresented) / seconds:0.0} frames={_presented} drawn={_drawn} " +
+                $"longest-gap={_longestGapTicks * 1000 / System.Diagnostics.Stopwatch.Frequency}ms hitches>50ms={_hitches} gc-pause={(gcPause - _statsGcPause).TotalMilliseconds:0}ms " +
                 $"drawlist-build total={build * 1000 / System.Diagnostics.Stopwatch.Frequency}ms textures={_textures.Count} " +
                 $"gpu: replayed={_replay?.DrawsReplayed} skipped={_replay?.DrawsSkipped} frames-dropped={_gpuFramesDropped} {_replay?.Statistics()} unrecorded={string.Join(",", _emulator?.Direct3D.GpuSkipped.Select(p => $"{p.Key}:{p.Value}") ?? [])} " +
                 $"audio: {_emulator?.XAudio2.Summary()} voices={_audio?.VoicesCreated} underruns={_audio?.Underruns} callbacks={_emulator?.XAudio2.CallbacksMade}");
@@ -1159,6 +1183,9 @@ namespace WPR.Wp8Native
 
             _statsAt = now;
             _statsPresented = _presented;
+            _longestGapTicks = 0;
+            _hitches = 0;
+            _statsGcPause = GC.GetTotalPauseDuration();
         }
 
         private int _audioLogged;

@@ -17,6 +17,41 @@ public sealed class MandreelSurfaceSuite : IContractSuite
         ConstantArrays(h);
         SharedFolders(h);
         LandscapeShells(h);
+        IdleTextures(h);
+        DrawListPerPresent(h);
+    }
+
+    /// <summary>
+    /// A guest texture is never destroyed (Release only counts), so a title that streams its art
+    /// kept a CPU copy of every texture it drew. An entry idle for longer than the limit is dropped.
+    /// </summary>
+    private static void IdleTextures(Harness h)
+    {
+        var cache = new TextureImageCache();
+        cache.Set(0x1000, new TextureImage(0x1000, 1, 4, 4, new byte[64]));
+        cache.Set(0x2000, new TextureImage(0x2000, 1, 4, 4, new byte[64]));
+        h.Check("a texture just decoded is kept", cache.TryGet(0x1000, out _) && cache.Count == 2);
+
+        long later = System.Diagnostics.Stopwatch.GetTimestamp() + (long)((TextureImageCache.IdleLimit.TotalSeconds + 1) * System.Diagnostics.Stopwatch.Frequency);
+        cache.Sweep(later);
+        h.Check("...and every entry idle past the limit is dropped", cache.Count == 0 && !cache.TryGet(0x2000, out _), $"{cache.Count} left");
+    }
+
+    /// <summary>
+    /// The software draw list is emptied by ClearRenderTargetView; a title that never clears its back
+    /// buffer that way (Jetpack, through ANGLE) used to keep every draw it made while the GPU path drew.
+    /// </summary>
+    private static void DrawListPerPresent(Harness h)
+    {
+        Direct3DRuntime d3d = h.E.Direct3D;
+        d3d.GpuFrameBuilt += _ => { };
+        bool wasCapturing = d3d.GpuCapture;
+        d3d.GpuCapture = true;
+        d3d.Frame.Record(new FrameCapture.DrawCall(3, 0, 0, [], null, 0, 0, null, [], null, 4));
+        d3d.DeliverFrame();
+        h.Check("a frame the GPU path took leaves no draws behind for the next one", d3d.Frame.PendingDraws.Count == 0,
+            $"{d3d.Frame.PendingDraws.Count} pending");
+        d3d.GpuCapture = wasCapturing;
     }
 
     // Shader model 2 tokens: register type in bits 28-30 (and 11-12), number in 0-10, swizzle or

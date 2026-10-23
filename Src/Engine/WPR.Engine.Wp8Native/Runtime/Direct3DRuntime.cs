@@ -2763,7 +2763,19 @@ namespace WPR.Wp8Native
             // subscriber gets a private copy and must marshal it to wherever it draws.
             // A host with a GPU takes the draw list and does the pixels itself. That is the
             // fast path: the software rasteriser below costs more than the game.
-            if (!DeliverGpuFrame() && FrameBuilt is { } gpu)
+            bool deliveredToGpu = DeliverGpuFrame();
+            if (deliveredToGpu && FramePresented is null)
+            {
+                // The GPU path took the frame as its own command list, so the software draw list
+                // has no reader after this present. It is otherwise emptied only by
+                // ClearRenderTargetView, and a title that never clears its back buffer that way
+                // (Jetpack Joyride, through ANGLE) kept every draw it ever made, each with a copy
+                // of its vertices: 330,000 draws and ~2 MB/s of managed memory, with the GC
+                // pauses that come with it.
+                Frame.BeginFrame(LastClearColour ?? [0f, 0f, 0f, 1f]);
+            }
+
+            if (!deliveredToGpu && FrameBuilt is { } gpu)
             {
                 try
                 {

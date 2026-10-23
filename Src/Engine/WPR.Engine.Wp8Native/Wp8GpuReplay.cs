@@ -195,6 +195,7 @@ namespace WPR.Wp8Native
             int frameNumber = _frameIndex++;
             bool trace = frameNumber >= TraceFrames.First && frameNumber <= TraceFrames.Last;
             EvictStreams();
+            EvictTextures();
             int index = 0;
             void Trace(string line)
             {
@@ -1087,6 +1088,40 @@ namespace WPR.Wp8Native
             }
         }
 
+        private readonly Dictionary<long, int> _textureUsed = new();
+
+        /// <summary>
+        /// Releases host textures the game has not drawn for 600 frames. The guest's own texture is
+        /// never destroyed (Direct3D Release only counts), so a title that streams its art kept a
+        /// host copy of everything it ever drew: Jetpack Joyride reached 272 after two minutes. One
+        /// drawn again later is uploaded again.
+        /// </summary>
+        private void EvictTextures()
+        {
+            if (_frameIndex % 120 != 0)
+            {
+                return;
+            }
+
+            List<long>? stale = null;
+            foreach (var (key, used) in _textureUsed)
+            {
+                if (used < _frameIndex - 600)
+                {
+                    (stale ??= []).Add(key);
+                }
+            }
+
+            foreach (long key in stale ?? [])
+            {
+                _textureUsed.Remove(key);
+                if (_textures.Remove(key, out var gone))
+                {
+                    gone.Texture.Dispose();
+                }
+            }
+        }
+
         /// <summary>Releases uploaded vertex arrays the game has stopped drawing.</summary>
         private void EvictStreams()
         {
@@ -1299,6 +1334,7 @@ namespace WPR.Wp8Native
                 _ => SurfaceFormat.Color,
             };
 
+            _textureUsed[image.Key] = _frameIndex;
             if (_textures.TryGetValue(image.Key, out var known) && known.Version == image.Version &&
                 known.Texture.Width == image.Width && known.Texture.Height == image.Height && known.Texture.Format == format)
             {

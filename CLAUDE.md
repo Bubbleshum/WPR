@@ -2261,6 +2261,20 @@ to its score screen. Galaxy S24 (P1, Vulkan, Release APK 0.2.08 / versionCode 51
 Jetpack fills the 2340x1080 screen, a run flies and collects coins at ~59 fps, no thrown frames.
 Not run: P2 (S24 GLES), A1/A2, Mali. No `ApplicationPatcher.Version` bump and no reinstall.
 
+**Then, same day: a memory leak and Xbox sign-in.** On the S24, managed memory climbed 39 → 460 MB in
+two minutes and replay time 2 → 8 ms, felt as lag. Three things retained everything: the software
+draw list (`FrameCapture._draws`) is emptied only by `ClearRenderTargetView`, and ANGLE never clears
+the back buffer that way, so in GPU mode every draw with its vertex copies stayed alive (330,000
+after 100 s); `DeliverFrame` now ends it when the GPU path took the frame and no software picture is
+wanted. `FrameCapture.RgbaCache`/`BlockCache` (now `TextureImageCache`) and the replay's host
+textures are dropped after 10 s / 600 frames unused, because a guest texture is never destroyed
+(`Release` only counts). Desktop, 150 s: 50-110 MB flat, GC pause per 5 s 25 → 6 ms. The `guest fps`
+line now carries `longest-gap`, `hitches>50ms` and `gc-pause`. What is left is one ~120 ms gap per
+run end (the game's own sync and save work) and on new level art. **Xbox**: `IUserStatus.IsOnline`
+answered false, which Jetpack reads after `SignInAsync` as "Xbox not signed in"; it is now true while
+an Xbox Live host is attached (the Spark2 `IsInternetAvailable` rule). Achievements list from the
+catalogue, results post `BestScore1:0` (distance) / `BestScore2:0` and read back from WPR Hub.
+
 ### Update checks and the About page's "what's new" (2026-09-29, Android)
 
 `WPR.Shell.AppUpdates` asks GitHub's `/releases/latest` (drafts and pre-releases excluded) at most

@@ -44,9 +44,75 @@ namespace WPR.Wp8Native
     /// </summary>
     public sealed record TextureImage(long Key, int Version, int Width, int Height, byte[] Rgba, byte[]? Blocks = null, int BlockFormat = 0);
 
+    /// <summary>
+    /// Decoded guest textures by storage address, each dropped once nothing has asked for it for
+    /// <see cref="IdleLimit"/>. A texture's resource is never freed here (Release only counts), so a
+    /// title that streams its art in and out - Jetpack Joyride makes a new set of level textures
+    /// every few hundred metres - otherwise kept a CPU copy of every texture it ever drew: 39 MB of
+    /// managed memory at the menu, 460 MB after two minutes of play on a Galaxy S24. An evicted
+    /// texture is simply read from guest memory again if it is drawn later.
+    /// </summary>
+    internal sealed class TextureImageCache
+    {
+        public static readonly TimeSpan IdleLimit = TimeSpan.FromSeconds(10);
+
+        private readonly Dictionary<long, (TextureImage Image, long LastUsed)> _entries = new();
+        private long _lastSweep;
+
+        public int Count => _entries.Count;
+
+        public bool TryGet(long key, out TextureImage image)
+        {
+            if (_entries.TryGetValue(key, out var entry))
+            {
+                long now = System.Diagnostics.Stopwatch.GetTimestamp();
+                _entries[key] = (entry.Image, now);
+                Sweep(now);
+                image = entry.Image;
+                return true;
+            }
+
+            image = null!;
+            return false;
+        }
+
+        public void Set(long key, TextureImage image)
+        {
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            _entries[key] = (image, now);
+            Sweep(now);
+        }
+
+        /// <summary>Drops entries idle for longer than <see cref="IdleLimit"/>, at most once a second.</summary>
+        public void Sweep(long now)
+        {
+            long second = System.Diagnostics.Stopwatch.Frequency;
+            if (now - _lastSweep < second)
+            {
+                return;
+            }
+
+            _lastSweep = now;
+            long limit = (long)(IdleLimit.TotalSeconds * second);
+            List<long>? stale = null;
+            foreach (var (key, entry) in _entries)
+            {
+                if (now - entry.LastUsed > limit)
+                {
+                    (stale ??= []).Add(key);
+                }
+            }
+
+            foreach (long key in stale ?? [])
+            {
+                _entries.Remove(key);
+            }
+        }
+    }
+
     public sealed partial class FrameCapture
     {
-        private static readonly Dictionary<long, TextureImage> RgbaCache = new();
+        internal static readonly TextureImageCache RgbaCache = new();
 
         /// <summary>
         /// The pending draws as a <see cref="FrameDrawList"/>. Same vertex interpretation as
@@ -146,7 +212,7 @@ namespace WPR.Wp8Native
                 return null;
             }
 
-            if (RgbaCache.TryGetValue(texture.Storage, out TextureImage? cached) && cached.Version == texture.Version &&
+            if (RgbaCache.TryGet(texture.Storage, out TextureImage cached) && cached.Version == texture.Version &&
                 cached.Width == texture.PixelWidth && cached.Height == texture.PixelHeight)
             {
                 return cached;
@@ -183,11 +249,11 @@ namespace WPR.Wp8Native
             }
 
             var image = new TextureImage(texture.Storage, texture.Version, width, height, rgba);
-            RgbaCache[texture.Storage] = image;
+            RgbaCache.Set(texture.Storage, image);
             return image;
         }
 
-        private static readonly Dictionary<long, TextureImage> BlockCache = new();
+        internal static readonly TextureImageCache BlockCache = new();
 
         /// <summary>
         /// A texture as the GPU path wants it: a block-compressed one keeps its blocks, so the host
@@ -213,7 +279,7 @@ namespace WPR.Wp8Native
                 return null;
             }
 
-            if (BlockCache.TryGetValue(texture.Storage, out TextureImage? cached) && cached.Version == texture.Version &&
+            if (BlockCache.TryGet(texture.Storage, out TextureImage cached) && cached.Version == texture.Version &&
                 cached.Width == texture.PixelWidth && cached.Height == texture.PixelHeight)
             {
                 return cached;
@@ -245,7 +311,7 @@ namespace WPR.Wp8Native
             };
 
             var image = new TextureImage(texture.Storage, texture.Version, texture.PixelWidth, texture.PixelHeight, [], blocks, format);
-            BlockCache[texture.Storage] = image;
+            BlockCache.Set(texture.Storage, image);
             return image;
         }
     }
