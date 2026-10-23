@@ -304,8 +304,18 @@ namespace WPR.Wp8Native
                     Return(HResultOk);
                 }),
 
+                // The player's WPR Hub friends. The list a title is handed is also the set of
+                // players its leaderboard rows may name (see GetLeaderboardAsync).
                 [InspectableSlots + 4] = ("GetFriendsAsync", () =>
-                    ReturnObject(AsyncOperation("GetFriendsAsync", Collection("UserCollection")))),
+                {
+                    IReadOnlyList<string> friends = [];
+                    try { friends = XboxHost?.GetFriends() ?? []; }
+                    catch (Exception ex) { XboxCalls.Add($"  host threw {ex.GetType().Name}: {ex.Message}"); }
+
+                    _friendsHanded = new HashSet<string>(friends, StringComparer.OrdinalIgnoreCase);
+                    XboxCalls.Add($"GetFriendsAsync -> {friends.Count} friend(s)");
+                    ReturnObject(AsyncOperation("GetFriendsAsync", FriendCollection(friends)));
+                }),
 
                 // GetAchievementsAsync(UInt32, UInt32, Boolean, AchievementCollection) - four
                 // arguments, so the out-parameter is the fifth and lands on the stack.
@@ -386,6 +396,30 @@ namespace WPR.Wp8Native
                     [InspectableSlots + 12] = ("get_Name", () => ReturnString(PlayerGamertag)),
                 });
 
+        /// <summary>
+        /// A title that fetched its friends list gets leaderboard rows for the player and those
+        /// friends only, never for someone it was not told about. Jetpack Joyride looks each row's
+        /// player up in that list and calls through what it finds, so a WPR Hub player who is not a
+        /// friend took it down (a null call from its leaderboard code). A title that never asked for
+        /// friends (the Rovio titles) keeps every row.
+        /// </summary>
+        private XboxLeaderboardPage? RowsTheTitleKnows(XboxLeaderboardPage? page)
+        {
+            if (page is null || _friendsHanded is not { } friends)
+            {
+                return page;
+            }
+
+            List<XboxLeaderboardRow> kept = page.Rows.Where(r => r.IsMe || friends.Contains(r.Gamertag)).ToList();
+            if (kept.Count == page.Rows.Count)
+            {
+                return page;
+            }
+
+            XboxCalls.Add($"  {page.Rows.Count - kept.Count} leaderboard row(s) for players outside the friends list left out");
+            return page with { Rows = kept, TotalRecords = (uint)kept.Count };
+        }
+
         /// <summary><c>Microsoft.Xbox.Leaderboards.ILeaderboardService</c>.</summary>
         private long LeaderboardService() => _leaderboardService != 0 ? _leaderboardService : _leaderboardService = CreateDiscoveryObject(
             "ILeaderboardService",
@@ -406,6 +440,7 @@ namespace WPR.Wp8Native
                     catch (Exception ex) { XboxCalls.Add($"  host threw {ex.GetType().Name}: {ex.Message}"); }
 
                     XboxCalls.Add($"GetLeaderboardAsync(id={id}, skip={skip}, max={max}, titleView={titleView}) -> {page?.Rows.Count ?? 0} row(s)");
+                    page = RowsTheTitleKnows(page);
                     WriteOut(7, AsyncOperation("GetLeaderboardAsync", Leaderboard(id, page)));
                     Return(HResultOk);
                 }),
@@ -553,6 +588,64 @@ namespace WPR.Wp8Native
         }
 
         /// <summary>An empty collection: <c>get_Items</c> and <c>get_TotalRecords</c>.</summary>
+        /// <summary>
+        /// The gamertags handed to the title by GetFriendsAsync, or null when it never asked.
+        /// </summary>
+        private HashSet<string>? _friendsHanded;
+
+        /// <summary><c>Microsoft.Xbox.UserCollection</c> of the player's friends.</summary>
+        private long FriendCollection(IReadOnlyList<string> gamertags)
+        {
+            long[] users = gamertags.Select(FriendUser).ToArray();
+            return CreateDiscoveryObject(
+                "UserCollection",
+                slotCount: 8,
+                known: new Dictionary<int, (string, Action)>
+                {
+                    [InspectableSlots + 0] = ("get_Items", () => ReturnObject(ObjectVectorView("IVectorView<User>", users))),
+                    [InspectableSlots + 1] = ("get_TotalRecords", () => ReturnUInt32((uint)users.Length)),
+                });
+        }
+
+        private long FriendUser(string gamertag)
+        {
+            ulong xuid = PlayerXuid + 1 + (uint)StableHash(gamertag);
+            long identity = CreateDiscoveryObject($"IUserIdentity<{gamertag}>", slotCount: 8, known: new Dictionary<int, (string, Action)>
+            {
+                [InspectableSlots + 0] = ("get_Xuid", () => { if (Arg(1) != 0) _emulator.WriteUInt64(Arg(1), xuid); Return(HResultOk); }),
+                [InspectableSlots + 1] = ("get_Gamertag", () => ReturnString(gamertag)),
+            });
+            long status = CreateDiscoveryObject($"IUserStatus<{gamertag}>", slotCount: 12, known: new Dictionary<int, (string, Action)>
+            {
+                [InspectableSlots + 0] = ("get_IsOnline", Boolean(false)),
+                [InspectableSlots + 2] = ("get_TitleId", () => ReturnUInt32(1)),
+                [InspectableSlots + 3] = ("get_RichPresence", () => ReturnString(string.Empty)),
+                [InspectableSlots + 5] = ("get_DeviceType", () => ReturnString("WindowsPhone")),
+            });
+            long profile = CreateDiscoveryObject($"IUserProfile<{gamertag}>", slotCount: 24, known: new Dictionary<int, (string, Action)>
+            {
+                [InspectableSlots + 0] = ("get_AvatarImageUrl", () => ReturnString(string.Empty)),
+                [InspectableSlots + 1] = ("get_Bio", () => ReturnString(string.Empty)),
+                [InspectableSlots + 3] = ("get_GamerPictureUrl", () => ReturnString(string.Empty)),
+                [InspectableSlots + 4] = ("get_Gamerscore", () => ReturnUInt32(0)),
+                [InspectableSlots + 5] = ("get_Gamertag", () => ReturnString(gamertag)),
+                [InspectableSlots + 6] = ("get_HasAvatar", Boolean(false)),
+                [InspectableSlots + 7] = ("get_MembershipLevel", () => ReturnUInt32(0)),
+                [InspectableSlots + 8] = ("get_Location", () => ReturnString(string.Empty)),
+                [InspectableSlots + 10] = ("get_Motto", () => ReturnString(string.Empty)),
+                [InspectableSlots + 12] = ("get_Name", () => ReturnString(gamertag)),
+            });
+
+            // A friend: who they are, their presence and their gamer card. Anything else the title
+            // asks of a friend is answered by discovery and named in the trace.
+            return CreateDiscoveryObject($"IUser<{gamertag}>", slotCount: 24, known: new Dictionary<int, (string, Action)>
+            {
+                [InspectableSlots + 0] = ("get_Identity", () => ReturnObject(identity)),
+                [InspectableSlots + 1] = ("get_Status", () => ReturnObject(status)),
+                [InspectableSlots + 2] = ("GetProfileAsync", () => ReturnObject(AsyncOperation("GetProfileAsync", profile))),
+            });
+        }
+
         private long Collection(string name) => CreateDiscoveryObject(
             name,
             slotCount: 8,

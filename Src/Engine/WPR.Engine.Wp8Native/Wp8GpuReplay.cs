@@ -675,6 +675,9 @@ namespace WPR.Wp8Native
         /// <summary>Register scratch by length: SetValue copies, so one array per size serves every draw.</summary>
         private readonly Dictionary<int, Vector4[]> _registerScratch = new();
 
+        /// <summary>The same for each array of a split constant table.</summary>
+        private readonly Dictionary<int, Vector4[]> _arrayScratch = new();
+
         private void SetConstants(Effect effect, Aon9Shader shader, IReadOnlyDictionary<int, byte[]> buffers)
         {
             if (shader.ConstantRegisters == 0 || shader.ConstantArrays.Count == 0)
@@ -718,10 +721,18 @@ namespace WPR.Wp8Native
                 return;
             }
 
-            // Split round a relatively indexed run (Aon9Shader.ConstantArraysFor): one parameter each.
+            // Split round a relatively indexed run (Aon9Shader.ConstantArraysFor): one parameter each,
+            // through a scratch array of its length (SetValue copies). A new array per draw was
+            // about 3 MB/s for Jetpack Joyride's sprite batcher, which made the phone collect often.
             foreach (Aon9ConstantArray array in shader.ConstantArrays)
             {
-                effect.Parameters[array.Name]?.SetValue(registers.AsSpan(array.Start, array.Count).ToArray());
+                if (!_arrayScratch.TryGetValue(array.Count, out Vector4[]? part))
+                {
+                    _arrayScratch[array.Count] = part = new Vector4[array.Count];
+                }
+
+                registers.AsSpan(array.Start, array.Count).CopyTo(part);
+                effect.Parameters[array.Name]?.SetValue(part);
             }
         }
 

@@ -283,9 +283,40 @@ namespace WPR.Wp8Native
                 return;
             }
 
-            Dictionary<int, byte[]> Constants(long[] slots)
+            Dictionary<int, byte[]> Constants(long[] slots, ref Dictionary<int, byte[]>? last)
             {
-                Dictionary<int, byte[]> copies = [];
+                Dictionary<int, byte[]> copies = Collect(slots);
+
+                // Most draws bind exactly the copies the previous one did; hand back that draw's map
+                // (draws never write to it) rather than a new dictionary per draw.
+                if (last is not null && last.Count == copies.Count)
+                {
+                    bool same = true;
+                    foreach (var (slot, copy) in copies)
+                    {
+                        if (!last.TryGetValue(slot, out byte[]? earlier) || !ReferenceEquals(earlier, copy))
+                        {
+                            same = false;
+                            break;
+                        }
+                    }
+
+                    if (same)
+                    {
+                        _constantScratch = copies;
+                        return last;
+                    }
+                }
+
+                last = copies;
+                return copies;
+            }
+
+            Dictionary<int, byte[]> Collect(long[] slots)
+            {
+                Dictionary<int, byte[]> copies = _constantScratch ?? [];
+                _constantScratch = null;
+                copies.Clear();
                 for (int i = 0; i < slots.Length; i++)
                 {
                     if (ResourceAt(slots[i]) is { Storage: not 0, StorageSize: > 0 } buffer)
@@ -294,7 +325,14 @@ namespace WPR.Wp8Native
                         // once per draw: a scene binds the same unchanged buffers hundreds of times.
                         if (buffer.ConstantCopy is null || buffer.ConstantCopyVersion != buffer.Version)
                         {
-                            buffer.ConstantCopy = _emulator.ReadMemory(buffer.Storage, (int)Math.Min(buffer.StorageSize, 64 * 1024));
+                            if (buffer.ConstantCopy is { } superseded)
+                            {
+                                _retiredConstants.Enqueue((_gpuFrameSerial, superseded));
+                            }
+
+                            byte[] copy = TakeConstantArray((int)Math.Min(buffer.StorageSize, 64 * 1024));
+                            _emulator.ReadMemory(buffer.Storage, copy);
+                            buffer.ConstantCopy = copy;
                             buffer.ConstantCopyVersion = buffer.Version;
                         }
 
@@ -325,8 +363,8 @@ namespace WPR.Wp8Native
             _gpuCommands.Add(new GpuDraw(
                 vertex,
                 pixel,
-                Constants(_vsConstantBuffers),
-                Constants(_psConstantBuffers),
+                Constants(_vsConstantBuffers, ref _lastVsConstants),
+                Constants(_psConstantBuffers, ref _lastPsConstants),
                 textures,
                 samplers,
                 _gpuStateDescs.GetValueOrDefault(_gpuBlend),
@@ -341,6 +379,51 @@ namespace WPR.Wp8Native
                 ScissorRect));
         }
 
+        // Constant-buffer copies, recycled. A title that rewrites a buffer before every draw (Jetpack
+        // Joyride's sprite palette, ~5,000 times a second) made a new array per draw, ~10 MB/s of
+        // garbage that a phone paid for in frequent collections felt as jitter. A superseded copy
+        // may still sit in a frame the host has not replayed, so it is retired with the serial of
+        // the frame being recorded and reused only once the host has replayed that frame.
+        private Dictionary<int, byte[]>? _lastVsConstants, _lastPsConstants, _constantScratch;
+        private long _gpuFrameSerial;
+        private long _replayedGpuSerial = -1;
+        private readonly System.Collections.Concurrent.ConcurrentQueue<(long Serial, byte[] Array)> _retiredConstants = new();
+        private readonly Dictionary<int, Stack<byte[]>> _constantPool = new();
+
+        /// <summary>
+        /// The host has replayed GPU frame <paramref name="serial"/> (and every one before it): the
+        /// constant copies those frames held may be reused. Any thread.
+        /// </summary>
+        public void GpuFrameReplayed(long serial)
+        {
+            long seen;
+            while ((seen = Interlocked.Read(ref _replayedGpuSerial)) < serial &&
+                   Interlocked.CompareExchange(ref _replayedGpuSerial, serial, seen) != seen)
+            {
+            }
+        }
+
+        private byte[] TakeConstantArray(int length)
+        {
+            long replayed = Interlocked.Read(ref _replayedGpuSerial);
+            while (_retiredConstants.TryPeek(out var retired) && retired.Serial <= replayed && _retiredConstants.TryDequeue(out retired))
+            {
+                if (!_constantPool.TryGetValue(retired.Array.Length, out Stack<byte[]>? free))
+                {
+                    _constantPool[retired.Array.Length] = free = new Stack<byte[]>();
+                }
+
+                if (free.Count < 64)
+                {
+                    free.Push(retired.Array);
+                }
+            }
+
+            return _constantPool.TryGetValue(length, out Stack<byte[]>? pool) && pool.TryPop(out byte[]? reused)
+                ? reused
+                : new byte[length];
+        }
+
         /// <summary>Hands the frame's commands to the host; true if a GPU host took it.</summary>
         private bool DeliverGpuFrame()
         {
@@ -349,7 +432,7 @@ namespace WPR.Wp8Native
                 return false;
             }
 
-            GpuFrame frame = new() { Commands = _gpuCommands };
+            GpuFrame frame = new() { Commands = _gpuCommands, Serial = _gpuFrameSerial++ };
             _gpuCommands = new List<GpuCommand>();
             try
             {

@@ -2275,6 +2275,30 @@ answered false, which Jetpack reads after `SignInAsync` as "Xbox not signed in";
 an Xbox Live host is attached (the Spark2 `IsInternetAvailable` rule). Achievements list from the
 catalogue, results post `BestScore1:0` (distance) / `BestScore2:0` and read back from WPR Hub.
 
+**Then: friends, leaderboard rows, frame pacing, allocation (versionCode 59 on the S24).**
+- **A leaderboard row for a stranger crashed Jetpack** (null call from `0x101A4263`, its own
+  leaderboard code): it looks every row's player up in the friends list it fetched at sign-in
+  (`GetFriendsAsync`, which answered empty) and calls through what it finds. `GetFriendsAsync` now
+  answers the player's WPR Hub friends (`IXboxLiveHost.GetFriends`, `OnlineBackend.Invites`), and a
+  title that has fetched friends gets rows only for the player and those friends
+  (`RowsTheTitleKnows`); a title that never asks (the Rovio titles) keeps every row. To find this,
+  `PhoneDLL1.dll` (Jetpack's Xbox glue) was mapped at `0x10630000`: the summary now prints
+  `modules: mapped …` so post-mortem addresses can be put back in the right DLL.
+- **Pacing**: the guest was woken per host `Update`, and FNA's fixed timestep beats against a
+  display that is not exactly 60 Hz (the S24 reports 60.000004): every ~1.7 s two Updates ran before
+  one Draw, the guest built two frames back to back and one was never shown. It is now woken per
+  presented frame (`EndDraw`), with a frame debt (+1 per catch-up, -1 per 60 draws, an extra wake at
+  2, capped at 4) so a host that keeps falling behind still runs the game at its speed. `host
+  updates=/draws=` on the `guest fps` line shows the beat.
+- **Allocation, 22 → 5 MB/s**: `UpdateSubresource` copied guest-to-guest through a new array
+  (`CopyMemory` now); constant-buffer copies are pooled (`TakeConstantArray`, retired with
+  `GpuFrame.Serial` and reused once the host reports the frame replayed); a split constant table's
+  arrays get scratch `Vector4[]`; a draw binding the same copies reuses the previous map. Phone gen0
+  collections ~8/s → ~2.5/s. `System.GC.Gen0Size` via `RuntimeHostConfigurationOption` had no effect
+  on Android (tried, removed). `file-io=` (time and calls in file handlers) joined the `guest fps` line.
+- Left: one 50-60 ms gap every few seconds on the phone (a missed display refresh, not GC, not file
+  I/O) and ~120-500 ms at a run's end (the game's own sync and save, ~600 file calls).
+
 ### Update checks and the About page's "what's new" (2026-09-29, Android)
 
 `WPR.Shell.AppUpdates` asks GitHub's `/releases/latest` (drafts and pre-releases excluded) at most

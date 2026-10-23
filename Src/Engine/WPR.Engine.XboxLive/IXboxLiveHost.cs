@@ -41,6 +41,12 @@ namespace WPR.XboxLive
         /// </summary>
         IReadOnlyList<uint> KnownLeaderboards() => [];
 
+        /// <summary>
+        /// <c>IUser::GetFriendsAsync</c>: the gamertags of the player's friends. WPR's host answers
+        /// the player's WPR Hub friends; none when there is no hub or it cannot be reached.
+        /// </summary>
+        IReadOnlyList<string> GetFriends() => [];
+
         /// <summary>The player's gamer picture as a local PNG, or null for the default one.</summary>
         string? GamerPicturePath => null;
 

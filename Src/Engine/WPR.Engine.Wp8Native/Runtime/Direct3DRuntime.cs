@@ -1873,7 +1873,10 @@ namespace WPR.Wp8Native
                         {
                             try
                             {
-                                _emulator.WriteMemory(destination.Storage + left, _emulator.ReadMemory(Arg(4), right - left));
+                                // Guest to guest without an array per call: a title that refills a
+                                // constant buffer before every draw (Jetpack Joyride) made ~10 MB/s
+                                // of garbage here, felt as collection pauses on a phone.
+                                _emulator.CopyMemory(destination.Storage + left, Arg(4), right - left);
                                 destination.HasContent = true;
                                 destination.Version++;
                             }
@@ -1887,9 +1890,7 @@ namespace WPR.Wp8Native
                     {
                         try
                         {
-                            _emulator.WriteMemory(
-                                destination.Storage,
-                                _emulator.ReadMemory(Arg(4), (int)destination.StorageSize));
+                            _emulator.CopyMemory(destination.Storage, Arg(4), destination.StorageSize);
                             destination.HasContent = true;
                             destination.Version++;
                         }

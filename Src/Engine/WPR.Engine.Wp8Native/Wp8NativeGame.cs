@@ -407,6 +407,13 @@ namespace WPR.Wp8Native
                 $"defaultedslots=[{string.Join(", ", _emulator.WinRt.DefaultedSlots.Select(p => $"{p.Key} x{p.Value}"))}] " +
                 $"guessedslots=[{string.Join(", ", _emulator.WinRt.GuessedSlots.Select(p => $"{p.Key} x{p.Value}"))}]");
 
+            // Where each module was mapped, so a post-mortem's addresses can be put back into the
+            // right DLL (a relocated module's code is nowhere near its file's ImageBase).
+            foreach (string line in _emulator.ModuleLog.Where(l => l.StartsWith("mapped ", StringComparison.Ordinal)).Take(40))
+            {
+                Log("modules: " + line);
+            }
+
             // Where every live guest thread was parked when the run ended: a title that stalls
             // without failing (waiting on a movie, a lock, a signal) leaves no post-mortem, and
             // this is the only record of what it was waiting for.
@@ -613,6 +620,9 @@ namespace WPR.Wp8Native
         private long _lastFrameTicks, _longestGapTicks;
         private int _hitches;
         private TimeSpan _statsGcPause;
+        /// <summary>Host Updates and Draws since start: fewer Draws than Updates is the fixed timestep catching up.</summary>
+        private long _hostDraws, _hostUpdates;
+        private long _statsIoTicks, _statsIoCalls;
 
         private void NoteFrameGap()
         {
@@ -726,9 +736,8 @@ namespace WPR.Wp8Native
             PumpKeyboard();
             _audio?.Pump();
 
-            // One guest frame per tick, never banked beyond two.
-            WakeGuest();
-
+            _hostUpdates++;
+            _updatesSinceDraw++;
             ReportStatistics();
             base.Update(gameTime);
         }
@@ -977,6 +986,7 @@ namespace WPR.Wp8Native
                     foreach (GpuFrame gpuFrame in gpuFrames)
                     {
                         _replay.Replay(gpuFrame);
+                        _emulator?.Direct3D.GpuFrameReplayed(gpuFrame.Serial);
                         _drawn++;
                     }
 
@@ -1085,6 +1095,8 @@ namespace WPR.Wp8Native
             TimeSpan gcPause = GC.GetTotalPauseDuration();
             Log($"guest fps={(_presented - _statsPresented) / seconds:0.0} frames={_presented} drawn={_drawn} " +
                 $"longest-gap={_longestGapTicks * 1000 / System.Diagnostics.Stopwatch.Frequency}ms hitches>50ms={_hitches} gc-pause={(gcPause - _statsGcPause).TotalMilliseconds:0}ms " +
+                $"host updates={_hostUpdates} draws={_hostDraws} " +
+                $"file-io={((_emulator?.Stubs.Files.IoTicks ?? 0) - _statsIoTicks) * 1000 / System.Diagnostics.Stopwatch.Frequency}ms/{(_emulator?.Stubs.Files.IoCalls ?? 0) - _statsIoCalls} " +
                 $"drawlist-build total={build * 1000 / System.Diagnostics.Stopwatch.Frequency}ms textures={_textures.Count} " +
                 $"gpu: replayed={_replay?.DrawsReplayed} skipped={_replay?.DrawsSkipped} frames-dropped={_gpuFramesDropped} {_replay?.Statistics()} unrecorded={string.Join(",", _emulator?.Direct3D.GpuSkipped.Select(p => $"{p.Key}:{p.Value}") ?? [])} " +
                 $"audio: {_emulator?.XAudio2.Summary()} voices={_audio?.VoicesCreated} underruns={_audio?.Underruns} callbacks={_emulator?.XAudio2.CallbacksMade}");
@@ -1186,6 +1198,8 @@ namespace WPR.Wp8Native
             _longestGapTicks = 0;
             _hitches = 0;
             _statsGcPause = GC.GetTotalPauseDuration();
+            _statsIoTicks = _emulator?.Stubs.Files.IoTicks ?? 0;
+            _statsIoCalls = _emulator?.Stubs.Files.IoCalls ?? 0;
         }
 
         private int _audioLogged;
@@ -1257,6 +1271,41 @@ namespace WPR.Wp8Native
                 return;
             try { _tick.Release(); } catch (SemaphoreFullException) { }
         }
+
+        /// <summary>
+        /// One guest frame per frame the host shows. The guest was woken once per Update, and FNA's
+        /// fixed timestep beats against a display that is not exactly 60 Hz: on the Galaxy S24
+        /// (60.000004 Hz) one tick in ~100 ran two Updates before one Draw, so the guest built two
+        /// frames back to back, one never shown, and waited a whole tick for the next - Jetpack
+        /// Joyride stuttered every couple of seconds. An isolated catch-up now costs the guest one
+        /// frame of its own time (its clock is counted in frames; about 1% at worst, which nobody
+        /// sees) instead of a dropped frame. Each catch-up is a frame of debt, one is forgiven every
+        /// 60 draws, and a debt of two is paid with an extra guest frame: a host that keeps falling
+        /// behind (a device that cannot draw 60 a second) still runs the game at its speed, while
+        /// the occasional beat never costs a shown frame. While the host draws nothing (the
+        /// background) the guest's bounded waits pace it.
+        /// </summary>
+        protected override void EndDraw()
+        {
+            base.EndDraw();
+            _hostDraws++;
+            _frameDebt = Math.Min(4, _frameDebt + Math.Max(0, _updatesSinceDraw - 1));
+            _updatesSinceDraw = 0;
+            if (++_drawsSinceForgiven >= 60)
+            {
+                _drawsSinceForgiven = 0;
+                _frameDebt = Math.Max(0, _frameDebt - 1);
+            }
+
+            WakeGuest();
+            if (_frameDebt >= 2)
+            {
+                _frameDebt--;
+                WakeGuest();
+            }
+        }
+
+        private int _updatesSinceDraw, _frameDebt, _drawsSinceForgiven;
 
         protected override void OnExiting(object sender, EventArgs args)
         {

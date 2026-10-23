@@ -66,6 +66,10 @@ public sealed class XboxLiveSuite : IContractSuite
 
         public List<uint> Known { get; } = new();
 
+        public List<string> Friends { get; } = new();
+
+        public IReadOnlyList<string> GetFriends() => Friends;
+
         public IReadOnlyList<uint> KnownLeaderboards() => Known;
 
         public XboxLeaderboardPage? ReadLeaderboard(uint leaderboardId, uint skip, uint max, bool titleView)
@@ -161,6 +165,28 @@ public sealed class XboxLiveSuite : IContractSuite
         long me = Results(board, Slot6 + 1, direct: true);
         h.Check("...the user row is the player's, rating as text",
             Text(me, Slot6 + 0) == "Tester" && Scalar(me, Slot6 + 1) == 2 && Text(me, Slot6 + 2) == "4200");
+
+        // ---- friends, and the rows a title that keeps them is handed ----
+        // Jetpack Joyride looks every leaderboard row's player up in the friends list it fetched and
+        // calls through what it finds: a row for anyone else was a null call.
+        long friendsOut = h.Buffer(8);
+        h.CallMethod(user, Slot6 + 4, friendsOut);
+        long noFriends = Results(h.U32(friendsOut));
+        h.Check("GetFriendsAsync answers the host's friends: none", Scalar(Results(noFriends, Slot6 + 0, direct: true), Slot6 + 1) == 0);
+        h.CallMethod(service, Slot6 + 1, 0, 10, 1, 1, 0, 0, readOut);
+        long mineOnly = Results(Results(h.U32(readOut)), Slot6 + 2, direct: true);
+        h.Check("...after which a board leaves out rows for players outside that list", Scalar(mineOnly, Slot6 + 1) == 1 &&
+            Text(At(mineOnly, 0), Slot6 + 0) == "Tester", $"{Scalar(mineOnly, Slot6 + 1)} row(s)");
+
+        host.Friends.Add("rival");
+        h.CallMethod(user, Slot6 + 4, friendsOut);
+        long oneFriend = Results(Results(h.U32(friendsOut)), Slot6 + 0, direct: true);
+        long friend = At(oneFriend, 0);
+        long friendIdentity = Results(friend, Slot6 + 0, direct: true);
+        h.Check("...a friend is a user with that gamertag", Scalar(oneFriend, Slot6 + 1) == 1 && Text(friendIdentity, Slot6 + 1) == "rival");
+        h.CallMethod(service, Slot6 + 1, 0, 10, 1, 1, 0, 0, readOut);
+        long withFriend = Results(Results(h.U32(readOut)), Slot6 + 2, direct: true);
+        h.Check("...and their row is kept", Scalar(withFriend, Slot6 + 1) == 2, $"{Scalar(withFriend, Slot6 + 1)} row(s)");
 
         // ---- LeaderboardAttribute + PostResultsAsync ----
         long attributeFactory = E.WinRt.GetActivationFactory("Microsoft.Xbox.Leaderboards.LeaderboardAttribute")!.Value;

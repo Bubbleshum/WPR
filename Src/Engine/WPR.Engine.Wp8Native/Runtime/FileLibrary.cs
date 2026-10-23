@@ -117,6 +117,17 @@ namespace WPR.Wp8Native
         /// <summary>The folders a WP8 install's local folder starts with.</summary>
         internal static readonly string[] SharedFolders = [Path.Combine("Shared", "ShellContent"), Path.Combine("Shared", "Transfers")];
 
+        /// <summary>Stopwatch ticks spent in file calls, and how many there were, since start.</summary>
+        public long IoTicks { get; private set; }
+
+        public long IoCalls { get; private set; }
+
+        internal void NoteIo(long ticks)
+        {
+            IoTicks += ticks;
+            IoCalls++;
+        }
+
         /// <summary>Every path the image asked for, and what happened - the discovery log.</summary>
         public List<string> Log { get; } = new();
 

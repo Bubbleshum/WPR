@@ -13,6 +13,12 @@ namespace WPR.Wp8Native
     public sealed class GpuFrame
     {
         public required IReadOnlyList<GpuCommand> Commands { get; init; }
+
+        /// <summary>
+        /// Its place in the recorder's sequence. A host that replays it reports the serial back
+        /// (<see cref="Direct3DRuntime.GpuFrameReplayed"/>) so buffers it held can be reused.
+        /// </summary>
+        public long Serial { get; init; } = -1;
     }
 
     public abstract record GpuCommand;

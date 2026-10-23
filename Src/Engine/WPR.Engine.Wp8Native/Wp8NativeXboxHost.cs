@@ -197,6 +197,37 @@ namespace WPR.Wp8Native
             });
         }
 
+        private IReadOnlyList<string>? _friends;
+
+        /// <summary>The player's WPR Hub friends, read once per run (the game asks at sign-in).</summary>
+        public IReadOnlyList<string> GetFriends()
+        {
+            if (_friends is not null)
+            {
+                return _friends;
+            }
+
+            IReadOnlyList<string> friends = [];
+            if (OnlineBackend.Invites is { SignedIn: true } invites)
+            {
+                try
+                {
+                    Task<IReadOnlyList<InviteFriend>> read = Task.Run(() => invites.GetFriendsAsync(CancellationToken.None));
+                    if (read.Wait(ReadTimeout))
+                    {
+                        friends = read.Result.Select(f => f.Username).Where(n => !string.IsNullOrEmpty(n)).ToList();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Trace.WriteLine($"[wpr-xbox] friends read failed: {ex.GetType().Name}: {ex.Message}");
+                }
+            }
+
+            Trace.WriteLine($"[wpr-xbox] friends: {friends.Count}");
+            return _friends = friends;
+        }
+
         public IReadOnlyList<uint> KnownLeaderboards()
         {
             lock (_boardLock)

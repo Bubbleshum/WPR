@@ -430,7 +430,21 @@ namespace WPR.Wp8Native
 
                 Return(_iob);
             };
+            HashSet<string> beforeFiles = [.. _handlers.Keys];
             Files.RegisterInto(_handlers);
+            // Every file call is timed: on a phone the local folder is on shared storage, where one
+            // open costs about a millisecond, and a title's periodic save is felt as a stall.
+            foreach (string name in _handlers.Keys.Where(k => !beforeFiles.Contains(k)).ToList())
+            {
+                Action inner = _handlers[name];
+                _handlers[name] = () =>
+                {
+                    long started = System.Diagnostics.Stopwatch.GetTimestamp();
+                    try { inner(); }
+                    finally { Files.NoteIo(System.Diagnostics.Stopwatch.GetTimestamp() - started); }
+                };
+            }
+
             Files.IsStandardOutput = stream => _iob != 0 && stream >= _iob + 0x20 && stream < _iob + 0x60;
             Files.StandardOutputText = Extras.TraceStandardOutput;
             _sync = new SyncLibrary(emulator, _frame);
