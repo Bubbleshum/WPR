@@ -20,6 +20,8 @@
     <!-- Linked rather than referenced: WPR.Loader targets net10.0-windows on Windows (EF, the
          installer), and this file needs only Cecil and WPR.Common's Log. -->
     <Compile Include="..\WPR.Loader\PackageManifests.cs" Link="Linked\PackageManifests.cs" />
+    <!-- BingoPlatformTests: which WP8 titles install as Direct3D/XAML. BCL only. -->
+    <Compile Include="..\WPR.Loader\NativeXamlComponent.cs" Link="Linked\NativeXamlComponent.cs" />
   </ItemGroup>
 
   <ItemGroup>
