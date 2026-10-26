@@ -77,6 +77,11 @@ public sealed class TouchFrameSuite : IContractSuite
         h.Check("Asphalt 7: AddPoint / UpdatePoint / RemovePoint, root coordinates",
             a7 is { Down: "AddPoint", Move: "UpdatePoint", Up: "RemovePoint", RelativeToRoot: true }, $"{a7}");
 
+        XamlShell? inferred = XamlShellInference.Infer(Path.Combine(asphalt, "Asphalt7HybridComponent.dll"), WinmdReader.Load(Directory.GetFiles(asphalt, "*.winmd")));
+        h.Check("Asphalt 7: the inferred back key is OnBackKeyPress(true), not the IsOpenIGP overlay query",
+            inferred?.BackKey is { QuitIf: "OnBackKeyPress", QuitWhen: true } back && back.QuitIfArguments is [true],
+            $"{inferred?.BackKey?.QuitIf} [{string.Join(",", inferred?.BackKey?.QuitIfArguments ?? [])}]");
+
         // Its back key: OnBackKeyPress(true) answers an int the page tests with "> 0" (close).
         FieldInfo metadataField = typeof(WinRtRuntime).GetField("_metadata", BindingFlags.NonPublic | BindingFlags.Instance)!;
         object? savedMetadata = metadataField.GetValue(rt), savedShell = shellField.GetValue(rt);
