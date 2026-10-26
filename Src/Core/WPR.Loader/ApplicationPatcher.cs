@@ -413,7 +413,14 @@ namespace WPR
         // (WPR.SilverlightCompability.UdpAnySourceMulticastClient). .NET has no such type, so PAC-MAN
         // Kart Rally's "Host game" threw TypeLoadException from its channel constructor.
         // Not identity-binding.
-        public static int Version => 60;
+        // Bumped to 61: INotifyPropertyChanging, PropertyChangingEventHandler and
+        // PropertyChangingEventArgs bind to System.ObjectModel (a reference added to every patched
+        // module), and Type.GetType(string) goes to Type2 like the two-argument overload. Microsoft
+        // Bingo's MvvmLight WP8 bound the first from mscorlib; its navigation graph got
+        // FileLoadException 0x80131515 from the second. New Silverlight shim types (FontFamily,
+        // RoutedEvent, DrawingSurface, ColorAnimationUsingKeyFrames...) bind on repatch too.
+        // Not identity-binding.
+        public static int Version => 61;
 
         private AssemblyNameReference FnaBackendRef;
         private AssemblyNameReference FNARef;
