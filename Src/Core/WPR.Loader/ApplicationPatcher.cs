@@ -409,9 +409,10 @@ namespace WPR
         // LoadListingInformationAsync. And Deployment.Parts is Silverlight's AssemblyPartCollection of
         // AssemblyPart (it was DeploymentPartCollection, a name no game binds): OpenXLive enumerates it.
         // Not identity-binding.
-        // PLACEHOLDER BUMP (pacman, PAC-MAN Kart Rally): System.Net.Sockets.UdpAnySourceMulticastClient
-        // joins Patches (WPR.SilverlightCompability.UdpAnySourceMulticastClient). The real number is
-        // assigned when this merges. Not identity-binding.
+        // Bumped to 60: System.Net.Sockets.UdpAnySourceMulticastClient joins Patches
+        // (WPR.SilverlightCompability.UdpAnySourceMulticastClient). .NET has no such type, so PAC-MAN
+        // Kart Rally's "Host game" threw TypeLoadException from its channel constructor.
+        // Not identity-binding.
         public static int Version => 60;
 
         private AssemblyNameReference FnaBackendRef;
