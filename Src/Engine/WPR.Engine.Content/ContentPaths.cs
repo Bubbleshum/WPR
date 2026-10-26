@@ -18,8 +18,9 @@ namespace WPR.Engine.Content
     /// <para><b>Read vs write is a real distinction, not a tidiness one.</b>
     /// <see cref="Resolve"/> may redirect to a file that already exists elsewhere;
     /// <see cref="Normalize"/> only fixes separators. A create/write call must use
-    /// <see cref="Normalize"/>, or writing a new file could silently land on an existing one in
-    /// the install folder instead of where the game asked.</para>
+    /// <see cref="ForWrite"/> (Normalize, after refusing the read-only install folder), never
+    /// Resolve, or writing a new file could silently land on an existing one in the install
+    /// folder instead of where the game asked.</para>
     /// </summary>
     public static class ContentPaths
     {
@@ -64,6 +65,64 @@ namespace WPR.Engine.Content
             }
 
             return path!.IndexOf('\\') < 0 ? path : path!.Replace('\\', '/');
+        }
+
+        /// <summary>
+        /// The path to actually open for a CREATE, WRITE or DELETE: <see cref="Normalize"/>, after
+        /// refusing what the phone refused.
+        ///
+        /// <para><b>A game's install folder is read-only on Windows Phone, so a write there throws
+        /// <see cref="UnauthorizedAccessException"/>.</b> A relative path meant the install folder on
+        /// the phone (it was the working directory of every app), so a relative write is refused
+        /// too, as is an absolute one inside <see cref="WprHostEnvironment.CurrentInstallFolder"/>.
+        /// The only writable place a title had was its isolated store (WP8's local folder is that
+        /// same folder), and those writes do not come through here.</para>
+        ///
+        /// <para>Letting the write succeed is not harmless generosity. PAC-MAN Kart Rally's
+        /// unused RMS save module creates <c>save</c> with <c>new StreamWriter("save")</c> at start-up,
+        /// which threw on the phone and was caught; here it wrote the file, and every later launch
+        /// read it back through the game's own reader, which copies twice the buffer's length and
+        /// threw out of <c>Game.Initialize</c>, leaving touch input uninitialised. Outside a game
+        /// run (no install folder known) nothing is refused.</para>
+        /// </summary>
+        public static string? ForWrite(string? path)
+        {
+            string? normalized = Normalize(path);
+            string? installFolder = WprHostEnvironment.CurrentInstallFolder;
+            if (string.IsNullOrEmpty(normalized) || string.IsNullOrEmpty(installFolder))
+            {
+                return normalized;
+            }
+
+            bool refused;
+            try
+            {
+                if (!Path.IsPathRooted(normalized))
+                {
+                    refused = true;
+                }
+                else
+                {
+                    string full = Path.GetFullPath(normalized!);
+                    string root = Path.GetFullPath(installFolder!).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                        + Path.DirectorySeparatorChar;
+                    StringComparison cmp = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+                    refused = full.StartsWith(root, cmp);
+                }
+            }
+            catch (Exception)
+            {
+                // A malformed path: let the real BCL call produce the exception the game expects.
+                return normalized;
+            }
+
+            if (refused)
+            {
+                System.Diagnostics.Trace.WriteLine($"[wpr-file] write to '{path}' refused: the install folder is read-only on the phone");
+                throw new UnauthorizedAccessException($"Access to the path '{path}' is denied.");
+            }
+
+            return normalized;
         }
 
         /// <summary>

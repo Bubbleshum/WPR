@@ -11,17 +11,17 @@ namespace WPR.WindowsCompability
     public class NormalizedPathStreamWriter : StreamWriter
     {
         public NormalizedPathStreamWriter(string path)
-            : base(ContentPaths.Normalize(path)!)
+            : base(ContentPaths.ForWrite(path)!)
         {
         }
 
         public NormalizedPathStreamWriter(string path, bool append)
-            : base(ContentPaths.Normalize(path)!, append)
+            : base(ContentPaths.ForWrite(path)!, append)
         {
         }
 
         public NormalizedPathStreamWriter(string path, bool append, Encoding encoding)
-            : base(ContentPaths.Normalize(path)!, append, encoding)
+            : base(ContentPaths.ForWrite(path)!, append, encoding)
         {
         }
     }
