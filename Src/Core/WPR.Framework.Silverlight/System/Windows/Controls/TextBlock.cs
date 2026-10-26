@@ -14,8 +14,8 @@ namespace WPR.SilverlightCompability
                 new PropertyMetadata(14.0, OnTextRelatedChanged));
 
         public static readonly DependencyProperty FontFamilyProperty =
-            DependencyProperty.Register(nameof(FontFamily), typeof(string), typeof(TextBlock),
-                new PropertyMetadata("Segoe UI", OnTextRelatedChanged));
+            DependencyProperty.Register(nameof(FontFamily), typeof(FontFamily), typeof(TextBlock),
+                new PropertyMetadata(new FontFamily("Segoe UI"), OnTextRelatedChanged));
 
         public static readonly DependencyProperty ForegroundProperty =
             DependencyProperty.Register(nameof(Foreground), typeof(Brush), typeof(TextBlock),
@@ -49,9 +49,9 @@ namespace WPR.SilverlightCompability
             set => SetValue(FontSizeProperty, value);
         }
 
-        public string FontFamily
+        public FontFamily FontFamily
         {
-            get => (string)GetValue(FontFamilyProperty)!;
+            get => (FontFamily)GetValue(FontFamilyProperty)!;
             set => SetValue(FontFamilyProperty, value);
         }
 

@@ -313,6 +313,12 @@ namespace WPR.SilverlightCompability
                 // XAML's intrinsic values - <sys:String x:Key="AppName">Fox News</sys:String>,
                 // sys:Double, sys:Int32, sys:Boolean - take their value from the element text.
                 // string has no default constructor, so Activator could never make one.
+                // <FontFamily x:Key="Body">/Fonts/x.ttf#Family</FontFamily>: no default constructor either.
+                if (type == typeof(FontFamily))
+                {
+                    return new FontFamily(element.Value.Trim());
+                }
+
                 if (type == typeof(string) || type.IsPrimitive || type == typeof(decimal))
                 {
                     string text = element.Value;

@@ -23,6 +23,11 @@ namespace WPR.WindowsCompability
         /// </summary>
         public BitmapCreateOptions CreateOptions { get; set; } = BitmapCreateOptions.None;
 
+        /// <summary>WP's decode-at-size hints. Stored; the image is decoded at its own size.</summary>
+        public int DecodePixelWidth { get; set; }
+
+        public int DecodePixelHeight { get; set; }
+
         public BitmapImage()
         {
         }

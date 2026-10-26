@@ -54,6 +54,8 @@ namespace Microsoft.Phone.Notification
         public void Close() { }
         public void BindToShellToast() { }
         public void BindToShellTile() { }
+        /// <summary>WP 7.1's overload naming the hosts a tile's remote images may come from.</summary>
+        public void BindToShellTile(System.Collections.ObjectModel.Collection<Uri> baseUri) { }
         public void UnbindToShellToast() { }
         public void UnbindToShellTile() { }
         public void Dispose() { }

@@ -96,6 +96,7 @@ namespace WPR.SilverlightCompability
             if (targetType == typeof(TimeSpan)) return TimeSpan.Parse(s, CultureInfo.InvariantCulture);
             if (targetType == typeof(FontWeight)) return ParseFontWeight(s);
             if (targetType == typeof(PropertyPath)) return new PropertyPath(s);
+            if (targetType == typeof(FontFamily)) return new FontFamily(s);
             if (targetType == typeof(KeyTime)) return ParseKeyTime(s);
             if (targetType == typeof(RepeatBehavior)) return ParseRepeatBehavior(s);
 

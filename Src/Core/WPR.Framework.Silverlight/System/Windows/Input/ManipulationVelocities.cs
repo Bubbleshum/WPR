@@ -7,10 +7,10 @@ using System.Threading.Tasks;
 namespace WPR.SilverlightCompability
 {
     /// <summary>Shim for <c>System.Windows.Input.ManipulationVelocities</c>.</summary>
-    public struct ManipulationVelocities
+    public sealed class ManipulationVelocities
     {
-        public Point LinearVelocity;
-        public double AngularVelocity;
-        public Point ExpansionVelocity;
+        public Point LinearVelocity { get; set; }
+        public double AngularVelocity { get; set; }
+        public Point ExpansionVelocity { get; set; }
     }
 }

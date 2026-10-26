@@ -11,19 +11,33 @@ namespace WPR.WindowsCompability
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static Type? GetType(string typeName, bool throwOnError)
         {
+            // Look the caller up HERE: this method is NoInlining, so the calling assembly is the
+            // game code whose Type.GetType call the patcher redirected to us.
+            Assembly? caller = null;
+            try { caller = Assembly.GetCallingAssembly(); } catch { }
+            return Resolve(typeName, throwOnError, caller);
+        }
+
+        /// <summary>
+        /// <c>Type.GetType(string)</c>: the same lookup, answering null for a name it cannot find.
+        /// Microsoft Bingo's navigation graph names its pages "App.View..., AppWP8, Version=…" in a
+        /// JSON file; unredirected, the binder refused to load the collectible AppWP8 into the
+        /// Default context (FileLoadException 0x80131515) and the whole graph failed to load.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static Type? GetType(string typeName)
+        {
+            Assembly? caller = null;
+            try { caller = Assembly.GetCallingAssembly(); } catch { }
+            return Resolve(typeName, false, caller);
+        }
+
+        private static Type? Resolve(string typeName, bool throwOnError, Assembly? caller)
+        {
             if (typeName == null)
             {
                 throw new ArgumentNullException("Type name is null!");
             }
-
-            // Look the caller up HERE: this method is NoInlining, so the calling assembly is the
-            // game code whose Type.GetType call the patcher redirected to us.
-            Assembly? caller = null;
-            try
-            {
-                caller = Assembly.GetCallingAssembly();
-            }
-            catch { /* every lookup below degrades to the unordered scan */ }
 
             // An assembly-qualified name is resolved by the runtime's own type-name parser, with
             // WPR supplying the assembly for every name in it. The parser is the only thing that

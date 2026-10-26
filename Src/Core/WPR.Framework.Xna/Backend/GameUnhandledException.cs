@@ -120,6 +120,16 @@ namespace WPR.Xna.Rhi
 		}
 
 		/// <summary>
+		/// WP8's <c>Application.Terminate()</c>: the app asks to close without an exception.
+		/// Acted on by <c>Game.Tick</c> at the end of the tick, like a declined exception.
+		/// </summary>
+		public static void RequestTermination()
+		{
+			XnaBackend.LogInfo("[wpr-quit] Application.Terminate() called — exiting.");
+			TerminationRequested = true;
+		}
+
+		/// <summary>
 		/// Drops the reporter and any pending termination. Called from
 		/// <c>Application.ResetCurrent</c>, which <c>ResetWprSingletons</c> runs first at teardown
 		/// — these are statics in the shared framework, not in the game's ALC, so on the desktop
