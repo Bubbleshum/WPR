@@ -17,8 +17,7 @@ namespace WPR
     /// stub and the page painted a placeholder: the game never ran on any platform. They are now
     /// installed as <see cref="Models.ApplicationType.ModernNative"/> with the component as their
     /// image, and <c>WPR.Engine.Wp8Native</c> hosts them the way it hosts an exe title, playing
-    /// the page's part from a description of it (<c>XamlShells</c>). A title with no description
-    /// yet fails at launch with that reason, which is more honest than the placeholder was.</para>
+    /// the page's part from a description read from its managed shell (<c>XamlShellInference</c>).</para>
     /// <para>The component is the first <c>InProcessServer</c> the manifest registers whose DLL is
     /// native ARM (machine 0x01C4, no CLR header), skipping <c>Microsoft.Xbox.dll</c> - Xbox Live's
     /// own component, present in many managed titles too. Unity titles (<c>UnityPlayer.dll</c>) are

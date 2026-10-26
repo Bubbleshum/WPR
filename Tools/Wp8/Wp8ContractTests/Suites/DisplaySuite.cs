@@ -1,3 +1,4 @@
+using Wp8ContractTests.Fixtures;
 using System.Reflection;
 using WPR.Wp8Native;
 
@@ -101,7 +102,7 @@ public sealed class DisplaySuite : IContractSuite
     {
         foreach (string dll in new[] { "AlexXamlComponent.dll", "MC4HybridComponent.dll" })
         {
-            XamlShell shell = XamlShells.ForComponent(dll)!;
+            XamlShell shell = HandWrittenShells.ForComponent(dll)!;
             SizeF Arg(string method) => (SizeF)shell.Loaded.First(s => s.Method == method).Arguments[0]!;
             h.Check($"{dll}: WindowBounds is in DIPs", Arg("set_WindowBounds") == new SizeF(Wp8Display.LogicalWidth, Wp8Display.LogicalHeight));
             h.Check($"{dll}: NativeResolution and RenderResolution are physical pixels",
@@ -111,7 +112,7 @@ public sealed class DisplaySuite : IContractSuite
                 shell.RenderTarget == new SizeF(Wp8Display.PhysicalWidth, Wp8Display.PhysicalHeight));
         }
 
-        XamlShell alex = XamlShells.ForComponent("AlexXamlComponent.dll")!;
+        XamlShell alex = HandWrittenShells.ForComponent("AlexXamlComponent.dll")!;
         h.Check("Amazing Alex's ScaleFactor is the model's scale",
             alex.Loaded.First(s => s.Method == "set_ScaleFactor").Arguments[0] is float f && (int)f == Wp8Display.Scale);
     }

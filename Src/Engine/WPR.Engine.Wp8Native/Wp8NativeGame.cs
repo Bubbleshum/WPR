@@ -195,13 +195,9 @@ namespace WPR.Wp8Native
                     // managed page that would have activated it (Src/Engine/WPR.Engine.Wp8Native/Runtime/XamlInterop.cs).
                     string directory = Path.GetDirectoryName(_executable)!;
                     WinmdReader metadata = WinmdReader.Load(Directory.GetFiles(directory, "*.winmd"));
-                    // A hand-written page description when there is one; otherwise one read from the
-                    // title's managed shell (XamlShellInference), so an unknown Direct3D/XAML title
-                    // attempts to run. WPR_WP8_XAML_INFER=1 (diagnostic) ignores the hand-written one,
-                    // which is how the inference is checked against the titles that have one.
-                    bool forceInference = Environment.GetEnvironmentVariable("WPR_WP8_XAML_INFER") == "1";
-                    XamlShell? shell = forceInference ? null : XamlShells.ForComponent(_executable);
-                    shell ??= XamlShellInference.Infer(_executable, metadata, line => Log(line));
+                    // The page description is read from the title's managed shell
+                    // (XamlShellInference), for every title: WPR has no per-title descriptions.
+                    XamlShell? shell = XamlShellInference.Infer(_executable, metadata, line => Log(line));
                     if (shell is { TouchFrame: null })
                     {
                         // A page that hands touch to the component from Touch.FrameReported (Asphalt 7)
