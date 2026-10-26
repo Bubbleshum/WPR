@@ -171,6 +171,19 @@ namespace WPR.Wp8Native
             }
 
             Wrap(methods, 47, original => () => { Copy(Arg(1), Arg(2)); original(); });
+
+            // ResolveSubresource(dst, dstSub, src, srcSub, format): a multisampled target resolved into
+            // a texture that is then drawn with (Asphalt 7's race). The host's targets are not
+            // multisampled, so it is a copy of the whole surface.
+            Wrap(methods, 57, original => () =>
+            {
+                if (Arg(2) == 0 && Arg(4) == 0)
+                {
+                    Copy(Arg(1), Arg(3));
+                }
+
+                original();
+            });
             Wrap(methods, 46, original => () =>
             {
                 // r0 this, r1 dst, r2 dstSub, r3 x; stack: y, z, src, srcSub, box. Only mip 0 of a

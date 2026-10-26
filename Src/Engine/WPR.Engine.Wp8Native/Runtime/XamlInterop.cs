@@ -134,6 +134,14 @@ namespace WPR.Wp8Native
         /// messages (MandreelMessages.cs); the host starts its own before <c>CreateContentProvider</c>.
         /// </summary>
         public bool MandreelMessages { get; init; }
+
+        /// <summary>
+        /// The page feeds touch to the component from <c>Touch.FrameReported</c> (<see cref="XamlTouchFrame"/>)
+        /// rather than through a manipulation handler. Used only when the class answers no
+        /// <c>IDrawingSurfaceManipulationHandler</c>: on the phone a page with both would hand each
+        /// touch to the component twice.
+        /// </summary>
+        public XamlTouchFrame? TouchFrame { get; init; }
     }
 
     public sealed partial class WinRtRuntime
@@ -915,7 +923,8 @@ namespace WPR.Wp8Native
             if (DeliverBack(PrepareAndDraw) ||
                 DeliverSensors(InputThenDraw) ||
                 DeliverKeys(InputThenDraw) ||
-                (_manipulationHost != 0 && DeliverInput(PrepareAndDraw, _manipulationHost)))
+                (_manipulationHost != 0 && DeliverInput(PrepareAndDraw, _manipulationHost)) ||
+                (_manipulationHost == 0 && _shell?.TouchFrame is not null && DeliverTouchFrame(PrepareAndDraw)))
             {
                 return;
             }

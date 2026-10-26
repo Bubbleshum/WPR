@@ -380,7 +380,12 @@ namespace WPR.Wp8Native
                 // Then the first boolean; a void call only when it is named for the key (Spark2's
                 // OnBackButtonPressed), since a handler also sets unrelated state on the way.
                 string? Returns(ShellCall c) => metadata.FindMethod(classId, c.Method)?.Method.ReturnType;
+                // A number from a method named for the key comes before any other boolean: Asphalt 7
+                // asks OnBackKeyPress(true) and closes when it answers more than 0, and only then
+                // asks IsOpenIGP (an overlay this host never opens) - which, taken as the decision,
+                // kept every press from the game. The host reads such an answer as "> 0".
                 IEnumerable<ShellCall> ranked = own.Where(c => c.NextCall == "set_Cancel" && Returns(c) == "Boolean")
+                    .Concat(own.Where(c => Returns(c) == "Int32" && c.Method.Contains("Back", StringComparison.OrdinalIgnoreCase)))
                     .Concat(own.Where(c => Returns(c) == "Boolean"))
                     .Concat(own.Where(c => Returns(c) == "Void" && c.Method.Contains("Back", StringComparison.OrdinalIgnoreCase)));
                 foreach (ShellCall call in ranked)
@@ -389,7 +394,8 @@ namespace WPR.Wp8Native
 
                     bool quitWhen = returns == "Void" || call.NextCall != "set_Cancel";
                     List<XamlShellStep> otherwise = Steps(own.SkipWhile(c => c != call).Skip(1).ToList(), Phase.Lifecycle);
-                    return new XamlBackKey(call.Method, otherwise, closing ?? [], quitWhen);
+                    object?[] arguments = metadata.FindMethod(classId, call.Method) is { } found ? Arguments(call, found.Method) : [];
+                    return new XamlBackKey(call.Method, otherwise, closing ?? [], quitWhen) { QuitIfArguments = arguments };
                 }
 
                 return null;

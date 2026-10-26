@@ -202,6 +202,12 @@ namespace WPR.Wp8Native
                     bool forceInference = Environment.GetEnvironmentVariable("WPR_WP8_XAML_INFER") == "1";
                     XamlShell? shell = forceInference ? null : XamlShells.ForComponent(_executable);
                     shell ??= XamlShellInference.Infer(_executable, metadata, line => Log(line));
+                    if (shell is { TouchFrame: null })
+                    {
+                        // A page that hands touch to the component from Touch.FrameReported (Asphalt 7)
+                        // rather than a manipulation handler: used only if the class answers none.
+                        shell = shell with { TouchFrame = XamlTouchFrames.Infer(directory, shell.ClassId, line => Log(line)) };
+                    }
                     if (shell is null)
                     {
                         fault = $"{Path.GetFileName(_executable)} is a Direct3D/XAML component, but no class in its metadata declares CreateContentProvider";
