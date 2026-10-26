@@ -1830,6 +1830,27 @@ namespace WPR.Wp8Native
                 Return(HResultOk);
             }),
 
+            // void ResolveSubresource(pDst, DstSubresource, pSrc, SrcSubresource, DXGI_FORMAT): a
+            // multisampled target into a plain texture of the same size. Nothing here is
+            // multisampled, so it is CopyResource of level 0. Asphalt 7 draws its race into a
+            // multisampled target (use_msaa), resolves it into a texture and draws that texture
+            // onto the screen: unhandled, the race was a black screen behind the HUD. The GPU
+            // replay copies between the targets too (Direct3DGpu).
+            [57] = ("ResolveSubresource", () =>
+            {
+                if (Arg(2) == 0 && Arg(4) == 0 &&
+                    ResourceAt(Arg(1)) is { Storage: not 0 } destination && ResourceAt(Arg(3)) is { Storage: not 0 } source && destination != source)
+                {
+                    CopyResourceMemory(destination, source);
+                }
+
+                Return(HResultOk);
+            }),
+
+            // void GenerateMips(ID3D11ShaderResourceView*): only level 0 is kept here, and the host
+            // samples it without mips, so there is nothing to make.
+            [54] = ("GenerateMips", () => Return(HResultOk)),
+
             // void CopySubresourceRegion(pDst, DstSubresource, DstX, DstY, DstZ, pSrc,
             // SrcSubresource, const D3D11_BOX* pSrcBox): level 0 to level 0, as everything here keeps.
             [46] = ("CopySubresourceRegion", () =>
