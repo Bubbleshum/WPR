@@ -210,6 +210,13 @@ namespace WPR.WindowsCompability
             }
         }
 
+        /// <summary>
+        /// WP8's <c>Application.Terminate()</c>: closes the app at the end of the current frame.
+        /// As on the phone, <c>Closing</c> is not raised. Microsoft Bingo calls it from Back on its
+        /// main menu.
+        /// </summary>
+        public void Terminate() => WPR.Xna.Rhi.GameUnhandledException.RequestTermination();
+
         /// <summary>Drops the cached singleton so a future Boot starts clean. Used at app shutdown.</summary>
         public static void ResetCurrent()
         {

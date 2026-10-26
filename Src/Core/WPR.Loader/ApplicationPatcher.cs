@@ -426,6 +426,7 @@ namespace WPR
         private AssemblyNameReference ServiceModelPrimitivesRef;
         private AssemblyNameReference ServiceModelHTTPRef;
         private AssemblyNameReference JsonSerializationRef;
+        private AssemblyNameReference ObjectModelRef;
 
         private class TypePatchInfo
         {
@@ -881,6 +882,7 @@ namespace WPR
             ServiceModelPrimitivesRef = AssemblyNameReference.Parse("System.ServiceModel.Primitives");
             ServiceModelHTTPRef = AssemblyNameReference.Parse("System.ServiceModel.Http");
             JsonSerializationRef = AssemblyNameReference.Parse("System.Runtime.Serialization.Json");
+            ObjectModelRef = AssemblyNameReference.Parse("System.ObjectModel");
 
             // (There is no longer a dedicated GamerServices assembly ref. Version 19 dissolved
             //  Microsoft.Xna.Framework.GamerServices into WPR.Framework.Xna, so the whole surface
@@ -894,6 +896,26 @@ namespace WPR
                 { "System.Diagnostics.Stopwatch", new TypePatchInfo()
                 {
                     Reference = SystemRunTimeRef
+                }
+                },
+                // WP8's mscorlib carries the property-changing family; .NET's mscorlib facade does
+                // not forward it (it was System.dll on the desktop), and neither does System.Runtime:
+                // it lives in System.ObjectModel. MvvmLight
+                // WP8's ObservableObject implements INotifyPropertyChanging, so every view model in
+                // Microsoft Bingo failed to load ("Could not load type ... from assembly mscorlib").
+                { "System.ComponentModel.INotifyPropertyChanging", new TypePatchInfo()
+                {
+                    Reference = ObjectModelRef
+                }
+                },
+                { "System.ComponentModel.PropertyChangingEventHandler", new TypePatchInfo()
+                {
+                    Reference = ObjectModelRef
+                }
+                },
+                { "System.ComponentModel.PropertyChangingEventArgs", new TypePatchInfo()
+                {
+                    Reference = ObjectModelRef
                 }
                 },
                 { "Microsoft.Xna.Framework.GraphicsDeviceManager", new TypePatchInfo()
@@ -2317,6 +2339,10 @@ namespace WPR
 
                 {
                     "System.Type System.Type::GetType(System.String,System.Boolean)",
+                    typeof(WPR.WindowsCompability.Type2)
+                },
+                {
+                    "System.Type System.Type::GetType(System.String)",
                     typeof(WPR.WindowsCompability.Type2)
                 },
                 {
@@ -4612,6 +4638,7 @@ namespace WPR
             module.AssemblyReferences.Add(ServiceModelPrimitivesRef);
             module.AssemblyReferences.Add(ServiceModelHTTPRef);
             module.AssemblyReferences.Add(JsonSerializationRef);
+            module.AssemblyReferences.Add(ObjectModelRef);
 
             // create Ref. Patch Cache
             Dictionary<string, TypeReference> typeRefPatchCache

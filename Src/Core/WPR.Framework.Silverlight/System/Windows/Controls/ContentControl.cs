@@ -43,6 +43,7 @@ namespace WPR.SilverlightCompability
                 cc._presenter = cc.BuildPresenter(e.NewValue);
                 cc._presenter?.SetParent(cc);
                 cc.InvalidateMeasure();
+                cc.OnContentChanged(e.OldValue, e.NewValue);
             }
             else if (d is Frame frame)
             {
@@ -54,6 +55,15 @@ namespace WPR.SilverlightCompability
                 // read it: the loading page stayed on screen for ever.
                 frame.ReplaceContentDirectly(e.NewValue);
             }
+        }
+
+        /// <summary>
+        /// Silverlight's override point for a content change, called after the new content is in
+        /// place. Template selectors derive from ContentControl and pick a template here
+        /// (Microsoft Bingo's DataTemplateSelector); without it their types did not load.
+        /// </summary>
+        protected virtual void OnContentChanged(object? oldContent, object? newContent)
+        {
         }
 
         public static readonly DependencyProperty ContentTemplateProperty =

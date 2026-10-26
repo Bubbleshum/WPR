@@ -141,6 +141,52 @@ namespace WPR.SilverlightCompability
         public event MouseButtonEventHandler? MouseLeftButtonDown;
         public event MouseButtonEventHandler? MouseLeftButtonUp;
 
+#pragma warning disable CS0067
+        /// <summary>
+        /// Declared so the accessors a control names resolve. There is no capture model (see
+        /// <see cref="CaptureMouse"/>), so nothing is ever captured and nothing is lost.
+        /// </summary>
+        public event MouseEventHandler? LostMouseCapture;
+#pragma warning restore CS0067
+
+        public static readonly RoutedEvent KeyDownEvent = new(nameof(KeyDown), typeof(UIElement));
+        public static readonly RoutedEvent KeyUpEvent = new(nameof(KeyUp), typeof(UIElement));
+        public static readonly RoutedEvent MouseLeftButtonDownEvent = new(nameof(MouseLeftButtonDown), typeof(UIElement));
+        public static readonly RoutedEvent MouseLeftButtonUpEvent = new(nameof(MouseLeftButtonUp), typeof(UIElement));
+        public static readonly RoutedEvent ManipulationStartedEvent = new(nameof(ManipulationStarted), typeof(UIElement));
+        public static readonly RoutedEvent ManipulationDeltaEvent = new(nameof(ManipulationDelta), typeof(UIElement));
+        public static readonly RoutedEvent ManipulationCompletedEvent = new(nameof(ManipulationCompleted), typeof(UIElement));
+        public static readonly RoutedEvent TapEvent = new(nameof(Tap), typeof(UIElement));
+        public static readonly RoutedEvent DoubleTapEvent = new(nameof(DoubleTap), typeof(UIElement));
+        public static readonly RoutedEvent HoldEvent = new(nameof(Hold), typeof(UIElement));
+
+        /// <summary>
+        /// Subscribes <paramref name="handler"/> to the CLR event <paramref name="routedEvent"/>
+        /// names. <paramref name="handledEventsToo"/> is accepted and not honoured: the router stops
+        /// at the first element that marks a press handled, so an ancestor's handler added this way
+        /// misses presses a descendant handled.
+        /// </summary>
+        public void AddHandler(RoutedEvent routedEvent, Delegate handler, bool handledEventsToo)
+        {
+            System.Reflection.EventInfo? e = FindEvent(routedEvent);
+            if (e != null && handler != null) e.AddEventHandler(this, handler);
+        }
+
+        public void AddHandler(RoutedEvent routedEvent, Delegate handler) => AddHandler(routedEvent, handler, false);
+
+        public void RemoveHandler(RoutedEvent routedEvent, Delegate handler)
+        {
+            System.Reflection.EventInfo? e = FindEvent(routedEvent);
+            if (e != null && handler != null) e.RemoveEventHandler(this, handler);
+        }
+
+        private System.Reflection.EventInfo? FindEvent(RoutedEvent? routedEvent)
+        {
+            if (routedEvent == null) return null;
+            return GetType().GetEvent(routedEvent.Name,
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        }
+
         /// <summary>Delivers a press to this element. Returns true if a handler marked it handled.</summary>
         /// <remarks>
         /// The mouse pair is what a WP7 page hooks when it wants raw presses rather than a

@@ -48,6 +48,16 @@ namespace WPR
             // and the Moga controller library it registers first is native ARM too. The metadata
             // test outranks the import: Age of Sparta registers Gameloft's WindowsCorePackage
             // toolkit, which imports d3d11 too, ahead of its game (GODZ_WP8Comp.dll).
+            // A managed XAML game that draws effects through a native component: the surface
+            // the component renders into sits only inside user controls of the managed app, never
+            // on a page. Microsoft Bingo (FrimaStudio's Icewave particle renderer in a UserControl;
+            // the cards, balls and menus are all XAML) is the case. Installed as native it ran the
+            // effects layer alone - an empty screen at 60 fps with no menus.
+            if (SurfaceOnlyInUserControls(archive))
+            {
+                return null;
+            }
+
             string? first = null, importsD3D = null;
             foreach (XmlNode server in servers)
             {
@@ -107,6 +117,140 @@ namespace WPR
                 || name.StartsWith("SharpDX", StringComparison.OrdinalIgnoreCase)
                 || name.StartsWith("Lumia.", StringComparison.OrdinalIgnoreCase)
                 || name.StartsWith("Nokia.Graphics", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// True when the entry assembly's XAML declares a <c>DrawingSurface</c> or
+        /// <c>DrawingSurfaceBackgroundGrid</c>, and every document that does is something other
+        /// than a page (its root element's name does not end in <c>Page</c>).
+        /// </summary>
+        /// <remarks>
+        /// Measured over the library (2026-10-26): every Direct3D/XAML title that declares its
+        /// surface in XAML does so in a page (MainPage.xaml, in all of them); FIFA, Tetris Blitz and
+        /// The Amazing Spider-Man create theirs in code or on a later page and are unaffected. Only
+        /// Microsoft Bingo declares one in a user control alone. No XAML surface at all answers
+        /// false, so a title that builds its surface in code keeps the native host.
+        /// </remarks>
+        internal static bool SurfaceOnlyInUserControls(ZipArchive archive)
+        {
+            try
+            {
+                ZipArchiveEntry? manifest = archive.Entries.FirstOrDefault(e => e.FullName.Equals("AppManifest.xaml", StringComparison.OrdinalIgnoreCase));
+                if (manifest == null)
+                {
+                    return false;
+                }
+
+                string? entryName;
+                using (Stream s = manifest.Open())
+                {
+                    XmlDocument doc = new();
+                    doc.Load(s);
+                    entryName = doc.DocumentElement?.GetAttribute("EntryPointAssembly");
+                }
+
+                if (string.IsNullOrEmpty(entryName))
+                {
+                    return false;
+                }
+
+                ZipArchiveEntry? dll = archive.Entries.FirstOrDefault(e => e.FullName.Equals(entryName + ".dll", StringComparison.OrdinalIgnoreCase));
+                if (dll == null)
+                {
+                    return false;
+                }
+
+                bool anySurface = false;
+                foreach (string xaml in XamlDocuments(dll, entryName))
+                {
+                    if (!xaml.Contains("DrawingSurface", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    anySurface = true;
+                    if (RootIsPage(xaml))
+                    {
+                        return false;
+                    }
+                }
+
+                return anySurface;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        private static IEnumerable<string> XamlDocuments(ZipArchiveEntry dll, string assemblyName)
+        {
+            using MemoryStream image = new();
+            using (Stream s = dll.Open())
+            {
+                s.CopyTo(image);
+            }
+
+            image.Position = 0;
+            using var pe = new System.Reflection.PortableExecutable.PEReader(image);
+            if (!pe.HasMetadata)
+            {
+                yield break;
+            }
+
+            var md = System.Reflection.Metadata.PEReaderExtensions.GetMetadataReader(pe);
+            var corHeader = pe.PEHeaders.CorHeader;
+            if (corHeader == null)
+            {
+                yield break;
+            }
+
+            foreach (var handle in md.ManifestResources)
+            {
+                var res = md.GetManifestResource(handle);
+                if (!res.Implementation.IsNil || !md.GetString(res.Name).Equals(assemblyName + ".g.resources", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var block = pe.GetSectionData(corHeader.ResourcesDirectory.RelativeVirtualAddress + (int)res.Offset);
+                var reader = block.GetReader();
+                int length = reader.ReadInt32();
+                byte[] bytes = reader.ReadBytes(length);
+                List<string> documents = new();
+                using (var resources = new System.Resources.ResourceReader(new MemoryStream(bytes)))
+                {
+                    var e = resources.GetEnumerator();
+                    while (e.MoveNext())
+                    {
+                        if (e.Key is string key && key.EndsWith(".xaml", StringComparison.OrdinalIgnoreCase) && e.Value is Stream xaml)
+                        {
+                            using StreamReader text = new(xaml);
+                            documents.Add(text.ReadToEnd());
+                        }
+                    }
+                }
+
+                foreach (string d in documents)
+                {
+                    yield return d;
+                }
+            }
+        }
+
+        private static bool RootIsPage(string xaml)
+        {
+            try
+            {
+                XmlDocument doc = new();
+                doc.LoadXml(xaml);
+                return doc.DocumentElement?.LocalName.EndsWith("Page", StringComparison.Ordinal) == true;
+            }
+            catch (Exception)
+            {
+                // Unreadable: count it as a page, which keeps the native host (the old answer).
+                return true;
+            }
         }
 
         private static bool DeclaresDirect3DXamlTemplate(XmlNode appNode)

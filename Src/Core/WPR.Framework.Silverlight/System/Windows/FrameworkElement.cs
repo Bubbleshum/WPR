@@ -377,8 +377,8 @@ namespace WPR.SilverlightCompability
         }
 
         public static readonly DependencyProperty FontFamilyProperty =
-            DependencyProperty.Register(nameof(FontFamily), typeof(string), typeof(FrameworkElement),
-                new PropertyMetadata("Segoe UI"));
+            DependencyProperty.Register(nameof(FontFamily), typeof(FontFamily), typeof(FrameworkElement),
+                new PropertyMetadata(new FontFamily("Segoe UI")));
 
         public static readonly DependencyProperty FontSizeProperty =
             DependencyProperty.Register(nameof(FontSize), typeof(double), typeof(FrameworkElement),
@@ -400,9 +400,9 @@ namespace WPR.SilverlightCompability
             DependencyProperty.Register(nameof(FlowDirection), typeof(FlowDirection), typeof(FrameworkElement),
                 new PropertyMetadata(FlowDirection.LeftToRight));
 
-        public string FontFamily
+        public FontFamily FontFamily
         {
-            get => (string)GetValue(FontFamilyProperty)!;
+            get => (FontFamily)GetValue(FontFamilyProperty)!;
             set => SetValue(FontFamilyProperty, value);
         }
 

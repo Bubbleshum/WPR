@@ -54,6 +54,27 @@ namespace WPR.SilverlightCompability
             set => SetValue(TemplateProperty, value);
         }
 
+        /// <summary>Keyboard focus order: stored, no keyboard navigation reads it.</summary>
+        public static readonly DependencyProperty IsTabStopProperty =
+            DependencyProperty.Register(nameof(IsTabStop), typeof(bool), typeof(Control),
+                new PropertyMetadata((object)true));
+
+        public bool IsTabStop
+        {
+            get => (bool)GetValue(IsTabStopProperty)!;
+            set => SetValue(IsTabStopProperty, value);
+        }
+
+        public static readonly DependencyProperty TabIndexProperty =
+            DependencyProperty.Register(nameof(TabIndex), typeof(int), typeof(Control),
+                new PropertyMetadata((object)int.MaxValue));
+
+        public int TabIndex
+        {
+            get => (int)GetValue(TabIndexProperty)!;
+            set => SetValue(TabIndexProperty, value);
+        }
+
         // Background is inherited from FrameworkElement — no shadow here.
 
         public Brush? BorderBrush
