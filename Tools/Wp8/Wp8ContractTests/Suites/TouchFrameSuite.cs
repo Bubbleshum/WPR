@@ -76,6 +76,25 @@ public sealed class TouchFrameSuite : IContractSuite
         XamlTouchFrame? a7 = XamlTouchFrames.Infer(asphalt, "PhoneDirect3DXamlAppComponent.Direct3DBackground");
         h.Check("Asphalt 7: AddPoint / UpdatePoint / RemovePoint, root coordinates",
             a7 is { Down: "AddPoint", Move: "UpdatePoint", Up: "RemovePoint", RelativeToRoot: true }, $"{a7}");
+
+        // Its back key: OnBackKeyPress(true) answers an int the page tests with "> 0" (close).
+        FieldInfo metadataField = typeof(WinRtRuntime).GetField("_metadata", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        object? savedMetadata = metadataField.GetValue(rt), savedShell = shellField.GetValue(rt);
+        try
+        {
+            metadataField.SetValue(rt, WinmdReader.Load(Directory.GetFiles(asphalt, "*.winmd")));
+            shellField.SetValue(rt, new XamlShell("Asphalt7HybridComponent.dll", "PhoneDirect3DXamlAppComponent.Direct3DBackground", [], []));
+            MethodInfo means = typeof(WinRtRuntime).GetMethod("BackAnswerMeansTrue", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            bool Means(string method, long answer) => (bool)means.Invoke(rt, [method, answer])!;
+            h.Check("an Int32 back answer means 'close' when greater than 0",
+                Means("OnBackKeyPress", 1) && Means("OnBackKeyPress", 0x100) && !Means("OnBackKeyPress", 0) && !Means("OnBackKeyPress", 0xFFFFFFFF));
+            h.Check("   a Boolean answer by its low byte", Means("IsOpenIGP", 1) && !Means("IsOpenIGP", 0x100));
+        }
+        finally
+        {
+            metadataField.SetValue(rt, savedMetadata);
+            shellField.SetValue(rt, savedShell);
+        }
     }
 
     /// <summary>

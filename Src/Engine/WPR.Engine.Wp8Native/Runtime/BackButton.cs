@@ -19,7 +19,14 @@ namespace WPR.Wp8Native
         string QuitIf,
         IReadOnlyList<XamlShellStep> Otherwise,
         IReadOnlyList<XamlShellStep> BeforeQuit,
-        bool QuitWhen = true);
+        bool QuitWhen = true)
+    {
+        /// <summary>
+        /// What <see cref="QuitIf"/> is called with, when the page passes it something: Asphalt 7's
+        /// page calls <c>OnBackKeyPress(true)</c>, the engine's own Back handling.
+        /// </summary>
+        public object?[] QuitIfArguments { get; init; } = [];
+    }
 
     /// <summary>
     /// The hardware Back button: <c>Windows.Phone.UI.Input.HardwareButtons.BackPressed</c> for an
@@ -106,6 +113,16 @@ namespace WPR.Wp8Native
         }
 
         /// <summary>
+        /// Reads the back-key method's answer as the page tests it: a Boolean by its low byte (the
+        /// rest of r0 is whatever the callee left there), a number as "greater than zero" - Asphalt 7's
+        /// page closes when <c>OnBackKeyPress(true)</c> answers more than 0.
+        /// </summary>
+        private bool BackAnswerMeansTrue(string method, long answer) =>
+            _metadata?.FindMethod(_shell!.ClassId, method)?.Method.ReturnType is "Int32" or "Int64"
+                ? (int)answer > 0
+                : (answer & 0xFF) != 0;
+
+        /// <summary>
         /// Delivers a pending Back press, or returns false if there is none. Like
         /// <see cref="DeliverInput(Action, long)"/>, true means it has taken over the return path
         /// and will run <paramref name="continueWith"/> itself.
@@ -127,9 +144,9 @@ namespace WPR.Wp8Native
 
             if (_shell?.BackKey is { } page)
             {
-                InvokeMember(page.QuitIf, [], quit =>
+                InvokeMember(page.QuitIf, page.QuitIfArguments, quit =>
                 {
-                    if (((quit & 0xFF) != 0) == page.QuitWhen)
+                    if (BackAnswerMeansTrue(page.QuitIf, quit) == page.QuitWhen)
                     {
                         RunSteps(page.BeforeQuit, 0, () =>
                         {
