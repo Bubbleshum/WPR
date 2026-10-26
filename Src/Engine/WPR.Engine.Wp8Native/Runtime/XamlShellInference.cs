@@ -706,12 +706,21 @@ namespace WPR.Wp8Native
                     return;
                 }
 
-                byte[] il = _pe.GetMethodBody(method.RelativeVirtualAddress).GetILBytes() ?? [];
+                MethodBodyBlock body = _pe.GetMethodBody(method.RelativeVirtualAddress);
+                byte[] il = body.GetILBytes() ?? [];
+                bool handlers = body.ExceptionRegions.Length > 0;
                 List<(ILOpCode Op, int Token, object? Constant)> code = Decode(il);
                 for (int i = 0; i < code.Count; i++)
                 {
                     (ILOpCode op, int token, _) = code[i];
                     if (op is not (ILOpCode.Call or ILOpCode.Callvirt or ILOpCode.Newobj or ILOpCode.Ldftn or ILOpCode.Ldvirtftn))
+                    {
+                        continue;
+                    }
+
+                    // A call on a branch this device never takes (the flipped-orientation arm of an
+                    // OrientationChanged handler) is not something the page does here.
+                    if (followCalls && IsUnreachable(il, i, handlers))
                     {
                         continue;
                     }
