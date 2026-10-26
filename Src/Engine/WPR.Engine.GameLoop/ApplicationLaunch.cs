@@ -52,26 +52,6 @@ namespace WPR
         [System.Diagnostics.Conditional("DEBUG")]
         private static void WprTrace(string msg) => Trace.WriteLine(msg);
 
-        /// <summary>
-        /// Whether the install's WMAppManifest.xml declares AppPlatformVersion 8.0 or later. An
-        /// unreadable manifest answers false: WP7 behaviour, which every title had before.
-        /// </summary>
-        private static bool TargetsWindowsPhone8(string installFolder)
-        {
-            try
-            {
-                string path = Path.Combine(installFolder, "WMAppManifest.xml");
-                if (!File.Exists(path)) return false;
-                var doc = System.Xml.Linq.XDocument.Load(path);
-                string? version = doc.Root?.Attribute("AppPlatformVersion")?.Value;
-                return Version.TryParse(version, out Version? v) && v.Major >= 8;
-            }
-            catch (Exception)
-            {
-                return false;
-            }
-        }
-
         /// <summary>Trace for the per-launch verbose log: kept in Release, because a logging run needs it there.</summary>
         private static void VerboseTrace(string msg) => Trace.WriteLine(msg);
 
@@ -692,6 +672,15 @@ namespace WPR
             // consistent with the Silverlight path. (The XNA loop also SetCurrentDirectory's
             // to this folder below; this keeps the resolution correct regardless of CWD.)
             WPR.Common.WprHostEnvironment.CurrentInstallFolder = folderPath;
+            // The Windows Phone OS version the title was built for. WP8 ran a 7.x title with the 7.x
+            // behaviour of every API that changed in 8.0 ("quirks mode"), and the shims that model
+            // such a change read this. Cleared in ResetWprSingletons.
+            {
+                var target = WPR.Common.WindowsPhoneTarget.ReadFromInstall(folderPath, isNative, out bool declared);
+                WPR.Common.WprHostEnvironment.CurrentTarget = target;
+                Log.Info(LogCategory.AppList, $"[wpr-launch] {app.Name} ({app.ProductId}): target={target}"
+                    + (declared ? "" : " (not in the manifest; " + (isNative ? "native" : "managed") + " default)"));
+            }
             // Deployment.Current is the package's AppManifest.xaml on the phone, XNA titles too.
             WPR.SilverlightCompability.Deployment.LoadForLaunch(folderPath);
             string curDir = Directory.GetCurrentDirectory();
@@ -981,9 +970,9 @@ namespace WPR
                     WPR.WinRT.WinRtHost.ResolutionScalePercent = WPR.Wp8Native.Wp8Display.Scale;
 
                     // Host.Content.ScaleFactor: the same device model for a WP8 title, WVGA (100)
-                    // for a WP7 one, which never saw anything else. Reset in ResetWprSingletons.
-                    WPR.WindowsCompability.SilverlightHostContent.PlatformScaleFactor =
-                        TargetsWindowsPhone8(folderPath) ? WPR.Wp8Native.Wp8Display.Scale : 100;
+                    // for a WP7 one, which never saw anything else. The by-target choice itself is
+                    // SilverlightHostContent.PlatformScaleFactor's (WprHostEnvironment.Target).
+                    WPR.WindowsCompability.SilverlightHostContent.Wp8ScaleFactor = WPR.Wp8Native.Wp8Display.Scale;
 
                     // A managed Direct3D content provider (the SharpDX Toolkit's game window) is
                     // driven as the phone's compositor drove it: its own SharpDX calls go through
@@ -1872,7 +1861,8 @@ namespace WPR
             try { WPR.Engine.Vibration.VibrationBackend.Device?.Stop(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"Vibration provider stop threw: {ex.Message}"); }
 
-            WPR.WindowsCompability.SilverlightHostContent.PlatformScaleFactor = 100;
+            // The title's target OS version (set beside CurrentInstallFolder in StartCore).
+            WPR.Common.WprHostEnvironment.CurrentTarget = null;
             WPR.SilverlightCompability.Threading.Dispatcher.Detach();
             try { WPR.SilverlightCompability.CompositionTarget.ResetForNewLaunch(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"CompositionTarget reset threw: {ex.Message}"); }

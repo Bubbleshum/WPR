@@ -1,6 +1,3 @@
-using System;
-using System.IO;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace WPR.Engine.Online
@@ -10,6 +7,8 @@ namespace WPR.Engine.Online
     /// without an admin typing them: the name, publisher, developer, platform and the icon.
     /// </summary>
     /// <param name="TitleId">The product id, braced or not.</param>
+    /// <param name="Platform">WPR Hub's platform name ("Windows Phone 7", "Windows Phone 8"…), from
+    /// <c>WPR.Common.WindowsPhoneTarget.HubPlatformName</c>.</param>
     /// <param name="IconFile">An absolute path to the installed icon, read when the offer is sent.</param>
     public sealed record TitleDetails(
         string TitleId,
@@ -17,38 +16,7 @@ namespace WPR.Engine.Online
         string? Publisher,
         string? Developer,
         string? Platform,
-        string? IconFile)
-    {
-        private static readonly Regex PlatformVersion = new(@"AppPlatformVersion\s*=\s*""(\d+)\.(\d+)", RegexOptions.CultureInvariant);
-
-        /// <summary>
-        /// The hub's platform name for an install folder, from its <c>WMAppManifest.xml</c>'s
-        /// <c>AppPlatformVersion</c> ("7.1" is Windows Phone 7, "8.0" Windows Phone 8). Null when
-        /// the manifest is missing or says nothing usable. Never throws.
-        /// </summary>
-        public static string? ReadPlatform(string? installFolder)
-        {
-            if (string.IsNullOrEmpty(installFolder)) return null;
-            try
-            {
-                string manifest = Path.Combine(installFolder, "WMAppManifest.xml");
-                if (!File.Exists(manifest)) return null;
-                Match m = PlatformVersion.Match(File.ReadAllText(manifest));
-                if (!m.Success) return null;
-                return (m.Groups[1].Value, m.Groups[2].Value) switch
-                {
-                    ("7", _) => "Windows Phone 7",
-                    ("8", "0") => "Windows Phone 8",
-                    ("8", "1") => "Windows Phone 8.1",
-                    _ => null,
-                };
-            }
-            catch (Exception)
-            {
-                return null;
-            }
-        }
-    }
+        string? IconFile);
 
     /// <summary>
     /// Offers installed games' details to the hub, which keeps only what it does not have yet.
