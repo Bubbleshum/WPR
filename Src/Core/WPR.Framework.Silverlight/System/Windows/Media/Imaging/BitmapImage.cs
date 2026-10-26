@@ -65,6 +65,10 @@ namespace WPR.WindowsCompability
         /// </summary>
         public BitmapImage(Uri uri) : base(UriToPath(uri))
         {
+            // UriSource reads back what the constructor was given, as in Silverlight. It stayed
+            // null, and Microsoft Bingo's ImageButton (UriSource.ToString() on every source it is
+            // handed) threw from inside its popup buttons' constructors: no popup ever showed.
+            _uriSource = uri;
         }
 
         private static string UriToPath(Uri? uri)
