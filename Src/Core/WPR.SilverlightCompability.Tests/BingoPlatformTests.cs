@@ -160,6 +160,25 @@ public class BingoPlatformTests
     }
 
     [Fact]
+    public void Song_FromUri_with_a_leading_slash_is_package_relative()
+    {
+        // Galactic Reign: Song.FromUri(name, new Uri("/Music/Title_ScreenLP_V2.wma", UriKind.Relative)).
+        string title = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "wpr-song-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(System.IO.Path.Combine(title, "Music"));
+        File.WriteAllBytes(System.IO.Path.Combine(title, "Music", "Title.wma"), new byte[] { 1 });
+        try
+        {
+            WPR.Xna.Rhi.XnaBackend.SetTitleLocation(() => title);
+            Assert.NotNull(Microsoft.Xna.Framework.Media.Song.FromUri("Title", new Uri("/Music/Title.wma", UriKind.Relative)));
+        }
+        finally
+        {
+            WPR.Xna.Rhi.XnaBackend.SetTitleLocation(null!);
+            Directory.Delete(title, true);
+        }
+    }
+
+    [Fact]
     public void Manipulation_values_are_classes_with_properties()
     {
         var args = new ManipulationDeltaEventArgs();

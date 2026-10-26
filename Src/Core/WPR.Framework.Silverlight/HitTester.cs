@@ -105,6 +105,11 @@ namespace WPR.SilverlightCompability
                 case Image image:
                     return image.Source != null;
 
+                // A movie is a picture too: Galactic Reign's tutorial video page shows its Back
+                // button from a Tap on the MediaElement.
+                case MediaElement media:
+                    return media.Source != null;
+
                 case Shape shape:
                     return shape.Fill != null || shape.Stroke != null;
 
