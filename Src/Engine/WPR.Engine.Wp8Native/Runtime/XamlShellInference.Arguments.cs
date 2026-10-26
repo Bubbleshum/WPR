@@ -35,11 +35,45 @@ namespace WPR.Wp8Native
             /// </remarks>
             public object?[] EvaluateArguments(byte[] il, int callIndex, int parameters)
             {
-                object?[] none = new object?[parameters];
                 if (parameters == 0)
                 {
-                    return none;
+                    return [];
                 }
+
+                return Execute(il, callIndex, parameters, out _) ?? new object?[parameters];
+            }
+
+            /// <summary>
+            /// True when the call at <paramref name="callIndex"/> sits on a branch the page cannot take
+            /// on this device: running the method from its start, every conditional branch on the way
+            /// was decided by a known value and the path left the method without reaching the call.
+            /// </summary>
+            /// <remarks>
+            /// N.O.V.A. 3's OrientationChanged handler is <c>if ((e.Orientation &amp; 0x12) == 0x12)
+            /// OnNormalOrientation(); else if ((e.Orientation &amp; 0x22) == 0x22) OnFlippedOrientation();</c>.
+            /// Both calls were collected, the flipped one ran last, and the game drew upside down.
+            /// A method with exception handlers never answers true: a handler is not reached by
+            /// straight-line flow, which this machine follows.
+            /// </remarks>
+            public bool IsUnreachable(byte[] il, int callIndex, bool hasExceptionRegions)
+            {
+                if (hasExceptionRegions)
+                {
+                    return false;
+                }
+
+                return Execute(il, callIndex, 0, out bool determined) is null && determined;
+            }
+
+            /// <summary>
+            /// Runs the method up to <paramref name="callIndex"/>: the top <paramref name="parameters"/>
+            /// stack values there, or null when the path does not reach it. <paramref name="determined"/>
+            /// is false once a branch was decided by an unknown value (or the run could not be followed).
+            /// </summary>
+            private object?[]? Execute(byte[] il, int callIndex, int parameters, out bool determined)
+            {
+                determined = true;
+                object?[]? none = null;
 
                 List<(int Offset, ILOpCode Op, long Operand, int Next)> code = [];
                 Dictionary<int, int> byOffset = [];
@@ -75,6 +109,7 @@ namespace WPR.Wp8Native
 
                 if (callIndex >= code.Count)
                 {
+                    determined = false;
                     return none;
                 }
 
@@ -326,6 +361,11 @@ namespace WPR.Wp8Native
                                 object? v = Pop();
                                 bool? truth = Num(v) is { } d ? d != 0 : v is null ? false : null;
                                 bool wantsTrue = op is ILOpCode.Brtrue or ILOpCode.Brtrue_s;
+                                if (truth is null)
+                                {
+                                    determined = false;
+                                }
+
                                 if (truth == wantsTrue)
                                 {
                                     jump = next + (int)operand;
@@ -355,18 +395,24 @@ namespace WPR.Wp8Native
                                         jump = next + (int)operand;
                                     }
                                 }
+                                else
+                                {
+                                    determined = false;
+                                }
 
                                 break;
                             }
 
                         case ILOpCode.Switch:
                             Pop(); // an unknown case: falls through past the table
+                            determined = false;
                             break;
                         case ILOpCode.Call:
                         case ILOpCode.Callvirt:
                         case ILOpCode.Newobj:
                             if (!Call(op, (int)operand, stack))
                             {
+                                determined = false;
                                 return none;
                             }
 
@@ -380,6 +426,7 @@ namespace WPR.Wp8Native
                     {
                         if (!byOffset.TryGetValue(target, out int index))
                         {
+                            determined = false;
                             return none;
                         }
 
@@ -391,6 +438,7 @@ namespace WPR.Wp8Native
                     }
                 }
 
+                determined = false; // ran out of steps
                 return none;
             }
 
@@ -460,6 +508,11 @@ namespace WPR.Wp8Native
                         break;
                     case ("Microsoft.Phone.Shell.SystemTray", "get_IsVisible"):
                         result = SystemTrayVisible ? 1L : 0L;
+                        break;
+                    // The page's orientation as its SupportedOrientations lays it out (PageOrientation:
+                    // LandscapeLeft 18, PortraitUp 5): what OrientationChanged reports and the page reads.
+                    case ("Microsoft.Phone.Controls.OrientationChangedEventArgs" or "Microsoft.Phone.Controls.PhoneApplicationPage", "get_Orientation"):
+                        result = Landscape ? 18L : 5L;
                         break;
                     case ("System.Math", "Floor") when Arg(0) is { } f:
                         result = Math.Floor(f);

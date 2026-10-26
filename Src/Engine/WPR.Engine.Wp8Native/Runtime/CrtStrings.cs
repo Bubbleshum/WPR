@@ -403,7 +403,83 @@ namespace WPR.Wp8Native
             }
 
             long limit = Math.Min(count, CallFrame.SaneLengthLimit);
-            ReturnInt(CompareText(ReadText(left, wide, limit), ReadText(right, wide, limit), limit, fold));
+            ReturnInt(CompareInPlace(left, right, wide, limit, fold));
+        }
+
+        /// <summary>
+        /// <see cref="CompareText"/> over guest memory, read a page-bounded block at a time into the
+        /// stack and only as far as the first difference. N.O.V.A. 3 calls the compare family
+        /// thousands of times a frame in play, and reading both strings into new strings first was
+        /// a few MB/s of garbage on its own (the runtime must not allocate per guest call).
+        /// </summary>
+        private int CompareInPlace(long left, long right, bool wide, long count, bool fold)
+        {
+            int unit = Unit(wide);
+            Span<byte> bufferA = stackalloc byte[256], bufferB = stackalloc byte[256];
+            TextCursor a = new(left), b = new(right);
+            for (long i = 0; i < count; i++)
+            {
+                int ca = NextChar(ref a, bufferA, unit, wide);
+                int cb = NextChar(ref b, bufferB, unit, wide);
+                if (fold)
+                {
+                    ca = Fold((char)ca);
+                    cb = Fold((char)cb);
+                }
+
+                if (ca != cb || ca == 0)
+                {
+                    return ca - cb;
+                }
+            }
+
+            return 0;
+        }
+
+        /// <summary>Where <see cref="CompareInPlace"/> is in one string: the next address, the block read and the position in it.</summary>
+        private struct TextCursor(long address)
+        {
+            public long At = address;
+            public int Length, Position;
+            public bool Done = address == 0;
+        }
+
+        /// <summary>The next character of a string (0 at its end, or where its memory ends), reading a block when needed.</summary>
+        private int NextChar(ref TextCursor cursor, Span<byte> buffer, int unit, bool wide)
+        {
+            if (cursor.Done)
+            {
+                return 0;
+            }
+
+            if (cursor.Position == cursor.Length)
+            {
+                long room = 0x1000 - (cursor.At & 0xFFF);
+                int units = (int)Math.Min(room / unit, buffer.Length / unit);
+                if (units <= 0)
+                {
+                    units = 1;   // an odd address one byte short of a page: read across it
+                }
+
+                try
+                {
+                    _emulator.ReadMemory(cursor.At, buffer[..(units * unit)]);
+                }
+                catch (CpuMemoryException)
+                {
+                    cursor.Done = true;
+                    return 0;
+                }
+
+                cursor.At += units * unit;
+                cursor.Length = units;
+                cursor.Position = 0;
+            }
+
+            int c = wide ? buffer[cursor.Position * 2] | (buffer[(cursor.Position * 2) + 1] << 8) : buffer[cursor.Position];
+            cursor.Position++;
+            cursor.Done = c == 0;
+            return c;
         }
 
         /// <summary>errno_t strcpy_s(dst, size, src) and wcscpy_s.</summary>
