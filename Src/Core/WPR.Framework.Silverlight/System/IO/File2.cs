@@ -13,7 +13,7 @@ namespace WPR.WindowsCompability
     /// only because the patcher has to name something a game's rewritten IL can bind, and that
     /// has to sit beside the other patch targets.</para>
     ///
-    /// <para><b>Reads use Resolve, writes use Normalize</b> - see the note on
+    /// <para><b>Reads use Resolve, writes use ForWrite</b> (which refuses the read-only install folder) - see the note on
     /// <see cref="ContentPaths"/>. Resolve may redirect to a file that already exists in the
     /// install folder, which is right for a read and wrong for a create.</para>
     /// </summary>
@@ -50,41 +50,41 @@ namespace WPR.WindowsCompability
             File.ReadLines(ContentPaths.Resolve(path)!);
 
         public static void Copy(string sourceFileName, string destFileName) =>
-            File.Copy(ContentPaths.Resolve(sourceFileName)!, ContentPaths.Normalize(destFileName)!);
+            File.Copy(ContentPaths.Resolve(sourceFileName)!, ContentPaths.ForWrite(destFileName)!);
 
         public static void Copy(string sourceFileName, string destFileName, bool overwrite) =>
-            File.Copy(ContentPaths.Resolve(sourceFileName)!, ContentPaths.Normalize(destFileName)!, overwrite);
+            File.Copy(ContentPaths.Resolve(sourceFileName)!, ContentPaths.ForWrite(destFileName)!, overwrite);
 
         public static void Move(string sourceFileName, string destFileName) =>
-            File.Move(ContentPaths.Resolve(sourceFileName)!, ContentPaths.Normalize(destFileName)!);
+            File.Move(ContentPaths.Resolve(sourceFileName)!, ContentPaths.ForWrite(destFileName)!);
 
-        // Creating or writing: separators only. Resolving could silently land a brand-new file on
+        // Creating or writing: ForWrite (separators, and the install folder refused). Resolving could land a brand-new file on
         // an existing one in the install folder instead of where the game asked for it.
         public static FileStream OpenWrite(string path) =>
-            File.OpenWrite(ContentPaths.Normalize(path)!);
+            File.OpenWrite(ContentPaths.ForWrite(path)!);
 
         public static FileStream Create(string path) =>
-            File.Create(ContentPaths.Normalize(path)!);
+            File.Create(ContentPaths.ForWrite(path)!);
 
         public static StreamWriter CreateText(string path) =>
-            File.CreateText(ContentPaths.Normalize(path)!);
+            File.CreateText(ContentPaths.ForWrite(path)!);
 
         public static StreamWriter AppendText(string path) =>
-            File.AppendText(ContentPaths.Normalize(path)!);
+            File.AppendText(ContentPaths.ForWrite(path)!);
 
         public static void WriteAllText(string path, string? contents) =>
-            File.WriteAllText(ContentPaths.Normalize(path)!, contents);
+            File.WriteAllText(ContentPaths.ForWrite(path)!, contents);
 
         public static void WriteAllBytes(string path, byte[] bytes) =>
-            File.WriteAllBytes(ContentPaths.Normalize(path)!, bytes);
+            File.WriteAllBytes(ContentPaths.ForWrite(path)!, bytes);
 
         public static void WriteAllLines(string path, string[] contents) =>
-            File.WriteAllLines(ContentPaths.Normalize(path)!, contents);
+            File.WriteAllLines(ContentPaths.ForWrite(path)!, contents);
 
         public static void AppendAllText(string path, string? contents) =>
-            File.AppendAllText(ContentPaths.Normalize(path)!, contents);
+            File.AppendAllText(ContentPaths.ForWrite(path)!, contents);
 
         public static void Delete(string path) =>
-            File.Delete(ContentPaths.Normalize(path)!);
+            File.Delete(ContentPaths.ForWrite(path)!);
     }
 }

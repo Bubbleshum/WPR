@@ -409,7 +409,10 @@ namespace WPR
         // LoadListingInformationAsync. And Deployment.Parts is Silverlight's AssemblyPartCollection of
         // AssemblyPart (it was DeploymentPartCollection, a name no game binds): OpenXLive enumerates it.
         // Not identity-binding.
-        public static int Version => 59;
+        // PLACEHOLDER BUMP (pacman, PAC-MAN Kart Rally): System.Net.Sockets.UdpAnySourceMulticastClient
+        // joins Patches (WPR.SilverlightCompability.UdpAnySourceMulticastClient). The real number is
+        // assigned when this merges. Not identity-binding.
+        public static int Version => 60;
 
         private AssemblyNameReference FnaBackendRef;
         private AssemblyNameReference FNARef;
@@ -928,6 +931,15 @@ namespace WPR
                 // Crimson Dragon: Side Story does it in Microsoft.Phone.Marketplace.HttpRequest's
                 // ctor, so leaving this unpatched is a TypeLoadException before first frame.
                 { "System.Net.Browser.WebRequestCreator", new TypePatchInfo()
+                {
+                    Reference = SilverlightCompRef,
+                    NewNamespace = "WPR.SilverlightCompability"
+                }
+                },
+                // Silverlight 4 / WP7.1 local-network multiplayer. .NET has no such type, so the
+                // typeref (scoped to WP's System.Net) resolved to nothing: PAC-MAN Kart Rally's
+                // "Host game" threw TypeLoadException from its channel constructor.
+                { "System.Net.Sockets.UdpAnySourceMulticastClient", new TypePatchInfo()
                 {
                     Reference = SilverlightCompRef,
                     NewNamespace = "WPR.SilverlightCompability"
