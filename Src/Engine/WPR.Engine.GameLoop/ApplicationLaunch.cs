@@ -999,17 +999,14 @@ namespace WPR
                             app.EntryPoint,
                             appInstance =>
                             {
-                                // The WP7 cold-start signal, fired here rather than at the priming
-                                // call below: that runs before Game.Run, and in mixed mode the
-                                // app's own PhoneApplicationService does not exist until App.xaml
-                                // has been parsed — which is what just happened. Navigation, and
+                                // The WP7 cold-start signal (Launching, once), fired as soon as the
+                                // app's own PhoneApplicationService exists, which in mixed mode is
+                                // when App.xaml has been parsed - what just happened. Navigation, and
                                 // with it the page's OnNavigatedTo, comes next.
-                                bool raiseActivated = !GameLifecycleQuirks.SuppressesBootActivated(app.ProductId);
-                                WprTrace($"[wpr-mixed] app created ({appInstance.GetType().FullName}); " +
-                                         $"HandleApplicationStart(true, raiseActivated: {raiseActivated})");
+                                WprTrace($"[wpr-mixed] app created ({appInstance.GetType().FullName}); HandleApplicationStart(true)");
                                 try
                                 {
-                                    PhoneApplicationService.Current?.HandleApplicationStart(true, raiseActivated);
+                                    PhoneApplicationService.Current?.HandleApplicationStart(true);
                                 }
                                 catch (Exception ex)
                                 {
@@ -1076,22 +1073,21 @@ namespace WPR
 
                     GamerServicesDispatcher.WindowHandle = obj.Window.Handle;
 
-                    // A handful of titles must not receive the synthetic cold-start Activated
-                    // (they init themselves and would do it twice). Resolved once per launch;
-                    // both cold-start signals below honour it, the resume path never does.
-                    bool raiseBootActivated = !GameLifecycleQuirks.SuppressesBootActivated(app.ProductId);
-                    if (!raiseBootActivated)
-                    {
-                        WprTrace($"[wpr-trace] ApplicationLaunch: boot Activated suppressed for {app.ProductId} (GameLifecycleQuirks)");
-                    }
-
-                    // Only the FIRST Game.Activated is the cold start (the one Game.Tick synthesises
-                    // after the first tick). Every later one is a focus regain: an Android resume, a
-                    // desktop alt-tab, or a Guide message box closing. Those are a WP7 resume and must
-                    // raise Activated only. Raising Launching again re-runs the game's cold-start
-                    // handler: Doodle God's restarts its splash, the splash restarts its loader
-                    // thread, and that thread dies in Settings.LoadElementsLoc on a duplicate key
-                    // the moment the player answers NO to its own "quit?" dialog.
+                    // The WP7 cold start, as the phone raised it: Launching once and nothing else
+                    // (IsApplicationInstancePreserved is a resume's question; at a cold start there is
+                    // no Activated at all). It is raised on the FIRST Game.Activated, the one Game.Tick
+                    // synthesises after the first tick, i.e. after Initialize and LoadContent and on the
+                    // device the game keeps: Battlewagon's Launching handler loads a scene into the
+                    // SceneManager its Initialize builds, and AE 3D Motor's loads textures. There is
+                    // deliberately no earlier pass before Game.Run: raising it there reached handlers
+                    // before Initialize (and on a device Run then recreated), and raising it twice re-ran
+                    // set-up titles start only once (iRunner's analytics session thread died on it).
+                    //
+                    // Every later Game.Activated is a focus regain (an Android resume, a desktop
+                    // alt-tab, a Guide message box closing): a WP7 resume, so Activated only.
+                    // HandleApplicationStart(true) is itself once per PhoneApplicationService, so a
+                    // Silverlight app that already got Launching when App.xaml was parsed gets nothing
+                    // more here.
                     bool coldStartDelivered = false;
                     WprTrace("[wpr-trace] ApplicationLaunch: subscribing to obj.Activated");
                     obj.Activated += (obj, args) =>
@@ -1099,8 +1095,8 @@ namespace WPR
                         if (!coldStartDelivered)
                         {
                             coldStartDelivered = true;
-                            WprTrace($"[wpr-trace] ApplicationLaunch: obj.Activated fired -> HandleApplicationStart(true, raiseActivated: {raiseBootActivated})");
-                            PhoneApplicationService.Current!.HandleApplicationStart(true, raiseBootActivated);
+                            WprTrace("[wpr-trace] ApplicationLaunch: obj.Activated fired -> cold start, HandleApplicationStart(true)");
+                            PhoneApplicationService.Current!.HandleApplicationStart(true);
                         }
                         else
                         {
@@ -1108,52 +1104,6 @@ namespace WPR
                             PhoneApplicationService.Current!.HandleApplicationStart(false);
                         }
                     };
-
-                    // FNA only raises Game.Activated when the SDL window receives a focus event.
-                    // On some setups (the Avalonia host already had focus, or SDL didn't deliver
-                    // the focus-gained event for a freshly-created game window) the event never
-                    // fires and the WP7 lifecycle callbacks (Launching / Activated) never run —
-                    // the game then sits on a "not initialised" black screen because its
-                    // Application_Launching handler is where it builds its scene graph.
-                    // Fire the lifecycle once, unconditionally, right at startup as a safety net.
-                    //
-                    // Not when the game already owns a GraphicsDevice. A title that calls
-                    // GraphicsDeviceManager.ApplyChanges() in its constructor gets a device there,
-                    // and Game.Run disposes it and creates the real one (IGraphicsDeviceManager.
-                    // CreateDevice recreates from scratch, as XNA's did). Anything a Launching
-                    // handler loads here would sit on the doomed device, and the first draw that
-                    // samples it is an access violation inside FNA3D_VerifySampler, not an
-                    // exception. AE 3D Motor is the reference case: its Launching handler pushes a
-                    // SplashScreen that loads its textures straight away. The post-first-tick
-                    // Activated below still delivers the cold start, once, on the device the game
-                    // keeps, which is also the only time WP7 itself ever raised Launching. Measured
-                    // 2026-10-04: of the installed library, AE 3D Motor, ilomilo, Skulls of the
-                    // Shogun, Mirror's Edge and Tower Bloxx New York create a device in a
-                    // constructor; only ilomilo (Launching just logs) and Skulls (Activated with
-                    // preserved=true only sets a flag) subscribe to the lifecycle at all.
-                    bool ownsDeviceBeforeRun =
-                        (obj.Services.GetService(typeof(Microsoft.Xna.Framework.Graphics.IGraphicsDeviceService))
-                            as Microsoft.Xna.Framework.Graphics.IGraphicsDeviceService)?.GraphicsDevice != null;
-                    if (ownsDeviceBeforeRun)
-                    {
-                        WprTrace("[wpr-trace] ApplicationLaunch: game created its GraphicsDevice in its constructor; skipping the pre-Run lifecycle priming (Run recreates the device)");
-                    }
-                    else if (GameLifecycleQuirks.SkipsPreRunPriming(app.ProductId))
-                    {
-                        WprTrace("[wpr-trace] ApplicationLaunch: skipping the pre-Run lifecycle priming (GameLifecycleQuirks: one cold start)");
-                    }
-                    else
-                    {
-                        WprTrace($"[wpr-trace] ApplicationLaunch: priming PhoneApplicationService.HandleApplicationStart(true, raiseActivated: {raiseBootActivated}) before Game.Run");
-                        try
-                        {
-                            PhoneApplicationService.Current!.HandleApplicationStart(true, raiseBootActivated);
-                        }
-                        catch (Exception ex)
-                        {
-                            WprTrace("[wpr-ex] HandleApplicationStart priming threw: " + ex);
-                        }
-                    }
 
                     // The last backend hook before Run. On FNA this is where the WP7 orientation
                     // request is wired to GraphicsDeviceManager.PreparingDeviceSettings; the device
