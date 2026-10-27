@@ -27,9 +27,9 @@ namespace WPR.Wp8Native
     /// display (<see cref="Wp8Display"/>); a constant the IL loads right before the call (a
     /// <c>true</c>, a <c>1</c>, a string literal) is passed as written; an event subscription gets a
     /// no-op handler; an argument of one of the component's own interfaces gets a host object that
-    /// answers defaults; anything else gets the type's default. That is less than a hand-written
-    /// description knows - which branch a handler takes, what a C# callback answers - so the
-    /// hand-written ones in <see cref="XamlShells"/> still win; this is what runs when there is none.</para>
+    /// answers defaults; anything else gets the type's default. This is the only page description
+    /// WPR has: there are no per-title ones (the contract suite checks it against three written out
+    /// by hand from decompiled pages).</para>
     /// <para>Nothing in this file may name an XNA or engine type: the probe compiles it.</para>
     /// </remarks>
     public static partial class XamlShellInference

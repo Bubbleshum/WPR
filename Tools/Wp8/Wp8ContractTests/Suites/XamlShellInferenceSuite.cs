@@ -1,10 +1,11 @@
+using Wp8ContractTests.Fixtures;
 using WPR.Wp8Native;
 
 namespace Wp8ContractTests.Suites;
 
 /// <summary>
 /// The page description read from a Direct3D/XAML title's managed shell (<see cref="XamlShellInference"/>),
-/// checked against the hand-written ones in <see cref="XamlShells"/> for the installed titles that
+/// checked against the hand-written ones in <see cref="HandWrittenShells"/> for the installed titles that
 /// have one: the same class, the same way of getting the instance, the same launch, loaded and
 /// lifecycle calls in the same order, the same back-key decision. Titles not installed are skipped.
 /// </summary>
@@ -21,6 +22,30 @@ public sealed class XamlShellInferenceSuite : IContractSuite
 
     public string Name => "XAML shell inference";
 
+    private static IEnumerable<(string Name, string[] Lines)> Sections(XamlShell s)
+    {
+        yield return ("instance", [$"{s.ClassId} via {s.InstanceFrom ?? "activation"} ({string.Join(", ", s.InstanceArguments.Select(Value))})"]);
+        yield return ("Launch", s.Launch.Select(Step).ToArray());
+        yield return ("Loaded", s.Loaded.Select(Step).ToArray());
+        yield return ("Deactivated", s.Deactivated.Select(Step).ToArray());
+        yield return ("Activated", s.Activated.Select(Step).ToArray());
+        yield return ("BackKey", s.BackKey is null ? [] :
+            [$"{s.BackKey.QuitIf} quit when {s.BackKey.QuitWhen}", .. s.BackKey.Otherwise.Select(x => "otherwise " + Step(x)), .. s.BackKey.BeforeQuit.Select(x => "before quit " + Step(x))]);
+    }
+
+    private static string Step(XamlShellStep s) => $"{(s.Class is null ? "" : s.Class + ".")}{s.Method}({string.Join(", ", s.Arguments.Select(Value))})";
+
+    private static string Value(object? v) => v switch
+    {
+        null => "null",
+        XamlShell.Callback => "callback(returns null)",
+        string t => $"\"{t}\"",
+        XamlCallback c => $"callback(returns {Value(c.Returns is 0 or false ? null : c.Returns)}{string.Concat(c.Then.Select(t => "; then " + Step(t)))})",
+        XamlHostObject o => $"host {o.InterfaceName}",
+        float f => f.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "f",
+        _ => Convert.ToString(v, System.Globalization.CultureInfo.InvariantCulture) ?? "?",
+    };
+
     public void Run(Harness h)
     {
         foreach ((string productId, string component) in Titles)
@@ -33,7 +58,7 @@ public sealed class XamlShellInferenceSuite : IContractSuite
                 continue;
             }
 
-            XamlShell known = XamlShells.ForComponent(component)!;
+            XamlShell known = HandWrittenShells.ForComponent(component)!;
             XamlShell? inferred = XamlShellInference.Infer(dll, WinmdReader.Load(Directory.GetFiles(folder, "*.winmd")));
             h.Check($"{component}: a description is inferred", inferred is not null);
             if (inferred is null)
@@ -54,6 +79,23 @@ public sealed class XamlShellInferenceSuite : IContractSuite
             h.Check($"{component}: same back key", inferred.BackKey?.QuitIf == known.BackKey?.QuitIf && inferred.BackKey?.QuitWhen == known.BackKey?.QuitWhen,
                 $"{inferred.BackKey?.QuitIf} quit when {inferred.BackKey?.QuitWhen}");
             h.Check($"{component}: marked inferred, background grid", inferred.Inferred && !inferred.DrawingSurface);
+
+            // Every step, argument, callback answer and follow-up, section by section, as the
+            // hand-written page has them. Inference is the only description WPR has, so this is
+            // what keeps the three titles playing what their pages played.
+            foreach ((string section, string[] mine, string[] theirs) in Sections(inferred).Zip(Sections(known), (a, b) => (a.Name, a.Lines, b.Lines)))
+            {
+                string[] m = component == "MC4HybridComponent.dll" && section == "Loaded" ? mine.Where(l => !l.StartsWith("OnOrientationChanged", StringComparison.Ordinal)).ToArray() : mine;
+                // Where the written page answered an event with a bare no-op, the inference may also
+                // run what the C# handler calls back (Alex's CloseInput clears the text; MC4's
+                // LaunchGLLive turns GLLive off): more than the written page did, so compared
+                // without those follow-ups.
+                m = m.Select((line, i) => i < theirs.Length && !theirs[i].Contains("; then", StringComparison.Ordinal)
+                    ? System.Text.RegularExpressions.Regex.Replace(line, @"(; then [^;]*?\))+\)", ")") : line).ToArray();
+                int at = Enumerable.Range(0, Math.Max(m.Length, theirs.Length)).FirstOrDefault(i => i >= m.Length || i >= theirs.Length || m[i] != theirs[i], -1);
+                h.Check($"{component}: {section} matches the hand-written page in full", at < 0,
+                    at < 0 ? "" : $"#{at}: inferred '{(at < m.Length ? m[at] : "-")}' vs written '{(at < theirs.Length ? theirs[at] : "-")}'");
+            }
 
             // Sizes and scales the page computes come out as the hand-written description has them.
             static bool Numeric(object? v) => v is float or int or double or SizeF;

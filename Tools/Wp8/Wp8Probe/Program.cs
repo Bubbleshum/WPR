@@ -196,8 +196,10 @@ if (Environment.GetEnvironmentVariable("WPR_UNHANDLED") == "1")
 }
 
 // A Direct3D/XAML title is a WinRT component DLL, not an exe: the host activates its class
-// and plays the managed page (XamlShells) instead of calling an entry point.
-XamlShell? shell = image.IsDll ? XamlShells.ForComponent(path) : null;
+// and plays the managed page (inferred from the managed shell) instead of calling an entry point.
+XamlShell? shell = image.IsDll
+    ? XamlShellInference.Infer(path, WinmdReader.Load(Directory.GetFiles(Path.GetDirectoryName(Path.GetFullPath(path))!, "*.winmd")))
+    : null;
 string? fault;
 if (shell is not null)
 {

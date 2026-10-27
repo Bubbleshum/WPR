@@ -18,7 +18,7 @@ namespace WPR.Common
     ///
     /// <para><b>Branch on it only where Windows Phone itself behaved differently by target
     /// version.</b> It is not a switch for a WPR bug that shows up in one family of games, and
-    /// never a per-game switch (that is <c>GameLifecycleQuirks</c>).</para>
+    /// never a per-game switch (WPR has none: see .claude/rules/no-per-game-rules.md).</para>
     ///
     /// <para>Plain ints and strings only, so every shim tier can read it (it lives in
     /// <c>WPR.Common</c>, which references nothing of WPR's).</para>

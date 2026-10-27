@@ -420,7 +420,16 @@ namespace WPR
         // FileLoadException 0x80131515 from the second. New Silverlight shim types (FontFamily,
         // RoutedEvent, DrawingSurface, ColorAnimationUsingKeyFrames...) bind on repatch too.
         // Not identity-binding.
-        public static int Version => 61;
+        // Bumped to 62: no per-game IL fixups (.claude/rules/no-per-game-rules.md). Gone: Star
+        // Wars: The Battle for Hoth's reveal rewrite (the real cause was the desktop running its
+        // variable timestep thousands of frames a second, so its whole-millisecond screen clock
+        // never moved; Game.Tick now waits for one 60 Hz frame there too) and Feed Me Oil's
+        // StopById guard (its freeze needs a Game.Activated during the story cutscene, which only
+        // a real deactivation raises, on the phone as here). The Treasures of Montezuma's
+        // music-slider fixup is now a pattern with no title gate
+        // (EmptyPauseMirroringMediaStateHandlers). Installs keep the old IL until repatched.
+        // Not identity-binding.
+        public static int Version => 62;
 
         private AssemblyNameReference FnaBackendRef;
         private AssemblyNameReference FNARef;
@@ -4144,56 +4153,40 @@ namespace WPR
         }
 
         /// <summary>
-        /// Per-game IL fixups that can't be expressed as reference redirects (the
-        /// <see cref="Patches"/> / <see cref="MemberPatches"/> tables only retarget type/member
-        /// references — they don't rewrite a game's own method bodies). Runs after all reference
-        /// patching, immediately before the module is written. Every fixup is guarded so it only
-        /// touches the exact game it targets and no-ops (rather than corrupting the DLL) if the
-        /// expected IL isn't present, e.g. a different build of the title.
+        /// Empties a <c>MediaPlayer.MediaStateChanged</c> handler that only mirrors the player being
+        /// PAUSED, i.e. one whose body asks an <c>IsPaused</c> property that reads
+        /// <c>MediaPlayer.State</c>, and calls nothing on <c>MediaPlayer</c> itself.
+        ///
+        /// <para><b>The pattern.</b> A handler of this shape exists to notice the PHONE pausing the
+        /// game's music (the Zune controls on the volume overlay) and to reflect it in the game,
+        /// typically by setting a music slider or setting to 0. Under WPR nothing outside the game
+        /// can pause its <c>MediaPlayer</c>: <c>GameHasControl</c> is always true and Android
+        /// backgrounding does not change <c>MediaPlayer.State</c>. So the only pauses such a handler
+        /// ever sees are the game's own, and taking those for the player's is always wrong.</para>
+        ///
+        /// <para><b>The case that found it.</b> The Treasures of Montezuma (Alawar's YF framework)
+        /// builds its options dialog with each level, and the dialog subscribes
+        /// <c>if (BackgroundMusicPlayer.IsPaused) musicSlider.Value = 0f;</c>. Every level start
+        /// plays a track and pauses it at once for a jingle, so the slider's own callback wrote
+        /// <c>MediaPlayer.Volume = 0</c> and saved it: the music turned itself off each level.</para>
+        ///
+        /// <para>A handler that calls <c>MediaPlayer</c> (resuming, moving to the next song) does
+        /// real work on a pause and is left alone. Matched by shape only; nothing here names a
+        /// title, and obfuscated names do not matter.</para>
         /// </summary>
-        /// <summary>
-        /// Per-title IL repairs that don't fit the reference-redirect tables. Each entry gates
-        /// itself on a type only that game defines, so this is a list of independent fixups —
-        /// add to it, and do NOT early-return from here, or every later fixup stops running.
-        /// </summary>
-        private static void ApplyGameSpecificFixups(ModuleDefinition module)
+        private static void EmptyPauseMirroringMediaStateHandlers(ModuleDefinition module)
         {
-            ApplyHothRevealFixup(module);
-            ApplyFeedMeOilStopByIdFixup(module);
-            ApplyMontezumaMusicSliderFixup(module);
-        }
+            static bool IsMediaPlayer(MethodReference r) =>
+                r.DeclaringType.Name == "MediaPlayer" && r.DeclaringType.Namespace == "Microsoft.Xna.Framework.Media";
 
-        /// <summary>
-        /// The Treasures of Montezuma (Alawar.TheTreasuresOfMontezuma.Gameplay.dll). Empties the
-        /// options dialog's <c>MediaPlayer.MediaStateChanged</c> handler, which is what turned the
-        /// music off at the start of every level.
-        ///
-        /// <para><b>The handler.</b> The options dialog template (shared by the main-menu and the
-        /// in-game dialog) subscribes in <c>Build</c> with
-        /// <c>if (BackgroundMusicPlayer.IsPaused) musicSlider.Value = 0f;</c>. It exists to mirror
-        /// the PHONE pausing the game's music — the Zune controls on the volume overlay — onto the
-        /// slider. Setting the slider then runs the slider's own change callback, which writes
-        /// <c>GameData.MusicVolume = 0</c> and <c>MediaPlayer.Volume = 0</c>.</para>
-        ///
-        /// <para><b>Why it fires under WPR.</b> Every level start (and level complete / game over)
-        /// plays a track and immediately calls <c>BackgroundMusicPlayer.Pause()</c> so the jingle
-        /// can play, resuming five seconds later. The dialog is built with the level, so it sees
-        /// that pause, takes it for the player's, and zeroes the music. The resume then plays at
-        /// volume 0 and the saved setting is 0: "the music setting resets between levels".</para>
-        ///
-        /// <para><b>Why emptying it is safe.</b> Nothing outside the game can pause WPR's
-        /// <c>MediaPlayer</c> — <c>GameHasControl</c> is always true and Android backgrounding does
-        /// not change <c>MediaPlayer.State</c> — so the only pauses the handler can ever see are the
-        /// game's own, and every one of them is the wrong answer.</para>
-        ///
-        /// <para>Found by shape rather than by name, since the obfuscated names are unprintable:
-        /// a method that subscribes <c>MediaPlayer.add_MediaStateChanged</c>, and the
-        /// <c>(object, EventArgs)</c> method it takes <c>ldftn</c> of whose body reads
-        /// <c>BackgroundMusicPlayer.get_IsPaused</c>.</para>
-        /// </summary>
-        private static void ApplyMontezumaMusicSliderFixup(ModuleDefinition module)
-        {
-            if (module.GetType("Alawar.TheTreasuresOfMontezuma.Gameplay.GameScreenManager") == null) return;
+            static bool ReadsPlayerState(MethodReference getter)
+            {
+                if (getter.Name != "get_IsPaused" || getter.Parameters.Count != 0) return false;
+                MethodDefinition? def;
+                try { def = getter.Resolve(); } catch { return false; }
+                return def is { HasBody: true }
+                       && def.Body.Instructions.Any(x => x.Operand is MethodReference r && r.Name == "get_State" && IsMediaPlayer(r));
+            }
 
             try
             {
@@ -4204,9 +4197,7 @@ namespace WPR
                     {
                         if (!m.HasBody) continue;
                         var ins = m.Body.Instructions;
-                        if (!ins.Any(i => i.Operand is MethodReference r
-                                          && r.Name == "add_MediaStateChanged"
-                                          && r.DeclaringType.Name == "MediaPlayer"))
+                        if (!ins.Any(i => i.Operand is MethodReference r && r.Name == "add_MediaStateChanged" && IsMediaPlayer(r)))
                         {
                             continue;
                         }
@@ -4223,9 +4214,8 @@ namespace WPR
                                 continue;
                             }
 
-                            if (def.Body.Instructions.Any(x => x.Operand is MethodReference r
-                                                               && r.Name == "get_IsPaused"
-                                                               && r.DeclaringType.Name == "BackgroundMusicPlayer"))
+                            var calls = def.Body.Instructions.Select(x => x.Operand).OfType<MethodReference>().ToList();
+                            if (calls.Any(ReadsPlayerState) && !calls.Any(IsMediaPlayer))
                             {
                                 handlers.Add(def);
                             }
@@ -4233,12 +4223,7 @@ namespace WPR
                     }
                 }
 
-                if (handlers.Count == 0)
-                {
-                    Log.Warn(LogCategory.AppInstall,
-                        "[montezuma-fixup] options dialog MediaStateChanged handler not found — left unpatched.");
-                    return;
-                }
+                if (handlers.Count == 0) return;
 
                 foreach (MethodDefinition h in handlers)
                 {
@@ -4250,197 +4235,12 @@ namespace WPR
                 }
 
                 Log.Info(LogCategory.AppInstall,
-                    $"[montezuma-fixup] emptied {handlers.Count} options-dialog MediaStateChanged handler(s); the level-start jingle no longer zeroes the music slider.");
+                    $"[pause-mirror] {module.Name}: emptied {handlers.Count} MediaStateChanged handler(s) that only mirror the player being paused (only the game itself can pause it here).");
             }
             catch (Exception ex)
             {
-                Log.Warn(LogCategory.AppInstall, $"[montezuma-fixup] threw, left unpatched: {ex.Message}");
+                Log.Warn(LogCategory.AppInstall, $"[pause-mirror] {module.Name}: threw, left unpatched: {ex.Message}");
             }
-        }
-
-        private static void ApplyHothRevealFixup(ModuleDefinition module)
-        {
-            // Star Wars: The Battle for Hoth (SWTheBattleForHoth.dll). On a *fresh* game the
-            // in-game HUD and the tutorial popups are revealed by animating the sprites in from
-            // hidden via CInGameUI/CInGameHelpMode.PlayAnimationForwards, which calls the 4-arg
-            // FLAnimation.play overload (animate from tick 0). Under WPR that animated reveal
-            // leaves the sprites invisible, so a new game shows an empty HUD (no wave counter,
-            // command-point/score panel, buttons or minimap) and blank tutorial boxes. A *resumed*
-            // game is unaffected because its restore path (CInGameUI.LoadState) uses the 6-arg
-            // play overload, whose startFrame maps past the animation's end so it snaps straight to
-            // the final (visible) frame. This rewrites PlayAnimationForwards to use that same
-            // snap-open overload so the fresh-game UI is visible too. (The reveal animation is
-            // cosmetic; snapping loses the unfold flourish but restores the missing UI. Closing
-            // still animates normally — PlayAnimationBackwards is untouched.)
-            if (module.GetType("SWTheBattleForHoth.CInGameUI") == null) return;
-
-            foreach (string typeName in new[] { "SWTheBattleForHoth.CInGameUI", "SWTheBattleForHoth.CInGameHelpMode" })
-            {
-                try
-                {
-                    TypeDefinition? ty = module.GetType(typeName);
-                    MethodDefinition? paf = ty?.Methods.FirstOrDefault(m => m.Name == "PlayAnimationForwards" && m.HasBody);
-                    if (paf == null)
-                    {
-                        Debug.WriteLine($"[hoth-fixup] {typeName}.PlayAnimationForwards not found — skip.");
-                        continue;
-                    }
-                    Debug.WriteLine(SnapOpenReveal(paf)
-                        ? $"[hoth-fixup] snapped {typeName}.PlayAnimationForwards to the 6-arg (snap-open) reveal."
-                        : $"[hoth-fixup] IL pattern not matched in {typeName}.PlayAnimationForwards — skip.");
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"[hoth-fixup] {typeName} threw: {ex.Message}");
-                }
-            }
-        }
-
-        /// <summary>
-        /// Feed Me Oil (FeedMeOil.dll). Guards the unconditional <c>RemoveAt</c> at the end of
-        /// <c>OggSound.StopById</c>, which is what freezes the game on its first music change.
-        ///
-        /// <para><b>The game's bug.</b> <c>StopById</c> is
-        /// <c>found = -1; for (i..) if (_instances[i].id == id) { found = i; …Stop(); break; }
-        /// _instances.RemoveAt(found);</c> — the remove runs even when the search fell through and
-        /// <c>found</c> is still -1. Reached with a guard, it simply removes nothing, which is
-        /// exactly right: nothing matched, so there is nothing to take out of the list.</para>
-        ///
-        /// <para><b>Why it is reached.</b> <c>SBSounds.playMusic</c> assigns
-        /// <c>__lastMusicSound = soundId</c> BEFORE calling <c>stopMusic()</c>, and
-        /// <c>stopMusic</c> resolves the sound to stop through that very field. So a change of
-        /// track looks for the OUTGOING music's instance id inside the INCOMING sound's instance
-        /// list, which can never match.</para>
-        ///
-        /// <para><b>Why one miss freezes the game for good.</b> The throw happens inside
-        /// <c>stopMusic</c> BEFORE it can run <c>__musicId = 0</c>, so the stale id survives; the
-        /// next frame takes the same branch and throws again, for ever. It escapes through
-        /// <c>SBSceneObjects.onEnter</c> into <c>Director.Update</c>, which is where the game reads
-        /// <c>TouchPanel.GetState()</c> and dispatches <c>TouchBegan/Moved/Ended</c> — all of it
-        /// below the throw. <c>Draw</c> is a separate call and keeps running, so the game paints a
-        /// perfectly good frame while nothing advances and no tap is ever seen. That is the whole
-        /// of the reported symptom: "gets into gameplay, then clicks don't register and it freezes."
-        /// The guard lets <c>stopMusic</c> finish, <c>__musicId</c> reaches 0, and play resumes.</para>
-        ///
-        /// <para>Identical on both heads — measured on a Galaxy S24 and on Windows, failing at the
-        /// same point (the story cutscene handing over to level 1). Nothing here is Android's.</para>
-        /// </summary>
-        private static void ApplyFeedMeOilStopByIdFixup(ModuleDefinition module)
-        {
-            TypeDefinition? ogg = module.GetType("FeedMeOil.OggSound");
-            if (ogg == null) return;
-
-            MethodDefinition? m = ogg.Methods.FirstOrDefault(x => x.Name == "StopById" && x.HasBody);
-            if (m == null)
-            {
-                Log.Warn(LogCategory.AppInstall, "[fmo-fixup] FeedMeOil.OggSound.StopById not found — skip.");
-                return;
-            }
-
-            try
-            {
-                // Long-form every macro first: inserting instructions lengthens the method, and a
-                // pre-existing short branch (there is one — the loop's `break` jumps at the remove)
-                // can then no longer reach its target. OptimizeMacros re-shortens what still fits.
-                m.Body.SimplifyMacros();
-
-                Instruction? removeAt = m.Body.Instructions.FirstOrDefault(
-                    i => (i.OpCode == OpCodes.Callvirt || i.OpCode == OpCodes.Call)
-                         && i.Operand is MethodReference mr
-                         && mr.Name == "RemoveAt"
-                         && mr.DeclaringType.Name.StartsWith("List`1", StringComparison.Ordinal));
-
-                // Argument shape: ldarg.0 ; ldfld _instances ; ldloc <found> ; callvirt RemoveAt.
-                Instruction? idxLoad = removeAt?.Previous;
-                Instruction? fieldLoad = idxLoad?.Previous;
-                Instruction? seqStart = fieldLoad?.Previous;
-                Instruction last = m.Body.Instructions[m.Body.Instructions.Count - 1];
-
-                if (removeAt == null || seqStart == null
-                    || idxLoad!.OpCode != OpCodes.Ldloc || idxLoad.Operand is not VariableDefinition found
-                    || fieldLoad!.OpCode != OpCodes.Ldfld
-                    || last.OpCode != OpCodes.Ret)
-                {
-                    Log.Warn(LogCategory.AppInstall,
-                        "[fmo-fixup] StopById IL does not match the expected shape — left unpatched.");
-                    m.Body.OptimizeMacros();
-                    return;
-                }
-
-                ILProcessor il = m.Body.GetILProcessor();
-                Instruction guard = Instruction.Create(OpCodes.Ldloc, found);
-                Instruction zero = Instruction.Create(OpCodes.Ldc_I4_0);
-                Instruction skip = Instruction.Create(OpCodes.Blt, last);
-
-                il.InsertBefore(seqStart, guard);
-                il.InsertBefore(seqStart, zero);
-                il.InsertBefore(seqStart, skip);
-
-                // Anything that jumped to the old first instruction must now jump to the guard,
-                // or the loop's `break` lands past it and the fix silently does nothing.
-                foreach (Instruction i in m.Body.Instructions)
-                {
-                    if (ReferenceEquals(i.Operand, seqStart))
-                    {
-                        i.Operand = guard;
-                    }
-                    else if (i.Operand is Instruction[] targets)
-                    {
-                        for (int t = 0; t < targets.Length; t++)
-                        {
-                            if (ReferenceEquals(targets[t], seqStart)) targets[t] = guard;
-                        }
-                    }
-                }
-
-                m.Body.OptimizeMacros();
-                Log.Info(LogCategory.AppInstall,
-                    "[fmo-fixup] guarded FeedMeOil.OggSound.StopById against RemoveAt(-1).");
-            }
-            catch (Exception ex)
-            {
-                Log.Warn(LogCategory.AppInstall, $"[fmo-fixup] threw, left unpatched: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Rewrites a <c>PlayAnimationForwards</c> body from
-        /// <c>group.play(startTime, playFlags, speed, notify)</c> (4-arg animate-from-hidden) to
-        /// <c>group.play(startTime, 1000, -1, playFlags, speed, notify)</c> (6-arg). The 6-arg
-        /// overload multiplies startFrame by ~33.3 to a tick value past the animation's authored
-        /// length, so the reveal lands on its final (visible) frame immediately — the same thing
-        /// LoadState does on resume. Returns false (leaving the body untouched) if the expected
-        /// call sites aren't present.
-        /// </summary>
-        private static bool SnapOpenReveal(MethodDefinition m)
-        {
-            Instruction? getScreenTime = null, play4 = null;
-            foreach (Instruction i in m.Body.Instructions)
-            {
-                if ((i.OpCode == OpCodes.Call || i.OpCode == OpCodes.Callvirt) && i.Operand is MethodReference mr)
-                {
-                    if (mr.Name == "GetScreenAnimationTime") getScreenTime = i;
-                    if (mr.Name == "play" && mr.Parameters.Count == 4) play4 = i;
-                }
-            }
-            if (getScreenTime == null || play4 == null) return false;
-
-            // Find the 6-arg play overload on the same declaring type (or a base type).
-            MethodReference play4Ref = (MethodReference)play4.Operand;
-            MethodDefinition? play6def = null;
-            for (TypeDefinition? t = play4Ref.DeclaringType.Resolve(); t != null && play6def == null; t = t.BaseType?.Resolve())
-            {
-                play6def = t.Methods.FirstOrDefault(x => x.Name == "play" && x.Parameters.Count == 6);
-            }
-            if (play6def == null) return false;
-
-            ILProcessor il = m.Body.GetILProcessor();
-            // Insert startFrame=1000, endFrame=-1 immediately after startTime is pushed, so the
-            // stack for the call becomes (group, startTime, 1000, -1, playFlags, speed, notify).
-            il.InsertAfter(getScreenTime, il.Create(OpCodes.Ldc_I4, 1000));
-            il.InsertAfter(getScreenTime.Next, il.Create(OpCodes.Ldc_I4_M1));
-            play4.Operand = m.Module.ImportReference(play6def);
-            return true;
         }
 
         // PatchDll(string modulePath)
@@ -4717,8 +4517,7 @@ namespace WPR
                 // points at, so Gravity Guy 2's SharpDXCommon.dll (its own managed
                 // Microsoft.Xna.Framework.Game, Texture2D ... over SharpDX) was being swapped for
                 // WPR.Framework.Xna's, and the game's code never ran. Only refs scoped to a package
-                // assembly that is not itself a framework copy are kept (PackageOwnsScope);
-                // game-specific redirects (SWTheBattleForHoth.*) are not framework-named and still apply.
+                // assembly that is not itself a framework copy are kept (PackageOwnsScope).
                 if (existingRef.Scope is AssemblyNameReference owner
                     && FrameworkNamespace.IsMatch(existingRef.Namespace ?? string.Empty)
                     && PackageOwnsScope(modulePath, owner.Name))
@@ -4843,8 +4642,11 @@ namespace WPR
             // not matter. Placed here because both concern Eazfuscator and read best together.
             NeutraliseObfuscatorStackIdentityChecks(module, Path.GetFileName(modulePath));
 
-            // Game-specific IL fixups that don't fit the reference-redirect tables above.
-            ApplyGameSpecificFixups(module);
+            // A MediaStateChanged handler that only mirrors an outside pause of the music (only the
+            // game itself can pause it here). Pattern, not title: see the method.
+            EmptyPauseMirroringMediaStateHandlers(module);
+
+            // There are no per-game IL fixups: .claude/rules/no-per-game-rules.md.
 
             // Make blocks MonoVM refuses to import reachable only from somewhere it accepts.
             // Runs last of the IL passes: it reads the finished control flow, and it must see

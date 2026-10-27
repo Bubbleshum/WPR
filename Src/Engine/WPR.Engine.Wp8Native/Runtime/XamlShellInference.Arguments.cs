@@ -13,6 +13,9 @@ namespace WPR.Wp8Native
                 public static readonly Unknown Value = new();
             }
 
+            /// <summary>The address of a local holding a known value (<c>ldloca</c>), e.g. a <c>Nullable&lt;int&gt;</c> read through it.</summary>
+            private sealed record LocalAddress(int Index);
+
             /// <summary>
             /// The arguments of the call at instruction <paramref name="callIndex"/>, as the page computes
             /// them on this display, by running the method's IL from its start up to that call over a tiny
@@ -127,7 +130,7 @@ namespace WPR.Wp8Native
                         for (int i = parameters - 1; i >= 0; i--)
                         {
                             object? v = Pop();
-                            result[i] = v is long l ? (double)l : v is double or SizeF ? v : null;
+                            result[i] = v is long l ? (double)l : v is double or SizeF or string ? v : null;
                         }
 
                         return result;
@@ -191,9 +194,19 @@ namespace WPR.Wp8Native
                             break;
                         case ILOpCode.Ldloca_s:
                         case ILOpCode.Ldloca:
-                            // Its address escapes (a struct initialised or called through it).
-                            locals[(int)operand] = Unknown.Value;
-                            stack.Push(Unknown.Value);
+                            // Its address escapes (a struct initialised or called through it), unless
+                            // it holds a known value: then a call reading it (Nullable.Value) may use it,
+                            // and anything else that takes the address forgets it (see Call).
+                            if (locals.GetValueOrDefault((int)operand, Unknown.Value) is Unknown or null)
+                            {
+                                locals[(int)operand] = Unknown.Value;
+                                stack.Push(Unknown.Value);
+                            }
+                            else
+                            {
+                                stack.Push(new LocalAddress((int)operand));
+                            }
+
                             break;
                         case ILOpCode.Starg_s:
                         case ILOpCode.Starg:
@@ -410,7 +423,7 @@ namespace WPR.Wp8Native
                         case ILOpCode.Call:
                         case ILOpCode.Callvirt:
                         case ILOpCode.Newobj:
-                            if (!Call(op, (int)operand, stack))
+                            if (!Call(op, (int)operand, stack, locals))
                             {
                                 determined = false;
                                 return none;
@@ -442,8 +455,21 @@ namespace WPR.Wp8Native
                 return none;
             }
 
+            /// <summary>The generic type a generic instantiation names (<c>Nullable`1</c> for <c>Nullable&lt;int&gt;</c>); null for any other type spec.</summary>
+            private string? GenericTypeName(TypeSpecificationHandle spec)
+            {
+                BlobReader blob = _md.GetBlobReader(_md.GetTypeSpecification(spec).Signature);
+                if (blob.ReadSignatureTypeCode() != SignatureTypeCode.GenericTypeInstance)
+                {
+                    return null;
+                }
+
+                blob.ReadByte(); // CLASS or VALUETYPE
+                return TypeName(blob.ReadTypeHandle());
+            }
+
             /// <summary>A call during <see cref="EvaluateArguments"/>: pops its arguments and pushes what is known of its result.</summary>
-            private bool Call(ILOpCode op, int token, Stack<object?> stack)
+            private bool Call(ILOpCode op, int token, Stack<object?> stack, Dictionary<int, object?> locals)
             {
                 EntityHandle target = MetadataTokens.EntityHandle(token);
                 if (target.Kind == HandleKind.MethodSpecification)
@@ -458,7 +484,8 @@ namespace WPR.Wp8Native
                 {
                     case HandleKind.MemberReference:
                         MemberReference member = _md.GetMemberReference((MemberReferenceHandle)target);
-                        owner = member.Parent.Kind is HandleKind.TypeReference or HandleKind.TypeDefinition ? TypeName(member.Parent) : null;
+                        owner = member.Parent.Kind is HandleKind.TypeReference or HandleKind.TypeDefinition ? TypeName(member.Parent)
+                            : member.Parent.Kind == HandleKind.TypeSpecification ? GenericTypeName((TypeSpecificationHandle)member.Parent) : null;
                         name = _md.GetString(member.Name);
                         signatureHandle = member.Signature;
                         break;
@@ -488,9 +515,26 @@ namespace WPR.Wp8Native
                     args[i] = stack.Count > 0 ? stack.Pop() : Unknown.Value;
                 }
 
+                object? instance = null;
                 if (header.IsInstance && op != ILOpCode.Newobj && stack.Count > 0)
                 {
-                    stack.Pop();
+                    instance = stack.Pop();
+                }
+
+                // A local whose address is passed on may be written through it, except by the
+                // Nullable readers below.
+                bool readsNullable = owner == "System.Nullable`1" && name is "get_Value" or "get_HasValue" or "GetValueOrDefault";
+                foreach (object? escaped in args.Append(readsNullable ? null : instance))
+                {
+                    if (escaped is LocalAddress address)
+                    {
+                        locals[address.Index] = Unknown.Value;
+                    }
+                }
+
+                if (readsNullable && instance is LocalAddress held)
+                {
+                    instance = locals.GetValueOrDefault(held.Index, Unknown.Value);
                 }
 
                 double? Arg(int i) => i < args.Length ? args[i] switch { double d => d, long l => l, _ => null } : null;
@@ -505,6 +549,35 @@ namespace WPR.Wp8Native
                         break;
                     case ("System.Windows.Interop.Content", "get_ScaleFactor"):
                         result = (long)Wp8Display.Scale;
+                        break;
+                    // Microsoft.Phone.Info.DeviceStatus: what WPR's phone reports (the same answers
+                    // a device question by name gets, XamlShellInference.DeviceAnswer).
+                    case ("Microsoft.Phone.Info.DeviceStatus", "get_DeviceName"):
+                        result = "RM-821_eu_euro1_276";
+                        break;
+                    case ("Microsoft.Phone.Info.DeviceStatus", "get_DeviceManufacturer"):
+                        result = "NOKIA";
+                        break;
+                    case ("Microsoft.Phone.Info.DeviceStatus", "get_DeviceHardwareVersion"):
+                        result = "1.0.0.0";
+                        break;
+                    case ("Microsoft.Phone.Info.DeviceStatus", "get_DeviceFirmwareVersion"):
+                        result = "8.0.10521.0";
+                        break;
+                    // A Nullable<T> holding a known value (null is "no value").
+                    case ("System.Nullable`1", "get_HasValue") when instance is not Unknown:
+                        result = instance is null ? 0L : 1L;
+                        break;
+                    case ("System.Nullable`1", "get_Value" or "GetValueOrDefault") when instance is long or double:
+                        result = instance;
+                        break;
+                    // The answer to a message box when nobody can be asked: its first button, as
+                    // WPR's Guide answers one with no presenter.
+                    case ("Microsoft.Xna.Framework.GamerServices.Guide", "EndShowMessageBox"):
+                        result = 0L;
+                        break;
+                    case (_, "ToString") when count == 0 && instance is string text:
+                        result = text;
                         break;
                     case ("Microsoft.Phone.Shell.SystemTray", "get_IsVisible"):
                         result = SystemTrayVisible ? 1L : 0L;

@@ -66,7 +66,7 @@ foreach (string folder in folders)
         string? fault;
         if (image.IsDll)
         {
-            XamlShell? shell = XamlShells.ForComponent(main);
+            XamlShell? shell = XamlShellInference.Infer(main, WinmdReader.Load(Directory.GetFiles(folder, "*.winmd")));
             if (shell is null)
             {
                 Console.WriteLine("   (a component with no XAML shell; not run)");
@@ -106,7 +106,7 @@ foreach (string folder in folders)
 
 return 0;
 
-// The ARM image the launcher would run: an exe in the root, or a known XAML component DLL.
+// The ARM image the launcher would run: an exe in the root, or a XAML component DLL whose page can be inferred.
 static string? MainImage(string folder)
 {
     foreach (string exe in Directory.GetFiles(folder, "*.exe"))
@@ -117,10 +117,10 @@ static string? MainImage(string folder)
         }
     }
 
-    foreach (string component in XamlShells.ComponentDlls)
+    WinmdReader metadata = WinmdReader.Load(Directory.GetFiles(folder, "*.winmd"));
+    foreach (string path in Directory.GetFiles(folder, "*.dll"))
     {
-        string path = Path.Combine(folder, component);
-        if (File.Exists(path))
+        if (IsArm(path) && XamlShellInference.Infer(path, metadata) is not null)
         {
             return path;
         }
