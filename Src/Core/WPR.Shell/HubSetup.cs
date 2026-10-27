@@ -25,7 +25,8 @@ namespace WPR.Shell
         public static HubOnline? TryCreate(string platform, IGamePackageSource? packages, IOnlineLocalStore? local,
             Func<System.Collections.Generic.IReadOnlyCollection<string>, System.Threading.Tasks.Task>? prepareTitles = null,
             Func<string, bool>? hasTitleArt = null, Action<string, byte[]>? saveTitleArt = null,
-            Func<System.Collections.Generic.IEnumerable<TitleDetails>>? installedTitles = null)
+            Func<System.Collections.Generic.IEnumerable<TitleDetails>>? installedTitles = null,
+            Func<System.Collections.Generic.IEnumerable<TitleAchievements>>? installedAchievements = null)
         {
             if (Current != null) return Current;
             if (Configuration.Current is not { } config) return null;
@@ -53,6 +54,7 @@ namespace WPR.Shell
                 HasTitleArt = hasTitleArt,
                 SaveTitleArt = saveTitleArt,
                 InstalledTitles = installedTitles,
+                InstalledAchievementCatalogues = installedAchievements,
                 ProgressRestored = earned =>
                 {
                     try { ProgressRestored?.Invoke(earned); }

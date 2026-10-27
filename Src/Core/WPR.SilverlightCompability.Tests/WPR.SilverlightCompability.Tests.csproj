@@ -22,6 +22,8 @@
     <Compile Include="..\WPR.Loader\PackageManifests.cs" Link="Linked\PackageManifests.cs" />
     <!-- BingoPlatformTests: which WP8 titles install as Direct3D/XAML. BCL only. -->
     <Compile Include="..\WPR.Loader\NativeXamlComponent.cs" Link="Linked\NativeXamlComponent.cs" />
+    <!-- PackageAchievementCatalogueTests: catalogues generated from packages. Cecil and the BCL only. -->
+    <Compile Include="..\WPR.Loader\Achievements\*.cs" Link="Linked\Achievements\%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>
