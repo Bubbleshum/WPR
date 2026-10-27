@@ -203,7 +203,8 @@ public sealed class HubTitleDetailsTests : IDisposable
         File.WriteAllText(System.IO.Path.Combine(folder, "WMAppManifest.xml"),
             $"<Deployment AppPlatformVersion=\"{version}\"><App ProductID=\"{Id}\" /></Deployment>");
 
-        Assert.Equal(expected, TitleDetails.ReadPlatform(folder));
-        Assert.Null(TitleDetails.ReadPlatform(System.IO.Path.Combine(_root, "missing")));
+        string? Platform(string f) => WPR.Common.WindowsPhoneTarget.TryReadFromInstall(f, out var t) ? t.HubPlatformName : null;
+        Assert.Equal(expected, Platform(folder));
+        Assert.Null(Platform(System.IO.Path.Combine(_root, "missing")));
     }
 }

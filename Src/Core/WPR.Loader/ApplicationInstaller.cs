@@ -712,7 +712,8 @@ namespace WPR
             }
             catch (Exception) { /* no icon then */ }
             return new WPR.Engine.Online.TitleDetails(app.ProductId, app.Name, app.Publisher, app.Author,
-                WPR.Engine.Online.TitleDetails.ReadPlatform(installFolder), icon);
+                WPR.Common.WindowsPhoneTarget.TryReadFromInstall(installFolder, out var target) ? target.HubPlatformName : null,
+                icon);
         }
 
         /// <summary>

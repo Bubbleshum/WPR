@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.IO.IsolatedStorage;
 
+using WPR.Common;
 using WPR.Engine.Content;
 
 namespace WPR.WindowsCompability
@@ -137,8 +138,20 @@ namespace WPR.WindowsCompability
         public static bool DirectoryExists(IsolatedStorageFile store, string path)
             => store.DirectoryExists(ContentPaths.Normalize(path)!);
 
+        /// <remarks>
+        /// The one by-target answer here. Windows Phone 8 kept its 7.1 behaviour for apps that
+        /// target 7.x ("quirks mode", MSDN jj206947): <c>FileExists(null)</c> answers false, where
+        /// an 8.0 app (and the BCL) throws <see cref="ArgumentNullException"/>. A 7.x title that
+        /// asks about a path it never filled in must not crash here when it did not on the phone.
+        /// </remarks>
         public static bool FileExists(IsolatedStorageFile store, string path)
-            => store.FileExists(ContentPaths.Normalize(path)!);
+        {
+            if (path == null && WprHostEnvironment.Target.IsWp7)
+            {
+                return false;
+            }
+            return store.FileExists(ContentPaths.Normalize(path)!);
+        }
 
         public static void CreateDirectory(IsolatedStorageFile store, string dir)
             => store.CreateDirectory(ContentPaths.Normalize(dir)!);
