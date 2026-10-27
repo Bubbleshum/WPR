@@ -817,14 +817,22 @@ namespace Microsoft.Xna.Framework
 
 			AdvanceElapsedTime();
 
-			if (IsFixedTimeStep)
+			/* WPR: a variable-timestep frame waits for one 60 Hz frame too. A Windows Phone never
+			 * ran a game faster than its panel refreshed, whatever SynchronizeWithVerticalRetrace
+			 * said, so titles convert each frame's ElapsedGameTime to whole milliseconds and add
+			 * them up. Uncapped on a desktop (thousands of frames a second) every frame is under a
+			 * millisecond, the sum never moves, and every animation driven by it stays on its first
+			 * frame (Star Wars: The Battle for Hoth's HUD and tutorial popups, faded in from
+			 * invisible, never appeared). The fixed timestep already waits for TargetElapsedTime,
+			 * which is floored at the same 60 Hz frame (MinTargetElapsedTime). */
+			TimeSpan frameFloor = IsFixedTimeStep ? TargetElapsedTime : MinTargetElapsedTime;
 			{
 				/* If we are in fixed timestep, we want to wait until the next frame,
 				 * but we don't want to oversleep. Requesting repeated 1ms sleeps and
 				 * seeing how long we actually slept for lets us estimate the worst case
 				 * sleep precision so we don't oversleep the next frame.
 				 */
-				while (accumulatedElapsedTime + worstCaseSleepPrecision < TargetElapsedTime)
+				while (accumulatedElapsedTime + worstCaseSleepPrecision < frameFloor)
 				{
 					System.Threading.Thread.Sleep(1);
 					TimeSpan timeAdvancedSinceSleeping = AdvanceElapsedTime();
@@ -836,7 +844,7 @@ namespace Microsoft.Xna.Framework
 				 * SpinWait(1) works by pausing the thread for very short intervals, so it is
 				 * an efficient and time-accurate way to wait out the rest of the time.
 				 */
-				while (accumulatedElapsedTime < TargetElapsedTime)
+				while (accumulatedElapsedTime < frameFloor)
 				{
 					System.Threading.Thread.SpinWait(1);
 					AdvanceElapsedTime();
