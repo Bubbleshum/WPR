@@ -22,6 +22,7 @@ public sealed class HubOnline
         MessageAlerts = new HubMessageAlerts(connection, Social, settings.DataDirectory);
         Push = new HubPush(connection);
         TitleDetails = new HubTitleDetails(connection);
+        AchievementDefinitions = new HubAchievementDefinitions(connection);
         Presence.BeatReceived = MessageAlerts.OnBeat;
         Services = new OnlineServices
         {
@@ -33,6 +34,7 @@ public sealed class HubOnline
             GameServices = GameServices,
             Invites = Invites,
             TitleDetails = TitleDetails,
+            AchievementDefinitions = AchievementDefinitions,
         };
     }
 
@@ -61,6 +63,9 @@ public sealed class HubOnline
 
     /// <summary>Installed games' names and icons, for the hub's title pages.</summary>
     public HubTitleDetails TitleDetails { get; }
+
+    /// <summary>Games' achievement definitions and icons, for the hub's title pages.</summary>
+    public HubAchievementDefinitions AchievementDefinitions { get; }
 
     /// <summary>Game invites sent as hub messages.</summary>
     public HubGameInvites Invites { get; }

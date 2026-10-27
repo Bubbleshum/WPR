@@ -19,7 +19,9 @@ namespace WPR
         string Name,
         string Description,
         int GamerScore,
-        string IconRelativePath);
+        string IconRelativePath,
+        bool Secret = false,
+        bool NameFromKey = false);
 
     /// <summary>
     /// Reads the committed, hardcoded achievement catalogue for a product — the authoritative
@@ -39,21 +41,43 @@ namespace WPR
         private static string ProductDir(string productId) =>
             Configuration.Current!.DataPath(Path.Combine(CatalogueRoot, productId));
 
+        /// <summary>
+        /// True when WPR ships a catalogue with at least one achievement for the product. Such a
+        /// catalogue always wins over one generated from the package
+        /// (<see cref="WPR.Achievements.GeneratedAchievementCatalogues"/>).
+        /// </summary>
+        public static bool HasBundledAchievements(string productId) =>
+            !string.IsNullOrEmpty(productId) && ReadEntries(ProductDir(productId)) is { Count: > 0 };
+
+        /// <summary>True when the product's achievements come from a catalogue generated on this device.</summary>
+        public static bool IsGenerated(string productId) =>
+            !string.IsNullOrEmpty(productId) && !HasBundledAchievements(productId) &&
+            File.Exists(Path.Combine(WPR.Achievements.GeneratedAchievementCatalogues.Directory(productId), ManifestName));
+
+        /// <summary>Drops cached manifest reads for a product whose catalogue was just (re)written.</summary>
+        public static void Forget(string productId) => ManifestCache.TryRemove(productId, out _);
+
         public static bool HasCatalogue(string productId) =>
             !string.IsNullOrEmpty(productId)
             && File.Exists(Path.Combine(ProductDir(productId), ManifestName));
 
-        /// <summary>Product IDs (folder names) that ship a catalogue manifest.</summary>
+        /// <summary>
+        /// Product IDs (folder names) that have a catalogue manifest: shipped with WPR, or
+        /// generated on this device from an installed package.
+        /// </summary>
         public static IReadOnlyList<string> ProductIds()
         {
-            string root = Configuration.Current!.DataPath(CatalogueRoot);
-            if (!Directory.Exists(root)) return Array.Empty<string>();
-
             var ids = new List<string>();
-            foreach (string dir in Directory.GetDirectories(root))
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string rootName in new[] { CatalogueRoot, WPR.Achievements.GeneratedAchievementCatalogues.Root })
             {
-                if (File.Exists(Path.Combine(dir, ManifestName)))
-                    ids.Add(Path.GetFileName(dir));
+                string root = Configuration.Current!.DataPath(rootName);
+                if (!Directory.Exists(root)) continue;
+                foreach (string dir in Directory.GetDirectories(root))
+                {
+                    if (File.Exists(Path.Combine(dir, ManifestName)) && seen.Add(Path.GetFileName(dir)))
+                        ids.Add(Path.GetFileName(dir));
+                }
             }
             return ids;
         }
@@ -112,37 +136,53 @@ namespace WPR
             });
         }
 
+        /// <summary>
+        /// The product's catalogue: the bundled one when it has entries, else the one generated
+        /// from its package on this device, else empty.
+        /// </summary>
         public static List<HardcodedAchievement> Load(string productId)
         {
-            var result = new List<HardcodedAchievement>();
-            if (string.IsNullOrEmpty(productId)) return result;
+            if (string.IsNullOrEmpty(productId)) return new List<HardcodedAchievement>();
 
-            string dir = ProductDir(productId);
+            List<HardcodedAchievement> bundled = Load(ProductDir(productId), $"{CatalogueRoot}/{productId}");
+            if (bundled.Count > 0) return bundled;
+
+            string generatedId = WPR.Achievements.GeneratedAchievementCatalogues.Normalise(productId);
+            return Load(WPR.Achievements.GeneratedAchievementCatalogues.Directory(productId),
+                $"{WPR.Achievements.GeneratedAchievementCatalogues.Root}/{generatedId}");
+        }
+
+        private static List<EntryDto>? ReadEntries(string dir)
+        {
             string manifest = Path.Combine(dir, ManifestName);
-            if (!File.Exists(manifest)) return result;
-
-            ManifestDto? dto;
+            if (!File.Exists(manifest)) return null;
             try
             {
-                dto = JsonSerializer.Deserialize<ManifestDto>(File.ReadAllText(manifest), JsonOptions);
+                return JsonSerializer.Deserialize<ManifestDto>(File.ReadAllText(manifest), JsonOptions)?.Achievements;
             }
             catch (Exception ex)
             {
                 Log.Warn(LogCategory.AppInstall,
                     $"HardcodedAchievementCatalogue: failed to parse {manifest}: {ex.Message}");
-                return result;
+                return null;
             }
+        }
 
-            if (dto?.Achievements == null) return result;
+        /// <param name="relativeRoot">The folder relative to the data store, for icon paths.</param>
+        private static List<HardcodedAchievement> Load(string dir, string relativeRoot)
+        {
+            var result = new List<HardcodedAchievement>();
+            List<EntryDto>? entries = ReadEntries(dir);
+            if (entries == null) return result;
 
-            foreach (EntryDto a in dto.Achievements)
+            foreach (EntryDto a in entries)
             {
                 if (string.IsNullOrEmpty(a.Key)) continue;
 
                 string icon = string.Empty;
                 if (!string.IsNullOrEmpty(a.Icon) && File.Exists(Path.Combine(dir, a.Icon)))
                 {
-                    icon = $"{CatalogueRoot}/{productId}/{a.Icon}";
+                    icon = $"{relativeRoot}/{a.Icon}";
                 }
 
                 result.Add(new HardcodedAchievement(
@@ -150,7 +190,9 @@ namespace WPR
                     Name: string.IsNullOrEmpty(a.Name) ? a.Key : a.Name,
                     Description: a.Description ?? string.Empty,
                     GamerScore: a.GamerScore,
-                    IconRelativePath: icon));
+                    IconRelativePath: icon,
+                    Secret: a.Secret,
+                    NameFromKey: a.NameFromKey || string.IsNullOrEmpty(a.Name)));
             }
 
             return result;
@@ -170,6 +212,8 @@ namespace WPR
             public string? Description { get; set; }
             public int GamerScore { get; set; }
             public string? Icon { get; set; }
+            public bool Secret { get; set; }
+            public bool NameFromKey { get; set; }
         }
     }
 }
