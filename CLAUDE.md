@@ -1152,6 +1152,42 @@ its name; Fruit Ninja (WP7) got "Best score" (backfill) and "Best score (mode 2)
 `LeaderboardNamesTest` (7), WP8 contract `xbox live` (names checks pass; the 3 toast checks there
 fail on 0.2.07 already, since a7a69b20 moved unlock toasts in-game).
 
+### N.O.V.A. 3 plays with no title work (2026-10-28)
+
+Gameloft's **N.O.V.A. 3** (`08312124-…`, 1 GB XAP, not DRM-wrapped) is a WP8 Direct3D/XAML title:
+`Direct3DBackgroundComponent.Direct3DBackground` behind the managed `PhoneDirect3DXamlAppInterop`
+page, plus IGPLib (Gameloft's promo control), an IAP wrapper and `Microsoft.Xbox`. It installs as
+`ModernNative` and runs on 0.2.09 (patcher v62) as is: **no code was changed for it**. It is
+worth knowing as the first title verified on these paths:
+
+- **The inferred page is enough.** `XamlShellInference` reads Launch `[purchaseEvent_inverted,
+  CreateInstance, set_WindowBounds, GetAppState]`, Loaded `[OnNormalOrientation,
+  CreateContentProvider, SetManipulationHost, GetAppState, RequestAppState]`, Back
+  `OnBackKeyPress`. The only guess is `IGPLib.IGPControl::slot6` (once), harmless. The managed
+  page bridge (branch `xna-facades`) is not needed.
+- **Its sound is WASAPI, not XAudio2**: `PhoneAudioSes.dll!ActivateAudioInterface` →
+  `IAudioClient2`, event-driven, one 48 kHz stereo stream written in 2400-frame chunks from a
+  `_Thrd_create` worker. So the `guest fps` line's `audio: engine=no no voices` (XAudio2 only)
+  does **not** mean silence; `voices=1` and `WPR_WP8_METHOD_TRACE=Audio` /
+  `WPR_WP8_AUDIO_DUMP` do. Measured: real time, RMS ~2,000 in play.
+- Xbox Live: `SignInAsync`, `GetAchievementsAsync` (20 from the catalogue), a leaderboard read.
+
+Harness route (1280x768 display coords): `12 hold 640 400 0.2` (title, "touch the screen") →
+`18 hold 886 228 0.2` (CAMPAIGN) → `24 hold 600 357 0.2` (Homecoming Start) → loads ~35 s →
+`66 hold 640 400 0.2` → in-engine intro cutscene (~55 s) → the first fight at ~125 s, fire button
+`hold 1080 600 2`, look with a horizontal `swipe`. On GL the timeline runs ~10 s later.
+
+| cell | result |
+| --- | --- |
+| D1 D3D11 | ✅ menu → campaign → cutscene → fight: ammo 30 → 18, enemies die, view turns; 53-60 fps |
+| D2 Vulkan | ✅ same |
+| D3 OpenGL | ✅ same (slower) |
+| D4 GLES 3.0 + no DXT | ✅ same |
+| A1/A2, P1–P3 | not run |
+
+Not tried: pause, Back, a whole mission, multiplayer (Gameloft's servers), the IAP store. WPR Hub
+had no title row for it on the day, so no player had reported it.
+
 ### Managed WP8 titles reach Xbox Live too, and a package's own XNA layer runs (patcher v45, 2026-10-19)
 
 41 packages in the library are **managed** WP8 titles that call `Microsoft.Xbox` from C# (Gravity
