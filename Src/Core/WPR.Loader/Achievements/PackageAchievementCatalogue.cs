@@ -203,29 +203,8 @@ namespace WPR.Achievements
         /// <c>GET_BLUE_BIRD</c> "Get Blue Bird", <c>TourOfDuty</c> "Tour Of Duty"; a number is
         /// "Achievement 12".
         /// </summary>
-        public static string Readable(string key, string keySource = "il")
-        {
-            string text = key.Trim();
-            if (text.Length == 0) return key;
-            if (text.All(char.IsDigit)) return "Achievement " + text;
-
-            // Split camel case, then separators.
-            StringBuilder spaced = new();
-            for (int i = 0; i < text.Length; i++)
-            {
-                char c = text[i];
-                if (i > 0 && char.IsUpper(c) && char.IsLower(text[i - 1])) spaced.Append(' ');
-                spaced.Append(c is '_' or '-' or '.' ? ' ' : c);
-            }
-            List<string> words = spaced.ToString().Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
-            string[] decorations = ["achievement", "achievements", "ach", "achiev", "achv", "acv", "xbox", "xbl", "live", "award"];
-            while (words.Count > 1 && decorations.Contains(words[0].ToLowerInvariant())) words.RemoveAt(0);
-            while (words.Count > 1 && decorations.Contains(words[^1].ToLowerInvariant())) words.RemoveAt(words.Count - 1);
-            if (words.Count == 0) return text;
-            return string.Join(' ', words.Select(w => w.Length == 0 ? w
-                : w.All(char.IsDigit) ? w
-                : char.ToUpperInvariant(w[0]) + w[1..].ToLowerInvariant()));
-        }
+        public static string Readable(string key, string keySource = "il") =>
+            WPR.Xna.Achievements.UnlistedAchievements.Readable(key);
 
         // ---- the on-disk form: the bundled catalogue's achievements.json, plus provenance ----
 

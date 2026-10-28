@@ -340,6 +340,18 @@ namespace WPR
                     $"Application runtime type '{app.ApplicationType}' is not supported.");
             }
 
+            // The title's achievements, before it can ask for them: a game with no catalogue shipped
+            // with WPR gets the one built from its package (installed before generation existed, or
+            // reached before the launcher's background backfill), and an award for a key that
+            // catalogue does not list gets a row of its own. A curated catalogue is authoritative,
+            // so it gets neither. Before the compatibility observer starts: reading the package
+            // meets native DLLs Cecil refuses, which is not something the game ran into. Per
+            // launch, reset in ResetWprSingletons.
+            {
+                bool curated = await XnaAchievementSeeder.PrepareForLaunchAsync(app.ProductId ?? "", app.Name ?? app.ProductId ?? "");
+                WPR.Xna.Achievements.UnlistedAchievements.Allowed = !curated;
+            }
+
             // Anything that escapes from here on is a crash worth reporting. The filter never
             // catches - it records and returns false - so the exception, its stack and the
             // teardown below all proceed exactly as before. It does run BEFORE StartCore's finally
@@ -1813,6 +1825,8 @@ namespace WPR
 
             // The title's target OS version (set beside CurrentInstallFolder in StartCore).
             WPR.Common.WprHostEnvironment.CurrentTarget = null;
+            // Set per launch in Start, before the run begins.
+            WPR.Xna.Achievements.UnlistedAchievements.Allowed = true;
             WPR.SilverlightCompability.Threading.Dispatcher.Detach();
             try { WPR.SilverlightCompability.CompositionTarget.ResetForNewLaunch(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"CompositionTarget reset threw: {ex.Message}"); }

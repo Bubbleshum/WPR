@@ -151,6 +151,51 @@ namespace WPR
         }
 
         /// <summary>
+        /// Serialises generating and reconciling a generated catalogue: the startup backfill
+        /// (<see cref="GenerateMissingAsync"/>, in the background) and a launch
+        /// (<see cref="PrepareForLaunchAsync"/>) may both reach the same game, and two contexts
+        /// reconciling one product at once would each insert its rows.
+        /// </summary>
+        private static readonly System.Threading.SemaphoreSlim GenerationGate = new(1, 1);
+
+        /// <summary>
+        /// Before a game runs: a game with no bundled catalogue gets the one built from its package
+        /// (if it has none yet from the current generator) and its rows reconciled, so the game's
+        /// first <c>GetAchievements</c> lists what the package declares. That covers games installed
+        /// before catalogues were generated, whose backfill at launcher start runs in the
+        /// background and may not have reached them, and hosts that never run the backfill.
+        /// Returns true when the title's achievements come from a curated catalogue shipped with
+        /// WPR, which is authoritative (an award for a key it does not list is not given a row).
+        /// Never throws.
+        /// </summary>
+        public static async Task<bool> PrepareForLaunchAsync(string productId, string appName)
+        {
+            if (string.IsNullOrWhiteSpace(productId)) return false;
+            try
+            {
+                if (!GeneratedAchievementCatalogues.NeedsOne(productId)) return true;
+                await GenerationGate.WaitAsync().ConfigureAwait(false);
+                try
+                {
+                    bool written = GeneratedAchievementCatalogues.EnsureFor(productId);
+                    List<HardcodedAchievement> catalogue = HardcodedAchievementCatalogue.Load(productId);
+                    if (catalogue.Count == 0) return false;
+                    // The shared context, as an install's seed uses: no game is running yet, and the
+                    // game's award path will flip these very rows through it, so its tracked copies
+                    // must be the reconciled ones.
+                    await ReconcileAsync(AchievementContext.Current, productId, appName, catalogue).ConfigureAwait(false);
+                    if (written) OfferToHub(productId);
+                }
+                finally { GenerationGate.Release(); }
+            }
+            catch (Exception ex)
+            {
+                Log.Warn(LogCategory.AppList, $"XnaAchievementSeeder: preparing achievements for '{appName}' ({productId}) failed: {ex.Message}");
+            }
+            return false;
+        }
+
+        /// <summary>
         /// Builds catalogues for installed games that lack one, then seeds each into the
         /// database (on a context of its own: this runs off the UI thread, beside any game's
         /// award path) and offers it to WPR Hub. Never throws.
@@ -162,11 +207,16 @@ namespace WPR
                 using AchievementContext db = new AchievementContext();
                 foreach (string productId in productIds)
                 {
-                    if (!GeneratedAchievementCatalogues.EnsureFor(productId)) continue;
-                    List<HardcodedAchievement> catalogue = HardcodedAchievementCatalogue.Load(productId);
-                    if (catalogue.Count == 0) continue;
-                    await ReconcileAsync(db, productId, names.TryGetValue(productId, out string? name) ? name : productId, catalogue);
-                    OfferToHub(productId);
+                    await GenerationGate.WaitAsync().ConfigureAwait(false);
+                    try
+                    {
+                        if (!GeneratedAchievementCatalogues.EnsureFor(productId)) continue;
+                        List<HardcodedAchievement> catalogue = HardcodedAchievementCatalogue.Load(productId);
+                        if (catalogue.Count == 0) continue;
+                        await ReconcileAsync(db, productId, names.TryGetValue(productId, out string? name) ? name : productId, catalogue);
+                        OfferToHub(productId);
+                    }
+                    finally { GenerationGate.Release(); }
                 }
             }
             catch (Exception ex)

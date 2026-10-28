@@ -7161,6 +7161,61 @@ manager that silently failed look identical from inside a game.
 No `ApplicationPatcher.Version` bump and no reinstall — this is shim behaviour in
 `WPR.Framework.Xna`, so games pick it up on next launch.
 
+### An award for a key no catalogue lists still unlocks (2026-10-28)
+
+On the phone Xbox LIVE knew every achievement of a title, so an award always landed. Here an award
+flips the `achievements.db` row keyed by `OwnProductId + Key`, and the rows come from a catalogue:
+the one shipped under `Database/Achievements/<productId>/`, or since d7d3a764 the one built from
+the package (`GeneratedAchievementCatalogues`, from XLAST, an Xbox SPA or the award calls' string
+constants). A key none of those can see used to go nowhere: no row, no toast, no upload, one
+`AwardAchievement: no DB row` warning on stdout. **The Treasures of Montezuma** is the reference
+case: no XLAST, Eazfuscator-encrypted strings, so its generated catalogue has 0 entries while its
+`YF.Framework.GamerServices` awards Combo/Hint/Level bronze, silver and gold.
+
+Two parts, both general:
+
+- **The award creates the row** (`SignedInGamer.BeginAwardAchievement` →
+  `WPR.Xna.Achievements.UnlistedAchievements.NewRow` → `IAchievementStore.AddAsync`), then the
+  ordinary path flips it: earned locally first (`EarnedOnline` false), toasted only when newly
+  earned, `OnlineBackend.Progress.Unlocked()`. The row's name is the key made readable
+  (`UnlistedAchievements.Readable`, the generator's rule, now in one place: `ACH_HINT_BRONZE` is
+  "Hint Bronze", `7` is "Achievement 7"), 0G (nothing in the call says what it was worth), no icon.
+  A generated catalogue's reconcile keeps earned rows it does not list, so the row survives the
+  next start. Log: `[wpr-achievement] '<key>' is not in the catalogue … created its row` (Trace).
+- **The catalogue is ready before the game asks.** `XnaAchievementSeeder.PrepareForLaunchAsync`
+  runs in `ApplicationLaunch.Start` for every launch: a title with no bundled catalogue gets its
+  generated one (if it has none from the current generator) and its rows reconciled, so a game
+  installed before generation existed lists its achievements on its first `GetAchievements`
+  rather than after the launcher's background backfill reaches it. It shares a gate with that
+  backfill (`GenerationGate`), because two contexts reconciling one product would both insert.
+
+Three things are load-bearing:
+
+- **A curated catalogue is authoritative, so it gets neither.** `PrepareForLaunchAsync` answers
+  whether the title has a bundled catalogue, and `UnlistedAchievements.Allowed` (per launch, reset
+  in `ResetWprSingletons`, true when nobody set it) is its inverse. A curated catalogue's reconcile
+  deletes rows it does not list, earned or not, so a created row would vanish at the next start
+  anyway; and a key mismatch there is a catalogue bug to fix in the data. Those titles behave
+  exactly as before, warning included.
+- **It runs BEFORE `CompatibilityProblems.Begin`.** The generator reads every DLL in the package
+  with Cecil, and a native one throws a caught `BadImageFormatException`; inside the run the
+  first-chance observer reported that as a `bad-il` problem the game never met.
+- **`Achievement.GetPicture()` answers a 64x64 grey PNG for a row with no icon** (or a missing
+  file). It used to open the data folder itself and throw, and games build their achievement lists
+  with `Texture2D.FromStream(GetPicture())` per row, so one icon-less row (these, or any key-only
+  generated row) could empty the in-game list.
+
+`AwardAchievement` returns before the award is stored (`EndAwardAchievement` does not wait), as it
+always has. Tests wait on what `BeginAwardAchievement` returns: `UnlistedAchievementTests`.
+
+Verified 2026-10-28 in `scratchpad/gamerun` against a scratch data root: Montezuma launched with 0
+rows (`generated catalogue … 0 achievement(s) from none`), a local `award <key>` script verb
+awarded `ACH_HINT_BRONZE` (row created, earned, `EarnedOnline` 0, pop-up "0G · Hint Bronze"),
+awarded it again (no second row, no pop-up) and `7` ("Achievement 7"). The award came from the
+harness, not from play: Montezuma's menu took no harness tap that day. Not run on Android.
+
+No `ApplicationPatcher.Version` bump and no reinstall.
+
 ## Cleanup at end of session
 
 Before finishing a task, clean up anything created for diagnosis/verification
