@@ -346,6 +346,7 @@ namespace WPR.Wp8Native
             // voice from OnProcessingPassStart. One pass a frame is enough while it keeps a
             // few buffers ahead.
             QueueEngineCallback(0, "OnProcessingPassStart");
+            double lead = PassLead();
 
             foreach (Voice v in _voices.Values.ToArray())
             {
@@ -356,6 +357,11 @@ namespace WPR.Wp8Native
 
                 Retire(v);
                 Feed(v);
+                if (v.Started)
+                {
+                    QueuePassCallbacks(v, lead);
+                }
+
                 if (v.Out is { } output)
                 {
                     float volume = Math.Clamp(EffectiveVolume(v), 0f, 1f);
@@ -384,6 +390,45 @@ namespace WPR.Wp8Native
             _pendingCallbacks.Clear();
             RunCallbacks(calls, 0, continueWith);
             return true;
+        }
+
+        private long _lastPass;
+        private double _passInterval = 1.0 / 60;
+
+        /// <summary>
+        /// Seconds of sound a voice should have queued at a pass: three of our passes (one a
+        /// frame, so a slow frame does not run it dry), 60 to 200 ms.
+        /// </summary>
+        private double PassLead()
+        {
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (_lastPass != 0)
+            {
+                double seconds = (now - _lastPass) / (double)System.Diagnostics.Stopwatch.Frequency;
+                _passInterval += (Math.Min(seconds, 0.25) - _passInterval) * 0.1;
+            }
+
+            _lastPass = now;
+            return Math.Clamp(_passInterval * 3, 0.06, 0.2);
+        }
+
+        /// <summary>
+        /// OnVoiceProcessingPassStart(BytesRequired) and OnVoiceProcessingPassEnd for a started
+        /// voice, as XAudio2 raises them on every processing pass. A game with its own mixer
+        /// (Mandreel's) submits from OnVoiceProcessingPassStart and nowhere else, so without it
+        /// the voice is started and stays empty. BytesRequired is what tops the voice up to
+        /// <paramref name="lead"/> seconds, in the voice's own format, and 0 while it has enough:
+        /// XAudio2 asks for what avoids starving before the next pass, and ours come a frame apart.
+        /// </summary>
+        private void QueuePassCallbacks(Voice v, double lead)
+        {
+            if (v.Callback == 0)
+            {
+                return;
+            }
+
+            QueueCallback(v, 0, CallbackNames[0], v.Buffers.BytesRequired(lead));
+            QueueCallback(v, 1, CallbackNames[1]);
         }
 
         private void QueueEngineCallback(int slot, string name)

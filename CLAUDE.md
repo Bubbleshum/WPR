@@ -627,6 +627,30 @@ runs at 1-2 fps; it moved 403 → 408 over ~300 frames of steady play.
 
 No `ApplicationPatcher.Version` bump and no reinstall.
 
+### XAudio2 raises OnVoiceProcessingPassStart; voices are fed in 20 ms slices (2026-10-28)
+
+**Mandreel titles (Fruit Ninja 2013, Jetpack Joyride) were silent.** Their mixer creates one 44.1 kHz
+stereo source voice with a callback, starts it, and submits **only** from
+`IXAudio2VoiceCallback::OnVoiceProcessingPassStart(BytesRequired)`, which nothing raised. The tell:
+`audio: … 1 SourceVoice buffers=0 … callbacks=0` on the `guest fps` line. Now every pump (one a
+frame) raises PassStart and PassEnd for each started voice with a callback, in both the WP8 runtime
+(`XAudio2Voices.QueuePassCallbacks`) and the SharpDX host (`HostXAudio2`). `BytesRequired`
+(`XAudio2BufferQueue.BytesRequired`) tops what is still to play up to three pump intervals
+(60-200 ms), in the voice's own format (ADPCM in whole blocks), and is 0 while there is enough.
+
+**What is still to play has to be known mid-buffer.** Mandreel submits ~240 ms pieces of a ring
+and refills only when asked. Counted per whole buffer, the voice looked full until the host had
+already run dry: a gap at every join, ~5 underruns a second in play. So `XAudio2BufferQueue.Feed`
+hands each chunk to the host in ~20 ms slices (a short buffer goes whole), keeps at least three
+slices and 0.5 s queued there, and credits finished slices to their buffer (`QueuedFrames`).
+OnBufferStart/OnBufferEnd still fire once per guest buffer. Android's `AudioTrackVoice` keeps one
+end position per submitted buffer, so it takes slices unchanged.
+
+Verified D1 (harness, scratch root): Fruit Ninja menu music and a Classic round with slice sounds,
+underruns only during the load stall; Jetpack Joyride 0 → 449 buffers in 30 s. WP8 regression (12
+titles, Terraria/Halo/GTA excluded), base vs this: same frames and underruns within noise
+(MC4 re-run 1388/1368 vs 1401/1405). Contract suite `XAudio2QueueSuite`. Not run on Android.
+
 ### FAudio has its own AAudio output on Android (2026-10-13)
 
 On Android 8.1+ every FAudio engine (sound effects/XACT, songs, WP8 voices when routed there) opens
