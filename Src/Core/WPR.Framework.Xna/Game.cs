@@ -301,6 +301,7 @@ namespace Microsoft.Xna.Framework
 
 		public Game()
 		{
+			WprTicking = false;
 			//RnD
 			AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
 
@@ -573,6 +574,13 @@ namespace Microsoft.Xna.Framework
 		// flooding the debug log.
 		private int _wprTraceTickCount;
 
+		/// <summary>
+		/// True once the current game's loop has started ticking, i.e. its constructor,
+		/// Initialize and LoadContent are behind it. <c>SignedInGamer.SignedIn</c> waits for
+		/// that before raising the sign-in, not for a fixed time after each subscription.
+		/// </summary>
+		internal static volatile bool WprTicking;
+
 		// Always increments — used by the heartbeat probe (which keeps firing at intervals
 		// well past the per-tick trace cap above).
 		private long _wprTicksTotal;
@@ -795,6 +803,7 @@ namespace Microsoft.Xna.Framework
 			// WPR: run any work shims have queued for the game thread (e.g. a
 			// MediaPlayerLauncher video completing -> title reactivation -> LoadLevel).
 			WprGameThread.DrainPending();
+			WprTicking = true;
 
 			// WPR: run GPU calls a worker thread handed to this one (OpenGL only; see
 			// WPR.Xna.Rhi.DeviceThreadDispatch). Free when nothing is waiting.
@@ -1027,6 +1036,7 @@ namespace Microsoft.Xna.Framework
 	                    WprDebugTrace.WriteLine("[wpr-ex] Game.Update (variable timestep) threw: " + ex2);
 	                    WPR.Engine.Online.CompatibilityProblems.NoteFrameException(WPR.Engine.Online.CompatibilityProblems.Categories.UpdateThrew, ex2);
 	                    WPR.Xna.Rhi.ErrorScreen.NoteFrameException(ex2);
+	                    Microsoft.Xna.Framework.Graphics.SpriteBatch.WprNoteFrameThrew();
 						Exit();
 	                }
 	            }
@@ -1092,14 +1102,14 @@ namespace Microsoft.Xna.Framework
 					}
 					if (beginOk)
 					{
-						// Preemptively clear any SpriteBatch left in Begin state from a
-						// prior tick whose Draw threw mid-batch. Without this, every frame
-						// after a mid-batch NRE wastes itself on InvalidOperationException
-						// at the next Begin() — that's exactly what produced the PvZ flicker
-						// (NRE frame leaves batch wedged → next frame all-or-nothing).
+						// Clear any SpriteBatch left in Begin state by an exception WPR swallowed
+						// since the last Draw (an Update or GameTimer handler; Draw's own catch
+						// below resets at once). Only then: a batch the game deliberately keeps
+						// open across Present is legal XNA, and resetting it unasked makes its
+						// next Draw throw "Begin has not yet been called" (Deer Hunter 3D).
 						try
 						{
-							int preReset = Microsoft.Xna.Framework.Graphics.SpriteBatch.WprForceEndAll();
+							int preReset = Microsoft.Xna.Framework.Graphics.SpriteBatch.WprForceEndAllIfAFrameThrew();
 							if (preReset > 0)
 							{
 								WprDebugTrace.WriteLine($"[wpr-trace] Game.Draw #{wprTraceIndex} pre-clean: reset {preReset} stale SpriteBatch(es) from prior tick");

@@ -67,8 +67,12 @@ namespace Microsoft.Xna.Framework.GamerServices
                 //
                 // First subscriber in a session: 2s delay to give the ctor and
                 // Initialize() time to settle. Late subscribers: no delay, they're
-                // simulating "you missed the initial sign-in, here it is now".
-                int delayMs = FirstSignInSessionDone ? 0 : DelaySignedInMillis;
+                // simulating "you missed the initial sign-in, here it is now". A first
+                // subscriber that arrives once the loop is ticking has nothing left to
+                // settle: on the phone the profile was signed in long before, and XNA
+                // reported it on the next GamerServices update. Deer Hunter 3D subscribes
+                // from its main menu and reads the gamer about a second later.
+                int delayMs = FirstSignInSessionDone || Microsoft.Xna.Framework.Game.WprTicking ? 0 : DelaySignedInMillis;
 #if DEBUG
                 Trace.WriteLine($"[wpr-trace] SignedInGamer.SignedIn: scheduling Task.Delay({delayMs}ms) → serialised invoke");
 #endif

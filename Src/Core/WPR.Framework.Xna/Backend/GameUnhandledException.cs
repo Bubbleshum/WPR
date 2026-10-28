@@ -109,6 +109,7 @@ namespace WPR.Xna.Rhi
 		/// </summary>
 		public static bool ReportFrameException(Exception exception)
 		{
+			Microsoft.Xna.Framework.Graphics.SpriteBatch.WprNoteFrameThrew();
 			bool handled = Report(exception);
 			if (handled)
 			{
