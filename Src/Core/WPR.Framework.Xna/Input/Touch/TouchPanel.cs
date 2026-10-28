@@ -476,6 +476,55 @@ namespace Microsoft.Xna.Framework.Input.Touch
 
 			// Get the latest finger data
 			XnaBackend.Input.UpdateTouchPanelState();
+
+			ReleaseVanishedTouches();
+		}
+
+		/// <summary>
+		/// Every touch that was down last frame and is in no slot now is reported Released once.
+		/// The SDL drain packs fingers by index, so when the first of two lifts the second is
+		/// written over its slot and the lifted touch's id simply disappears. A game keying
+		/// held state by id (a virtual pad held with one thumb, a button with the other) then
+		/// holds it for ever, because ids are never reused. While ids came from the sources
+		/// (before 2026-10-23) the next press reused the id and released it by accident.
+		/// The Released goes in a free slot the drain clears every frame.
+		/// </summary>
+		private static void ReleaseVanishedTouches()
+		{
+			int drained = FirstReservedFingerSlot;
+			for (int i = 0; i < MAX_TOUCHES; i += 1)
+			{
+				if (!IsDown(prevTouches[i].State) || HasTouch(prevTouches[i].Id))
+				{
+					continue;
+				}
+				for (int k = 0; k < drained; k += 1)
+				{
+					if (touches[k].State == TouchLocationState.Invalid)
+					{
+						touches[k] = new TouchLocation(
+							prevTouches[i].Id,
+							TouchLocationState.Released,
+							prevTouches[i].Position,
+							prevTouches[i].State,
+							prevTouches[i].Position
+						);
+						break;
+					}
+				}
+			}
+		}
+
+		private static bool HasTouch(int id)
+		{
+			for (int i = 0; i < MAX_TOUCHES; i += 1)
+			{
+				if (touches[i].State != TouchLocationState.Invalid && touches[i].Id == id)
+				{
+					return true;
+				}
+			}
+			return false;
 		}
 
 		#endregion

@@ -4762,6 +4762,18 @@ Two more were Android-only:
 `2147483647` the mouse) from a game's input code, on the second gesture and never the first.
 The source ids still reach `GestureDetector` (`INTERNAL_onTouchEvent`) unchanged; only `TouchLocation.Id` changed.
 
+**Every touch that was down and is in no slot now is reported Released once
+(`TouchPanel.ReleaseVanishedTouches`, 2026-10-28).** The SDL drain packs fingers by index, so when the
+first of two fingers lifts, the second is written over its slot and the lifted touch's id simply
+disappeared. While ids were the sources' own, the next press reused it and released it by accident;
+with ids never reused (0.2.08) the game held that touch for ever. **Final Fantasy** (`c6eaa012-…`,
+`touchesBegan/Moved/Ended(id)`) is the reference case: hold the virtual pad, press Dash, lift the pad
+first, and nothing (menus included) took a tap again. The Released goes in a free drained slot. The
+harness's local `fdown <src> x y` / `fmove` / `fup <src>` verbs (`MultiFingerDrain` in `Script.cs`)
+replace the drain with fingers packed by index, as SDL's is; on the emulator, `sendevent` on
+`/dev/input/event2` (multi-touch protocol B: `ABS_MT_SLOT`, `ABS_MT_TRACKING_ID`, -1 to lift) as root
+gives two real fingers.
+
 **The harness `peek` verb** (local `scratchpad/gamerun/Script.cs`) reads a static member path:
 `peek AEMobile.WP7.GameFramework.XNA.ScreenManager Current.sequeceScreens` lists AE's screen stack
 (an element list prints each element's type). That is what showed Settings being closed by Back and

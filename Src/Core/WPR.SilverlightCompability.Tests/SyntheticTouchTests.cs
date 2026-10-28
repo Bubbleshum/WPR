@@ -115,13 +115,83 @@ public class SyntheticTouchTests
 
             update.Invoke(null, null);
             TouchCollection second = TouchPanel.GetState();
-            Assert.Equal(1, second.Count);
             Assert.Equal(TouchLocationState.Moved, second[0].State);
             Assert.Equal(secondId, second[0].Id);
+            Assert.DoesNotContain(second, t => t.Id == secondId && t.State == TouchLocationState.Released);
         }
         finally
         {
             XnaBackend.Clear();
+        }
+    }
+
+    [Fact]
+    public void TwoFingersLiftedInEitherOrderAreBothReleasedAndThenGone()
+    {
+        // A virtual pad held in slot 0 and a button in slot 1. Lifting the pad first makes the
+        // drain shift the button down into slot 0, so the pad's id was in no slot and was never
+        // Released: the game held the pad for ever (Final Fantasy III, 0.2.08 on Android).
+        foreach (bool padFirst in new[] { true, false })
+        {
+            int none = (int)typeof(TouchPanel).GetField("NO_FINGER", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+            MethodInfo setFinger = typeof(TouchPanel).GetMethod("SetFinger", BindingFlags.NonPublic | BindingFlags.Static)!;
+            void Slot(int slot, int finger, float x) => setFinger.Invoke(null, new object[] { slot, finger, new Vector2(x, 400) });
+
+            var frames = new Queue<Action>();
+            frames.Enqueue(() => { Slot(0, 1, 60); Slot(1, none, 0); });              // pad down
+            frames.Enqueue(() => { Slot(0, 1, 62); Slot(1, 2, 700); });               // button down
+            frames.Enqueue(() => { Slot(0, 1, 64); Slot(1, 2, 700); });               // both held
+            if (padFirst)
+            {
+                frames.Enqueue(() => { Slot(0, 2, 700); Slot(1, none, 0); });         // pad up: button shifts
+                frames.Enqueue(() => { Slot(0, 2, 700); Slot(1, none, 0); });
+            }
+            else
+            {
+                frames.Enqueue(() => { Slot(0, 1, 64); Slot(1, none, 0); });          // button up
+                frames.Enqueue(() => { Slot(0, 1, 64); Slot(1, none, 0); });
+            }
+            frames.Enqueue(() => { Slot(0, none, 0); Slot(1, none, 0); });           // last finger up
+            frames.Enqueue(() => { Slot(0, none, 0); Slot(1, none, 0); });
+
+            var input = DispatchProxy.Create<IInputBackend, DrainProxy>();
+            ((DrainProxy)(object)input).Frames = frames;
+            XnaBackend.SetInput(input);
+            try
+            {
+                MethodInfo update = typeof(TouchPanel).GetMethod("Update", BindingFlags.NonPublic | BindingFlags.Static)!;
+                var released = new Dictionary<int, int>();
+                var lastState = new Dictionary<int, TouchLocationState>();
+                int padId = 0, buttonId = 0;
+                for (int frame = 0; frame < 7; frame++)
+                {
+                    update.Invoke(null, null);
+                    foreach (TouchLocation t in TouchPanel.GetState())
+                    {
+                        if (frame == 0) padId = t.Id;
+                        if (frame == 1 && t.State == TouchLocationState.Pressed) buttonId = t.Id;
+                        lastState[t.Id] = t.State;
+                        if (t.State == TouchLocationState.Released)
+                        {
+                            released[t.Id] = released.GetValueOrDefault(t.Id) + 1;
+                        }
+                    }
+                }
+
+                Assert.NotEqual(0, padId);
+                Assert.NotEqual(0, buttonId);
+                Assert.NotEqual(padId, buttonId);
+                // Each touch is Released exactly once, and nothing is left afterwards.
+                Assert.Equal(1, released.GetValueOrDefault(padId));
+                Assert.Equal(1, released.GetValueOrDefault(buttonId));
+                Assert.Equal(TouchLocationState.Released, lastState[padId]);
+                Assert.Equal(TouchLocationState.Released, lastState[buttonId]);
+                Assert.Empty(TouchPanel.GetState());
+            }
+            finally
+            {
+                XnaBackend.Clear();
+            }
         }
     }
 
