@@ -6,14 +6,14 @@ namespace WPR.Online.Hub;
 
 /// <summary>
 /// <see cref="ITitleDetailsSync"/> over the hub's anonymous <c>/api/titles/{id}/details</c>: an
-/// installed game's name, publisher, developer, platform and icon, for titles the hub has not
+/// installed game's name, publisher, developer, platform, manifest version and icon, for titles the hub has not
 /// been told about.
 /// </summary>
 /// <remarks>
 /// <para><b>The flow.</b> <see cref="Offer"/> writes the details to <c>title-details/</c>, one file
 /// per title. <see cref="FlushAsync"/> first asks the hub which fields it still wants, then sends
 /// only those, reading the icon from the install at that moment. Either way the title is then
-/// written to <c>title-details-sent.txt</c> and never offered to that hub again, so a second
+/// written to <c>title-details-sent-v2.txt</c> and never offered to that hub again, so a second
 /// install, a repatch or every later launch sends nothing.</para>
 ///
 /// <para><b>Backfill.</b> Games installed before this existed, or while server logging was off,
@@ -31,6 +31,8 @@ public sealed class HubTitleDetails : ITitleDetailsSync
 {
     internal const int MaxTitlesPerFlush = 10;
 
+    internal const string SentLogName = "title-details-sent-v2.txt";
+
     /// <summary>The hub refuses more (256 KB). WP icons are a few KB.</summary>
     internal const int MaxIconBytes = 256 * 1024;
 
@@ -47,7 +49,9 @@ public sealed class HubTitleDetails : ITitleDetailsSync
         _connection = connection;
         string root = connection.Settings.DataDirectory;
         _queue = new DiskQueue<TitleDetails>(Path.Combine(root, "title-details"), capacity: 500);
-        _sentPath = Path.Combine(root, "title-details-sent.txt");
+        // "-v2" since the hub took versions (2026-10-28): titles marked sent under the first log
+        // were never offered one, so each is asked once more. The old log is left where it is.
+        _sentPath = Path.Combine(root, SentLogName);
     }
 
     public void Offer(TitleDetails details)
@@ -142,7 +146,8 @@ public sealed class HubTitleDetails : ITitleDetailsSync
         Publisher: wants.Publisher ? Clean(details.Publisher) : null,
         Developer: wants.Developer ? Clean(details.Developer) : null,
         Platform: wants.Platform ? Clean(details.Platform) : null,
-        Icon: wants.Icon ? ReadIcon(details.IconFile) : null);
+        Icon: wants.Icon ? ReadIcon(details.IconFile) : null,
+        Version: wants.Version ? PackageManifestVersion.Normalise(details.Version) : null);
 
     /// <summary>
     /// Manifests hold placeholders WPR resolves only sometimes: an unresolved resource reference

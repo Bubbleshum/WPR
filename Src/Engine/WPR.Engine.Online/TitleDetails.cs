@@ -10,13 +10,15 @@ namespace WPR.Engine.Online
     /// <param name="Platform">WPR Hub's platform name ("Windows Phone 7", "Windows Phone 8"…), from
     /// <c>WPR.Common.WindowsPhoneTarget.HubPlatformName</c>.</param>
     /// <param name="IconFile">An absolute path to the installed icon, read when the offer is sent.</param>
+    /// <param name="Version">The package's own manifest version (<see cref="PackageManifestVersion"/>).</param>
     public sealed record TitleDetails(
         string TitleId,
         string? Name,
         string? Publisher,
         string? Developer,
         string? Platform,
-        string? IconFile);
+        string? IconFile,
+        string? Version = null);
 
     /// <summary>
     /// Offers installed games' details to the hub, which keeps only what it does not have yet.

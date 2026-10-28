@@ -5,7 +5,8 @@
 namespace WPR.Online.Hub.Client;
 
 /// <summary>Which fields the hub would still take for a title. All true for a title it has never seen.</summary>
-public sealed record TitleDetailsWants(bool Icon, bool Name, bool Publisher, bool Developer, bool Platform);
+/// <remarks><see cref="Version"/> is false from a hub that predates versions, so none is sent there.</remarks>
+public sealed record TitleDetailsWants(bool Icon, bool Name, bool Publisher, bool Developer, bool Platform, bool Version = false);
 
 public sealed record TitleDetailsStatus(string TitleId, bool Known, string? Name, string? IconUrl, TitleDetailsWants Wants);
 
@@ -15,7 +16,8 @@ public sealed record TitleDetailsContribution(
     string? Publisher = null,
     string? Developer = null,
     string? Platform = null,
-    string? Icon = null);
+    string? Icon = null,
+    string? Version = null);
 
 /// <summary><see cref="Accepted"/> names the fields the hub kept (<c>icon</c>, <c>name</c>, ...).</summary>
 public sealed record TitleDetailsResult(string TitleId, IReadOnlyList<string> Accepted, string? IconUrl, TitleDetailsWants Wants);

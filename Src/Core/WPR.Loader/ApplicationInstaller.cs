@@ -711,9 +711,13 @@ namespace WPR
                 if (!string.IsNullOrWhiteSpace(app.IconPath) && Configuration.Current is { } config) icon = config.DataPath(app.IconPath);
             }
             catch (Exception) { /* no icon then */ }
+            // The manifest's own version, as the hub reads it from packages it stores; not
+            // app.Version, which WPR resolves further (a placeholder 1.0.0.0 becomes the assembly's).
+            string? version = WPR.Engine.Online.GamePackageRecord.TryLoad(installFolder)?.Version
+                              ?? WPR.Engine.Online.PackageManifestVersion.FromInstallFolder(installFolder);
             return new WPR.Engine.Online.TitleDetails(app.ProductId, app.Name, app.Publisher, app.Author,
                 WPR.Common.WindowsPhoneTarget.TryReadFromInstall(installFolder, out var target) ? target.HubPlatformName : null,
-                icon);
+                icon, version);
         }
 
         /// <summary>

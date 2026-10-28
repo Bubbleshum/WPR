@@ -36,6 +36,8 @@ public sealed class HubTitleDetailsTests : IDisposable
         public bool HasIcon { get; set; }
         public bool HasName { get; set; }
         public HttpStatusCode? Fail { get; set; }
+        /// <summary>Null: a hub from before versions, whose wants have no "version" at all.</summary>
+        public bool? WantsVersion { get; set; }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
@@ -54,7 +56,9 @@ public sealed class HubTitleDetailsTests : IDisposable
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = Json(new { title_id = HubId, known = HasName, name = (string?)null, icon_url = (string?)null, wants = Wants() }) };
         }
 
-        private object Wants() => new { icon = !HasIcon, name = !HasName, publisher = false, developer = false, platform = false };
+        private object Wants() => WantsVersion is { } version
+            ? new { icon = !HasIcon, name = !HasName, publisher = false, developer = false, platform = false, version }
+            : new { icon = !HasIcon, name = !HasName, publisher = false, developer = false, platform = false };
 
         private static StringContent Json(object o) => new(JsonSerializer.Serialize(o), Encoding.UTF8, "application/json");
     }
@@ -81,8 +85,8 @@ public sealed class HubTitleDetailsTests : IDisposable
 
     private static readonly byte[] Png = { 0x89, (byte)'P', (byte)'N', (byte)'G', 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3 };
 
-    private TitleDetails Game(string? name = "Guitar Hero 5", string? icon = null) =>
-        new(Id, name, "Glu", "Glu Mobile", "Windows Phone 7", icon ?? Icon(Png));
+    private TitleDetails Game(string? name = "Guitar Hero 5", string? icon = null, string? version = "1.2.0.0") =>
+        new(Id, name, "Glu", "Glu Mobile", "Windows Phone 7", icon ?? Icon(Png), version);
 
     private static JsonElement Body(string json) => JsonDocument.Parse(json).RootElement;
 
@@ -189,6 +193,36 @@ public sealed class HubTitleDetailsTests : IDisposable
         Assert.Equal(1, listed);
         Assert.Equal(2, _hub.Requests.Count);
         Assert.True(_hub.HasIcon);
+    }
+
+    [Theory]
+    [InlineData(true, "1.2.0.0")]
+    [InlineData(false, null)]
+    [InlineData(null, null)]
+    public async Task The_version_is_sent_only_when_the_hub_wants_it(bool? wanted, string? expected)
+    {
+        _hub.WantsVersion = wanted;
+        HubTitleDetails sync = Create();
+        sync.Offer(Game());
+        await sync.FlushAsync();
+
+        JsonElement sent = Body(_hub.Requests[1].Body!);
+        Assert.Equal(expected, sent.TryGetProperty("version", out JsonElement v) ? v.GetString() : null);
+    }
+
+    [Fact]
+    public async Task Only_a_version_still_wanted_is_posted_alone()
+    {
+        _hub.HasIcon = _hub.HasName = true;
+        _hub.WantsVersion = true;
+        HubTitleDetails sync = Create();
+        sync.Offer(Game());
+        await sync.FlushAsync();
+
+        Assert.Equal(2, _hub.Requests.Count);
+        JsonElement sent = Body(_hub.Requests[1].Body!);
+        Assert.Equal("1.2.0.0", sent.GetProperty("version").GetString());
+        Assert.False(sent.TryGetProperty("name", out _));
     }
 
     [Theory]

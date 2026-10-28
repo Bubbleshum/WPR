@@ -1731,6 +1731,51 @@ code is shared and the head only passes the backfill delegate.
 No `ApplicationPatcher.Version` bump and no reinstall: existing installs are backfilled on the next
 launch.
 
+### Game file versions: the hub stops asking for packages it does not need (2026-10-28)
+
+WPR Hub `a4b52a9` keeps a version on every package it stores and stops asking for a game when it
+already holds that game at the version a player has, or an admin pressed "We have everything we
+need". WPR now tells it the version (the hub's own write-up of what the client needed is
+`Docs/WPRHub-XboxLiveGames-ClientWork.md`; its "works today" half needed no change).
+
+- **The version is the manifest's own text, never `Application.Version`.**
+  `WPR.Engine.Online.PackageManifestVersion` reads it exactly as the hub's
+  `App\Support\PackageManifest::read` does: root `WMAppManifest.xml` first `App@Version`, else
+  `AppxManifest.xml` first `Identity@Version`, else the bundle manifest; digits and dots only, at
+  most four parts (`[0-9]`, since .NET's `\d` takes other scripts' digits). `Application.Version` is
+  resolved further (a placeholder `1.0.0.0` becomes the entry assembly's version), so it would ask
+  for builds the hub has, or worse, name one it does not.
+- **`GamePackageRecord.Version`**, set by `Measure` (install and refusal both measure the
+  package). A `wpr-package.json` written before this reads it from the install folder in
+  `TryLoad`, preferring `<manifest>.original` where WPR completed a broken manifest, because the
+  hub reads the package's own.
+- **Reports** send it as `app_version` (`DiagnosticReport.AppVersion`, every path in
+  `HubCrashReporter`). A receipt can then say `game_file: {wanted: false, reason: "not_needed"}`.
+- **Upload starts** send `version`; a hub that has what it needs answers 409
+  `{reason: "not_needed"}` with no status (`GameFileUploadState.IsNotNeeded`), and the queued upload
+  is dropped for good. `GetGameFileInfoAsync` takes `titleId`/`version` and reads `NotNeeded`.
+- **Title details** offer `Version` only when the hub's `wants.version` says so (false from an
+  older hub). The sent log moved to `Online/title-details-sent-v2.txt`, so every installed title
+  is asked once more (one GET, a POST only if the hub wants something); the old log is left alone.
+
+A hub from before this ignores all of it (Laravel keeps only validated input), and the new response
+fields (`xbox_live_game_id`, `title_ids`, `not_needed`...) are ignored by `HubJson.Options`.
+
+Verified 2026-10-28 against a scratch copy of the hub at `a4b52a9` (SQLite) with the real client:
+a report of a version the hub holds got `not_needed` and queued nothing; a version it lacked was
+asked for, uploaded, and stored by the hub as the same `1.3.0.0` string the client sent; an upload
+queued before an admin marked the game complete got the 409 and was dropped, not retried; title
+details kept `version` for a new title and for one with none; the signed-in file check answered
+`not_needed` true and false. Tests: `HubGameFileVersionTests`, `HubTitleDetailsTests`.
+
+**Not done, deliberately: restored unlocks for linked releases** (the hub doc's item 4). Once an
+admin links two releases, `HubProgressSync`'s restore writes a player's unlocks into every linked
+game id, so the Trophies page can show a Lite and a full release as two games with the same
+unlocks. Nothing changes until the first link; decide between restoring only into installed game
+ids, grouping the page by `xbox_live_game_id`, or the hub listing unlocks only under played ids.
+
+No `ApplicationPatcher.Version` bump and no reinstall.
+
 ### Every game is attempted; what it carries on past reaches WPR Hub (2026-10-14)
 
 Two halves, one policy (the "run unknown games until they fail" rule): WPR refuses a game up front
