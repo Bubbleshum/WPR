@@ -51,6 +51,35 @@ public sealed class VertexSnapshotSuite : IContractSuite
         h.Check("a static buffer drawn at many offsets is copied a handful of times, not per draw per frame",
             arrays.Count < offsets.Length, $"{arrays.Count} arrays for {offsets.Length} offsets x 3 frames");
 
+        // One interleaved buffer bound in several slots at byte offsets inside the vertex, each slot
+        // spanning every vertex (Asphalt 7: stride 44, offsets 12, 20 and 28). The last vertex of
+        // such a stream runs past the buffer's end by its offset; it is still served from one copy.
+        const int istride = 44, vertices = size / istride;
+        var interleaved = new FrameCapture.Resource { Name = "interleaved", Storage = storage, StorageSize = vertices * istride, Version = 1 };
+        FrameCapture.DrawCall Whole(int offset) => new(vertices, 0, 0, [new FrameCapture.VertexStream(interleaved, istride, offset)], null, 0, 0, null, [], null, 4);
+        var interleavedArrays = new HashSet<byte[]>(ReferenceEqualityComparer.Instance);
+        bool interleavedRight = true;
+        for (int frame = 0; frame < 3; frame++)
+        {
+            foreach (int offset in new[] { 12, 20, 28 })
+            {
+                FrameCapture.VertexStream s = FrameCapture.Snapshot(e, Whole(offset)).Streams[0];
+                if (s.Data is null)
+                {
+                    interleavedRight = false;
+                    continue;
+                }
+
+                interleavedArrays.Add(s.Data);
+                int last = s.DataOffset + ((vertices - 1 - s.FirstVertex) * istride);
+                interleavedRight &= s.Data[last] == pattern[offset + ((vertices - 1) * istride)];
+            }
+        }
+
+        h.Check("streams bound at byte offsets into an interleaved buffer read their own vertices", interleavedRight);
+        h.Check("an interleaved static buffer bound at byte offsets is copied once, not per draw",
+            interleavedArrays.Count <= 2, $"{interleavedArrays.Count} arrays for 3 offsets x 3 frames");
+
         // A write (a new version) is seen: the old whole copy is not served.
         e.WriteMemory(storage + offsets[0], new byte[] { 0xEE });
         buffer.Version++;

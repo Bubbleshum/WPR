@@ -86,6 +86,20 @@
             /// <summary>True once anything has been written into it.</summary>
             public bool HasContent { get; set; }
 
+            /// <summary>The texture's mip count, as created (only level 0 is kept).</summary>
+            public int MipLevels { get; set; } = 1;
+
+            /// <summary>
+            /// Faces 1-5 of a cube map (D3D11_RESOURCE_MISC_TEXTURECUBE, six array slices); face 0
+            /// is this resource itself. Null for anything that is not a cube.
+            /// </summary>
+            /// <remarks>
+            /// Each face is a resource of its own, with its own storage, so every per-texture path
+            /// (decode, the caches keyed by storage address) works on it unchanged. Only level 0 of
+            /// each face is kept, like every other texture here.
+            /// </remarks>
+            public Resource[]? CubeFaces { get; set; }
+
             /// <summary>
             /// Bumped on every write of content - create with data, UpdateSubresource, a copy, a
             /// Map. Anything caching a decoded copy keys on (Storage, Version), so a texture the
@@ -227,6 +241,13 @@
         /// <summary>The largest buffer copied whole (see <see cref="Resource.WholeCopy"/>).</summary>
         internal const long MaxWholeCopy = 16 * 1024 * 1024;
 
+        /// <summary>
+        /// Zeroed bytes after a whole copy, so a stream bound at a byte offset into the buffer can be
+        /// served from it: such a stream's last vertex runs past the buffer's end by the offset,
+        /// though the element it reads does not. Direct3D 11's largest stride is 2048.
+        /// </summary>
+        internal const int WholeCopyPadding = 2048;
+
         private static VertexStream SnapshotStream(
             ArmEmulator emulator, DrawCall call, VertexStream stream, int lowest, int highest)
         {
@@ -297,10 +318,16 @@
                 // offset, with index ranges spanning thousands of vertices: per-range copies were
                 // ~250 KB a draw, re-taken every frame as the list overflowed, ~300 MB/s of byte[]
                 // (most of it on the large object heap) and managed memory past 3 GB in play.
+                //
+                // Asphalt 7 binds one interleaved buffer (stride 44) in three slots at byte offsets 12,
+                // 20 and 28, one attribute each, so every stream's range ended up to 28 bytes past the
+                // buffer and was refused here: each draw took a fresh 1.6 MB range, ~400 MB/s of
+                // byte[] in a race. The copy is padded so those streams share it.
                 if (buffer.SnapshotBytes + length > buffer.StorageSize && buffer.StorageSize is > 0 and <= MaxWholeCopy &&
-                    first >= 0 && end <= buffer.StorageSize)
+                    first >= 0 && end <= buffer.StorageSize + Math.Min(stream.Offset, WholeCopyPadding))
                 {
-                    byte[] all = emulator.ReadMemory(buffer.Storage, (int)buffer.StorageSize);
+                    byte[] all = new byte[buffer.StorageSize + WholeCopyPadding];
+                    emulator.ReadMemory(buffer.Storage, all.AsSpan(0, (int)buffer.StorageSize));
                     buffer.WholeCopy = all;
                     buffer.WholeCopyVersion = buffer.Version;
                     buffer.Snapshots.Clear();

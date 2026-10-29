@@ -875,6 +875,7 @@ namespace WPR.Wp8Native
             if (kind == "Texture2D")
             {
                 DescribeTexture(resource, Arg(1), Arg(2));
+                DescribeCubeFaces(resource, Arg(1), Arg(2));
 
                 // D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX: the texture carries an IDXGIKeyedMutex.
                 if (Arg(1) != 0 && (_emulator.ReadUInt32(Arg(1) + 40, 0) & 0x100) != 0)
@@ -960,6 +961,91 @@ namespace WPR.Wp8Native
             long source = _emulator.ReadUInt32(initial + 0, 0);
             int pitch = (int)_emulator.ReadUInt32(initial + 4, 0);
             CopyRows(resource, source, pitch);
+        }
+
+        /// <summary>
+        /// A cube map (MiscFlags D3D11_RESOURCE_MISC_TEXTURECUBE, ArraySize 6) gets faces 1-5 as
+        /// resources of their own, filled from their own D3D11_SUBRESOURCE_DATA entries
+        /// (subresource <c>mip + face * MipLevels</c>); <see cref="DescribeTexture"/> already made
+        /// face 0. Asphalt 7's car paint and sky sample a 128x128 cube: with only slice 0 kept the
+        /// replay bound a 2D texture to a cube sampler, which reads nothing, and every car raced
+        /// flat grey with no livery.
+        /// </summary>
+        private void DescribeCubeFaces(FrameCapture.Resource resource, long desc, long initial)
+        {
+            if (desc == 0)
+            {
+                return;
+            }
+
+            uint mips = _emulator.ReadUInt32(desc + 8, 0);
+            uint arraySize = _emulator.ReadUInt32(desc + 12, 0);
+            uint misc = _emulator.ReadUInt32(desc + 40, 0);
+            if (mips == 0)
+            {
+                // Zero asks for the full chain.
+                mips = (uint)(Math.Log2(Math.Max(1, Math.Max(resource.PixelWidth, resource.PixelHeight))) + 1);
+            }
+
+            resource.MipLevels = (int)Math.Clamp(mips, 1, 16);
+            if ((misc & 0x4) == 0 || arraySize != 6 || resource.StorageSize <= 0 || resource.Storage == 0)
+            {
+                return;
+            }
+
+            var faces = new FrameCapture.Resource[5];
+            for (int face = 1; face <= 5; face++)
+            {
+                var f = new FrameCapture.Resource
+                {
+                    Name = $"{resource.Name} face {face}",
+                    PixelWidth = resource.PixelWidth,
+                    PixelHeight = resource.PixelHeight,
+                    Format = resource.Format,
+                    BlockBytes = resource.BlockBytes,
+                    PixelBytes = resource.PixelBytes,
+                    RowPitch = resource.RowPitch,
+                    Rows = resource.Rows,
+                    StorageSize = resource.StorageSize,
+                    MipLevels = resource.MipLevels,
+                };
+                f.Storage = _emulator.AllocateHeap(f.StorageSize);
+                bool stale = _emulator.LastAllocationReused;
+                long entry = initial == 0 ? 0 : initial + (12L * face * resource.MipLevels);
+                if (entry == 0 || f.Storage == 0)
+                {
+                    ZeroStorage(f, stale);
+                }
+                else
+                {
+                    CopyRows(f, _emulator.ReadUInt32(entry + 0, 0), (int)_emulator.ReadUInt32(entry + 4, 0));
+                }
+
+                faces[face - 1] = f;
+            }
+
+            resource.CubeFaces = faces;
+        }
+
+        /// <summary>
+        /// The resource a write to <paramref name="subresource"/> lands in: the texture itself for
+        /// subresource 0, a cube face for the top level of faces 1-5, and null for anything else
+        /// (a lower mip level), which is not kept.
+        /// </summary>
+        private static FrameCapture.Resource? SubresourceTarget(FrameCapture.Resource resource, long subresource)
+        {
+            if (subresource == 0)
+            {
+                return resource;
+            }
+
+            int mips = Math.Max(1, resource.MipLevels);
+            if (resource.CubeFaces is { } faces && subresource % mips == 0 && subresource / mips is >= 1 and <= 5)
+            {
+                return faces[(int)(subresource / mips) - 1];
+            }
+
+            return null;
         }
 
         private static readonly byte[] Zeros = new byte[64 * 1024];
@@ -1058,6 +1144,10 @@ namespace WPR.Wp8Native
         }
 
         /// <summary>CopyResource on the resources' memory: row by row for textures, bytes for buffers.</summary>
+        /// <remarks>
+        /// Guest to guest, with no array per row: Asphalt 7 resolves its 1280x768 race target every
+        /// frame through here (ResolveSubresource), and a new array per call was ~240 MB/s of garbage.
+        /// </remarks>
         private void CopyResourceMemory(FrameCapture.Resource destination, FrameCapture.Resource source)
         {
             if (destination.Rows > 0 && source.Rows > 0)
@@ -1066,7 +1156,7 @@ namespace WPR.Wp8Native
                 int bytes = Math.Min(destination.RowPitch, source.RowPitch);
                 for (int y = 0; y < rows; y++)
                 {
-                    _emulator.WriteMemory(destination.Storage + ((long)y * destination.RowPitch), _emulator.ReadMemory(source.Storage + ((long)y * source.RowPitch), bytes));
+                    _emulator.CopyMemory(destination.Storage + ((long)y * destination.RowPitch), source.Storage + ((long)y * source.RowPitch), bytes);
                 }
             }
             else
@@ -1074,7 +1164,7 @@ namespace WPR.Wp8Native
                 int bytes = (int)Math.Min(destination.StorageSize, source.StorageSize);
                 if (bytes > 0)
                 {
-                    _emulator.WriteMemory(destination.Storage, _emulator.ReadMemory(source.Storage, bytes));
+                    _emulator.CopyMemory(destination.Storage, source.Storage, bytes);
                 }
             }
 
@@ -1868,9 +1958,18 @@ namespace WPR.Wp8Native
                 // (pDstResource, DstSubresource, pDstBox, pSrcData, SrcRowPitch, SrcDepthPitch)
                 FrameCapture.Resource? destination = ResourceAt(Arg(1));
                 long box = Arg(3);
+                FrameCapture.Resource? owner = null;
+                if (destination is { Rows: > 0, CubeFaces: not null } && Arg(2) != 0 && SubresourceTarget(destination, Arg(2)) is { } face)
+                {
+                    // A cube face: written to its own storage, and the cube's version bumped so a
+                    // cached host copy of the whole cube is rebuilt.
+                    owner = destination;
+                    destination = face;
+                }
+
                 if (destination is not null && Arg(4) != 0)
                 {
-                    if (destination.Rows > 0 && Arg(2) != 0)
+                    if (destination.Rows > 0 && Arg(2) != 0 && owner is null)
                     {
                         // A mip level below the top (or another array slice). Only level 0 is
                         // kept; written there, every smaller level landed on the top-left of the
@@ -1920,6 +2019,12 @@ namespace WPR.Wp8Native
                             // Short source; keep whatever landed.
                         }
                     }
+                }
+
+                if (owner is not null)
+                {
+                    owner.HasContent = true;
+                    owner.Version++;
                 }
 
                 // void UpdateSubresource(pDstResource, DstSubresource, pDstBox, pSrcData,
@@ -2276,7 +2381,16 @@ namespace WPR.Wp8Native
             long buffer = resource?.Storage ?? 0;
             int pitch = resource?.RowPitch > 0 ? resource.RowPitch : (int)(BackBufferWidth * 4);
             long subresource = Arg(2);
-            if (resource is { Rows: > 0 } && subresource != 0)
+            if (resource is { Rows: > 0, CubeFaces: not null } && subresource != 0 && SubresourceTarget(resource, subresource) is { } cubeFace)
+            {
+                // The top level of a cube face has storage of its own.
+                resource.HasContent = true;
+                resource.Version++;
+                resource = cubeFace;
+                buffer = cubeFace.Storage;
+                pitch = cubeFace.RowPitch;
+            }
+            else if (resource is { Rows: > 0 } && subresource != 0)
             {
                 // A lower mip level (or another slice) of a texture: only level 0 is kept, so it
                 // gets scratch memory at its own pitch rather than level 0's storage, where it

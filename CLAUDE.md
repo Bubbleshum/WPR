@@ -2450,6 +2450,78 @@ catalogue, results post `BestScore1:0` (distance) / `BestScore2:0` and read back
 - Left: one 50-60 ms gap every few seconds on the phone (a missed display refresh, not GC, not file
   I/O) and ~120-500 ms at a run's end (the game's own sync and save, ~600 file calls).
 
+### Asphalt 7: Heat races: cube maps, and vertex copies that reuse one whole-buffer copy (2026-10-28)
+
+Asphalt 7 (`013e9108-…`, Gameloft) is a WP8 Direct3D/XAML title: `Asphalt7HybridComponent.dll`
+(native ARM, `PhoneDirect3DXamlAppComponent.Direct3DBackground`) behind an obfuscated managed page
+(`PhoneDirect3DXamlAppInterop`, entry `A.RB`), on the inferred page description. Not DRM-wrapped.
+Earlier work (merge `e4cef9fb`) got it to a race: its page feeds touch from `Touch.FrameReported`
+(`XamlTouchFrames`), it resolves a multisampled race target (`ResolveSubresource`, slot 57), and
+its Back key answers an int. Two runtime defects remained, both general:
+
+- **Cube maps were flattened to face 0.** `DescribeTexture` kept one subresource, so a
+  `D3D11_RESOURCE_MISC_TEXTURECUBE` texture (ArraySize 6) lost faces 1-5 and the replay bound a
+  `Texture2D` to a `dcl_cube` sampler, which reads nothing: no sky in the reflections and a dull
+  car. `DescribeCubeFaces` gives a cube faces 1-5 as resources of their own
+  (`FrameCapture.Resource.CubeFaces`, filled from `D3D11_SUBRESOURCE_DATA[face * MipLevels]`);
+  `UpdateSubresource`/`Map` of a face's top level land there (`SubresourceTarget`) and bump the
+  cube's version; `TextureImage.Faces` carries them and `Wp8GpuReplay.CubeFor` builds a
+  `TextureCube` (D3D11's face order is XNA's `CubeMapFace` order). Lower mip levels are still
+  not kept, for any texture. **The tell**: `WPR_WP8_SHADER_DUMP` and a pixel shader with a
+  `dcl_cube` sampler (sampler dcl token `0x98000000`).
+- **A buffer bound at byte offsets was copied per draw.** The car and scenery meshes are one
+  interleaved 1.6 MB buffer (stride 44) bound in three slots at offsets 12, 20 and 28, one
+  attribute each, every slot spanning all its vertices. Each stream's range ended up to 28 bytes
+  past the buffer, so the whole-copy path (the N.O.V.A. 3 fix in `SnapshotStream`) refused it and
+  every draw took a fresh 1.6 MB range: ~400 MB/s of `byte[]` and managed memory past 2 GB within a
+  minute of racing. The whole copy is now padded (`WholeCopyPadding`, 2048, D3D11's largest stride)
+  and serves those streams. And `CopyResourceMemory` (CopyResource and the per-frame resolve) copies
+  guest to guest with `CopyMemory` instead of an array per row: ~240 MB/s of its own.
+
+Measured on D1 in a race, before → after: allocation ~400 → ~25 MB/s, managed 2.2 GB → 220-360 MB,
+replay 15 → 1-2.5 ms a frame, 32-50 → 55-59 fps. Found with `dotnet-trace collect --profile
+gc-verbose` on the harness and a TraceEvent aggregation of `GCAllocationTick` stacks.
+
+**The player's car looks grey from the chase camera, and that is the game's own lighting, not a
+replay defect** (settled 2026-10-29). In the countdown fly-by, where the camera sees its sunlit side,
+the race renders it white with its red side stripes and red mirror caps, as on a phone; from behind,
+the chase camera sees the shaded rear. Measured, so this is not chased again:
+
+- The race car samples a white 256x256 atlas with the stripes' red swatch top left (dumped and
+  checked); the stock `_body.tga` / `_body_low.tga` in `carTextures.zip` are grey with no stripes,
+  so the paint is applied before upload, on the CPU, and survives the replay.
+- Ambient: `0x10035f90` asks the irradiance manager (`[scene+0x12c]`) for the volume nearest the
+  car (`0x1030314c`). After a load the manager always sets the nearest-volume fallback
+  (`flags = (flags & 0xF0) | 8`, limit 1e10), and `0x10304604` blends that probe with the track's
+  default ambient by `distance / 1000`, clamped to 1. Hawaii (and Alps, Bahamas, Miami, Moscow,
+  New York, Rio) ships the same 98,856-byte placeholder `.ird`, whose volumes are ~100k units from
+  the race, so the blend is fully the default: the `Light Ambient Color` 0.4 x 3 x SH band 0
+  (0.282) = **0.339** in `c19`-`c21`.w. The garage (`GS_MenuMain`) uses 3.0 instead, and its
+  shader takes `c16` = 1 rather than the SH, which is why the garage car is fully bright.
+- The vertex shader multiplies that ambient by the normal's w (`mov r0.w, v1.w`). The normal is
+  `R32G32B32_FLOAT`, so w is 1 on Direct3D, GL and here alike.
+- The diffuse is `2 x 0.6 x c2.z (0.803 for the player) x N.L`, with `c18` (about -0.81, 0.42, 0.41
+  in object space) a low side light. The rear gets little of it.
+- No sRGB formats anywhere (BC1/BC2/BGRA8/RGBA8 UNORM, D24S8), every race draw replays, and
+  D1-D4 agree.
+
+Harness script (1280x768 landscape, from a clean store): `18 hold 640 400 0.2` (title), `30 hold 640
+400 0.2` (Quick Play → "Play tutorial?"), `38 hold 860 554 0.2` (Play Tutorial), `46 hold 1074 716
+0.2` (Select Car), `54 hold 1150 434 0.2` (close the Tiered Events tip), `60 hold 1094 712 0.2`
+(Continue), `68 hold 1096 714 0.2` (No Thanks to the sponsor); the race is on screen by ~100 s on
+D1/D2, later on D3/D4. `tilt -0.6 0 -0.8` steers (the tutorial's "tilt to the left").
+
+| cell | result |
+| --- | --- |
+| D1 D3D11 | ✅ title → menu → tutorial race, tilt steers, reflections |
+| D2 Vulkan | ✅ same |
+| D3 OpenGL | ✅ same (loads slower) |
+| D4 GLES 3.0 + no DXT | ✅ same (washed out, as D4 always is) |
+| A1/A2, P1–P3 | not run |
+
+Contract tests: cube faces and face updates in `Direct3DStateSuite`, offset-bound interleaved
+streams in `VertexSnapshotSuite`. No `ApplicationPatcher.Version` bump and no reinstall.
+
 ### Update checks and the About page's "what's new" (2026-09-29, Android)
 
 `WPR.Shell.AppUpdates` asks GitHub's `/releases/latest` (drafts and pre-releases excluded) at most
