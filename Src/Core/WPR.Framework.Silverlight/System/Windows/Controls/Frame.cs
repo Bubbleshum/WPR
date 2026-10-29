@@ -14,6 +14,12 @@ namespace WPR.SilverlightCompability
         protected readonly Dictionary<string, Type> _pageRegistry =
             new(StringComparer.OrdinalIgnoreCase);
 
+        private const string NoBackEntryKey = "wpr-go-back-with-no-entry";
+
+        /// <summary>True for the exception <see cref="GoBack"/> throws when there is no page to go back to.</summary>
+        internal static bool IsGoBackWithNoEntry(Exception exception) =>
+            exception is InvalidOperationException && exception.Data[NoBackEntryKey] is true;
+
         protected readonly Stack<JournalEntry> _backStack = new();
         protected readonly Stack<JournalEntry> _forwardStack = new();
 
@@ -161,7 +167,15 @@ namespace WPR.SilverlightCompability
         public void GoBack()
         {
             if (!CanGoBack)
-                throw new InvalidOperationException("Back stack is empty.");
+            {
+                // As on the phone. Left unhandled, the phone then closed the app, and WP7/WP8 titles
+                // quit that way: Fruit Ninja 2013's "Exit" box calls NavigationService.GoBack() off its
+                // only page from a dispatcher post. Marked so Application can tell this throw from an
+                // ordinary bug (see Application.RaiseUnhandledException); the type stays the phone's.
+                var noEntry = new InvalidOperationException("Cannot go back when CanGoBack is false.");
+                noEntry.Data[NoBackEntryKey] = true;
+                throw noEntry;
+            }
 
             var entry = _backStack.Pop();
 

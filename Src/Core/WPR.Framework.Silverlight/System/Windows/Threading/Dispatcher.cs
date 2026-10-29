@@ -63,6 +63,11 @@ namespace WPR.SilverlightCompability.Threading
                 catch (Exception ex)
                 {
                     System.Diagnostics.Trace.WriteLine($"[wpr-dispatcher] a posted callback threw: {ex}");
+                    // Nothing above a post catches on the phone: it reached Application.UnhandledException,
+                    // and one the app left unhandled closed it (the quit idioms). BeginInvoke(Delegate)
+                    // runs through DynamicInvoke, so the game's own exception is the inner one.
+                    WPR.Xna.Rhi.GameUnhandledException.Report(
+                        ex is System.Reflection.TargetInvocationException { InnerException: { } inner } ? inner : ex);
                 }
             }
         }

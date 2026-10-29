@@ -184,8 +184,12 @@ namespace WPR.WindowsCompability
              * So terminate only for an exception the GAME ITSELF DEFINED. That is exactly the
              * shape of the quit idiom — you cannot signal "the user chose to exit" with an NRE,
              * so titles declare a private type for it (Cut the Rope's QuitException) — while
-             * ordinary bugs surface as BCL exceptions and stay non-fatal, as they are today. */
-            return !IsDefinedByTheGame(exception.GetType());
+             * ordinary bugs surface as BCL exceptions and stay non-fatal, as they are today.
+             *
+             * The other quit idiom is navigating back off the app's only page: GoBack() with no
+             * entry throws, and left unhandled the phone closed the app (Fruit Ninja 2013's "Exit"
+             * box). That throw comes from the platform, not a bug in the game, so it closes too. */
+            return !IsDefinedByTheGame(exception.GetType()) && !WPR.SilverlightCompability.Frame.IsGoBackWithNoEntry(exception);
         }
 
         /// <summary>
