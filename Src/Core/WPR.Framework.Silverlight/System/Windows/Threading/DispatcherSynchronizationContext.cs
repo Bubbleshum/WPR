@@ -1,7 +1,7 @@
 using System;
 using System.Threading;
 
-namespace WPR.SilverlightCompability.Threading
+namespace System.Windows.Threading
 {
     /// <summary>
     /// Shim for <c>System.Windows.Threading.DispatcherSynchronizationContext</c>: the UI thread's

@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows.Input
 {
     /// <summary>
     /// Shim for <c>System.Windows.Input.GestureEventArgs</c>, the argument of WP 7.1/8's

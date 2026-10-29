@@ -1,6 +1,6 @@
 using System;
-using WPR.WindowsCompability;
-using WPR.SilverlightCompability.Threading;
+using System.Windows;
+using System.Windows.Threading;
 using Microsoft.Phone.Controls;
 using WPR.Xna.Rhi;
 using Xunit;
@@ -22,7 +22,7 @@ namespace WPR.SilverlightCompability.Tests
             Dispatcher.AttachToCurrentThread();
             try
             {
-                Dispatcher.Shared.BeginInvoke(posted);
+                new PhoneApplicationFrame().Dispatcher.BeginInvoke(posted);
                 Dispatcher.PumpQueued();
             }
             finally { Dispatcher.Detach(); }
@@ -65,7 +65,7 @@ namespace WPR.SilverlightCompability.Tests
         public void GoBackWithNoEntry_ThrowsThePhonesType()
         {
             var thrown = Assert.Throws<InvalidOperationException>(() => new PhoneApplicationFrame().GoBack());
-            Assert.True(Frame.IsGoBackWithNoEntry(thrown));
+            Assert.True(System.Windows.Controls.Frame.IsGoBackWithNoEntry(thrown));
         }
     }
 }

@@ -218,9 +218,17 @@ namespace Microsoft.Xna.Framework.Media
 			}
 			else
 			{
+				// Relative to the title's package, a leading slash included: WP7 titles write
+				// "/Music/x.wma". Path.Combine treats a rooted second argument as the whole path,
+				// so that became "/Music/x.wma" and every such song was FileNotFound (Galactic
+				// Reign's title music, thrown out of its navigation away from the tutorial video,
+				// which left the screen black).
+				string relative = uri.OriginalString.TrimStart('/', '\\')
+					.Replace('\\', Path.DirectorySeparatorChar)
+					.Replace('/', Path.DirectorySeparatorChar);
 				path = Path.Combine(
 					XnaBackend.TitleLocation,
-					uri.ToString()
+					relative
 				);
 			}
 

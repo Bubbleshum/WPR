@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Data
 {
     /// <summary>Shim for <c>System.Windows.Data.RelativeSource</c>.</summary>
     public class RelativeSource

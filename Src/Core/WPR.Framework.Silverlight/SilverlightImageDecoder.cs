@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Net.Http;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 
 using WPR.WindowsCompability;
 
@@ -86,6 +88,7 @@ namespace WPR.SilverlightCompability
         public static void ResetForNewLaunch()
         {
             lock (ByPath) { ByPath.Clear(); }
+            lock (Downloads) { Downloads.Clear(); }
             Cache.Clear();
         }
 
@@ -122,7 +125,8 @@ namespace WPR.SilverlightCompability
                 return true;
             }
 
-            Decoded decoded = Decode(source);
+            Decoded? decoded = Decode(source);
+            if (decoded == null) return false; // a web image still downloading: asked again next paint
             Cache.Add(source, decoded);
 
             if (decoded.Failed || decoded.Argb == null) return false;
@@ -134,7 +138,39 @@ namespace WPR.SilverlightCompability
             return true;
         }
 
-        private static Decoded Decode(ImageSource source)
+        /// <summary>Web images (an app's catalogue icons, a news photo) being fetched, by URL.</summary>
+        private static readonly Dictionary<string, Task<byte[]?>> Downloads = new(StringComparer.Ordinal);
+
+        private static readonly Lazy<HttpClient> Web = new(() => new HttpClient { Timeout = TimeSpan.FromSeconds(30) });
+
+        private static bool IsWebAddress(string path) =>
+            path.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Fetches a web image off the paint path. Its completion bumps <see cref="Generation"/>,
+        /// which changes the rasteriser's signature, so the next frame asks again and paints it,
+        /// as Silverlight drew a remote image once it had arrived.
+        /// </summary>
+        private static async Task<byte[]?> Download(string url)
+        {
+            try
+            {
+                return await Web.Value.GetByteArrayAsync(url).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or InvalidOperationException)
+            {
+                System.Diagnostics.Trace.WriteLine("[wpr-uirender] web image '" + url + "' failed: " + ex.Message);
+                return null;
+            }
+            finally
+            {
+                Interlocked.Increment(ref _generation);
+            }
+        }
+
+        /// <summary>The image's pixels, or null for a web image whose download has not finished.</summary>
+        private static Decoded? Decode(ImageSource source)
         {
             var result = new Decoded { Failed = true };
 
@@ -146,10 +182,25 @@ namespace WPR.SilverlightCompability
                 if (ByPath.TryGetValue(path!, out Decoded? seen)) return seen;
             }
 
+            byte[]? downloaded = null;
+            if (IsWebAddress(path!))
+            {
+                Task<byte[]?> fetch;
+                lock (Downloads)
+                {
+                    if (!Downloads.TryGetValue(path!, out fetch!)) Downloads[path!] = fetch = Download(path!);
+                }
+
+                if (!fetch.IsCompleted) return null;
+                lock (Downloads) Downloads.Remove(path!);
+                downloaded = fetch.Result;
+                if (downloaded == null) return result;
+            }
+
             Stream? stream = null;
             try
             {
-                stream = OpenImageStream(path!);
+                stream = downloaded != null ? new MemoryStream(downloaded, writable: false) : OpenImageStream(path!);
                 if (stream == null)
                 {
                     System.Diagnostics.Trace.WriteLine(

@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
     /// <summary>
     /// Base for layout containers. Holds an ordered <see cref="UIElementCollection"/>

@@ -23,4 +23,7 @@
     <PackageReference Include="System.Formats.Asn1" Version="8.0.1" />
     <PackageReference Include="System.Security.Cryptography.Xml" Version="8.0.4" />
   </ItemGroup>
+  <!-- Games bind the XNA facades by their own Microsoft.Xna.* references (patcher v60); the
+       harness must ship them as the heads do. -->
+  <Import Project="..\..\Src\Facades\Xna\XnaFacades.props" />
 </Project>

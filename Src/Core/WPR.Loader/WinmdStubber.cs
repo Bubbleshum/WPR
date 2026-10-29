@@ -49,6 +49,9 @@ namespace WPR
             ["Windows.Foundation.Collections.IIterable`1"]    = typeof(IEnumerable<>),
             ["Windows.Foundation.Collections.IIterator`1"]    = typeof(IEnumerator<>),
             ["Windows.Foundation.Collections.IKeyValuePair`2"] = typeof(KeyValuePair<,>),
+            // A C++/CX class with a destructor implements IClosable; managed code sees IDisposable,
+            // and calls Dispose (its Close is renamed, see CloneMethod).
+            ["Windows.Foundation.IClosable"] = typeof(IDisposable),
         };
 
         /// <summary>
@@ -73,7 +76,15 @@ namespace WPR
         /// Find every .winmd in <paramref name="installFolder"/> and replace it + its native
         /// peer .dll with a managed stub. Best-effort — failures are logged, not thrown.
         /// </summary>
-        public static IReadOnlyList<string> StubInPlace(string installFolder)
+        public static IReadOnlyList<string> StubInPlace(string installFolder) => StubInPlace(installFolder, bridged: false);
+
+        /// <summary>
+        /// As <see cref="StubInPlace(string)"/>; <paramref name="bridged"/> writes members that call
+        /// <c>WPR.WinRT.WinRtComponentBridge</c> instead of answering defaults, and leaves the
+        /// component's native DLL and .winmd where they are, for the WP8 native runtime to run
+        /// (Docs/Wp8Native/ManagedPageBridge.md).
+        /// </summary>
+        public static IReadOnlyList<string> StubInPlace(string installFolder, bool bridged)
         {
             var stubbedAssemblies = new List<string>();
             string[] winmds;
@@ -92,7 +103,7 @@ namespace WPR
             {
                 try
                 {
-                    string asmName = StubOne(winmdPath, installFolder);
+                    string asmName = StubOne(winmdPath, installFolder, bridged);
                     stubbedAssemblies.Add(asmName);
                 }
                 catch (Exception ex)
@@ -142,7 +153,7 @@ namespace WPR
         /// </summary>
         private static readonly HashSet<string> Implemented = new(StringComparer.OrdinalIgnoreCase) { "Microsoft.Xbox", "SharpDX.WP8" };
 
-        private static string StubOne(string winmdPath, string installFolder)
+        private static string StubOne(string winmdPath, string installFolder, bool bridged)
         {
             var resolver = new DefaultAssemblyResolver();
             resolver.AddSearchDirectory(installFolder);
@@ -187,7 +198,7 @@ namespace WPR
                 foreach (var t in srcMod.Types) WireBaseAndInterfaces(t, typeMap, dstMod);
 
                 // 3. Populate fields, methods, properties, events with stub bodies.
-                foreach (var t in srcMod.Types) PopulateMembers(t, typeMap, dstMod);
+                foreach (var t in srcMod.Types) PopulateMembers(t, typeMap, dstMod, bridged);
 
                 // 4. Strip WindowsRuntime ContentType from any imported asm refs. ImportReference
                 //    preserves the source's flags, but on net8.0 a WinRT-flagged binding goes
@@ -200,16 +211,28 @@ namespace WPR
                     RetargetWinRtMscorlib(r);
                 }
 
-                // 5. Save: backup native dll, then write stub in its place.
+                // 5. Save: backup native dll, then write stub in its place. A managed DLL there is
+                //    our own earlier stub (a component's native DLL never carries CLI metadata),
+                //    so it is replaced, never backed up: moving it over the backup destroyed the
+                //    only copy of the native component when an install was readied a second time
+                //    (AC Pirates' SparkApp.dll.native_original became a stub). An existing backup
+                //    is always kept.
                 destDll = Path.Combine(installFolder, asmName + ".dll");
+                string backup = destDll + ".native_original";
                 if (File.Exists(destDll))
                 {
-                    string backup = destDll + ".native_original";
-                    if (File.Exists(backup)) File.Delete(backup);
-                    File.Move(destDll, backup);
+                    if (File.Exists(backup) || IsManagedAssembly(destDll)) File.Delete(destDll);
+                    else File.Move(destDll, backup);
                 }
                 dst.Write(destDll);
             } // src + dst disposed here — file handles released.
+
+            // Bridged: the WP8 native runtime reads the .winmd for vtable layouts, so it stays.
+            if (bridged)
+            {
+                Log.Info(LogCategory.AppInstall, $"WinmdStubber: wrote {destDll} (bridged)");
+                return asmName;
+            }
 
             // Move the .winmd out of the way so the runtime doesn't pick it up.
             string winmdBackup = winmdPath + ".original";
@@ -218,6 +241,21 @@ namespace WPR
 
             Log.Info(LogCategory.AppInstall, $"WinmdStubber: wrote {destDll}");
             return asmName;
+        }
+
+        /// <summary>Whether the file is a managed assembly (has CLI metadata); unreadable counts as not.</summary>
+        private static bool IsManagedAssembly(string path)
+        {
+            try
+            {
+                using FileStream stream = File.OpenRead(path);
+                using var pe = new System.Reflection.PortableExecutable.PEReader(stream);
+                return pe.HasMetadata;
+            }
+            catch (Exception ex) when (ex is BadImageFormatException or IOException)
+            {
+                return false;
+            }
         }
 
         private static void DeclareTypeRecursive(
@@ -280,7 +318,8 @@ namespace WPR
         private static void PopulateMembers(
             TypeDefinition src,
             Dictionary<string, TypeDefinition> map,
-            ModuleDefinition dstMod)
+            ModuleDefinition dstMod,
+            bool bridged)
         {
             TypeDefinition dst = map[src.FullName];
 
@@ -308,7 +347,7 @@ namespace WPR
             {
                 try
                 {
-                    var nm = CloneMethod(m, dst, map, dstMod);
+                    var nm = CloneMethod(m, dst, map, dstMod, bridged);
                     dst.Methods.Add(nm);
                 }
                 catch (Exception ex)
@@ -351,7 +390,7 @@ namespace WPR
                 }
             }
 
-            foreach (var nested in src.NestedTypes) PopulateMembers(nested, map, dstMod);
+            foreach (var nested in src.NestedTypes) PopulateMembers(nested, map, dstMod, bridged);
         }
 
         private static MethodDefinition? FindMethod(TypeDefinition type, MethodDefinition srcMethod)
@@ -367,7 +406,8 @@ namespace WPR
             MethodDefinition src,
             TypeDefinition dstType,
             Dictionary<string, TypeDefinition> map,
-            ModuleDefinition dstMod)
+            ModuleDefinition dstMod,
+            bool bridged)
         {
             var ret = ResolveTypeRef(src.ReturnType, map, dstMod);
 
@@ -376,14 +416,26 @@ namespace WPR
             // Public on the stub so the inherited interface contracts are satisfied.
             var attrs = (src.Attributes & ~Mono.Cecil.MethodAttributes.MemberAccessMask)
                         | Mono.Cecil.MethodAttributes.Public;
-            var nm = new MethodDefinition(src.Name, attrs, ret);
+
+            // IClosable is projected to IDisposable (WinRtProjections), so its Close is Dispose.
+            string name = src.Name == "Close" && !src.HasParameters && !src.IsStatic &&
+                          dstType.Interfaces.Any(i => i.InterfaceType.FullName == "System.IDisposable")
+                ? "Dispose"
+                : src.Name;
+            var nm = new MethodDefinition(name, attrs, ret);
+
+            // A delegate's constructor and Invoke are the runtime's own; an IL body makes a
+            // delegate that calls nothing.
+            bool isDelegate = dstType.BaseType?.FullName == "System.MulticastDelegate";
 
             // Replace WinRT runtime impl with managed IL — we'll provide a body.
-            nm.ImplAttributes = (src.ImplAttributes
-                                  & ~MethodImplAttributes.Runtime
-                                  & ~MethodImplAttributes.CodeTypeMask)
-                                | MethodImplAttributes.IL
-                                | MethodImplAttributes.Managed;
+            nm.ImplAttributes = isDelegate
+                ? MethodImplAttributes.Runtime | MethodImplAttributes.Managed
+                : (src.ImplAttributes
+                   & ~MethodImplAttributes.Runtime
+                   & ~MethodImplAttributes.CodeTypeMask)
+                  | MethodImplAttributes.IL
+                  | MethodImplAttributes.Managed;
 
             // Drop Pinvoke / unmanaged flag: native bodies don't exist here.
             nm.IsPInvokeImpl = false;
@@ -397,16 +449,23 @@ namespace WPR
             }
 
             // Abstract methods (interface members) and instance ctors of interfaces stay bodiless.
-            if (nm.IsAbstract || dstType.IsInterface)
+            if (nm.IsAbstract || dstType.IsInterface || isDelegate)
             {
                 // Cecil exposes HasBody read-only; leaving Body unset is enough — the writer
                 // serializes the method without a body when IsAbstract is true.
                 return nm;
             }
 
-            // Stub body: return default(T).
             nm.Body = new MethodBody(nm) { InitLocals = true };
             ILProcessor il = nm.Body.GetILProcessor();
+
+            if (bridged && !dstType.IsValueType)
+            {
+                EmitBridgedBody(il, nm, dstType, ret, dstMod);
+                return nm;
+            }
+
+            // Stub body: return default(T).
 
             if (ret.FullName == "System.Void")
             {
@@ -426,6 +485,122 @@ namespace WPR
             }
 
             return nm;
+        }
+
+        /// <summary>
+        /// A member that runs on the native component: a constructor activates the guest object
+        /// (<c>WinRtComponentBridge.Activate(this, "NS.Class", args)</c>), anything else calls it by
+        /// name (<c>WinRtComponentBridge.Invoke(this or null, "NS.Class", "member", typeof(R), args)</c>)
+        /// and unboxes or casts the answer. An out argument goes across as null and is written back
+        /// from the host's answer in the same slot (<c>WinRtComponentBridge.OutValue</c>).
+        /// </summary>
+        private static void EmitBridgedBody(ILProcessor il, MethodDefinition method, TypeDefinition type, TypeReference ret, ModuleDefinition module)
+        {
+            if (method.IsConstructor && method.IsStatic)
+            {
+                il.Append(il.Create(OpCodes.Ret));
+                return;
+            }
+
+            Type bridge = typeof(WPR.WinRT.WinRtComponentBridge);
+            string className = type.FullName.Replace('/', '+');
+
+            if (method.IsConstructor)
+            {
+                il.Append(il.Create(OpCodes.Ldarg_0));
+                il.Append(il.Create(OpCodes.Call, module.ImportReference(typeof(object).GetConstructor(Type.EmptyTypes)!)));
+                il.Append(il.Create(OpCodes.Ldarg_0));
+                il.Append(il.Create(OpCodes.Ldstr, className));
+                EmitArgumentArray(il, method, module);
+                il.Append(il.Create(OpCodes.Call, module.ImportReference(bridge.GetMethod(nameof(WPR.WinRT.WinRtComponentBridge.Activate))!)));
+                il.Append(il.Create(OpCodes.Ret));
+                return;
+            }
+
+            il.Append(method.IsStatic ? il.Create(OpCodes.Ldnull) : il.Create(OpCodes.Ldarg_0));
+            il.Append(il.Create(OpCodes.Ldstr, className));
+            il.Append(il.Create(OpCodes.Ldstr, method.Name));
+            il.Append(il.Create(OpCodes.Ldtoken, ret));
+            il.Append(il.Create(OpCodes.Call, module.ImportReference(typeof(Type).GetMethod(nameof(Type.GetTypeFromHandle))!)));
+            EmitArgumentArray(il, method, module);
+
+            // Out parameters: the host answers them in the argument array's own slots, so the
+            // array is kept and each one is written back after the call (OutValue<T>).
+            var outs = method.Parameters.Where(p => p.ParameterType is ByReferenceType).ToList();
+            VariableDefinition? argumentsLocal = null;
+            if (outs.Count > 0)
+            {
+                argumentsLocal = new VariableDefinition(new ArrayType(module.TypeSystem.Object));
+                method.Body.Variables.Add(argumentsLocal);
+                il.Append(il.Create(OpCodes.Dup));
+                il.Append(il.Create(OpCodes.Stloc, argumentsLocal));
+            }
+
+            il.Append(il.Create(OpCodes.Call, module.ImportReference(bridge.GetMethod(nameof(WPR.WinRT.WinRtComponentBridge.Invoke))!)));
+
+            if (argumentsLocal != null)
+            {
+                var result = new VariableDefinition(module.TypeSystem.Object);
+                method.Body.Variables.Add(result);
+                il.Append(il.Create(OpCodes.Stloc, result));
+                MethodReference outValue = module.ImportReference(bridge.GetMethod(nameof(WPR.WinRT.WinRtComponentBridge.OutValue))!);
+                foreach (ParameterDefinition p in outs)
+                {
+                    TypeReference element = ((ByReferenceType)p.ParameterType).ElementType;
+                    var typed = new GenericInstanceMethod(outValue);
+                    typed.GenericArguments.Add(element);
+                    il.Append(il.Create(OpCodes.Ldarg, p));
+                    il.Append(il.Create(OpCodes.Ldloc, argumentsLocal));
+                    il.Append(il.Create(OpCodes.Ldc_I4, p.Index));
+                    il.Append(il.Create(OpCodes.Call, typed));
+                    il.Append(il.Create(OpCodes.Stobj, element));
+                }
+
+                il.Append(il.Create(OpCodes.Ldloc, result));
+            }
+
+            if (ret.FullName == "System.Void")
+            {
+                il.Append(il.Create(OpCodes.Pop));
+            }
+            else if (IsLikelyValueType(ret) || ret is GenericParameter)
+            {
+                il.Append(il.Create(OpCodes.Unbox_Any, ret));
+            }
+            else
+            {
+                il.Append(il.Create(OpCodes.Castclass, ret));
+            }
+
+            il.Append(il.Create(OpCodes.Ret));
+        }
+
+        /// <summary>Pushes an object[] of the method's arguments, value types boxed.</summary>
+        private static void EmitArgumentArray(ILProcessor il, MethodDefinition method, ModuleDefinition module)
+        {
+            il.Append(il.Create(OpCodes.Ldc_I4, method.Parameters.Count));
+            il.Append(il.Create(OpCodes.Newarr, module.TypeSystem.Object));
+            for (int i = 0; i < method.Parameters.Count; i++)
+            {
+                TypeReference type = method.Parameters[i].ParameterType;
+                il.Append(il.Create(OpCodes.Dup));
+                il.Append(il.Create(OpCodes.Ldc_I4, i));
+                if (type is ByReferenceType)
+                {
+                    il.Append(il.Create(OpCodes.Ldnull));
+                }
+                else
+                {
+                    il.Append(il.Create(OpCodes.Ldarg, method.Parameters[i]));
+                    if (IsLikelyValueType(type) || type is GenericParameter)
+                    {
+                        il.Append(il.Create(OpCodes.Box, type));
+                    }
+                }
+
+                il.Append(il.Create(OpCodes.Stelem_Ref));
+            }
+
         }
 
         /// <summary>
@@ -464,7 +639,8 @@ namespace WPR
             // so stub members that return them must default via initobj, not ldnull. That assembly
             // is not in this resolver's search path, so recognise them by name.
             if (fn == "Windows.Foundation.Size" || fn == "Windows.Foundation.Point" ||
-                fn == "Windows.Foundation.Rect")
+                fn == "Windows.Foundation.Rect" ||
+                fn == "System.Runtime.InteropServices.WindowsRuntime.EventRegistrationToken")
                 return true;
 
             // Try to resolve. ResolveTypeRef may have given us a TypeDefinition (local clone).
@@ -536,6 +712,14 @@ namespace WPR
             // re-scope so the stub names the same type the user IL does (see ProjectedValueTypes).
             if (ProjectedValueTypes.Contains(src.FullName))
                 return new TypeReference(src.Namespace, src.Name, dstMod,
+                    GetOrAddAssemblyRef(dstMod, ProjectedValueTypeScope), valueType: true);
+
+            // The projection also RENAMED one value type: an event's token is
+            // Windows.Foundation.EventRegistrationToken in the metadata and
+            // System.Runtime.InteropServices.WindowsRuntime.EventRegistrationToken to managed code,
+            // so an add_ accessor that keeps the metadata's name is not the one game IL calls.
+            if (src.FullName == "Windows.Foundation.EventRegistrationToken")
+                return new TypeReference("System.Runtime.InteropServices.WindowsRuntime", "EventRegistrationToken", dstMod,
                     GetOrAddAssemblyRef(dstMod, ProjectedValueTypeScope), valueType: true);
 
             // Plain TypeReference. Prefer our local clone if there is one.

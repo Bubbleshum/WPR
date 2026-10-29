@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows
 {
     /// <summary>Shim for <c>System.Windows.VisualStateGroup</c>. Holds named visual states.</summary>
     /// <remarks>

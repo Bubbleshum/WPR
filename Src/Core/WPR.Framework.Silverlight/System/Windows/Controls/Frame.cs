@@ -7,7 +7,7 @@ using System.Resources;
 using System.Text;
 using System.Xml.Linq;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
     public class Frame : FrameworkElement
     {

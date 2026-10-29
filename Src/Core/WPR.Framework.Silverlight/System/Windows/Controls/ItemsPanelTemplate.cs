@@ -1,6 +1,6 @@
 using System.Xml.Linq;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
     /// <summary>Shim for <c>System.Windows.Controls.ItemsPanelTemplate</c>.</summary>
     /// <remarks>

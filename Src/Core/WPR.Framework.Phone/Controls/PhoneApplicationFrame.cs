@@ -60,7 +60,7 @@ namespace Microsoft.Phone.Controls
 
             try
             {
-                var app = WPR.WindowsCompability.Application.Current;
+                var app = System.Windows.Application.Current;
                 if (app != null && app.RootVisual == null) app.RootVisual = this;
             }
             catch

@@ -11,7 +11,7 @@ namespace WPR.WindowsCompability
     /// <summary>
     /// Resolves a data contract the serializer does not know to a type in any loaded assembly,
     /// so a document whose values are a game's own classes can be read back without a
-    /// known-types list. <see cref="IsolatedStorageSettings2"/> reads with it: Silverlight kept
+    /// known-types list. <see cref="IsolatedStorageSettings"/> reads with it: Silverlight kept
     /// the list beside the settings, WPR's file has none.
     /// </summary>
     /// <remarks>

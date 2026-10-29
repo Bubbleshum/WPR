@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows
 {
     /// <summary>
     /// Shim for <c>System.Windows.AssemblyPart</c>: one <c>AssemblyPart</c> of the package's

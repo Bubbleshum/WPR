@@ -55,9 +55,9 @@ namespace WPR.Platform.Android
                 MessageBoxUtils.ShowGameMessageBoxAsync(title, description, buttonNames.ToList());
 
             // Silverlight's blocking MessageBox.Show. The shim owns the WP7 button/result mapping
-            // (WPR.WindowsCompability.MessageBox.Describe); this head only shows labelled buttons on
+            // (System.Windows.MessageBox.Describe); this head only shows labelled buttons on
             // its UI thread and reports the index pressed, or -1 when the dialog was dismissed.
-            WPR.WindowsCompability.MessageBox.Presenter = MessageBoxUtils.ShowGameMessageBoxAsync;
+            System.Windows.MessageBox.Presenter = MessageBoxUtils.ShowGameMessageBoxAsync;
             WPR.Engine.Online.GameInvites.Picker = Native.InvitePicker.ShowAsync;
             // A game invite's notification shows the game's tile.
             // A device the hub pushes to gets its pop-ups from the push, not the heartbeat.

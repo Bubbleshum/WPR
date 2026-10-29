@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows.Navigation
 {
     public enum NavigationMode
     {

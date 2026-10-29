@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
     /// <summary>
     /// Silverlight's <c>System.Windows.Controls.UserControl</c> shim. The original

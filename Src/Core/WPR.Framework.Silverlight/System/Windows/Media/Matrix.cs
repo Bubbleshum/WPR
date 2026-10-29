@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Media
 {
     /// <summary>Shim for <c>System.Windows.Media.Matrix</c>: a 2D affine matrix, row-vector convention.</summary>
     /// <remarks>

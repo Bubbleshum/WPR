@@ -6,7 +6,7 @@ using System.IO.IsolatedStorage;
 using System.Runtime.Serialization;
 using WPR.Common;
 
-namespace WPR.WindowsCompability
+namespace System.IO.IsolatedStorage
 {
     // projection: System......IsolatedStorageSettings
     /// <remarks>
@@ -27,9 +27,9 @@ namespace WPR.WindowsCompability
     /// work; only the declaration was missing. Where a member's signature had to differ to satisfy
     /// the interface it is implemented explicitly, so the existing call sites are unchanged.</para>
     /// </remarks>
-    public class IsolatedStorageSettings2 : IDictionary<string, object> //RnD : static
+    public class IsolatedStorageSettings : IDictionary<string, object> //RnD : static
     {
-        private static IsolatedStorageSettings2 _ApplicationSettings;
+        private static IsolatedStorageSettings _ApplicationSettings;
         private static string? _ApplicationSettingsProductId;
         private const string LocalSettingsName = "__LocalSettings";
 
@@ -40,11 +40,11 @@ namespace WPR.WindowsCompability
         // on-disk dictionary; until then, reads return defaults and writes accumulate.
         private static Dictionary<string, object> _Settings = new Dictionary<string, object>();
 
-        public IsolatedStorageSettings2()// RnD: static
+        public IsolatedStorageSettings()// RnD: static
         {
         }
 
-        internal IsolatedStorageSettings2(IsolatedStorageFile file)
+        internal IsolatedStorageSettings(IsolatedStorageFile file)
         {
             _Holder = file;
             if (!file.FileExists(LocalSettingsName))
@@ -87,7 +87,7 @@ namespace WPR.WindowsCompability
             }
         }
 
-        ~IsolatedStorageSettings2()
+        ~IsolatedStorageSettings()
         {
             Save();
         }
@@ -139,7 +139,7 @@ namespace WPR.WindowsCompability
 
 
         // RnD: static
-        public static IsolatedStorageSettings2 ApplicationSettings
+        public static IsolatedStorageSettings ApplicationSettings
         {
             get
             {
@@ -152,7 +152,7 @@ namespace WPR.WindowsCompability
                     || !string.Equals(_ApplicationSettingsProductId, productId, StringComparison.Ordinal))
                 {
                     _ApplicationSettings = new
-                        IsolatedStorageSettings2(
+                        IsolatedStorageSettings(
                             PerGameIsolatedStorage.GetUserStoreForApplication());
                     _ApplicationSettingsProductId = productId;
                 }

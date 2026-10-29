@@ -5,17 +5,17 @@ using Xunit;
 // by type FULL NAME (WpChrome.Classify), so a type with the same name is recognised the same way.
 namespace Microsoft.Phone.Controls
 {
-    public class Panorama : WPR.SilverlightCompability.Grid
+    public class Panorama : System.Windows.Controls.Grid
     {
         public object? Title { get; set; }
     }
 
-    public class PanoramaItem : WPR.SilverlightCompability.ContentControl
+    public class PanoramaItem : System.Windows.Controls.ContentControl
     {
         public object? Header { get; set; }
     }
 
-    public class ToggleSwitch : WPR.SilverlightCompability.Control
+    public class ToggleSwitch : System.Windows.Controls.Control
     {
         public object? Header { get; set; }
         public bool? IsChecked { get; set; }

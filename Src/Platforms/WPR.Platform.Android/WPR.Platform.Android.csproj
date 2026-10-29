@@ -269,6 +269,8 @@
     <!-- libwprcpu.so (Libraries/<abi>/) is the dynarmic CPU behind WPR.Engine.Wp8Native, which
          runs WP8 "Modern Native" titles as an XNA Game. Built from Src/Engine/WPR.Engine.Wp8Native/Native/android. -->
   </ItemGroup>
+  <!-- The XNA facades: a game's Microsoft.Xna.* references bind them by name (patcher v60). -->
+  <Import Project="$(SolutionDir)Facades\Xna\XnaFacades.props" />
 
   <!--
     Trimmer roots. Everything a patched game can bind, kept whole.
@@ -283,6 +285,15 @@
   -->
   <ItemGroup>
     <TrimmerRootAssembly Include="FNA" />
+    <!-- Facades are nothing but forwarders, which ILLink would otherwise drop as unused. -->
+    <TrimmerRootAssembly Include="Microsoft.Xna.Framework" />
+    <TrimmerRootAssembly Include="Microsoft.Xna.Framework.Game" />
+    <TrimmerRootAssembly Include="Microsoft.Xna.Framework.Graphics" />
+    <TrimmerRootAssembly Include="Microsoft.Xna.Framework.Input.Touch" />
+    <TrimmerRootAssembly Include="Microsoft.Xna.Framework.GamerServices" />
+    <TrimmerRootAssembly Include="Microsoft.Xna.Framework.GamerServicesExtensions" />
+    <TrimmerRootAssembly Include="Microsoft.Xna.Framework.Interop" />
+    <TrimmerRootAssembly Include="Microsoft.Xna.Framework.MediaLibraryExtensions" />
     <TrimmerRootAssembly Include="Microsoft.Devices.Sensors" />
     <TrimmerRootAssembly Include="Microsoft.Phone" />
     <TrimmerRootAssembly Include="System.Device" />

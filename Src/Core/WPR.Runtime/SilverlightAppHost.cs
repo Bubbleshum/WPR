@@ -4,8 +4,14 @@ using System.Reflection;
 using System.Runtime.Loader;
 using System.Xml;
 using WPR.SilverlightCompability;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Navigation;
+using System.Windows.Threading;
 using Microsoft.Phone.Controls;
-using SLApplication = WPR.WindowsCompability.Application;
+using SLApplication = System.Windows.Application;
 // WPR.SilverlightCompability defines the Silverlight shape Path, which would make a bare Path ambiguous.
 using Path = System.IO.Path;
 
@@ -177,7 +183,7 @@ namespace WPR
             // to the start page was queued behind those posts. Galactic Reign posts the creation
             // of its armada objects from App startup, and its MenuPage's view model reads them in
             // its constructor (NullReferenceException, black screen, when the page came first).
-            WPR.SilverlightCompability.Threading.Dispatcher.PumpQueued();
+            System.Windows.Threading.Dispatcher.PumpQueued();
 
             UIElement? rootVisual = SLApplication.Current.RootVisual;
             PhoneApplicationFrame? rootFrame = rootVisual as PhoneApplicationFrame;

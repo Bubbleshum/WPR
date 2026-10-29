@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows.Documents
 {
     /// <summary>
     /// Shim for <c>System.Windows.Documents.InlineUIContainer</c>: an element inside text.

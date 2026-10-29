@@ -4,6 +4,8 @@ using System.Linq;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input.Touch;
 using Xunit;
+using Matrix = System.Windows.Media.Matrix;
+using Point = System.Windows.Point;
 
 namespace WPR.SilverlightCompability.Tests
 {

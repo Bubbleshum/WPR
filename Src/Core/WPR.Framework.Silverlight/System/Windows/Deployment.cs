@@ -6,7 +6,7 @@ using System.Reflection;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows
 {
     /// <summary>Shim for <c>System.Windows.Deployment</c>. Singleton describing the
     /// installed XAP. <c>Current</c> is exposed so user code can access entry-point

@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.SilverlightCompability.Markup
+namespace System.Windows.Markup
 {
     /// <summary>
     /// Shim for <c>System.Windows.Markup.XmlnsPrefixAttribute</c>. Assembly-level

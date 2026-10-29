@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows
 {
     /// <summary>
     /// Shim for <c>System.Windows.FlowDirection</c>. Direction text and layout flow within a

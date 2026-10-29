@@ -113,11 +113,10 @@ namespace WPR.SilverlightCompability
                 case "Microsoft.Phone.Controls.PanoramaItem": return Kind.PanoramaItem;
                 case "Microsoft.Phone.Controls.PivotItem": return Kind.PivotItem;
                 // The third name is our own shim's: patched game IL binds
-                // WPR.SilverlightCompability.ProgressBar, so matching only the WP7 names would stop
+                // System.Windows.Controls.ProgressBar, so matching only the WP7 names would stop
                 // recognising it the moment the type existed.
                 case "Microsoft.Phone.Controls.PerformanceProgressBar":
                 case "System.Windows.Controls.ProgressBar":
-                case "WPR.SilverlightCompability.ProgressBar":
                     return Kind.ProgressBar;
                 case "Microsoft.Phone.Controls.ToggleSwitch": return Kind.ToggleSwitch;
                 default: return Kind.None;

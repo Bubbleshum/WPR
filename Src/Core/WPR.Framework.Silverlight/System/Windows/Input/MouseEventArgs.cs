@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Input
 {
     /// <summary>Shim for <c>System.Windows.Input.MouseEventArgs</c>.</summary>
     /// <remarks>

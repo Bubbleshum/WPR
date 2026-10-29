@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
     /// <summary>
     /// Stub for <c>System.Windows.Controls.TextBox</c>. Editable text input. WPR currently
@@ -18,8 +18,8 @@ namespace WPR.SilverlightCompability
                 new PropertyMetadata(14.0));
 
         public static readonly DependencyProperty FontFamilyProperty =
-            DependencyProperty.Register(nameof(FontFamily), typeof(string), typeof(TextBox),
-                new PropertyMetadata("Segoe UI"));
+            DependencyProperty.Register(nameof(FontFamily), typeof(FontFamily), typeof(TextBox),
+                new PropertyMetadata(new FontFamily("Segoe UI")));
 
         public static readonly DependencyProperty ForegroundProperty =
             DependencyProperty.Register(nameof(Foreground), typeof(Brush), typeof(TextBox),
@@ -63,9 +63,9 @@ namespace WPR.SilverlightCompability
             set => SetValue(FontSizeProperty, value);
         }
 
-        public string FontFamily
+        public FontFamily FontFamily
         {
-            get => (string)GetValue(FontFamilyProperty)!;
+            get => (FontFamily)GetValue(FontFamilyProperty)!;
             set => SetValue(FontFamilyProperty, value);
         }
 

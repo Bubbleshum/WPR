@@ -766,17 +766,17 @@ namespace WPR.Wp8Native
             public int LastUsed;
         }
 
-        private readonly Dictionary<(byte[] Data, int Stride, string Key), UploadedStream> _uploaded = new(UploadedComparer.Instance);
+        private readonly Dictionary<(byte[] Data, long Stride, string Key), UploadedStream> _uploaded = new(UploadedComparer.Instance);
         private byte[] _scratch = new byte[64 * 1024];
 
-        private sealed class UploadedComparer : IEqualityComparer<(byte[] Data, int Stride, string Key)>
+        private sealed class UploadedComparer : IEqualityComparer<(byte[] Data, long Stride, string Key)>
         {
             public static readonly UploadedComparer Instance = new();
 
-            public bool Equals((byte[] Data, int Stride, string Key) a, (byte[] Data, int Stride, string Key) b)
+            public bool Equals((byte[] Data, long Stride, string Key) a, (byte[] Data, long Stride, string Key) b)
                 => ReferenceEquals(a.Data, b.Data) && a.Stride == b.Stride && ReferenceEquals(a.Key, b.Key);
 
-            public int GetHashCode((byte[] Data, int Stride, string Key) k)
+            public int GetHashCode((byte[] Data, long Stride, string Key) k)
                 => HashCode.Combine(RuntimeHelpers.GetHashCode(k.Data), k.Stride, RuntimeHelpers.GetHashCode(k.Key));
         }
 
@@ -920,7 +920,7 @@ namespace WPR.Wp8Native
                 FrameCapture.VertexStream? stream = slot.Slot >= 0 && slot.Slot < geometry.Streams.Count ? geometry.Streams[slot.Slot] : null;
                 int offsetInData = stream is null ? 0 : firstVertex - stream.FirstVertex;
                 if (stream is not { Data: { } data, Stride: >= 0 } ||
-                    (stream.Stride > 0 && (offsetInData < 0 || offsetInData + vertexCount > data.Length / stream.Stride)))
+                    (stream.Stride > 0 && (offsetInData < 0 || offsetInData + vertexCount > (data.Length - stream.DataOffset) / stream.Stride)))
                 {
                     Warn($"stream {slot.Slot}", $"vertex stream {slot.Slot} had no data");
                     (missing ??= []).AddRange(slot.Registers);
@@ -929,7 +929,9 @@ namespace WPR.Wp8Native
 
                 if (stream.Stride > 0)
                 {
-                    var key = (data, stream.Stride, slot.Key);
+                    // One array may hold a whole buffer that several streams read at their own byte
+                    // offsets (FrameCapture.Resource.WholeCopy): each offset is its own upload.
+                    var key = (data, ((long)stream.DataOffset << 32) | (uint)stream.Stride, slot.Key);
                     if (!_uploaded.TryGetValue(key, out UploadedStream? uploaded))
                     {
                         _uploaded[key] = uploaded = new UploadedStream { FirstSeen = _frameIndex };
@@ -938,8 +940,8 @@ namespace WPR.Wp8Native
                     uploaded.LastUsed = _frameIndex;
                     if (uploaded.Buffer is null && uploaded.FirstSeen != _frameIndex)
                     {
-                        int all = data.Length / stream.Stride;
-                        byte[] packed = Repack(slot, data, stream.Stride, 0, all);
+                        int all = (data.Length - stream.DataOffset) / stream.Stride;
+                        byte[] packed = Repack(slot, data, stream.Stride, 0, all, stream.DataOffset);
                         uploaded.Buffer = new VertexBuffer(_device, slot.Declaration, all, BufferUsage.WriteOnly);
                         uploaded.Buffer.SetData(packed, 0, all * slot.Declaration.VertexStride);
                         StreamsCached++;
@@ -954,7 +956,7 @@ namespace WPR.Wp8Native
                 }
 
                 // Through the shared dynamic buffer: just this draw's vertices.
-                byte[] scratch = Repack(slot, data, stream.Stride, stream.Stride == 0 ? 0 : offsetInData, vertexCount);
+                byte[] scratch = Repack(slot, data, stream.Stride, stream.Stride == 0 ? 0 : offsetInData, vertexCount, stream.DataOffset);
                 if (!_vertexBuffers.TryGetValue(slot.Key, out var cached))
                 {
                     cached = (slot.Declaration, null);
@@ -1045,7 +1047,7 @@ namespace WPR.Wp8Native
         /// Repacks <paramref name="count"/> vertices starting at <paramref name="first"/> into the
         /// scratch buffer (a stride of 0 repeats the one element).
         /// </summary>
-        private byte[] Repack(SlotPlan slot, byte[] data, int sourceStride, int first, int count)
+        private byte[] Repack(SlotPlan slot, byte[] data, int sourceStride, int first, int count, int dataOffset = 0)
         {
             int stride = slot.Declaration.VertexStride;
             int length = count * stride;
@@ -1060,7 +1062,7 @@ namespace WPR.Wp8Native
                 bool copy = e.SourceFormat is not (87 or 31 or 11 or 12 or 24 or 30 or 14 or 35 or 36 or 49 or 51 or 38);
                 for (int i = 0; i < count; i++)
                 {
-                    ReadOnlySpan<byte> source = data.AsSpan(((first + i) * sourceStride) + e.SourceOffset);
+                    ReadOnlySpan<byte> source = data.AsSpan(dataOffset + ((first + i) * sourceStride) + e.SourceOffset);
                     Span<byte> to = target.Slice((i * stride) + e.Offset, e.Size);
                     if (copy)
                     {
@@ -1083,7 +1085,7 @@ namespace WPR.Wp8Native
         /// </summary>
         public void ForgetStream(byte[] data)
         {
-            List<(byte[], int, string)>? stale = null;
+            List<(byte[], long, string)>? stale = null;
             foreach (var (key, uploaded) in _uploaded)
             {
                 if (ReferenceEquals(key.Data, data))
@@ -1141,7 +1143,7 @@ namespace WPR.Wp8Native
                 return;
             }
 
-            List<(byte[], int, string)>? stale = null;
+            List<(byte[], long, string)>? stale = null;
             foreach (var (key, uploaded) in _uploaded)
             {
                 if (uploaded.LastUsed < _frameIndex - 120)

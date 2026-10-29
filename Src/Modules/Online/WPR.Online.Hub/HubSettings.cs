@@ -64,6 +64,13 @@ public sealed class HubSettings
     /// </summary>
     public Func<IEnumerable<TitleDetails>>? InstalledTitles { get; init; }
 
+    /// <summary>
+    /// Every installed game's achievement catalogue (shipped or generated), for offering the hub
+    /// the definitions and icons it lacks. Read once per process, at its first flush. Null skips
+    /// the backfill; a catalogue is still offered when the installer seeds it.
+    /// </summary>
+    public Func<IEnumerable<TitleAchievements>>? InstalledAchievementCatalogues { get; init; }
+
     /// <summary>For tests: the HTTP handler requests go through. Null = a normal HttpClient.</summary>
     public HttpMessageHandler? Handler { get; init; }
 

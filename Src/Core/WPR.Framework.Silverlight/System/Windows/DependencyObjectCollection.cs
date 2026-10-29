@@ -3,7 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows
 {
     /// <summary>
     /// Shim for <c>System.Windows.DependencyObjectCollection&lt;T&gt;</c>: an observable list that is

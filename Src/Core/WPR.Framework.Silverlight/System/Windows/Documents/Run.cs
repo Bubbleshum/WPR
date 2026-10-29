@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows.Documents
 {
     /// <summary>Shim for <c>System.Windows.Documents.Run</c>: a stretch of text.</summary>
     [ContentProperty(nameof(Text))]

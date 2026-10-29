@@ -53,6 +53,22 @@ namespace WPR.Wp8Native
                 }
 
                 string className = _strings.ReadText(Arg(0));
+                if (_winRt.ServedByPackage(className))
+                {
+                    Guid? wanted = Arg(1) != 0 ? _emulator.ReadGuid(Arg(1)) : null;
+                    long returnTo = _emulator.ReturnAddress;
+                    _winRt.ActivatePackageFactoryAs(className, wanted, packaged =>
+                    {
+                        long answer = packaged != 0 ? packaged
+                            : (wanted is { } iid ? _winRt.GetActivationFactory(className, iid) : _winRt.GetActivationFactory(className)) ?? 0;
+                        RequestedClasses.Add($"{className} -> {(packaged != 0 ? "package" : "host")} factory at 0x{answer:X8} (RoGetActivationFactory)");
+                        WriteOut(outFactory, answer);
+                        Return(answer == 0 ? WinRtRuntime.ClassNotRegistered : SOk);
+                        _emulator.ContinueAt(returnTo);
+                    });
+                    return;
+                }
+
                 // By IID, as GetActivationFactoryByPCWSTR does: a class with several factory/statics
                 // interfaces (Uri, DataWriter) has a vtable for each.
                 long? factory = className.Length == 0 ? null
@@ -84,6 +100,22 @@ namespace WPR.Wp8Native
                 }
 
                 string className = _strings.ReadText(Arg(0));
+                if (_winRt.ServedByPackage(className))
+                {
+                    long returnTo = _emulator.ReturnAddress;
+                    _winRt.ActivatePackageFactoryAs(className, null, packaged =>
+                    {
+                        long made = packaged != 0 ? packaged : _winRt.GetActivationFactory(className) ?? 0;
+                        RequestedClasses.Add($"{className} -> ActivateInstance on 0x{made:X8} ({(packaged != 0 ? "package" : "host")})");
+                        // Tail-call ActivateInstance, returning to the image's caller.
+                        _emulator.WriteRegister(Arm.UC_ARM_REG_R0, made);
+                        _emulator.WriteRegister(Arm.UC_ARM_REG_R1, outInstance);
+                        _emulator.WriteRegister(Arm.UC_ARM_REG_LR, returnTo);
+                        _emulator.ContinueAt(_emulator.ReadUInt32(_emulator.ReadUInt32(made) + (6 * 4)));
+                    });
+                    return;
+                }
+
                 long? factory = className.Length == 0 ? null : _winRt.GetActivationFactory(className);
                 if (factory is null)
                 {

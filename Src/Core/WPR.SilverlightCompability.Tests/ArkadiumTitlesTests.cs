@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Globalization;
-using WPR.SilverlightCompability.Threading;
+using System.Windows.Threading;
 using Xunit;
 
 namespace WPR.SilverlightCompability.Tests

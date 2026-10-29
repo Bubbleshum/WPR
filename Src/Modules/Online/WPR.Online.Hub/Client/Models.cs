@@ -118,6 +118,11 @@ public sealed record DiagnosticReport
     public string? TitleName { get; init; }
     public string? XapHash { get; init; }   // SHA-256 of the XAP/APPX, lowercase hex
     public long? XapSize { get; init; }     // lets the server decline packages over its limits up front
+    /// <summary>
+    /// The package's own manifest version (e.g. 1.0.0.0). When the hub already holds a package of
+    /// this title at this version, the receipt's game_file is not wanted, reason "not_needed".
+    /// </summary>
+    public string? AppVersion { get; init; }
     public string? RuntimePath { get; init; } // see RuntimePaths
     public string? GraphicsBackend { get; init; }
     public string? Gpu { get; init; }
@@ -150,18 +155,29 @@ public sealed record DiagnosticReceipt(
 /// </summary>
 public sealed record GameFileOffer(bool Wanted, string? Sha256, string? StartUrl, string? Token, long? MaxBytes, string? Reason = null);
 
-public sealed record GameFileInfo(string Sha256, bool Known, bool ServerLogging, bool Wanted, long MaxBytes);
+/// <summary><see cref="NotNeeded"/>: the hub has every package it needs for the title asked about.</summary>
+public sealed record GameFileInfo(string Sha256, bool Known, bool ServerLogging, bool Wanted, long MaxBytes, bool NotNeeded = false);
 
-/// <summary>Upload state. Status: receiving | verifying | complete | failed | in_progress | not_wanted.</summary>
+/// <summary>
+/// Upload state. Status: receiving | verifying | complete | failed | in_progress | not_wanted.
+/// A start the hub declines because it already has every package it needs for the title is a 409
+/// with no status and <see cref="Reason"/> "not_needed" (<see cref="IsNotNeeded"/>).
+/// </summary>
 public sealed record GameFileUploadState(
     string? UploadId,
     string? UploadUrl,
-    string Status,
+    string? Status,
     long Offset,
     long Size,
     int ChunkBytes,
     string? Error,
-    string? Message);
+    string? Message,
+    string? Reason = null)
+{
+    public const string NotNeededReason = "not_needed";
+
+    public bool IsNotNeeded => Status is null or "not_wanted" && Reason == NotNeededReason;
+}
 
 public sealed record ReportStatus(
     string Code,

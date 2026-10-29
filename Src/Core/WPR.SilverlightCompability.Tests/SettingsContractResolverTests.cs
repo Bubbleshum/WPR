@@ -7,7 +7,7 @@ using Xunit;
 namespace WPR.SilverlightCompability.Tests;
 
 /// <summary>
-/// <see cref="IsolatedStorageSettings2"/> saves each value's type as a known type and reads with
+/// <see cref="IsolatedStorageSettings"/> saves each value's type as a known type and reads with
 /// <see cref="LoadedTypeContractResolver"/>, which has no list. A setting holding a game's own
 /// class must come back: iRunner keeps its whole save in one (<c>Classes.Model.AppSetting</c>).
 /// </summary>

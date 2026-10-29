@@ -1,7 +1,7 @@
 using System.Linq;
 using System.Text;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
     /// <summary>
     /// Shim for <c>System.Windows.Controls.RichTextBox</c>, read-only presentation. Each paragraph

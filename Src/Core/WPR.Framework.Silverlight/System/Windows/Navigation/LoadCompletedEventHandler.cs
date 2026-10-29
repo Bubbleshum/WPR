@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows.Navigation
 {
     /// <summary>
     /// Shim for <c>System.Windows.Navigation.LoadCompletedEventHandler</c>.

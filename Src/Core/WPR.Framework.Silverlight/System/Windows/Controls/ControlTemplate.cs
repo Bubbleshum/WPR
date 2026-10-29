@@ -1,7 +1,7 @@
 using System;
 using System.Xml.Linq;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
     /// <summary>Shim for <c>System.Windows.Controls.ControlTemplate</c>.</summary>
     /// <remarks>

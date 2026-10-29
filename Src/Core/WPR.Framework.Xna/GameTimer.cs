@@ -194,6 +194,7 @@ namespace Microsoft.Xna.Framework
                     // loop alive. A page that throws every frame is the Feed Me Oil shape — the
                     // game renders nothing but stays responsive enough to diagnose.
                     System.Diagnostics.Trace.WriteLine("[wpr-mixed] GameTimer.Draw threw: " + ex);
+                    Microsoft.Xna.Framework.Graphics.SpriteBatch.WprNoteFrameThrew();
                 }
             }
         }

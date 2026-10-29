@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace WPR.WindowsCompability
+namespace System.Windows
 {
     /// <summary>
     /// Shim for <c>System.Windows.StartupEventArgs</c>.

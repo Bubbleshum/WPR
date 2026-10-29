@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Media.Animation
 {
     /// <summary>Shim for <c>System.Windows.Media.Animation.ObjectKeyFrame</c>.</summary>
     /// <remarks>

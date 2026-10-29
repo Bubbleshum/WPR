@@ -145,6 +145,7 @@ namespace WPR.Wp8Native
 
             RegisterApplicationData();
             RegisterThreadPool();
+            RegisterSignalNotifier();
             RegisterStore();
             RegisterHostInformation();
             RegisterAppModelObjects();
@@ -1159,6 +1160,13 @@ namespace WPR.Wp8Native
         {
             float windowWidth = WindowWidth;
             float windowHeight = WindowHeight;
+            if (PointerRotation == "portrait")
+            {
+                // Already portrait (a portrait page's surface): only scaled to DIPs.
+                return (landscapeX * windowWidth / Math.Max(1, FrameCapture.Height),
+                        landscapeY * windowHeight / Math.Max(1, FrameCapture.Width));
+            }
+
             landscapeX *= windowHeight / Math.Max(1, FrameCapture.Width);
             landscapeY *= windowWidth / Math.Max(1, FrameCapture.Height);
 

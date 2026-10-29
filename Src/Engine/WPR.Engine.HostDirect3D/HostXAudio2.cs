@@ -459,6 +459,15 @@ namespace WPR.HostDirect3D
 
             _buffers.Retire(Callback_);
             _buffers.Feed(Callback_);
+            if (_started && engineRunning)
+            {
+                // OnVoiceProcessingPassStart(BytesRequired) and OnVoiceProcessingPassEnd, as every
+                // XAudio2 pass raises them: a game with its own mixer submits only from the first.
+                // A pass here is a host frame, so ask for enough to last a few of them.
+                _engine.QueueCall(Callback, 0, (IntPtr)_buffers.BytesRequired(0.1), 1);
+                _engine.QueueCall(Callback, 1, IntPtr.Zero, 0);
+            }
+
             if (_out is null)
             {
                 return;

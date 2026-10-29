@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows
 {
     public class FrameworkElement : UIElement
     {
@@ -377,8 +377,8 @@ namespace WPR.SilverlightCompability
         }
 
         public static readonly DependencyProperty FontFamilyProperty =
-            DependencyProperty.Register(nameof(FontFamily), typeof(string), typeof(FrameworkElement),
-                new PropertyMetadata("Segoe UI"));
+            DependencyProperty.Register(nameof(FontFamily), typeof(FontFamily), typeof(FrameworkElement),
+                new PropertyMetadata(new FontFamily("Segoe UI")));
 
         public static readonly DependencyProperty FontSizeProperty =
             DependencyProperty.Register(nameof(FontSize), typeof(double), typeof(FrameworkElement),
@@ -400,9 +400,9 @@ namespace WPR.SilverlightCompability
             DependencyProperty.Register(nameof(FlowDirection), typeof(FlowDirection), typeof(FrameworkElement),
                 new PropertyMetadata(FlowDirection.LeftToRight));
 
-        public string FontFamily
+        public FontFamily FontFamily
         {
-            get => (string)GetValue(FontFamilyProperty)!;
+            get => (FontFamily)GetValue(FontFamilyProperty)!;
             set => SetValue(FontFamilyProperty, value);
         }
 
@@ -460,10 +460,10 @@ namespace WPR.SilverlightCompability
         // in XAML and read by user code via Resources[name]. Type is in the
         // WPR.WindowsCompability namespace (declared in this same assembly, see
         // ResourceDictionary.cs) to match the post-patch user-IL signature.
-        private WPR.WindowsCompability.ResourceDictionary? _resources;
+        private ResourceDictionary? _resources;
 
-        public WPR.WindowsCompability.ResourceDictionary Resources
-            => _resources ??= new WPR.WindowsCompability.ResourceDictionary();
+        public ResourceDictionary Resources
+            => _resources ??= new ResourceDictionary();
 
         /// <summary>True if this element has had its own <see cref="Resources"/>
         /// touched. Used by the StaticResource resolver so walking the ancestor

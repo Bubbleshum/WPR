@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
     /// <summary>Shim for <c>System.Windows.Controls.ItemCollection</c>.
     /// In SL this is the runtime collection backing ItemsControl.Items.

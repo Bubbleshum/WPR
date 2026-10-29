@@ -7,7 +7,7 @@ namespace Microsoft.Phone.Controls
     // Derives from Page (not ContentControl directly) so the navigation lifecycle
     // hooks live on Page — matching SL's chain. User IL `base.OnNavigatedTo` calls
     // resolve to System.Windows.Controls.Page::OnNavigatedTo, which the patcher
-    // rewrites to WPR.SilverlightCompability.Page::OnNavigatedTo.
+    // rewrites to System.Windows.Controls.Page::OnNavigatedTo.
     public class PhoneApplicationPage : Page
     {
         /// <summary>
@@ -75,12 +75,39 @@ namespace Microsoft.Phone.Controls
         /// <summary>Which orientations the page may rotate to. Setter is a no-op shim.</summary>
         public SupportedPageOrientation SupportedOrientations { get; set; } = SupportedPageOrientation.Portrait;
 
-        /// <summary>Fired when the page rotates. Never raised by this shim.</summary>
+        /// <summary>
+        /// Fired when the page rotates. The device never turns here, so it is raised once, when the
+        /// host shows a landscape-only page that still says portrait (<see cref="WprShownLandscape"/>),
+        /// as the phone did turning to such a page.
+        /// </summary>
         public event EventHandler<OrientationChangedEventArgs>? OrientationChanged;
 
         protected virtual void OnOrientationChanged(OrientationChangedEventArgs e)
         {
             OrientationChanged?.Invoke(this, e);
+        }
+
+        /// <summary>
+        /// WPR host: the page is shown landscape. A page whose orientation is not yet a side
+        /// (portrait, or plain Landscape) becomes LandscapeLeft and hears <see cref="OnOrientationChanged"/>, which is where WP8
+        /// Direct3D pages tell their component which way round it is (AC Pirates).
+        /// </summary>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public void WprShownLandscape()
+        {
+            // Already on a side. Plain Landscape (what XAML usually says) is not a side: the
+            // phone resolved it to one when the page was shown, and that was the change.
+            if (Orientation is PageOrientation.LandscapeLeft or PageOrientation.LandscapeRight)
+            {
+                return;
+            }
+
+            Orientation = PageOrientation.LandscapeLeft;
+            try { OnOrientationChanged(new OrientationChangedEventArgs(PageOrientation.LandscapeLeft)); }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[OrientationChanged] handler threw {ex.GetType().Name}: {ex.Message}");
+            }
         }
     }
 }

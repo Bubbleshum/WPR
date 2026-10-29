@@ -27,9 +27,9 @@ namespace WPR.Wp8Native
     /// display (<see cref="Wp8Display"/>); a constant the IL loads right before the call (a
     /// <c>true</c>, a <c>1</c>, a string literal) is passed as written; an event subscription gets a
     /// no-op handler; an argument of one of the component's own interfaces gets a host object that
-    /// answers defaults; anything else gets the type's default. That is less than a hand-written
-    /// description knows - which branch a handler takes, what a C# callback answers - so the
-    /// hand-written ones in <see cref="XamlShells"/> still win; this is what runs when there is none.</para>
+    /// answers defaults; anything else gets the type's default. This is the only page description
+    /// WPR has: there are no per-title ones (the contract suite checks it against three written out
+    /// by hand from decompiled pages).</para>
     /// <para>Nothing in this file may name an XNA or engine type: the probe compiles it.</para>
     /// </remarks>
     public static partial class XamlShellInference
@@ -380,7 +380,12 @@ namespace WPR.Wp8Native
                 // Then the first boolean; a void call only when it is named for the key (Spark2's
                 // OnBackButtonPressed), since a handler also sets unrelated state on the way.
                 string? Returns(ShellCall c) => metadata.FindMethod(classId, c.Method)?.Method.ReturnType;
+                // A number from a method named for the key comes before any other boolean: Asphalt 7
+                // asks OnBackKeyPress(true) and closes when it answers more than 0, and only then
+                // asks IsOpenIGP (an overlay this host never opens) - which, taken as the decision,
+                // kept every press from the game. The host reads such an answer as "> 0".
                 IEnumerable<ShellCall> ranked = own.Where(c => c.NextCall == "set_Cancel" && Returns(c) == "Boolean")
+                    .Concat(own.Where(c => Returns(c) == "Int32" && c.Method.Contains("Back", StringComparison.OrdinalIgnoreCase)))
                     .Concat(own.Where(c => Returns(c) == "Boolean"))
                     .Concat(own.Where(c => Returns(c) == "Void" && c.Method.Contains("Back", StringComparison.OrdinalIgnoreCase)));
                 foreach (ShellCall call in ranked)
@@ -389,7 +394,8 @@ namespace WPR.Wp8Native
 
                     bool quitWhen = returns == "Void" || call.NextCall != "set_Cancel";
                     List<XamlShellStep> otherwise = Steps(own.SkipWhile(c => c != call).Skip(1).ToList(), Phase.Lifecycle);
-                    return new XamlBackKey(call.Method, otherwise, closing ?? [], quitWhen);
+                    object?[] arguments = metadata.FindMethod(classId, call.Method) is { } found ? Arguments(call, found.Method) : [];
+                    return new XamlBackKey(call.Method, otherwise, closing ?? [], quitWhen) { QuitIfArguments = arguments };
                 }
 
                 return null;
@@ -706,12 +712,21 @@ namespace WPR.Wp8Native
                     return;
                 }
 
-                byte[] il = _pe.GetMethodBody(method.RelativeVirtualAddress).GetILBytes() ?? [];
+                MethodBodyBlock body = _pe.GetMethodBody(method.RelativeVirtualAddress);
+                byte[] il = body.GetILBytes() ?? [];
+                bool handlers = body.ExceptionRegions.Length > 0;
                 List<(ILOpCode Op, int Token, object? Constant)> code = Decode(il);
                 for (int i = 0; i < code.Count; i++)
                 {
                     (ILOpCode op, int token, _) = code[i];
                     if (op is not (ILOpCode.Call or ILOpCode.Callvirt or ILOpCode.Newobj or ILOpCode.Ldftn or ILOpCode.Ldvirtftn))
+                    {
+                        continue;
+                    }
+
+                    // A call on a branch this device never takes (the flipped-orientation arm of an
+                    // OrientationChanged handler) is not something the page does here.
+                    if (followCalls && IsUnreachable(il, i, handlers))
                     {
                         continue;
                     }

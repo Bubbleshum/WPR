@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.WindowsCompability
+namespace System.Windows.Interop
 {
     /// <summary>
     /// Stub for Silverlight's <c>System.Windows.Interop.SilverlightHost</c>. Exposes the
@@ -9,8 +9,8 @@ namespace WPR.WindowsCompability
     /// </summary>
     public sealed class SilverlightHost
     {
-        public SilverlightHostContent Content { get; } = new();
-        public SilverlightHostSettings Settings { get; } = new();
+        public Content Content { get; } = new();
+        public Settings Settings { get; } = new();
         public Uri? Source { get; internal set; }
 
         /// <summary>True if the SL plugin is loaded; we report true since user code is running.</summary>
@@ -23,7 +23,7 @@ namespace WPR.WindowsCompability
     }
 
     /// <summary>Stub for Silverlight's <c>System.Windows.Interop.Content</c>.</summary>
-    public sealed class SilverlightHostContent
+    public sealed class Content
     {
         /// <summary>
         /// The WP7 screen: a fixed 480x800 WVGA panel, in portrait.
@@ -62,8 +62,20 @@ namespace WPR.WindowsCompability
 
         private int? _scaleFactor;
 
-        /// <summary>Set per launch by the host: 100 for WP7 titles, the WP8 display's for WP8 ones.</summary>
-        public static int PlatformScaleFactor { get; set; } = 100;
+        /// <summary>
+        /// 100 for a title that targets 7.x, <see cref="Wp8ScaleFactor"/> for one that targets 8.0
+        /// or later (<see cref="WPR.Common.WprHostEnvironment.Target"/>). This is one of the
+        /// phone's own by-target answers: WP8 reported 100 to every 7.x app, which it ran scaled
+        /// as WVGA, whatever the panel.
+        /// </summary>
+        public static int PlatformScaleFactor =>
+            WPR.Common.WprHostEnvironment.Target.IsWp8OrLater ? Wp8ScaleFactor : 100;
+
+        /// <summary>
+        /// The scale factor of the WP8 device WPR presents (100, 150 or 160). Set by the host from
+        /// the WP8 runtime's display model; a property of the device, not the title.
+        /// </summary>
+        public static int Wp8ScaleFactor { get; set; } = 160;
 
         public bool IsFullScreen { get; internal set; } = true;
 
@@ -77,7 +89,7 @@ namespace WPR.WindowsCompability
     }
 
     /// <summary>Stub for Silverlight's <c>System.Windows.Interop.Settings</c>.</summary>
-    public sealed class SilverlightHostSettings
+    public sealed class Settings
     {
         public bool EnableFrameRateCounter { get; set; }
         public bool EnableRedrawRegions { get; set; }

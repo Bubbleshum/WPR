@@ -7,6 +7,12 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Microsoft.Xna.Framework.Input.Touch;
 using WPR.SilverlightCompability;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Navigation;
+using System.Windows.Threading;
 
 namespace WPR
 {
@@ -211,7 +217,7 @@ namespace WPR
 
             // Dispatcher.BeginInvoke posts from here on run on this thread, from Update, as on
             // the phone: a post made while the app boots runs once the first frame starts.
-            WPR.SilverlightCompability.Threading.Dispatcher.AttachToCurrentThread();
+            System.Windows.Threading.Dispatcher.AttachToCurrentThread();
 
             SilverlightAppHost.HostResult result = SilverlightAppHost.BootInContext(
                 _installFolder,
@@ -399,7 +405,7 @@ namespace WPR
             // top of the tick: Gravity Guy 2's Cocos2D posts FrameworkDispatcher.Update from its
             // update, and run before pumpsBefore below that pump went uncounted, the fallback
             // pumped a second time, and every tap's release was lost (PLAY stayed pressed).
-            WPR.SilverlightCompability.Threading.Dispatcher.PumpQueued();
+            System.Windows.Threading.Dispatcher.PumpQueued();
 
             // Components only — the pump is suppressed.
             base.Update(gameTime);
@@ -511,6 +517,12 @@ namespace WPR
             // it (Microsoft Mahjong); Microsoft Minesweeper's game page says LandscapeLeft, and
             // drew upside down with the right-hand turn.
             WPR.Xna.Rhi.EmbeddedGameLoop.PageLandscapeLeft = landscape && page.Orientation == PageOrientation.LandscapeLeft;
+
+            // After the turn above is decided: the page hears it has turned, as on the phone.
+            if (landscape)
+            {
+                page.WprShownLandscape();
+            }
 
             // Only touch the device when the way round actually changes. This runs on every
             // navigation now, and ApplyChanges is a device reset — re-issuing it per page would

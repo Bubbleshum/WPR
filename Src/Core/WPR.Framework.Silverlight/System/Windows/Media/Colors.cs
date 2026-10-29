@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows.Media
 {
     /// <summary>
     /// Shim for <c>System.Windows.Media.Colors</c>. Silverlight / WP7 exposed

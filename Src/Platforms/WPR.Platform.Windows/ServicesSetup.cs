@@ -2,6 +2,12 @@
 using WPR.Platform.Windows.Input;
 using WPR.Engine;
 using WPR.SilverlightCompability;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Navigation;
+using System.Windows.Threading;
 using System.Linq;
 
 namespace WPR.Platform.Windows
@@ -27,9 +33,9 @@ namespace WPR.Platform.Windows
                 MessageBoxUtils.ShowGameMessageBoxAsync(title, description, buttonNames.ToList(), focusButton);
 
             // Silverlight's blocking MessageBox.Show. The shim owns the WP7 button/result mapping
-            // (WPR.WindowsCompability.MessageBox.Describe); this head only shows labelled buttons on
+            // (System.Windows.MessageBox.Describe); this head only shows labelled buttons on
             // its UI thread and reports the index pressed, or -1 when the dialog was dismissed.
-            WPR.WindowsCompability.MessageBox.Presenter = MessageBoxUtils.ShowGameMessageBoxAsync;
+            System.Windows.MessageBox.Presenter = MessageBoxUtils.ShowGameMessageBoxAsync;
             WPR.Engine.Online.GameInvites.Picker = InvitePicker.ShowAsync;
             // A game invite's notification shows the game's tile.
             WPR.Shell.HubMessageNotifications.GameIconPath = titleId =>

@@ -1143,6 +1143,28 @@ namespace WPR.Wp8Native
             string className = _emulator.ReadUtf16String(Arg(0));
             long outFactory = Arg(2);
 
+            // A class the package's own DLL serves (Tiny Death Star's cocos2d.DirectXRender in
+            // Cocos2dWindowsPhone.XAML.dll): load that DLL and ask it, as the phone did.
+            if (_winRt.ServedByPackage(className))
+            {
+                Guid? wanted = Arg(1) != 0 ? _emulator.ReadGuid(Arg(1)) : null;
+                long returnTo = _emulator.ReturnAddress;   // loading the DLL calls into the guest
+                _winRt.ActivatePackageFactoryAs(className, wanted, packaged =>
+                {
+                    long? answer = packaged != 0 ? packaged
+                        : wanted is { } iid ? _winRt.GetActivationFactory(className, iid) : _winRt.GetActivationFactory(className);
+                    if (outFactory != 0)
+                    {
+                        _emulator.WriteUInt32(outFactory, (uint)(answer ?? 0));
+                    }
+
+                    RequestedClasses.Add($"{className} -> {(packaged != 0 ? "package" : "host")} factory at 0x{answer ?? 0:X8}");
+                    Return(answer is null ? WinRtRuntime.ClassNotRegistered : 0);
+                    _emulator.ContinueAt(returnTo);
+                });
+                return;
+            }
+
             long? factory = Arg(1) != 0
                 ? _winRt.GetActivationFactory(className, _emulator.ReadGuid(Arg(1)))
                 : _winRt.GetActivationFactory(className);

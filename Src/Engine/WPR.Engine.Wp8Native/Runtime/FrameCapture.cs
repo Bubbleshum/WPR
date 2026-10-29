@@ -102,6 +102,18 @@
             /// </summary>
             internal List<(int Offset, int Stride, int First, int Count, byte[] Data)>? Snapshots { get; set; }
 
+            /// <summary>The bytes held by <see cref="Snapshots"/>.</summary>
+            internal long SnapshotBytes { get; set; }
+
+            /// <summary>
+            /// The whole buffer copied at <see cref="WholeCopyVersion"/>, once its draws' ranges
+            /// cost more than copying all of it: every stream of it is then served from this one
+            /// array at its own <see cref="VertexStream.DataOffset"/>.
+            /// </summary>
+            internal byte[]? WholeCopy { get; set; }
+
+            internal int WholeCopyVersion { get; set; } = -1;
+
             /// <summary>
             /// A constant buffer's contents copied at <see cref="ConstantCopyVersion"/>, shared by
             /// every draw that binds it unchanged (copies are never written after they are taken).
@@ -139,6 +151,13 @@
 
             /// <summary>Which vertex <see cref="Data"/> starts at.</summary>
             public int FirstVertex { get; init; }
+
+            /// <summary>
+            /// Where in <see cref="Data"/> vertex <see cref="FirstVertex"/> starts: vertex v is at
+            /// <c>DataOffset + (v - FirstVertex) * Stride</c>. Zero for a copy of just the draw's
+            /// range; the stream's byte offset when <see cref="Data"/> is the whole buffer.
+            /// </summary>
+            public int DataOffset { get; init; }
         }
 
         /// <summary>Everything bound at the moment a draw was issued.</summary>
@@ -199,6 +218,15 @@
             return call with { Indices = indices, Streams = streams };
         }
 
+        /// <summary>The most vertex ranges kept per buffer version (see <see cref="SnapshotStream"/>).</summary>
+        internal const int MaxSnapshotRanges = 64;
+
+        /// <summary>Range copies kept per buffer version hold at least this many bytes (twice the buffer's size when larger).</summary>
+        internal const long MinSnapshotBudget = 1024 * 1024;
+
+        /// <summary>The largest buffer copied whole (see <see cref="Resource.WholeCopy"/>).</summary>
+        internal const long MaxWholeCopy = 16 * 1024 * 1024;
+
         private static VertexStream SnapshotStream(
             ArmEmulator emulator, DrawCall call, VertexStream stream, int lowest, int highest)
         {
@@ -239,10 +267,17 @@
             // of a 3D scene is static meshes, and copying each one out per draw per frame cost
             // allocation on this thread and garbage collection pauses on the renderer's.
             FrameCapture.Resource buffer = stream.Buffer;
+            long end = stream.Offset + (((long)first + count) * stream.Stride);
+            if (buffer.WholeCopy is { } whole && buffer.WholeCopyVersion == buffer.Version && first >= 0 && end <= whole.Length)
+            {
+                return stream with { Data = whole, FirstVertex = 0, DataOffset = stream.Offset };
+            }
+
             if (buffer.SnapshotVersion != buffer.Version || buffer.Snapshots is null)
             {
                 buffer.SnapshotVersion = buffer.Version;
                 (buffer.Snapshots ??= []).Clear();
+                buffer.SnapshotBytes = 0;
             }
 
             foreach (var known in buffer.Snapshots)
@@ -256,17 +291,37 @@
 
             try
             {
+                // Once the ranges copied out of one version of a buffer add up to more than the
+                // buffer, copy all of it once and serve every stream from that. N.O.V.A. 3 keeps a
+                // level's meshes in one 1.2 MB vertex buffer and binds each submesh at its own byte
+                // offset, with index ranges spanning thousands of vertices: per-range copies were
+                // ~250 KB a draw, re-taken every frame as the list overflowed, ~300 MB/s of byte[]
+                // (most of it on the large object heap) and managed memory past 3 GB in play.
+                if (buffer.SnapshotBytes + length > buffer.StorageSize && buffer.StorageSize is > 0 and <= MaxWholeCopy &&
+                    first >= 0 && end <= buffer.StorageSize)
+                {
+                    byte[] all = emulator.ReadMemory(buffer.Storage, (int)buffer.StorageSize);
+                    buffer.WholeCopy = all;
+                    buffer.WholeCopyVersion = buffer.Version;
+                    buffer.Snapshots.Clear();
+                    buffer.SnapshotBytes = 0;
+                    return stream with { Data = all, FirstVertex = 0, DataOffset = stream.Offset };
+                }
+
                 byte[] data = emulator.ReadMemory(
                     stream.Buffer.Storage + stream.Offset + ((long)first * stream.Stride),
                     (int)length);
 
-                // A ring buffer gets many small ranges per version; keep the list short.
-                if (buffer.Snapshots.Count >= 16)
+                // A ring buffer gets many small ranges per version; keep the list bounded by what
+                // it holds as well as by how many.
+                if (buffer.Snapshots.Count >= MaxSnapshotRanges || buffer.SnapshotBytes + length > Math.Max(MinSnapshotBudget, 2 * buffer.StorageSize))
                 {
                     buffer.Snapshots.Clear();
+                    buffer.SnapshotBytes = 0;
                 }
 
                 buffer.Snapshots.Add((stream.Offset, stream.Stride, first, count, data));
+                buffer.SnapshotBytes += length;
                 return stream with { Data = data, FirstVertex = first };
             }
             catch (Exception)
@@ -494,7 +549,7 @@
                 return [0f, 0f];
             }
 
-            int at = (((index + call.BaseVertex) - stream.FirstVertex) * stream.Stride) + element.Offset;
+            int at = stream.DataOffset + (((index + call.BaseVertex) - stream.FirstVertex) * stream.Stride) + element.Offset;
             return ReadFormat(stream.Data, at, element.Format);
         }
 

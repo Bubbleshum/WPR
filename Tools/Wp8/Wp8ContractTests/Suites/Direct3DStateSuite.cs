@@ -83,6 +83,12 @@ public sealed class Direct3DStateSuite : IContractSuite
 
         Check("CopyResource copies the staging texture's pixels into the texture", Contents(texture).SequenceEqual(pixels));
 
+        // ResolveSubresource(dst, 0, src, 0, format): nothing here is multisampled, so it is a copy
+        // (Asphalt 7 resolves its race into the texture it then draws on the screen).
+        long resolved = Texture(defaultDesc);
+        M(context, 57, resolved, 0, texture, 0, 87);
+        Check("ResolveSubresource copies the source's pixels into the destination", Contents(resolved).SequenceEqual(pixels));
+
         // A texture created with no initial data reads as zeros even on a reused heap block: 2020: My
         // Country's sprite atlas showed an old loading screen between its sprites otherwise.
         long dirty = e.AllocateHeap(pixels.Length);

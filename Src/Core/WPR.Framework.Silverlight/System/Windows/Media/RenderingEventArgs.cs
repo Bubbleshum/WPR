@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Media
 {
     /// <summary>Shim for <c>System.Windows.Media.RenderingEventArgs</c>.</summary>
     public sealed class RenderingEventArgs : EventArgs

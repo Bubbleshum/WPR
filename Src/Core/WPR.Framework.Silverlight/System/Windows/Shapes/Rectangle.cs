@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Shapes
 {
     /// <summary>
     /// Shim for <c>System.Windows.Shapes.Rectangle</c>. Fills its slot, inset by half the

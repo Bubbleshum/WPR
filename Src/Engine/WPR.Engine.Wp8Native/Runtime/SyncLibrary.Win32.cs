@@ -297,6 +297,23 @@ namespace WPR.Wp8Native
             _frame.Return(NewHandle(new Event { Kind = Kind.Semaphore, Count = initial, Maximum = maximum, Name = name }));
         }
 
+        /// <summary>
+        /// A handle on the named event (auto-reset) or semaphore, made if nobody has yet, for the
+        /// host's SignalNotifier. A Create* of the same name later opens this one, as on Windows.
+        /// </summary>
+        public long OpenOrCreateNamed(string name, bool semaphore)
+        {
+            Kind kind = semaphore ? Kind.Semaphore : Kind.Event;
+            if (_events.Values.FirstOrDefault(e => e.Name == name && e.Kind == kind) is { } existing)
+            {
+                return NewHandle(existing);
+            }
+
+            return NewHandle(semaphore
+                ? new Event { Kind = Kind.Semaphore, Count = 0, Maximum = int.MaxValue, Name = name }
+                : new Event { Kind = Kind.Event, Name = name });
+        }
+
         /// <summary>Open*: a new handle on a named object, or NULL with ERROR_FILE_NOT_FOUND.</summary>
         private void OpenNamed(string name, Kind kind)
         {
@@ -495,7 +512,7 @@ namespace WPR.Wp8Native
                             _frame.Return(WaitTimeout);
                         }
                     },
-                    why: string.Join(", ", objects.Select((o, i) => o is null ? $"0x{handles[i]:X8}" : $"{o.Kind.ToString().ToLowerInvariant()} {(o.Name.Length > 0 ? o.Name : $"0x{handles[i]:X8}")}")),
+                    why: string.Join(", ", objects.Select((o, i) => o is null ? $"0x{handles[i]:X8}" : $"{o.Kind.ToString().ToLowerInvariant()} {(o.Name.Length > 0 ? o.Name : $"0x{handles[i]:X8}")}{(o.Kind == Kind.Mutex && o.Owner != 0 ? $" held by thread {o.Owner}" : "")}")),
                     timeout: milliseconds == Infinite ? null : TimeSpan.FromMilliseconds(milliseconds));
                 if (switched)
                 {

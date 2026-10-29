@@ -1,7 +1,7 @@
 using System;
 using System.ComponentModel;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Navigation
 {
     public class NavigatingCancelEventArgs : CancelEventArgs
     {

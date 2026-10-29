@@ -5,7 +5,7 @@ using System.Linq;
 using System.Reflection;
 using System.Xml.Linq;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Markup
 {
     /// <summary>
     /// Parses XAML text into a Silverlight-shaped object tree backed by WPR shim types.
@@ -37,26 +37,31 @@ namespace WPR.SilverlightCompability
         };
 
         /// <summary>
-        /// Logical (xmlns → CLR namespace lookups) for the default presentation namespace.
-        /// Real Silverlight maps it across many CLR namespaces; we collapse to one project.
+        /// The default presentation xmlns, by element name. Silverlight maps it onto its
+        /// System.Windows.* namespaces, which is where the shims live, so every public type of
+        /// those namespaces in this assembly answers to its own name. WPR's helper namespaces come
+        /// after, for the few WPR-internal elements terse XAML in tests names.
         /// </summary>
-        private static readonly (string Namespace, Assembly Assembly)[] PresentationLookups =
-        {
-            ("WPR.SilverlightCompability", typeof(FrameworkElement).Assembly),
-            // Same assembly, second namespace: the types absorbed from WPR.WindowsCompability
-            // (BitmapImage, WriteableBitmap, ResourceDictionary, MessageBox, …) kept their
-            // original namespace, so terse XAML naming them under the presentation xmlns would
-            // otherwise fail to resolve even though they are right here.
-            ("WPR.WindowsCompability", typeof(FrameworkElement).Assembly),
-        };
+        private static readonly Dictionary<string, Type> PresentationTypes = BuildPresentationTypes();
 
-        // The CLR namespace our Silverlight shims live in. NOT the assembly name — the assembly
-        // was renamed to WPR.Framework.Silverlight in Stage 3 and the two have differed since.
-        private const string SlcNamespace = "WPR.SilverlightCompability";
+        private static Dictionary<string, Type> BuildPresentationTypes()
+        {
+            var byName = new Dictionary<string, Type>(StringComparer.Ordinal);
+            var types = typeof(FrameworkElement).Assembly.GetExportedTypes()
+                .Where(t => !t.IsNested && t.Namespace != null)
+                .OrderBy(t => t.Namespace!.StartsWith("System.Windows", StringComparison.Ordinal) ? 0 : 1)
+                .ThenBy(t => t.Namespace, StringComparer.Ordinal);
+            foreach (Type t in types)
+            {
+                if (t.Namespace!.StartsWith("System.Windows", StringComparison.Ordinal)
+                    || t.Namespace.StartsWith("WPR.", StringComparison.Ordinal))
+                    byName.TryAdd(t.Name, t);
+            }
+            return byName;
+        }
 
         // Resolved from the running assembly rather than written as a literal, so a future
-        // rename cannot silently turn the redirects below into dead code again (which is exactly
-        // what happened when this was a literal "WPR.SilverlightCompability").
+        // rename cannot silently turn the redirects below into dead code.
         private static readonly string SlcAssemblyName =
             typeof(FrameworkElement).Assembly.GetName().Name!;
 
@@ -79,10 +84,6 @@ namespace WPR.SilverlightCompability
             {
                 ["Microsoft.Phone.Controls"] = ("Microsoft.Phone.Controls", PhoneAssemblyName),
                 ["Microsoft.Phone.Shell"] = ("Microsoft.Phone.Shell", PhoneAssemblyName),
-                ["System.Windows.Controls"] = (SlcNamespace, SlcAssemblyName),
-                ["System.Windows"] = (SlcNamespace, SlcAssemblyName),
-                ["System.Windows.Media"] = (SlcNamespace, SlcAssemblyName),
-                ["System.Windows.Navigation"] = (SlcNamespace, SlcAssemblyName),
             };
 
         private static readonly HashSet<string> ToolkitControlsMovedToPhone = new(StringComparer.Ordinal)
@@ -248,7 +249,7 @@ namespace WPR.SilverlightCompability
             /// <c>HomePageView</c> and then, further down, a <c>TemplateType</c> with
             /// <c>Template="{StaticResource HomePageView}"</c>, which resolved to null.
             /// </summary>
-            public List<WPR.WindowsCompability.ResourceDictionary> DictionaryScopes { get; } = new();
+            public List<ResourceDictionary> DictionaryScopes { get; } = new();
 
             /// <summary>
             /// For a template being materialised, the elements it was DECLARED inside (outermost
@@ -313,6 +314,12 @@ namespace WPR.SilverlightCompability
                 // XAML's intrinsic values - <sys:String x:Key="AppName">Fox News</sys:String>,
                 // sys:Double, sys:Int32, sys:Boolean - take their value from the element text.
                 // string has no default constructor, so Activator could never make one.
+                // <FontFamily x:Key="Body">/Fonts/x.ttf#Family</FontFamily>: no default constructor either.
+                if (type == typeof(FontFamily))
+                {
+                    return new FontFamily(element.Value.Trim());
+                }
+
                 if (type == typeof(string) || type.IsPrimitive || type == typeof(decimal))
                 {
                     string text = element.Value;
@@ -345,7 +352,7 @@ namespace WPR.SilverlightCompability
                 pushedScope = true;
             }
             bool pushedDictionary = false;
-            if (instance is WPR.WindowsCompability.ResourceDictionary scopeDictionary)
+            if (instance is ResourceDictionary scopeDictionary)
             {
                 ctx.DictionaryScopes.Add(scopeDictionary);
                 pushedDictionary = true;
@@ -433,6 +440,15 @@ namespace WPR.SilverlightCompability
                             $"[XamlReader] SKIP child '{child.Name}' on '{type.Name}': {xex.Message}");
                     }
                 }
+                else if (node is XText textNode && !string.IsNullOrWhiteSpace(textNode.Value) &&
+                         FindContentPropertyName(type) is string textProp &&
+                         ReflectionMembers.GetProperty(type, textProp, BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy)
+                             ?.GetValue(instance) is System.Windows.Documents.InlineCollection inlines)
+                {
+                    // Mixed content: <TextBlock>Read the <Underline>terms</Underline> first</TextBlock>.
+                    // The text between elements is a Run, its whitespace collapsed as XAML does.
+                    inlines.Add(System.Text.RegularExpressions.Regex.Replace(textNode.Value, @"\s+", " "));
+                }
             }
 
             return instance;
@@ -479,7 +495,7 @@ namespace WPR.SilverlightCompability
             string local = attr.Name.LocalName;
             if (local.Contains('.'))
             {
-                ApplyAttachedProperty(instance, attr);
+                ApplyAttachedProperty(instance, attr, ctx);
                 return;
             }
 
@@ -598,7 +614,9 @@ namespace WPR.SilverlightCompability
             return lambda.Compile();
         }
 
-        private static bool TryApplyMarkupExtension(object instance, Type type, string memberName, string raw, ParseContext ctx)
+        /// <param name="attached">An attached property's DP (<c>Owner.Prop="{Binding X}"</c>); null for the element's own member.</param>
+        private static bool TryApplyMarkupExtension(object instance, Type type, string memberName, string raw, ParseContext ctx,
+            DependencyProperty? attached = null)
         {
             var parsed = MarkupExtensionParser.Parse(raw);
 
@@ -616,8 +634,8 @@ namespace WPR.SilverlightCompability
 
                 // Find the DP or CLR property and assign — same lookup SetMember uses but with
                 // an already-typed value so we skip XamlTypeConverter.
-                FieldInfo? dpField = FindStaticField(type, memberName + "Property");
-                if (dpField?.GetValue(null) is DependencyProperty dp && instance is DependencyObject d)
+                if ((attached ?? FindStaticField(type, memberName + "Property")?.GetValue(null)) is DependencyProperty dp &&
+                    instance is DependencyObject d)
                 {
                     d.SetValue(dp, resolved);
                     return true;
@@ -643,8 +661,8 @@ namespace WPR.SilverlightCompability
                     throw new XamlParseException(
                         $"{{Binding}} on member '{memberName}' has no element to take a DataContext from (target '{type.Name}').");
 
-                FieldInfo? dpField = FindStaticField(type, memberName + "Property");
-                DependencyProperty? dp = instance is DependencyObject ? dpField?.GetValue(null) as DependencyProperty : null;
+                DependencyProperty? dp = instance is not DependencyObject ? null
+                    : attached ?? FindStaticField(type, memberName + "Property")?.GetValue(null) as DependencyProperty;
                 PropertyInfo? clrTarget = null;
                 if (dp == null)
                 {
@@ -761,7 +779,7 @@ namespace WPR.SilverlightCompability
 
         /// <summary>
         /// Looked up by <see cref="ResolveResource"/> for the Application-scope fallback.
-        /// <c>WPR.WindowsCompability.Application</c> wires its own lookup in via this
+        /// <c>System.Windows.Application</c> wires its own lookup in via this
         /// delegate at construction time (we can't reference it directly without a
         /// circular project ref). Null when no app singleton is available.
         /// </summary>
@@ -836,7 +854,7 @@ namespace WPR.SilverlightCompability
             return null;
         }
 
-        private static void ApplyAttachedProperty(object instance, XAttribute attr)
+        private static void ApplyAttachedProperty(object instance, XAttribute attr, ParseContext ctx)
         {
             string local = attr.Name.LocalName;
             int dot = local.IndexOf('.');
@@ -887,6 +905,15 @@ namespace WPR.SilverlightCompability
             {
                 System.Diagnostics.Debug.WriteLine(
                     $"[XamlReader] Skipping attached property '{ownerLocal}.{propName}' on non-DO '{instance.GetType().Name}'");
+                return;
+            }
+
+            // {Binding} / {StaticResource} on an attached property, as on the element's own: the
+            // toolkit's TurnstileFeatherEffect.FeatheringIndex="{Binding FeatheringIndex}" on every
+            // row of Live Store's lists threw from the converter, once per row.
+            if (MarkupExtensionParser.IsMarkupExtension(attr.Value) &&
+                TryApplyMarkupExtension(instance, instance.GetType(), local, attr.Value, ctx, dp))
+            {
                 return;
             }
 
@@ -1039,7 +1066,7 @@ namespace WPR.SilverlightCompability
                     // Carcassonne's every {StaticResource} missed because of this, which is why
                     // its menu labels were empty: their text binds through
                     // Source={StaticResource LocalizedStrings}, and that resource was never added.
-                    if (coll is WPR.WindowsCompability.ResourceDictionary targetDictionary &&
+                    if (coll is ResourceDictionary targetDictionary &&
                         valueElements.Count == 1)
                     {
                         object? soleValue;
@@ -1052,7 +1079,7 @@ namespace WPR.SilverlightCompability
                             return;
                         }
 
-                        if (soleValue is WPR.WindowsCompability.ResourceDictionary parsedDictionary)
+                        if (soleValue is ResourceDictionary parsedDictionary)
                         {
                             // Copy rather than replace: the target already holds the WP7 theme
                             // defaults PhoneTheme seeded, and the app's own entries are meant to
@@ -1297,8 +1324,8 @@ namespace WPR.SilverlightCompability
                 string? key = sourceElement?.Attribute(XName.Get("Key", XamlDirectiveNs))?.Value
                               ?? sourceElement?.Attribute(XName.Get("Name", XamlDirectiveNs))?.Value;
                 if (key == null
-                    && collection is WPR.WindowsCompability.ResourceDictionary parent
-                    && item is WPR.WindowsCompability.ResourceDictionary unkeyed)
+                    && collection is ResourceDictionary parent
+                    && item is ResourceDictionary unkeyed)
                 {
                     // An un-keyed dictionary BESIDE keyed resources (Microsoft Mahjong's App.xaml:
                     // a <ResourceDictionary> of merges, then LocalizedStrings and the rest) is a
@@ -1537,11 +1564,7 @@ namespace WPR.SilverlightCompability
 
             if (xmlns == PresentationNs || xmlns == "")
             {
-                foreach (var (ns, asm) in PresentationLookups)
-                {
-                    Type? t = SafeGetType(asm, ns + "." + local);
-                    if (t != null) return t;
-                }
+                if (PresentationTypes.TryGetValue(local, out Type? presentation)) return presentation;
                 // PhoneApplicationPage and other WP types moved to the Microsoft.Phone assembly;
                 // let the default/presentation namespace reach them too, so terse XAML (and our
                 // tests) can name `<PhoneApplicationPage/>` without the phone: clr-namespace.
@@ -1599,6 +1622,14 @@ namespace WPR.SilverlightCompability
                         ?? TryLoadSiblingAssembly(asmName);
                     Type? fromToolkit = toolkit == null ? null : SafeGetType(toolkit, ns + "." + local);
                     if (fromToolkit != null) return fromToolkit;
+                }
+
+                // Silverlight's own namespaces are the shims' namespaces; whatever assembly the
+                // xmlns names (System.Windows, a game's bundled copy), the shim answers.
+                if (ns == "System.Windows" || ns.StartsWith("System.Windows.", StringComparison.Ordinal))
+                {
+                    Type? shim = SafeGetType(typeof(FrameworkElement).Assembly, ns + "." + local);
+                    if (shim != null) return shim;
                 }
 
                 if (ClrNsRedirects.TryGetValue(ns, out var redir))

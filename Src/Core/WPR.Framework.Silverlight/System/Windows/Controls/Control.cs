@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
     /// <summary>Minimal stand-in for a Control base — the WP TextBox derives from Control, but
     /// our framework collapses Control to FrameworkElement since most of Control's chrome
@@ -52,6 +52,27 @@ namespace WPR.SilverlightCompability
         {
             get => (ControlTemplate?)GetValue(TemplateProperty);
             set => SetValue(TemplateProperty, value);
+        }
+
+        /// <summary>Keyboard focus order: stored, no keyboard navigation reads it.</summary>
+        public static readonly DependencyProperty IsTabStopProperty =
+            DependencyProperty.Register(nameof(IsTabStop), typeof(bool), typeof(Control),
+                new PropertyMetadata((object)true));
+
+        public bool IsTabStop
+        {
+            get => (bool)GetValue(IsTabStopProperty)!;
+            set => SetValue(IsTabStopProperty, value);
+        }
+
+        public static readonly DependencyProperty TabIndexProperty =
+            DependencyProperty.Register(nameof(TabIndex), typeof(int), typeof(Control),
+                new PropertyMetadata((object)int.MaxValue));
+
+        public int TabIndex
+        {
+            get => (int)GetValue(TabIndexProperty)!;
+            set => SetValue(TabIndexProperty, value);
         }
 
         // Background is inherited from FrameworkElement — no shadow here.

@@ -2,7 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Threading;
 
-namespace WPR.SilverlightCompability.Threading
+namespace System.Windows.Threading
 {
     /// <summary>
     /// Shim for <c>System.Windows.Threading.Dispatcher</c>: work posted with

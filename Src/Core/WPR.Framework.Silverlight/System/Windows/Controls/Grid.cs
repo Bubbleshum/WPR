@@ -1,7 +1,7 @@
 using System;
 using System.Linq;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
     /// <summary>
     /// Grid panel with column/row definitions supporting Auto, Pixel, and Star sizing.

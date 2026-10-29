@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows.Media
 {
     /// <summary>Shim for <c>System.Windows.Media.ArcSegment</c>. An elliptical arc in SVG endpoint form.</summary>
     public sealed class ArcSegment : PathSegment

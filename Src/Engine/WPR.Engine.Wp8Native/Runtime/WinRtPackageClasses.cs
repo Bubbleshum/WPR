@@ -60,6 +60,43 @@ namespace WPR.Wp8Native
         }
 
         /// <summary>
+        /// Whether activating <paramref name="className"/> should load the package DLL that registers
+        /// it rather than take a host factory: the package registers it, the host has no factory for
+        /// it yet, and it is not a class the host implements itself (Microsoft.Xbox, which packages
+        /// register for their own Microsoft.Xbox.dll).
+        /// </summary>
+        public bool ServedByPackage(string className) =>
+            !_factories.ContainsKey(className) &&
+            !className.StartsWith("Microsoft.Xbox", StringComparison.Ordinal) &&
+            PackageClasses.ContainsKey(className);
+
+        /// <summary>
+        /// A package class's factory as the interface <paramref name="iid"/> (null: the factory as
+        /// DllGetActivationFactory gave it), for the image's own activations (C++/CX <c>ref new</c>,
+        /// RoGetActivationFactory). 0 when the class cannot be activated from its DLL, in which case
+        /// the caller falls back to the host's answer. Only legal from inside a trap handler.
+        /// </summary>
+        public void ActivatePackageFactoryAs(string className, Guid? iid, Action<long> then)
+        {
+            ActivatePackageFactory(className, factory =>
+            {
+                if (factory == 0)
+                {
+                    then(0);
+                    return;
+                }
+
+                // Always through QueryInterface, which hands the caller a reference of its own:
+                // the cached factory's reference is the cache's, and a caller that releases what it
+                // was given (ComPtr does) freed the cache's copy (Tiny Death Star's second
+                // ref new cocos2d::DirectXRender got a pointer into reused memory).
+                QueryInterface(factory, iid ?? IidActivationFactory, then);
+            });
+        }
+
+        private static readonly Guid IidActivationFactory = new("00000035-0000-0000-c000-000000000046");
+
+        /// <summary>
         /// The activation factory of a runtime class the package registers, loading its DLL first.
         /// Only legal from inside a trap handler (it continues in emulated code); <paramref name="then"/>
         /// gets the factory, or 0 when the class is not registered, its DLL does not load, or it
