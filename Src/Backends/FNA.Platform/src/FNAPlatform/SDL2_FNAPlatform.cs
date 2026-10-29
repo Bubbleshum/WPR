@@ -1537,6 +1537,17 @@ namespace Microsoft.Xna.Framework
 						// Windows only notices a touch screen once it's touched
 						TouchPanel.TouchDeviceExists = true;
 
+						if (evt.button.button == SDL.SDL_BUTTON_LEFT)
+						{
+							WprWindowToDisplay(
+								evt.button.x - Mouse.INTERNAL_WindowOffsetX,
+								evt.button.y - Mouse.INTERNAL_WindowOffsetY,
+								out float px,
+								out float py
+							);
+							TouchPanel.NoteSourcePressed(WPR_MOUSE_AS_TOUCH_FINGER_ID, new Vector2(px, py), true);
+						}
+
 						float bu = (float)(evt.button.x - Mouse.INTERNAL_WindowOffsetX) / Mouse.INTERNAL_WindowWidth;
 						float bv = (float)(evt.button.y - Mouse.INTERNAL_WindowOffsetY) / Mouse.INTERNAL_WindowHeight;
 						WPR.Xna.Rhi.PresentationTurn.WindowToBackBuffer(ref bu, ref bv);
@@ -1608,6 +1619,11 @@ namespace Microsoft.Xna.Framework
 
 					if (TouchPanel.MouseAsTouch)
 					{
+						if (evt.button.button == SDL.SDL_BUTTON_LEFT)
+						{
+							TouchPanel.NoteSourceLifted(WPR_MOUSE_AS_TOUCH_FINGER_ID);
+						}
+
 						float bu = (float)(evt.button.x - Mouse.INTERNAL_WindowOffsetX) / Mouse.INTERNAL_WindowWidth;
 						float bv = (float)(evt.button.y - Mouse.INTERNAL_WindowOffsetY) / Mouse.INTERNAL_WindowHeight;
 						WPR.Xna.Rhi.PresentationTurn.WindowToBackBuffer(ref bu, ref bv);
@@ -1710,6 +1726,14 @@ namespace Microsoft.Xna.Framework
 					TouchPanel.LastActiveTouchId = evt.tfinger.touchId;
 
 					WprFinger(evt.tfinger.x, evt.tfinger.y, out float fu, out float fv);
+					TouchPanel.NoteSourcePressed(
+						WprSourceFinger(evt.tfinger.fingerId),
+						new Vector2(
+							(float)Math.Round(fu * TouchPanel.DisplayWidth),
+							(float)Math.Round(fv * TouchPanel.DisplayHeight)
+						),
+						false
+					);
 					TouchPanel.INTERNAL_onTouchEvent(
 						(int) evt.tfinger.fingerId,
 						TouchLocationState.Pressed,
@@ -1736,6 +1760,7 @@ namespace Microsoft.Xna.Framework
 				}
 				else if (evt.type == SDL.SDL_EventType.SDL_FINGERUP)
 				{
+					TouchPanel.NoteSourceLifted(WprSourceFinger(evt.tfinger.fingerId));
 					WprFinger(evt.tfinger.x, evt.tfinger.y, out float fu, out float fv);
 					TouchPanel.INTERNAL_onTouchEvent(
 						(int) evt.tfinger.fingerId,
@@ -3126,6 +3151,11 @@ namespace Microsoft.Xna.Framework
 		// mouse with a real finger when both are live at once.
 		private const int WPR_MOUSE_AS_TOUCH_FINGER_ID = int.MaxValue;
 
+		/* The source id a TouchPanel slot is keyed by, for an SDL finger: the same in the drain
+		 * and in the event handlers, which note presses and lifts between frames (see
+		 * TouchPanel.NoteSourcePressed). */
+		private static int WprSourceFinger(long fingerId) => Math.Abs((int)fingerId) + 1;
+
 		public static unsafe void UpdateTouchPanelState()
 		{
 			/* Two input sources can feed touches[] simultaneously:
@@ -3181,7 +3211,7 @@ namespace Microsoft.Xna.Framework
 					WprFinger(finger->x, finger->y, out float su, out float sv);
 					TouchPanel.SetFinger(
 						fingersWritten,
-						Math.Abs((int)finger->id) + 1,
+						WprSourceFinger(finger->id),
 						new Vector2(
 							(float)Math.Round(su * TouchPanel.DisplayWidth),
 							(float)Math.Round(sv * TouchPanel.DisplayHeight)

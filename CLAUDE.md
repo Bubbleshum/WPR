@@ -4726,6 +4726,53 @@ its id) and `ReflectionAndDeploymentTests`.
 Not identity-binding. The touch and Deployment changes are shim behaviour and need no repatch;
 the driver fix is a native binary, so Android needs the APK repackaged.
 
+### Touch audit: short taps, the mouse as the first finger, one finger per consumer (2026-10-29)
+
+A pass over every input path (XNA `TouchPanel` and `Mouse`, the Silverlight router and
+`Touch.FrameReported`, the WP8 grid's manipulation feed, the WP8 native pointer feed) found five
+general defects. All shim/host behaviour: no patcher bump, no reinstall.
+
+- **A tap inside one frame never reached `GetState()`.** The SDL drain polls which fingers are down
+  when it runs, so a finger (or mouse button) that went down and up between two frames was never
+  in a slot, while gestures (event-fed) still saw a Tap. Now `SDL2_FNAPlatform.PollEvents` notes
+  each press and lift (`TouchPanel.NoteSourcePressed` / `NoteSourceLifted`, source ids from
+  `WprSourceFinger`), and `TouchPanel.Update` reports such a touch `Pressed` for one frame, then
+  `Released`. A source lifted and pressed again between two frames (a quick second tap; Android
+  pointer ids restart at 0) is a **new** touch with a new id, not the old one `Moved`
+  (`ForgetLiftedSources`).
+- **`Mouse.GetState()` ignored touch on Android.** `SDL_HINT_TOUCH_MOUSE_EVENTS` is 0 on every
+  platform (it stops a phantom mouse finger on desktop touchscreens), so on a phone the mouse never
+  had a button down, and titles that read input only through it (NFS Undercover's J2ME layer, SPY
+  Mouse) took no touch. WP7's mouse was the primary touch, and now it is again:
+  `TouchPanel.TryGetPrimaryTouch` (the touch that went down with nothing else in contact, until it
+  lifts; then none until every finger is up; the mouse-as-touch slot left out), read by `Mouse`
+  only when no real button is down. Side effect on the desktop: the harness `tap` now reaches
+  mouse-reading titles too (SPY Mouse: menu → Play → level 1 with plain `tap`).
+- **The Silverlight router followed `touches[0]`.** With two fingers down, lifting the first
+  handed the interaction to the second, and the first's click was lost. `PumpSilverlightTouch` now
+  follows one finger by id. A/B on Flowerz (finger on Help & Options, second on the grass, lift the
+  first): before, nothing; after, Options opens on the first lift.
+- **A consumer reading less often than `TouchPanel` advances lost short taps.** When a page pumps
+  `FrameworkDispatcher` itself, `TouchPanel` updates twice in a tick and the `Pressed` sample is
+  gone before `Wp8NativeSession.PumpTouch`, `SilverlightGame.PumpManipulationInput`,
+  `PumpSilverlightTouch` or `TouchFrameReporter` read it; each saw only a `Released` of an id it
+  never had down, and dropped it. Each now keeps the newest id it has seen: a `Released` of a
+  **newer** id is a whole missed tap, delivered as a press and (for the pointer feeds and
+  FrameReported) a release on the **next** update, because delivered together both reach the guest
+  in one `ProcessEvents` and a game that polls per frame never sees the finger down. An older id
+  never seen down is still dropped (a finger already down when the page appeared). Jetpack
+  Joyride's News button took no one-frame tap before this and does now.
+- **Touch outlived a game in the desktop launcher.** No reset existed, so the next game launched
+  inherited the slots, the primary and unread gestures (the Tap that hit the last game's Exit).
+  `TouchPanel.ResetForNewLaunch` (and `GestureDetector.Reset`), from `ResetWprSingletons`.
+
+Harness: local verbs `fdown/fmove/fup <src> x y` (fingers packed by index, as SDL does) and
+`qtap <src> x y` (a press and a lift noted between two frames, what SDL delivers for a sub-frame
+tap). The `[touch]` line reads the slots by reflection so it does not count as the game reading
+touch (calling `GetState()` there would flip the Silverlight host's "game reads touch" gate).
+Tests: `SyntheticTouchTests` (one-frame tap, lift-and-repress is a new touch, the mouse is the
+primary touch; every test now starts from `ResetForNewLaunch`).
+
 ### iRunner plays: the store API, settings that hold a game's class, a game-thread context (patcher v59, 2026-10-23)
 
 iRunner (`525de61b-…`, Droidhen, cocos2d-xna) bundles Umeng analytics, OpenXLive, Microsoft's ad

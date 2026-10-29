@@ -1864,6 +1864,10 @@ namespace WPR
             try { WPR.Engine.Sensors.SensorBackend.Gyroscope?.ResetForNewLaunch(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"Gyroscope provider reset threw: {ex.Message}"); }
 
+            // Touch outlives a game in the desktop launcher: slots, queued gestures, the primary.
+            try { Microsoft.Xna.Framework.Input.Touch.TouchPanel.ResetForNewLaunch(); }
+            catch (Exception ex) { Log.Warn(LogCategory.AppList, $"TouchPanel reset threw: {ex.Message}"); }
+
             // Silence the motor. A WP7 title that exits mid-buzz never gets to call
             // VibrateController.Stop() itself, and the provider is launcher-lifetime — so without
             // this the phone carries on vibrating with the game already gone. Just a Stop, not a

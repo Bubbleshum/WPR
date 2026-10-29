@@ -474,8 +474,280 @@ namespace Microsoft.Xna.Framework.Input.Touch
 			sourceIds.CopyTo(prevSourceIds, 0);
 			touchFrame += 1;
 
+			// A source finger that lifted since the last frame is not the touch it was, even if
+			// it is down again now.
+			ForgetLiftedSources();
+
 			// Get the latest finger data
 			XnaBackend.Input.UpdateTouchPanelState();
+
+			PlaceLatchedPresses();
+			ReleaseVanishedTouches();
+			TrackPrimaryTouch();
+		}
+
+		/* WPR: press and lift EVENTS since the last frame, per source finger. The drain polls
+		 * which fingers are down at the moment it runs, so a touch that goes down and up between
+		 * two frames was never in GetState() at all: no Pressed, no Released, while gestures
+		 * (fed from the same events) saw a Tap. On the phone every touch was reported Pressed
+		 * for at least one frame and Released for one, however short. A quick tap is a few
+		 * frames at 60 fps, but WP7 titles update at 30 and loading screens far slower; a mouse
+		 * click under the harness is often one frame. Noted by the platform as the events
+		 * arrive (SDL2_FNAPlatform.PollEvents); applied and cleared by Update.
+		 */
+		private struct LatchedPress
+		{
+			public int Source;
+			public Vector2 Position;
+			public bool Mouse;
+		}
+
+		private static readonly List<LatchedPress> latchedPresses = new List<LatchedPress>();
+		private static readonly List<int> liftedSources = new List<int>();
+
+		// Stands in for a source id that must match nothing (see ForgetLiftedSources).
+		private const int LiftedSource = int.MinValue;
+
+		/// <summary>
+		/// A source finger went down, at <paramref name="position"/> in display coordinates.
+		/// <paramref name="mouse"/> is the mouse-as-touch source, which lives in the last slot.
+		/// </summary>
+		internal static void NoteSourcePressed(int sourceId, Vector2 position, bool mouse)
+		{
+			for (int i = 0; i < latchedPresses.Count; i += 1)
+			{
+				if (latchedPresses[i].Source == sourceId)
+				{
+					return;
+				}
+			}
+			// Bounded: nothing consumes the latch while the game is not updating.
+			if (latchedPresses.Count < MAX_TOUCHES * 2)
+			{
+				latchedPresses.Add(new LatchedPress { Source = sourceId, Position = position, Mouse = mouse });
+			}
+		}
+
+		/// <summary>A source finger lifted.</summary>
+		internal static void NoteSourceLifted(int sourceId)
+		{
+			if (!liftedSources.Contains(sourceId) && liftedSources.Count < MAX_TOUCHES * 2)
+			{
+				liftedSources.Add(sourceId);
+			}
+		}
+
+		/// <summary>
+		/// A source that lifted since the last frame and is down again (a quick second tap; an
+		/// Android pointer id, which restarts at 0, reused by the next finger) would otherwise be
+		/// matched to the touch it was and reported Moved under the old id, so the game never saw
+		/// the lift. Its previous touch is released by <see cref="ReleaseVanishedTouches"/>.
+		/// </summary>
+		private static void ForgetLiftedSources()
+		{
+			foreach (int lifted in liftedSources)
+			{
+				for (int i = 0; i < MAX_TOUCHES; i += 1)
+				{
+					if (prevSourceIds[i] == lifted)
+					{
+						prevSourceIds[i] = LiftedSource;
+					}
+				}
+			}
+			liftedSources.Clear();
+		}
+
+		/// <summary>
+		/// A source that went down since the last frame and is not down now went down and up
+		/// between two frames: it is reported Pressed now, and the drain's next pass, finding
+		/// no finger there, reports it Released.
+		/// </summary>
+		private static void PlaceLatchedPresses()
+		{
+			foreach (LatchedPress press in latchedPresses)
+			{
+				if (SourceIsDown(press.Source))
+				{
+					continue;
+				}
+
+				int slot = -1;
+				if (press.Mouse && _MouseAsTouch && touches[MAX_TOUCHES - 1].State == TouchLocationState.Invalid)
+				{
+					slot = MAX_TOUCHES - 1;
+				}
+				for (int i = 0; slot < 0 && i < FirstReservedFingerSlot; i += 1)
+				{
+					if (touches[i].State == TouchLocationState.Invalid)
+					{
+						slot = i;
+					}
+				}
+				if (slot < 0)
+				{
+					continue;
+				}
+
+				touches[slot] = new TouchLocation(NewTouchId(), TouchLocationState.Pressed, press.Position);
+				sourceIds[slot] = press.Source;
+				writtenFrame[slot] = touchFrame;
+			}
+			latchedPresses.Clear();
+		}
+
+		private static bool SourceIsDown(int sourceId)
+		{
+			for (int i = 0; i < MAX_TOUCHES; i += 1)
+			{
+				if (writtenFrame[i] == touchFrame && IsDown(touches[i].State) && sourceIds[i] == sourceId)
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+
+		/* WPR: the primary touch, which is what Mouse.GetState() reported on the phone: the touch
+		 * that went down with nothing else in contact, for as long as it stays down. When it lifts
+		 * there is no primary until every finger is up, so the mouse's button has a clean release.
+		 * The mouse-as-touch slot is left out: it IS the mouse.
+		 */
+		private static int primaryId;
+		private static bool primaryLifted;
+		private static Vector2 primaryPosition;
+		private static bool primaryDown;
+
+		private static void TrackPrimaryTouch()
+		{
+			if (primaryLifted)
+			{
+				primaryId = 0;
+				primaryLifted = false;
+			}
+
+			int candidates = _MouseAsTouch ? MAX_TOUCHES - 1 : MAX_TOUCHES;
+			if (primaryId == 0)
+			{
+				bool otherInContact = false;
+				int pick = -1;
+				for (int i = 0; i < candidates; i += 1)
+				{
+					if (touches[i].State == TouchLocationState.Moved)
+					{
+						otherInContact = true;
+					}
+					else if (touches[i].State == TouchLocationState.Pressed
+						&& (pick < 0 || touches[i].Id < touches[pick].Id))
+					{
+						pick = i;
+					}
+				}
+				if (otherInContact || pick < 0)
+				{
+					primaryDown = false;
+					return;
+				}
+				primaryId = touches[pick].Id;
+			}
+
+			for (int i = 0; i < candidates; i += 1)
+			{
+				if (touches[i].State != TouchLocationState.Invalid && touches[i].Id == primaryId)
+				{
+					primaryPosition = touches[i].Position;
+					primaryDown = IsDown(touches[i].State);
+					primaryLifted = !primaryDown;
+					return;
+				}
+			}
+			primaryDown = false;
+			primaryLifted = true;
+		}
+
+		/// <summary>
+		/// Forgets every touch, latched event, queued gesture and the gesture detector's state.
+		/// The desktop launcher outlives a game, and without this the next game launched started
+		/// with the last one's: a finger held as it quit came back Released at the old position on
+		/// the first frame, and gestures it never read (the Tap that hit its Exit button) were the
+		/// new game's to read. Called from ApplicationLaunch.ResetWprSingletons.
+		/// </summary>
+		internal static void ResetForNewLaunch()
+		{
+			for (int i = 0; i < MAX_TOUCHES; i += 1)
+			{
+				touches[i] = new TouchLocation(NO_FINGER, TouchLocationState.Invalid, Vector2.Zero);
+				prevTouches[i] = touches[i];
+				sourceIds[i] = NO_FINGER;
+				prevSourceIds[i] = NO_FINGER;
+				writtenFrame[i] = 0;
+			}
+			touchFrame = 0;
+			gestures.Clear();
+			latchedPresses.Clear();
+			liftedSources.Clear();
+			primaryId = 0;
+			primaryLifted = false;
+			primaryDown = false;
+			GestureDetector.Reset();
+		}
+
+		/// <summary>
+		/// The primary touch this frame: down, or lifted this frame. False when there is none.
+		/// Read by <see cref="Mouse.GetState()"/>; does not count as the game reading touch.
+		/// </summary>
+		internal static bool TryGetPrimaryTouch(out Vector2 position, out bool down)
+		{
+			position = primaryPosition;
+			down = primaryDown;
+			return primaryId != 0;
+		}
+
+		/// <summary>
+		/// Every touch that was down last frame and is in no slot now is reported Released once.
+		/// The SDL drain packs fingers by index, so when the first of two lifts the second is
+		/// written over its slot and the lifted touch's id simply disappears. A game keying
+		/// held state by id (a virtual pad held with one thumb, a button with the other) then
+		/// holds it for ever, because ids are never reused. While ids came from the sources
+		/// (before 2026-10-23) the next press reused the id and released it by accident.
+		/// The Released goes in a free slot the drain clears every frame.
+		/// </summary>
+		private static void ReleaseVanishedTouches()
+		{
+			int drained = FirstReservedFingerSlot;
+			for (int i = 0; i < MAX_TOUCHES; i += 1)
+			{
+				if (!IsDown(prevTouches[i].State) || HasTouch(prevTouches[i].Id))
+				{
+					continue;
+				}
+				for (int k = 0; k < drained; k += 1)
+				{
+					if (touches[k].State == TouchLocationState.Invalid)
+					{
+						touches[k] = new TouchLocation(
+							prevTouches[i].Id,
+							TouchLocationState.Released,
+							prevTouches[i].Position,
+							prevTouches[i].State,
+							prevTouches[i].Position
+						);
+						break;
+					}
+				}
+			}
+		}
+
+		private static bool HasTouch(int id)
+		{
+			for (int i = 0; i < MAX_TOUCHES; i += 1)
+			{
+				if (touches[i].State != TouchLocationState.Invalid && touches[i].Id == id)
+				{
+					return true;
+				}
+			}
+			return false;
 		}
 
 		#endregion
