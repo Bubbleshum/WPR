@@ -519,6 +519,7 @@ namespace WPR.Wp8Native
 
             // The whole range is written, so a range an unloaded module left behind holds none of it.
             _cpu.MemWrite(imageBase, memory);
+            ProtectDataSections(image, imageBase);
 
             LoadedModule module = new(name, InstallFolder + Path.GetRelativePath(_packageRoot, path), path, image, imageBase, isMain: false)
             {

@@ -98,9 +98,11 @@ namespace WPR.Wp8Native
 
             if (FollowHostClock)
             {
-                // Monotonic by construction, and never behind the last value handed out - an
-                // image that reads the clock twice in a row must not see it go backwards.
-                _clock = Math.Max(_clock + 1, _hostClock.ElapsedTicks / (System.Diagnostics.Stopwatch.Frequency / 1_000_000));
+                // Never behind the last value handed out - an image that reads the clock twice in a
+                // row must not see it go backwards - but not forced forward either, as Windows' own
+                // counter is not: a microsecond a read made a thread polling a million times a
+                // second run its own time ahead of the host's.
+                _clock = Math.Max(_clock, _hostClock.ElapsedTicks / (System.Diagnostics.Stopwatch.Frequency / 1_000_000));
                 return _clock;
             }
 
@@ -116,9 +118,68 @@ namespace WPR.Wp8Native
             // computes its animation from. Repeated queries move it *within* a frame, which
             // is what lets a spin-wait finish.
             long within = Math.Min(_queriesThisFrame++ * perQuery, perFrame - 1);
-            _clock = Math.Max(_clock + 1, (frame * perFrame) + within);
+            long next = Math.Max(_clock + 1, (frame * perFrame) + within);
+            if (SpinningOnTheClock())
+            {
+                // A spinning thread reads real time, as it would on a phone - and only real time:
+                // no microsecond a read, or the spin would make its own time. One offset, set by
+                // the first spin, ties real time to the clock, so the time the work between two
+                // spins took is counted too.
+                long real = _hostClock.ElapsedTicks / (System.Diagnostics.Stopwatch.Frequency / 1_000_000);
+                _spinOffset ??= next - real;
+                next = Math.Max(Math.Max(_clock, (frame * perFrame) + within), real + _spinOffset.Value);
+            }
+
+            _clock = next;
             return _clock;
         }
+
+        /// <summary>
+        /// Whether the running thread is doing nothing but wait for time to pass: its last
+        /// <see cref="SpinningReads"/> clock reads came back to back, with no other host call and
+        /// little code between them. Its reads then follow real time (see <see cref="Microseconds"/>).
+        /// </summary>
+        /// <remarks>
+        /// Within a frame the clock moves by <c>perQuery</c> a read until it reaches the frame's
+        /// end, and by a microsecond a read after that, so a frame stays about 16ms long however
+        /// often an image measures it. A thread that spins until a deadline past the frame's end
+        /// gets there only through its own reads, so how fast such a game ran depended on how
+        /// fast the host answered them. GTA: San Andreas advances its world 33ms a tick and its
+        /// game thread spins on the clock between ticks (~30,000 reads a tick, ~40% of the
+        /// guest's instructions) while its render thread waits for the tick: it ran at 1.07x real
+        /// time here at 32 fps, faster on a quicker host and slower on a phone. A spinning thread
+        /// now reads the host's real time (one offset ties it to the clock), as it would on a
+        /// phone, and GTA ticks at its own 30 a second at real speed. Profiling reads around real
+        /// work do not qualify, so a title that times its frame many times over keeps the
+        /// frame's length; a spin-wait shorter than a frame finishes on the per-read steps
+        /// before it qualifies. Runs that spin are no longer frame-for-frame reproducible.
+        /// </remarks>
+        private bool SpinningOnTheClock()
+        {
+            int thread = _emulator.CurrentThreadId;
+            long traps = _emulator.TrapsEntered;
+            long retired = _emulator.Cpu.InstructionsRetired;
+            bool backToBack = thread == _spinThread
+                && traps - _spinTraps == 1
+                && retired - _spinRetired < SpinGapInstructions;
+            _spinThread = thread;
+            _spinTraps = traps;
+            _spinRetired = retired;
+            _spinReads = backToBack ? _spinReads + 1 : 0;
+            return _spinReads >= SpinningReads;
+        }
+
+        /// <summary>Back-to-back clock reads that mark a thread as spinning on the clock.</summary>
+        private const int SpinningReads = 32;
+
+        /// <summary>The most code between two reads that still counts as a spin.</summary>
+        private const long SpinGapInstructions = 20_000;
+
+        private int _spinThread;
+        private long _spinTraps;
+        private long _spinRetired;
+        private int _spinReads;
+        private long? _spinOffset;
 
         private long _clockFrame = -1;
         private long _queriesThisFrame;

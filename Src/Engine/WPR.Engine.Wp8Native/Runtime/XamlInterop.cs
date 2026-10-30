@@ -316,6 +316,9 @@ namespace WPR.Wp8Native
 
         private void InvokeMember(string method, object?[] arguments, Action<long> then) => InvokeMember(method, arguments, null, then);
 
+        /// <summary>The step that stands for <c>new C()</c> of another package class (<see cref="XamlShellStep.Class"/>).</summary>
+        public const string ActivateInstanceStep = "ActivateInstance";
+
         private void InvokeMember(string method, object?[] arguments, string? onClass, Action<long> then)
         {
             if (onClass is not null && onClass != _shell!.ClassId)
@@ -432,6 +435,21 @@ namespace WPR.Wp8Native
                 if (!_packageObjects.TryGetValue(className, out PackageObject? obj))
                 {
                     _packageObjects[className] = obj = new PackageObject(factory);
+                }
+
+                if (method == ActivateInstanceStep)
+                {
+                    // new C() in the page: IActivationFactory::ActivateInstance(IInspectable**), slot 6.
+                    long outInstance = _scratch + 4;
+                    _emulator.WriteUInt32(outInstance, 0);
+                    CallSlot($"{className}::ActivateInstance", factory, 6, [outInstance], [], hr =>
+                    {
+                        obj.Instance = _emulator.ReadUInt32(outInstance);
+                        obj.Interfaces.Clear();
+                        Log($"{className}: ActivateInstance = 0x{hr:X8}, instance 0x{obj.Instance:X8}");
+                        then(obj.Instance);
+                    });
+                    return;
                 }
 
                 bool isStatic = false;
