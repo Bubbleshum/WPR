@@ -223,10 +223,15 @@ namespace WPR
                 _installFolder,
                 _userAssembly,
                 _entryPointTypeName,
-                _onAppCreated);
+                _onAppCreated,
+                HookFrame);
 
             RootFrame = result.RootFrame;
             _layoutRoot = (UIElement?)(result.RootVisual ?? result.RootFrame);
+            if (RootFrame != null && !_frameHooked)
+            {
+                HookFrame(RootFrame);
+            }
 
             // EVERY navigation needs the same treatment as the first one, not just the start
             // page. A mixed-mode title is not one page: Sid Meier's Pirates! goes LogoPage ->
@@ -235,15 +240,6 @@ namespace WPR
             // the first had ActualWidth/ActualHeight of zero, never saw LayoutUpdated, and left
             // that renderer null — a NullReferenceException out of the game's own draw, once a
             // frame, on the page where the game actually is.
-            if (RootFrame != null)
-            {
-                // Not Navigated: that is raised before the page's OnNavigatedTo (as on the phone),
-                // and the page's orientation is only settled once OnNavigatedTo has run.
-                RootFrame.WprNavigationCompleted += OnFrameNavigated;
-                // A page swapped in by writing Frame.Content (Flowerz does every screen change
-                // this way) needs the same layout and orientation as a navigated one.
-                RootFrame.WprContentReplaced += (_, _) => OnFrameNavigated(RootFrame, null!);
-            }
 
             // The page the app navigated to decides which way round the screen is. Half the
             // mixed-mode library is landscape, and until this ran they were all given a portrait
@@ -468,6 +464,25 @@ namespace WPR
         /// through. Orientation is re-read because each WP7 page declares its own — a portrait
         /// page reached from a landscape one turns the surface back.
         /// </remarks>
+        /// <summary>
+        /// Lays out every page the frame shows, the start page included: the boot hands the frame
+        /// over before navigating to it (<see cref="SilverlightAppHost.BootInContext"/>), so the
+        /// start page is arranged at the screen's size before its Loaded handlers read it.
+        /// </summary>
+        private void HookFrame(PhoneApplicationFrame frame)
+        {
+            _frameHooked = true;
+            RootFrame = frame;
+            // Not Navigated: that is raised before the page's OnNavigatedTo (as on the phone),
+            // and the page's orientation is only settled once OnNavigatedTo has run.
+            frame.WprNavigationCompleted += OnFrameNavigated;
+            // A page swapped in by writing Frame.Content (Flowerz does every screen change
+            // this way) needs the same layout and orientation as a navigated one.
+            frame.WprContentReplaced += (_, _) => OnFrameNavigated(frame, null!);
+        }
+
+        private bool _frameHooked;
+
         private void OnFrameNavigated(object sender, NavigationEventArgs e)
         {
             try

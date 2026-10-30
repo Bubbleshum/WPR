@@ -3267,6 +3267,15 @@ namespace WPR
                     return;
                 }
 
+                // A native DLL (a WP8 component, SharpDX's interop) has nothing to patch, and
+                // handing it to Cecil only throws (see ManagedImage).
+                if (!ManagedImage.IsManaged(filename))
+                {
+                    current++;
+                    progress((int)(current * 100.0 / totalCount));
+                    continue;
+                }
+
                 try
                 {
                     PatchDll(filename);
@@ -3327,7 +3336,10 @@ namespace WPR
             do
             {
                 changed = false;
-                string[] dlls = Directory.GetFiles(appRootPath, "*.dll", SearchOption.AllDirectories);
+                // Managed ones only: Cecil throws on a native DLL (see ManagedImage).
+                string[] dlls = Directory.GetFiles(appRootPath, "*.dll", SearchOption.AllDirectories)
+                    .Where(ManagedImage.IsManaged)
+                    .ToArray();
 
                 // Build inbound-reference set: which assembly names are still imported by SOMEONE?
                 var referenced = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
