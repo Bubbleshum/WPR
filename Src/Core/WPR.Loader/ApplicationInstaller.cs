@@ -99,8 +99,8 @@ namespace WPR
                 XmlNode? iconPathNode = appNode.SelectSingleNode("//IconPath");
                 if (iconPathNode != null)
                 {
-                    string iconPath = iconPathNode.InnerText;
-                    ZipArchiveEntry? iconEntry = archive.GetEntry(iconPath);
+                    // A Windows path (Assets\ApplicationIcon.png) against ZIP entries named with "/".
+                    ZipArchiveEntry? iconEntry = PackageManifests.FindEntry(archive, iconPathNode.InnerText.Trim().TrimStart('\\', '/'));
                     if (iconEntry != null)
                     {
                         using Stream iconStream = iconEntry.Open();
@@ -395,7 +395,7 @@ namespace WPR
                     // See ApplicationVersionResolver: the manifest attribute is the placeholder
                     // 1.0.0.0 for half the library, so the entry assembly is consulted when it is.
                     Version = ApplicationVersionResolver.Resolve(archive, versionAttrib.Value, titleAttrib.Value),
-                    IconPath = (iconPath == null) ? "" : Path.Combine(productStoreFolderRelative, iconPath),
+                    IconPath = string.IsNullOrWhiteSpace(iconPath) ? "" : GameIconStore.InstalledIconRelative(productStoreFolderRelative, iconPath),
                     Publisher = (publisherAttrib == null) ? "Unknown" : publisherAttrib.Value,
                     Author = (authorAttrib == null) ? "Unknown" : authorAttrib.Value,
                     Description = (descriptionAttrib == null) ? "" : descriptionAttrib.Value,
@@ -708,7 +708,7 @@ namespace WPR
             string? icon = null;
             try
             {
-                if (!string.IsNullOrWhiteSpace(app.IconPath) && Configuration.Current is { } config) icon = config.DataPath(app.IconPath);
+                if (!string.IsNullOrWhiteSpace(app.IconPath) && Configuration.Current is { } config) icon = config.DataPath(GameIconStore.ToPortableRelative(app.IconPath));
             }
             catch (Exception) { /* no icon then */ }
             // The manifest's own version, as the hub reads it from packages it stores; not

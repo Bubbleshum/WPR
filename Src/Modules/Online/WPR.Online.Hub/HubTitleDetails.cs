@@ -13,8 +13,14 @@ namespace WPR.Online.Hub;
 /// <para><b>The flow.</b> <see cref="Offer"/> writes the details to <c>title-details/</c>, one file
 /// per title. <see cref="FlushAsync"/> first asks the hub which fields it still wants, then sends
 /// only those, reading the icon from the install at that moment. Either way the title is then
-/// written to <c>title-details-sent-v2.txt</c> and never offered to that hub again, so a second
+/// written to <c>title-details-sent-v3.txt</c> and never offered to that hub again, so a second
 /// install, a repatch or every later launch sends nothing.</para>
+///
+/// <para><b>An icon we could not give.</b> When the hub wanted an icon and none could be read
+/// (the file was missing, too large, not a PNG or JPEG), the title is marked
+/// <see cref="NoIconMark"/> and offered again once its icon reads. Android installs used to store
+/// <c>Assets\ApplicationIcon.png</c> with a <c>\</c> that is not a separator there, so every such
+/// title was told to the hub without its icon.</para>
 ///
 /// <para><b>Backfill.</b> Games installed before this existed, or while server logging was off,
 /// are offered by the first flush of each process from <see cref="HubSettings.InstalledTitles"/>.
@@ -31,7 +37,10 @@ public sealed class HubTitleDetails : ITitleDetailsSync
 {
     internal const int MaxTitlesPerFlush = 10;
 
-    internal const string SentLogName = "title-details-sent-v2.txt";
+    internal const string SentLogName = "title-details-sent-v3.txt";
+
+    /// <summary>Suffix of a sent-log line for a title sent while the hub still wanted its icon.</summary>
+    internal const string NoIconMark = "|no-icon";
 
     /// <summary>The hub refuses more (256 KB). WP icons are a few KB.</summary>
     internal const int MaxIconBytes = 256 * 1024;
@@ -50,7 +59,8 @@ public sealed class HubTitleDetails : ITitleDetailsSync
         string root = connection.Settings.DataDirectory;
         _queue = new DiskQueue<TitleDetails>(Path.Combine(root, "title-details"), capacity: 500);
         // "-v2" since the hub took versions (2026-10-28): titles marked sent under the first log
-        // were never offered one, so each is asked once more. The old log is left where it is.
+        // were never offered one, so each is asked once more. "-v3" (2026-10-30): titles sent from
+        // Android without their icon (see the remarks) are asked once more. Old logs stay put.
         _sentPath = Path.Combine(root, SentLogName);
     }
 
@@ -62,7 +72,7 @@ public sealed class HubTitleDetails : ITitleDetailsSync
             if (_connection.Client() is not { } hub) return;
 
             string id = TitleIds.Normalize(details.TitleId);
-            if (Sent().Contains(SentKey(hub, id))) return;
+            if (IsDone(Sent(), SentKey(hub, id), details)) return;
             // One file per title: the prefix is the id, so a second offer before a flush is a no-op.
             if (_queue.ReadAll(QueuePrefix(id)).Count > 0) return;
 
@@ -84,18 +94,18 @@ public sealed class HubTitleDetails : ITitleDetailsSync
 
             if (Interlocked.Exchange(ref _backfilled, 1) == 0) Backfill(hub);
 
-            HashSet<string> sent = Sent();
+            Dictionary<string, bool> sent = Sent();
             int handled = 0;
             foreach ((string path, TitleDetails details) in _queue.ReadAll())
             {
                 if (handled++ >= MaxTitlesPerFlush) break;
                 string id = TitleIds.Normalize(details.TitleId);
-                if (sent.Contains(SentKey(hub, id))) { DiskQueue<TitleDetails>.Delete(path); continue; }
+                if (IsDone(sent, SentKey(hub, id), details)) { DiskQueue<TitleDetails>.Delete(path); continue; }
 
                 try
                 {
-                    await SendAsync(hub, id, details).ConfigureAwait(false);
-                    MarkSent(hub, id);
+                    bool iconStillWanted = await SendAsync(hub, id, details).ConfigureAwait(false);
+                    MarkSent(hub, id, iconStillWanted);
                     DiskQueue<TitleDetails>.Delete(path);
                 }
                 catch (HubException e) when (e.Status is HttpStatusCode.UnprocessableEntity or HttpStatusCode.NotFound)
@@ -103,7 +113,7 @@ public sealed class HubTitleDetails : ITitleDetailsSync
                     // The hub will never take this as it is (an icon it refuses, an id it does not
                     // accept): retrying every flush would only spend the rate limit.
                     _connection.Log($"title details for {details.Name ?? id} refused: {e.Message}");
-                    MarkSent(hub, id);
+                    MarkSent(hub, id, iconStillWanted: false);
                     DiskQueue<TitleDetails>.Delete(path);
                 }
                 catch (Exception e)
@@ -124,18 +134,25 @@ public sealed class HubTitleDetails : ITitleDetailsSync
         }
     }
 
-    private async Task SendAsync(HubClient hub, string id, TitleDetails details)
+    /// <returns>True when the hub wanted an icon and none could be read.</returns>
+    private async Task<bool> SendAsync(HubClient hub, string id, TitleDetails details)
     {
         TitleDetailsWants wants = (await hub.GetTitleDetailsAsync(id).ConfigureAwait(false)).Wants;
         TitleDetailsContribution body = Contribution(details, wants);
+        bool iconStillWanted = wants.Icon && body.Icon is null;
+        if (iconStillWanted)
+        {
+            _connection.Log($"title details for {details.Name ?? id}: the hub wants an icon and none could be read ({details.IconFile ?? "no icon file"})");
+        }
         if (body == Empty)
         {
             _connection.Log($"title details for {details.Name ?? id}: the hub has everything we have");
-            return;
+            return iconStillWanted;
         }
 
         TitleDetailsResult result = await hub.ContributeTitleDetailsAsync(id, body).ConfigureAwait(false);
         _connection.Log($"title details for {details.Name ?? id}: hub kept [{string.Join(", ", result.Accepted)}]");
+        return iconStillWanted;
     }
 
     private static readonly TitleDetailsContribution Empty = new();
@@ -183,12 +200,12 @@ public sealed class HubTitleDetails : ITitleDetailsSync
         int offered = 0;
         try
         {
-            HashSet<string> sent = Sent();
+            Dictionary<string, bool> sent = Sent();
             foreach (TitleDetails details in installed())
             {
                 if (string.IsNullOrWhiteSpace(details.TitleId)) continue;
                 string id = TitleIds.Normalize(details.TitleId);
-                if (sent.Contains(SentKey(hub, id)) || _queue.ReadAll(QueuePrefix(id)).Count > 0) continue;
+                if (IsDone(sent, SentKey(hub, id), details) || _queue.ReadAll(QueuePrefix(id)).Count > 0) continue;
                 _queue.Enqueue(details with { TitleId = id }, QueuePrefix(id));
                 offered++;
             }
@@ -205,26 +222,34 @@ public sealed class HubTitleDetails : ITitleDetailsSync
 
     private static string QueuePrefix(string id) => string.Concat(id.Where(char.IsLetterOrDigit)) + "-";
 
-    private HashSet<string> Sent()
+    /// <summary>Told already, unless it went without the icon the hub wanted and that icon now reads.</summary>
+    private static bool IsDone(Dictionary<string, bool> sent, string key, TitleDetails details) =>
+        sent.TryGetValue(key, out bool iconStillWanted) && !(iconStillWanted && ReadIcon(details.IconFile) is not null);
+
+    /// <summary>Sent key to "the hub still wanted its icon"; a later line for a key wins.</summary>
+    private Dictionary<string, bool> Sent()
     {
+        var sent = new Dictionary<string, bool>(StringComparer.Ordinal);
         try
         {
-            return File.Exists(_sentPath)
-                ? new HashSet<string>(File.ReadAllLines(_sentPath), StringComparer.Ordinal)
-                : new HashSet<string>(StringComparer.Ordinal);
+            if (!File.Exists(_sentPath)) return sent;
+            foreach (string line in File.ReadAllLines(_sentPath))
+            {
+                bool noIcon = line.EndsWith(NoIconMark, StringComparison.Ordinal);
+                string key = noIcon ? line[..^NoIconMark.Length] : line;
+                if (key.Length > 0) sent[key] = noIcon;
+            }
         }
-        catch (IOException)
-        {
-            return new HashSet<string>(StringComparer.Ordinal);
-        }
+        catch (IOException) { }
+        return sent;
     }
 
-    private void MarkSent(HubClient hub, string id)
+    private void MarkSent(HubClient hub, string id, bool iconStillWanted)
     {
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_sentPath)!);
-            File.AppendAllLines(_sentPath, new[] { SentKey(hub, id) });
+            File.AppendAllLines(_sentPath, new[] { SentKey(hub, id) + (iconStillWanted ? NoIconMark : "") });
         }
         catch (IOException e)
         {

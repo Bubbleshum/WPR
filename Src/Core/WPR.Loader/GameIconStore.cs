@@ -6,6 +6,8 @@ using System.Linq;
 using WPR.Common;
 using WPR.Models;
 
+using Application = WPR.Models.Application;
+
 namespace WPR
 {
     /// <summary>
@@ -42,6 +44,25 @@ namespace WPR
         private static string StoreFolder => Configuration.Current!.DataPath(StoreRoot);
 
         /// <summary>
+        /// A path relative to the data store, with Windows separators turned into <c>/</c>.
+        ///
+        /// <para>Manifests name their icon as a Windows path (<c>Assets\ApplicationIcon.png</c>,
+        /// the WP8 template's default). On Android <c>\</c> is an ordinary filename character, so
+        /// such an <see cref="Application.IconPath"/> named a file that does not exist: no tile art,
+        /// nothing captured into the store, and no icon offered to WPR Hub. <c>/</c> works on both
+        /// heads. Applied when the path is stored and again when it is read, so rows written before
+        /// this resolve without a reinstall.</para>
+        /// </summary>
+        public static string ToPortableRelative(string path) => path.Replace('\\', '/');
+
+        /// <summary>
+        /// The <see cref="Application.IconPath"/> value for an install folder (relative to the
+        /// data store) and the manifest's <c>IconPath</c>, which is relative to the package root.
+        /// </summary>
+        public static string InstalledIconRelative(string installFolderRelative, string manifestIconPath) =>
+            ToPortableRelative(installFolderRelative).TrimEnd('/') + "/" + ToPortableRelative(manifestIconPath.Trim()).TrimStart('/');
+
+        /// <summary>
         /// Copy <paramref name="app"/>'s installed icon into the store, overwriting any previous
         /// copy. Best-effort and silent when the app has no icon or the file is already gone —
         /// every caller is an install or uninstall path that must not fail over a thumbnail.
@@ -64,7 +85,7 @@ namespace WPR
 
             try
             {
-                string source = Configuration.Current!.DataPath(installedIconRelativePath!);
+                string source = Configuration.Current!.DataPath(ToPortableRelative(installedIconRelativePath!));
                 if (!File.Exists(source)) return;
 
                 string destination = Path.Combine(StoreFolder, trimmed + Path.GetExtension(source));
@@ -157,9 +178,10 @@ namespace WPR
             {
                 try
                 {
-                    if (File.Exists(Configuration.Current!.DataPath(installedIconRelativePath!)))
+                    string portable = ToPortableRelative(installedIconRelativePath!);
+                    if (File.Exists(Configuration.Current!.DataPath(portable)))
                     {
-                        return installedIconRelativePath;
+                        return portable;
                     }
                 }
                 catch (Exception ex)

@@ -195,6 +195,43 @@ public sealed class HubTitleDetailsTests : IDisposable
         Assert.True(_hub.HasIcon);
     }
 
+    [Fact]
+    public async Task A_title_sent_without_the_icon_the_hub_wanted_is_asked_again_once_it_reads()
+    {
+        // As an Android install named it before 2026-10-30: a path with "\" that is no file there.
+        string missing = System.IO.Path.Combine(_root, "missing", "ApplicationIcon.png");
+        await Create(() => new[] { Game(icon: missing) }).FlushAsync();
+        Assert.Equal(2, _hub.Requests.Count); // asked, name posted, no icon
+        Assert.False(_hub.HasIcon);
+
+        // Still unreadable: a later process asks nothing.
+        await Create(() => new[] { Game(icon: missing) }).FlushAsync();
+        Assert.Equal(2, _hub.Requests.Count);
+
+        // Readable now (the WPR update that fixes the path): asked once more, icon sent.
+        string icon = Icon(Png);
+        await Create(() => new[] { Game(icon: icon) }).FlushAsync();
+        Assert.Equal(4, _hub.Requests.Count);
+        Assert.True(_hub.HasIcon);
+        Assert.Equal(Convert.ToBase64String(Png), Body(_hub.Requests[3].Body!).GetProperty("icon").GetString());
+
+        // And then never again.
+        await Create(() => new[] { Game(icon: icon) }).FlushAsync();
+        Assert.Equal(4, _hub.Requests.Count);
+    }
+
+    [Fact]
+    public async Task A_title_whose_icon_the_hub_already_has_is_not_asked_again()
+    {
+        _hub.HasIcon = true;
+        string missing = System.IO.Path.Combine(_root, "missing", "ApplicationIcon.png");
+        await Create(() => new[] { Game(icon: missing) }).FlushAsync();
+        Assert.Equal(2, _hub.Requests.Count);
+
+        await Create(() => new[] { Game(icon: Icon(Png)) }).FlushAsync();
+        Assert.Equal(2, _hub.Requests.Count);
+    }
+
     [Theory]
     [InlineData(true, "1.2.0.0")]
     [InlineData(false, null)]
