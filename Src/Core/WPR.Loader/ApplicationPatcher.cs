@@ -440,7 +440,10 @@ namespace WPR
         // Security.Credentials, Data.Xml.Dom, Storage.Streams.DataReader/Writer and the rest of Live
         // Store's surface joined WPR.Framework.WinRT, so WinRtImplementedTypes rescopes them.
         // Above every 0.2.09 install's 62, so those repatch too. Not identity-binding.
-        public static int Version => 63;
+        // Bumped to 64: Windows.Foundation.Collections.IPropertySet and PropertySet joined
+        // WPR.Framework.WinRT (CoreApplication.Properties is typed as it, as game IL binds the getter),
+        // so WinRtImplementedTypes rescopes them. Not identity-binding.
+        public static int Version => 64;
 
         private AssemblyNameReference FnaBackendRef;
         private AssemblyNameReference FNARef;

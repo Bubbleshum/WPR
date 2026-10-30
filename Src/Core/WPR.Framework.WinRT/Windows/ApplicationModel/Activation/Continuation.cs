@@ -12,8 +12,21 @@ using WPR.WinRT;
 
 namespace Windows.Foundation.Collections
 {
+    /// <summary>
+    /// Shim for <c>Windows.Foundation.Collections.IPropertySet</c>. .NET projects it as a
+    /// dictionary of string to object; its <c>IObservableMap</c> change event is not provided.
+    /// </summary>
+    public interface IPropertySet : IDictionary<string, object>
+    {
+    }
+
+    /// <summary>Shim for <c>Windows.Foundation.Collections.PropertySet</c>.</summary>
+    public sealed class PropertySet : Dictionary<string, object>, IPropertySet
+    {
+    }
+
     /// <summary>Shim for <c>Windows.Foundation.Collections.ValueSet</c>.</summary>
-    public sealed class ValueSet : Dictionary<string, object>
+    public sealed class ValueSet : Dictionary<string, object>, IPropertySet
     {
     }
 }
@@ -139,7 +152,8 @@ namespace Windows.ApplicationModel.Core
 
         public static CoreApplicationView MainView => GetCurrentView();
 
-        public static IDictionary<string, object> Properties { get; } = new Dictionary<string, object>();
+        /// <summary>WinRT types this as <c>IPropertySet</c>, and game IL binds the getter by that return type.</summary>
+        public static IPropertySet Properties { get; } = new PropertySet();
     }
 }
 
