@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows
 {
     /// <summary>Shim for <c>System.Windows.FontWeights</c>. Standard named weights.</summary>
     public static class FontWeights

@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Input
 {
     /// <summary>Shim for <c>System.Windows.Input.ManipulationVelocities</c>.</summary>
     public sealed class ManipulationVelocities

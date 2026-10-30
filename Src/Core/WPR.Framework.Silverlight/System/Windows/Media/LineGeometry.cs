@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows.Media
 {
     /// <summary>Shim for <c>System.Windows.Media.LineGeometry</c>. Stroked only; it encloses no area.</summary>
     public sealed class LineGeometry : Geometry

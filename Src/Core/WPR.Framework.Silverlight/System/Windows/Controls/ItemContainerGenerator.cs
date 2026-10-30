@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
     /// <summary>Shim for <c>System.Windows.Controls.ItemContainerGenerator</c>.</summary>
     /// <remarks>Maps between an <see cref="ItemsControl"/>'s items and the children it made for

@@ -1,3 +1,5 @@
+extern alias wprwinrt;
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -21,6 +23,8 @@ namespace Microsoft.Phone.Shell
         static PhoneApplicationService()
         {
             _Current = new PhoneApplicationService();
+            // An "AndContinue" call (file picker, web sign-in) comes back here on WP8.1 Silverlight.
+            wprwinrt::WPR.WinRT.WinRtHost.ContractActivation += args => _Current?.ContractActivated?.Invoke(_Current, args);
         }
 
         public PhoneApplicationService()
@@ -157,6 +161,13 @@ namespace Microsoft.Phone.Shell
         }
 
         public event EventHandler<RunningInBackgroundEventArgs>? RunningInBackground;
+
+        /// <summary>
+        /// WP8.1 Silverlight: the app was re-activated through a contract (a file picker or web
+        /// sign-in returning, a share target, a voice command). WPR raises it only for the
+        /// "AndContinue" calls, each of which comes back cancelled (no picker or browser here).
+        /// </summary>
+        public event EventHandler<wprwinrt::Windows.ApplicationModel.Activation.IActivatedEventArgs>? ContractActivated;
 
         internal void RaiseLaunching() => _Launching?.Invoke(this, new LaunchingEventArgs());
         internal void RaiseClosing() => _Closing?.Invoke(this, new ClosingEventArgs());

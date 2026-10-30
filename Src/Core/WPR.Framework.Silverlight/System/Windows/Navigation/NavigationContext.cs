@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Navigation
 {
     /// <summary>
     /// Shim for <c>System.Windows.Navigation.NavigationContext</c> — the query-string parameters

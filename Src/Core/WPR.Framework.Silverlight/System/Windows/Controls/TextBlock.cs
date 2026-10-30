@@ -1,10 +1,20 @@
 using System;
 using System.Globalization;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
+    [ContentProperty(nameof(Inlines))]
     public class TextBlock : FrameworkElement
     {
+        private System.Windows.Documents.InlineCollection? _inlines;
+
+        /// <summary>
+        /// Silverlight's content: runs, spans, line breaks. Drawn as their plain text in
+        /// <see cref="Text"/>'s place (no per-run styling yet), when no Text is set.
+        /// </summary>
+        public System.Windows.Documents.InlineCollection Inlines =>
+            _inlines ??= new System.Windows.Documents.InlineCollection { Changed = InvalidateMeasure };
+
         public static readonly DependencyProperty TextProperty =
             DependencyProperty.Register(nameof(Text), typeof(string), typeof(TextBlock),
                 new PropertyMetadata(string.Empty, OnTextRelatedChanged));
@@ -36,6 +46,8 @@ namespace WPR.SilverlightCompability
             // property converts. A hard cast threw from every paint of the page instead.
             get => GetValue(TextProperty) switch
             {
+                string { Length: 0 } when _inlines is { Count: > 0 } =>
+                    string.Concat(System.Linq.Enumerable.Select(_inlines, i => i.PlainText)),
                 string s => s,
                 null => null!,
                 object o => System.Convert.ToString(o, System.Globalization.CultureInfo.CurrentCulture)!,

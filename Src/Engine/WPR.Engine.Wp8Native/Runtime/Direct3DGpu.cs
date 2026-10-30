@@ -20,6 +20,21 @@ namespace WPR.Wp8Native
 
         private readonly Dictionary<long, GpuShader> _gpuShaders = new();
         private readonly Dictionary<long, byte[]> _gpuStateDescs = new();
+
+        /// <summary>
+        /// D3D11_BLEND_DESC1 (AlphaToCoverage, IndependentBlend, then RenderTarget[0]: BlendEnable,
+        /// LogicOpEnable, SrcBlend, DestBlend, BlendOp, SrcBlendAlpha, DestBlendAlpha, BlendOpAlpha,
+        /// LogicOp, WriteMask) as the D3D11_BLEND_DESC prefix the replay reads (the same fields
+        /// without the two logic-op ones).
+        /// </summary>
+        internal static byte[] BlendDescFromDesc1(byte[] desc1)
+        {
+            byte[] desc = new byte[40];
+            Array.Copy(desc1, 0, desc, 0, 12);    // AlphaToCoverage, IndependentBlend, BlendEnable
+            Array.Copy(desc1, 16, desc, 12, 24);  // SrcBlend .. BlendOpAlpha
+            desc[36] = desc1[44];                 // RenderTargetWriteMask
+            return desc;
+        }
         private readonly HashSet<long> _renderTargetKeys = new();
         private readonly long[] _vsConstantBuffers = new long[14];
         private readonly long[] _psConstantBuffers = new long[14];
@@ -81,6 +96,33 @@ namespace WPR.Wp8Native
                     }
                 });
             }
+
+            // ID3D11Device1's CreateBlendState1 (45) and CreateRasterizerState1 (46). Missing these
+            // drew every state made through them as the default - opaque, no blending - so a
+            // title that makes its blend states this way (Where's My Perry) drew each sprite's
+            // transparent area black. RASTERIZER_DESC1 is RASTERIZER_DESC plus ForcedSampleCount;
+            // BLEND_DESC1's render-target entries carry LogicOpEnable and LogicOp, so it is
+            // rewritten into the BLEND_DESC layout the replay reads.
+            Wrap(methods, 45, original => () =>
+            {
+                long desc = Arg(1), outPointer = Arg(2);
+                original();
+                long state = outPointer == 0 ? 0 : _emulator.ReadUInt32(outPointer, 0);
+                if (state != 0 && desc != 0)
+                {
+                    _gpuStateDescs[state] = BlendDescFromDesc1(_emulator.ReadMemory(desc, 8 + 40));
+                }
+            });
+            Wrap(methods, 46, original => () =>
+            {
+                long desc = Arg(1), outPointer = Arg(2);
+                original();
+                long state = outPointer == 0 ? 0 : _emulator.ReadUInt32(outPointer, 0);
+                if (state != 0 && desc != 0)
+                {
+                    _gpuStateDescs[state] = _emulator.ReadMemory(desc, 40);
+                }
+            });
 
             return methods;
         }
@@ -364,7 +406,7 @@ namespace WPR.Wp8Native
                 {
                     textures[i] = _renderTargetKeys.Contains(resource.Storage)
                         ? new GpuTexture(null, new GpuTarget(resource.Storage, resource.PixelWidth, resource.PixelHeight))
-                        : new GpuTexture(FrameCapture.TextureForGpu(_emulator, resource), null);
+                        : new GpuTexture(FrameCapture.CubeOrTextureForGpu(_emulator, resource), null);
                 }
 
                 if (_psSamplers[i] != 0 && _gpuStateDescs.TryGetValue(_psSamplers[i], out byte[]? sampler))

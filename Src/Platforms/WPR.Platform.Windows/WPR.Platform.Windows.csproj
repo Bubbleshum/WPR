@@ -202,6 +202,9 @@
     <!-- FNA game-loop host driver (ApplicationLaunch + FnaGameHost/IGameHost), used by
          XnaLauncher. -->
     <ProjectReference Include="$(SolutionDir)\Backends\WPR.Backend.FNA\WPR.Backend.FNA.csproj" />
+  </ItemGroup>
+  <Import Project="$(SolutionDir)Facades\Xna\XnaFacades.props" />
+  <ItemGroup>
     <!-- WPR.Backend.Direct3D11 (Vortice) was referenced here until 2026-10-12, when it was
          retired: it only drew splash / test-pattern placeholders behind DrawingSurfaceBackgroundGrid
          for titles WPR cannot host. See the runtime convergence plan item 2a. -->

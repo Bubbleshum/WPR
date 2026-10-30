@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows.Media
 {
     /// <summary>Shim for <c>System.Windows.Media.EllipseGeometry</c>.</summary>
     public sealed class EllipseGeometry : Geometry

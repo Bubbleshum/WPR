@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
     /// <summary>
     /// Single-content host. <see cref="Content"/> is typed as <c>object?</c> — a UIElement
@@ -57,11 +57,7 @@ namespace WPR.SilverlightCompability
             }
         }
 
-        /// <summary>
-        /// Silverlight's override point for a content change, called after the new content is in
-        /// place. Template selectors derive from ContentControl and pick a template here
-        /// (Microsoft Bingo's DataTemplateSelector); without it their types did not load.
-        /// </summary>
+        /// <summary>Silverlight's hook for a subclass, called after the new content is in place.</summary>
         protected virtual void OnContentChanged(object? oldContent, object? newContent)
         {
         }

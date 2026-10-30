@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows
 {
     /// <summary>
     /// Shim for <c>System.Windows.RoutedPropertyChangedEventArgs&lt;T&gt;</c> — what

@@ -1,6 +1,6 @@
 using System.Linq;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Documents
 {
     /// <summary>Shim for <c>System.Windows.Documents.Span</c>: a group of inlines.</summary>
     [ContentProperty(nameof(Inlines))]

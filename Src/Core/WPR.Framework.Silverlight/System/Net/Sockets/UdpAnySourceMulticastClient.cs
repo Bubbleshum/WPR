@@ -5,7 +5,7 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace WPR.SilverlightCompability
+namespace System.Net.Sockets
 {
     /// <summary>
     /// Shim for <c>System.Net.Sockets.UdpAnySourceMulticastClient</c> (Silverlight 4 / Windows

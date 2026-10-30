@@ -34,5 +34,16 @@ namespace WPR.WinRT
         /// (filled per launch from LauncherBackend; must not throw).
         /// </summary>
         public static System.Func<System.Uri, bool>? OpenUri { get; set; }
+
+        /// <summary>
+        /// Raised when a WP8.1 "AndContinue" call (a file picker, the web authentication broker)
+        /// comes back, beside <c>CoreApplicationView.Activated</c>: WPR's Microsoft.Phone turns it
+        /// into <c>PhoneApplicationService.ContractActivated</c>. The argument is the
+        /// <c>IActivatedEventArgs</c>.
+        /// </summary>
+        public static event System.Action<Windows.ApplicationModel.Activation.IActivatedEventArgs>? ContractActivation;
+
+        internal static void RaiseContractActivation(Windows.ApplicationModel.Activation.IActivatedEventArgs args) =>
+            ContractActivation?.Invoke(args);
     }
 }

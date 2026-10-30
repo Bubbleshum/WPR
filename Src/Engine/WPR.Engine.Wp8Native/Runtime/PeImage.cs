@@ -234,7 +234,16 @@ namespace WPR.Wp8Native
             return exports;
         }
 
-        public static PeImage Load(string path) => new(File.ReadAllBytes(path));
+        /// <remarks>
+        /// A package DLL a managed stub has taken the place of (WinmdStubber, when a component's
+        /// .winmd and its native DLL share a name: AC Pirates' SparkApp, LuaMobileSDK) keeps its
+        /// native image beside it as <c>.native_original</c>; that is the one loaded.
+        /// </remarks>
+        public static PeImage Load(string path)
+        {
+            string native = path + ".native_original";
+            return new(File.ReadAllBytes(File.Exists(native) ? native : path));
+        }
 
         /// <summary>Raw file bytes, for copying headers and section data into emulator memory.</summary>
         public ReadOnlySpan<byte> Raw => _raw;

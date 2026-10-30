@@ -69,12 +69,19 @@ namespace Microsoft.Phone.Shell
         public static void SetIsIndeterminate(DependencyObject element, bool value) =>
             element?.SetValue(IsIndeterminateProperty, value);
 
-        /// <summary>Attached <c>ProgressIndicator</c>; stored and ignored.</summary>
-        public static object? GetProgressIndicator(DependencyObject element) => null;
+        public static readonly DependencyProperty ProgressIndicatorProperty =
+            DependencyProperty.RegisterAttached("ProgressIndicator", typeof(ProgressIndicator), typeof(SystemTray),
+                new PropertyMetadata((object?)null));
 
-        public static void SetProgressIndicator(DependencyObject element, object? value)
-        {
-        }
+        /// <summary>Attached <see cref="Shell.ProgressIndicator"/>; stored, not drawn.</summary>
+        public static ProgressIndicator? GetProgressIndicator(DependencyObject element) =>
+            element?.GetValue(ProgressIndicatorProperty) as ProgressIndicator;
+
+        public static void SetProgressIndicator(DependencyObject element, ProgressIndicator? value) =>
+            element?.SetValue(ProgressIndicatorProperty, value);
+
+        /// <summary>WP8: the current page's progress indicator, set from code.</summary>
+        public static ProgressIndicator? ProgressIndicator { get; set; }
 
         // WP8 added static properties for the current page's tray beside the attached ones; a
         // WP8 page sets them in code (Gravity Guy 2's MainPage: SystemTray.IsVisible = false from

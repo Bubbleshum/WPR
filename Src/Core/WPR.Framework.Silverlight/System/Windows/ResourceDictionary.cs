@@ -13,7 +13,7 @@ using System.Text;
 // NOTE: the [TypeForwardedTo] that used to live in the WPR.WindowsCompability assembly is
 // GONE, because that assembly is gone. Patched user IL naming it no longer resolves at all —
 // ApplicationPatcher.Version 18 is the tripwire that forces such installs to be repatched.
-namespace WPR.WindowsCompability
+namespace System.Windows
 {
     /// <summary>
     /// XAML resource bag. Originally <c>System.Windows.ResourceDictionary</c>; the
@@ -43,8 +43,8 @@ namespace WPR.WindowsCompability
         /// MissingMethodException in every app that merges from code, e.g. the PointAbout "Mashup"
         /// framework's <c>Application.LoadConfig</c> (Fox News, YouTube).</para>
         /// </remarks>
-        public WPR.SilverlightCompability.PresentationFrameworkCollection<ResourceDictionary> MergedDictionaries { get; }
-            = new WPR.SilverlightCompability.PresentationFrameworkCollection<ResourceDictionary>();
+        public PresentationFrameworkCollection<ResourceDictionary> MergedDictionaries { get; }
+            = new PresentationFrameworkCollection<ResourceDictionary>();
 
         /// <summary>Guards a dictionary that merges itself, directly or in a cycle.</summary>
         private const int MaxMergeDepth = 16;
@@ -100,7 +100,7 @@ namespace WPR.WindowsCompability
 
                 // Populates THIS instance: the file's root element is itself a ResourceDictionary,
                 // so its keyed children land in us and its own MergedDictionaries nest as usual.
-                WPR.SilverlightCompability.XamlReader.LoadComponent(this, xaml);
+                System.Windows.Markup.XamlReader.LoadComponent(this, xaml);
             }
             catch (Exception ex)
             {

@@ -62,6 +62,9 @@
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Vibration\WPR.Engine.Vibration.csproj" />
     <!-- IXboxLiveHost: shared with the managed Microsoft.Xbox facade (WPR.Framework.Xbox). -->
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.XboxLive\WPR.Engine.XboxLive.csproj" />
+    <!-- WinRtComponentBridge: a title's own managed page calling its native component
+         (Wp8NativeComponentHost; Docs/Wp8Native/ManagedPageBridge.md). Runtime/ does not use it. -->
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.WinRT\WPR.Framework.WinRT.csproj" Aliases="wprwinrt" />
   </ItemGroup>
 
 </Project>

@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows
 {
     public class DependencyObject
     {

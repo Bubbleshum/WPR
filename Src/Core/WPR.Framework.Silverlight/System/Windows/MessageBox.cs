@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading.Tasks;
 
-namespace WPR.WindowsCompability
+namespace System.Windows
 {
     /// <summary>
     /// Shim for <c>System.Windows.MessageBox</c>.

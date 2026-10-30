@@ -22,7 +22,7 @@ namespace WPR.Xna.Rhi
 	/// "Yes" does nothing.</para>
 	///
 	/// <para><b>Unset means "swallow", which is the behaviour every XNA title already had.</b>
-	/// Only <c>WPR.WindowsCompability.Application</c> fills this slot, and only a Silverlight or
+	/// Only <c>System.Windows.Application</c> fills this slot, and only a Silverlight or
 	/// mixed-mode game constructs one — so a pure XNA title is completely unaffected. That matters
 	/// more than it looks: several titles throw out of <c>Update</c> on EVERY frame and remain
 	/// playable or at least diagnosable because WPR swallows it (see the Feed Me Oil and Chickens
@@ -41,7 +41,7 @@ namespace WPR.Xna.Rhi
 		/// <c>Application.UnhandledException</c> handler. Returns true when the game handled it
 		/// (carry on), false when it did not (WP7 would terminate).
 		///
-		/// <para>Registered by <c>WPR.WindowsCompability.Application</c>'s constructor and cleared
+		/// <para>Registered by <c>System.Windows.Application</c>'s constructor and cleared
 		/// by its <c>ResetCurrent</c>, which <c>ResetWprSingletons</c> calls first at teardown.
 		/// Clearing matters: this static lives in the shared framework, not in the game's ALC, so
 		/// on the desktop head it would otherwise outlive the launch and hand the NEXT game a

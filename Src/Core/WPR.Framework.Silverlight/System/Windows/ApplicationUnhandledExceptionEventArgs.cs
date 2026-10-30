@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.WindowsCompability
+namespace System.Windows
 {
     /// <summary>
     /// Shim for <c>System.Windows.ApplicationUnhandledExceptionEventArgs</c>.

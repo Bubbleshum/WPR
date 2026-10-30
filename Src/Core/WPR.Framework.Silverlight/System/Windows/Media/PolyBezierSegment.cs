@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows.Media
 {
     /// <summary>Shim for <c>System.Windows.Media.PolyBezierSegment</c>. Points come in threes, one cubic each.</summary>
     [ContentProperty(nameof(Points))]

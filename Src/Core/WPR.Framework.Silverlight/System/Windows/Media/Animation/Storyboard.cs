@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Media.Animation
 {
     /// <summary>
     /// Shim for <c>System.Windows.Media.Animation.Storyboard</c>. In SL a Storyboard
@@ -230,7 +230,7 @@ namespace WPR.SilverlightCompability
 
             try
             {
-                if (WPR.WindowsCompability.Application.Current.RootVisual is FrameworkElement root)
+                if (System.Windows.Application.Current.RootVisual is FrameworkElement root)
                     return root.FindName(name!);
             }
             catch (Exception)

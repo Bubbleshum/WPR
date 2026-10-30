@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
     public enum ScrollBarVisibility
     {

@@ -27,6 +27,14 @@ namespace WPR.SilverlightCompability
     {
         private static readonly Dictionary<int, Point> _down = new();
         private static int _primaryId = -1;
+
+        // The newest TouchPanel id seen. A Released sample of a newer id is a whole tap that went
+        // down and up between two reports (TouchPanel advances twice in a tick when a page pumps
+        // FrameworkDispatcher itself): its Down is reported now and its Up next frame, so the
+        // gesture engine sees it as the phone did. An older id never seen down is a finger that
+        // was down before anything subscribed, and its lift stays noise.
+        private static int _newestId;
+        private static readonly Dictionary<int, Point> _upNext = new();
         private static bool _failed;
 
         /// <summary>True when something listens; the host skips the work otherwise.</summary>
@@ -37,12 +45,22 @@ namespace WPR.SilverlightCompability
             if (!Touch.HasSubscribers)
             {
                 _down.Clear();
+                _upNext.Clear();
                 _primaryId = -1;
                 return;
             }
 
-            var points = new List<TouchFrameEventArgs.RawPoint>(touches.Count + _down.Count);
+            var points = new List<TouchFrameEventArgs.RawPoint>(touches.Count + _down.Count + _upNext.Count);
             var seen = new HashSet<int>();
+
+            // Lifts owed from last frame's missed taps.
+            foreach (KeyValuePair<int, Point> owed in _upNext)
+            {
+                seen.Add(owed.Key);
+                _down.Remove(owed.Key);
+                points.Add(new TouchFrameEventArgs.RawPoint(owed.Key, owed.Value, TouchAction.Up, TopElement(root, owed.Value)));
+            }
+            _upNext.Clear();
 
             foreach (TouchLocation touch in touches)
             {
@@ -55,10 +73,19 @@ namespace WPR.SilverlightCompability
                     default: continue;
                 }
 
-                // A Released sample for a finger we never saw go down is noise, not a lift.
-                if (action == TouchAction.Up && !_down.ContainsKey(touch.Id)) continue;
-
                 var position = new Point(touch.Position.X, touch.Position.Y);
+                bool unseen = touch.Id > _newestId;
+                _newestId = Math.Max(_newestId, touch.Id);
+
+                // A Released sample for a finger we never saw go down is noise, not a lift,
+                // unless it is a whole tap that fell between two reports (see _newestId).
+                if (action == TouchAction.Up && !_down.ContainsKey(touch.Id))
+                {
+                    if (!unseen || seen.Contains(touch.Id)) continue;
+                    action = TouchAction.Down;
+                    _upNext[touch.Id] = position;
+                }
+
                 seen.Add(touch.Id);
                 if (action == TouchAction.Down && _down.Count == 0) _primaryId = touch.Id;
                 if (action == TouchAction.Up) _down.Remove(touch.Id);
@@ -115,6 +142,8 @@ namespace WPR.SilverlightCompability
             _down.Clear();
             _primaryId = -1;
             _failed = false;
+            _newestId = 0;
+            _upNext.Clear();
         }
     }
 }

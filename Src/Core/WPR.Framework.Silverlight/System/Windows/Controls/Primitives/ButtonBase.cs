@@ -5,7 +5,7 @@ using System;
 // our own would be a second, incompatible identity for the interface a game implements.
 using ICommand = System.Windows.Input.ICommand;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls.Primitives
 {
     /// <summary>Shim for <c>System.Windows.Controls.Primitives.ButtonBase</c>.</summary>
     /// <remarks>

@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.WindowsCompability
+namespace System.Windows.Interop
 {
     /// <summary>
     /// Stub for Silverlight's <c>System.Windows.Interop.SilverlightHost</c>. Exposes the
@@ -9,8 +9,8 @@ namespace WPR.WindowsCompability
     /// </summary>
     public sealed class SilverlightHost
     {
-        public SilverlightHostContent Content { get; } = new();
-        public SilverlightHostSettings Settings { get; } = new();
+        public Content Content { get; } = new();
+        public Settings Settings { get; } = new();
         public Uri? Source { get; internal set; }
 
         /// <summary>True if the SL plugin is loaded; we report true since user code is running.</summary>
@@ -23,7 +23,7 @@ namespace WPR.WindowsCompability
     }
 
     /// <summary>Stub for Silverlight's <c>System.Windows.Interop.Content</c>.</summary>
-    public sealed class SilverlightHostContent
+    public sealed class Content
     {
         /// <summary>
         /// The WP7 screen: a fixed 480x800 WVGA panel, in portrait.
@@ -89,7 +89,7 @@ namespace WPR.WindowsCompability
     }
 
     /// <summary>Stub for Silverlight's <c>System.Windows.Interop.Settings</c>.</summary>
-    public sealed class SilverlightHostSettings
+    public sealed class Settings
     {
         public bool EnableFrameRateCounter { get; set; }
         public bool EnableRedrawRegions { get; set; }

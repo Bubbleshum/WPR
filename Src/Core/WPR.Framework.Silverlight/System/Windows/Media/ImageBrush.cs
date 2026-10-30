@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows.Media
 {
     /// <summary>
     /// Silverlight's <c>System.Windows.Media.ImageBrush</c> shim. References to this

@@ -8,6 +8,13 @@ using WPR.Common;
 using WPR.Engine.Online;
 
 using WPR.SilverlightCompability;
+using System.Windows;
+using Application = WPR.Models.Application;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Navigation;
+using System.Windows.Threading;
 using Microsoft.Phone.Shell;
 using Microsoft.Xna.Framework.GamerServices;
 
@@ -158,7 +165,7 @@ namespace WPR
         /// </summary>
         private static string ComputeCurrentProductFolder()
         {
-            string? productId = WindowsCompability.Application.Current?.ProductId;
+            string? productId = System.Windows.Application.Current?.ProductId;
             if (string.IsNullOrEmpty(productId))
             {
                 return string.Empty;
@@ -664,7 +671,7 @@ namespace WPR
             }
 
             // Setting game folder path
-            WindowsCompability.Application.Current.ProductId = app.ProductId;
+            System.Windows.Application.Current.ProductId = app.ProductId;
             // Same value on the neutral ambient holder. GamerServices reads it from here rather
             // than off the Silverlight Application shim, so the XNA layer needs no dependency on
             // the Silverlight/Avalonia stack. Both are set so either host path behaves identically.
@@ -694,7 +701,7 @@ namespace WPR
                     + (declared ? "" : " (not in the manifest; " + (isNative ? "native" : "managed") + " default)"));
             }
             // Deployment.Current is the package's AppManifest.xaml on the phone, XNA titles too.
-            WPR.SilverlightCompability.Deployment.LoadForLaunch(folderPath);
+            System.Windows.Deployment.LoadForLaunch(folderPath);
             string curDir = Directory.GetCurrentDirectory();
 
             // Mirror Debug/Trace output to a per-game log file so we can see exceptions that
@@ -790,6 +797,26 @@ namespace WPR
             // the .dll stays locked on disk for the life of WPR (blocking re-install) and any
             // statics in the user assembly (timers, threads, caches) leak forever.
             string asmPath = Path.Combine(folderPath, AssemblyNameStandardization.Process(app.Assembly));
+            string entryPoint = app.EntryPoint;
+
+            // A Direct3D/XAML title runs its OWN managed page on the Silverlight host, which reaches
+            // the native component through bridged stubs (Docs/Wp8Native/ManagedPageBridge.md),
+            // instead of the host playing a description of that page. The install is readied on its
+            // first launch. WPR_WP8_MANAGED_PAGE=0 (diagnostic) goes back to the page descriptions.
+            string? managedPageComponent = null;
+            if (isNative && asmPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) &&
+                Environment.GetEnvironmentVariable("WPR_WP8_MANAGED_PAGE") != "0" &&
+                ManagedShellEntry(folderPath) is { } shell &&
+                EnsureManagedPagePrepared(folderPath))
+            {
+                managedPageComponent = asmPath;
+                asmPath = shell.AssemblyPath;
+                entryPoint = shell.EntryType;
+                isNative = false;
+                isSilverlight = true;
+                WprTrace($"[wpr-bridge] {app.Name}: running its own page {entryPoint} over {Path.GetFileName(managedPageComponent)}");
+            }
+
             var alc = new AssemblyLoadContext(
                 $"WPR.XnaApp[{Path.GetFileNameWithoutExtension(asmPath)}]",
                 isCollectible: true);
@@ -903,7 +930,7 @@ namespace WPR
             Directory.SetCurrentDirectory(folderPath);
 
             // Instatiate
-            Type? mainType = isNative ? null : assem.GetType(app.EntryPoint);
+            Type? mainType = isNative ? null : assem.GetType(entryPoint);
 
             // Run on separate thread to not affect the UI
             await Task.Run(() =>
@@ -983,16 +1010,54 @@ namespace WPR
 
                     // Host.Content.ScaleFactor: the same device model for a WP8 title, WVGA (100)
                     // for a WP7 one, which never saw anything else. The by-target choice itself is
-                    // SilverlightHostContent.PlatformScaleFactor's (WprHostEnvironment.Target).
-                    WPR.WindowsCompability.SilverlightHostContent.Wp8ScaleFactor = WPR.Wp8Native.Wp8Display.Scale;
+                    // Content.PlatformScaleFactor's (WprHostEnvironment.Target).
+                    System.Windows.Interop.Content.Wp8ScaleFactor = WPR.Wp8Native.Wp8Display.Scale;
 
                     // A managed Direct3D content provider (the SharpDX Toolkit's game window) is
                     // driven as the phone's compositor drove it: its own SharpDX calls go through
                     // SharpDX.WP8 into WPR.Engine.HostDirect3D. Cleared in TeardownAudioState.
-                    WPR.SilverlightCompability.DrawingSurfaceBackgroundGrid.ContentProviderSet =
+                    System.Windows.Controls.DrawingSurfaceBackgroundGrid.ContentProviderSet =
                         provider => WPR.HostDirect3D.DrawingSurfaceHost.Attach(provider);
-                    WPR.SilverlightCompability.DrawingSurfaceBackgroundGrid.ManipulationHandlerSet =
+                    System.Windows.Controls.DrawingSurfaceBackgroundGrid.ManipulationHandlerSet =
                         handler => WPR.WinRT.ManipulationInput.Attach(handler);
+
+                    if (managedPageComponent is not null)
+                    {
+                        // The component runs on the WP8 runtime, drawn under the page; the page's
+                        // own calls reach it through the bridge, and its grid hands it the provider.
+                        // Started before the page is built: App's constructor already activates it.
+                        var embedded = new WPR.Wp8Native.Wp8NativeEmbeddedLoop(managedPageComponent,
+                            WPR.WindowsCompability.PerGameIsolatedStorage.GameRoot(app.ProductId!), msg => Trace.WriteLine(msg), xboxHost);
+                        _managedPageLoop = embedded;
+                        embedded.Start();
+                        WPR.WinRT.WinRtComponentBridge.Host = embedded.Host;
+                        WPR.Xna.Rhi.EmbeddedGameLoop.Set(embedded);
+                        System.Windows.Controls.DrawingSurfaceBackgroundGrid.ContentProviderSet = provider =>
+                        {
+                            if (!embedded.Host.SetContentProvider(provider))
+                            {
+                                WPR.HostDirect3D.DrawingSurfaceHost.Attach(provider);
+                            }
+                        };
+                        System.Windows.Controls.DrawingSurfaceBackgroundGrid.ManipulationHandlerSet = handler =>
+                        {
+                            if (!embedded.Host.SetManipulationHandler(handler))
+                            {
+                                WPR.WinRT.ManipulationInput.Attach(handler);
+                            }
+                        };
+
+                        // A DrawingSurface (Mandreel, Gameloft WCP) is an element of the page: on a
+                        // landscape page its texture is landscape, which the backbuffer already says.
+                        System.Windows.Controls.DrawingSurface.ContentProviderSet = provider =>
+                        {
+                            var parameters = CurrentGame?.GraphicsDevice?.PresentationParameters;
+                            bool landscape = parameters is not null && parameters.BackBufferWidth > parameters.BackBufferHeight;
+                            embedded.Host.SetContentProvider(provider, drawingSurface: true, landscape);
+                        };
+                        System.Windows.Controls.DrawingSurface.ManipulationHandlerSet =
+                            handler => embedded.Host.SetManipulationHandler(handler);
+                    }
 
                     // ApplicationData.LocalFolder is the title's isolated store, as on WP8.
                     WPR.WinRT.WinRtHost.LocalFolderPath = WPR.WindowsCompability.PerGameIsolatedStorage.GameRoot(app.ProductId!);
@@ -1008,7 +1073,7 @@ namespace WPR
                             folderPath,
                             asmPath,
                             assem,
-                            app.EntryPoint,
+                            entryPoint,
                             appInstance =>
                             {
                                 // The WP7 cold-start signal (Launching, once), fired as soon as the
@@ -1699,15 +1764,93 @@ namespace WPR
             return null;
         }
 
+        /// <summary>The WP8 component a Direct3D/XAML title's own page drives, for this launch (see StartCore).</summary>
+        private static WPR.Wp8Native.Wp8NativeEmbeddedLoop? _managedPageLoop;
+
+        /// <summary>
+        /// The managed shell of a Direct3D/XAML package, from AppManifest.xaml's EntryPointAssembly
+        /// and EntryPointType, when that assembly is in the folder. Null otherwise.
+        /// </summary>
+        private static (string AssemblyPath, string EntryType)? ManagedShellEntry(string folder)
+        {
+            try
+            {
+                string manifest = Path.Combine(folder, "AppManifest.xaml");
+                if (!File.Exists(manifest))
+                {
+                    return null;
+                }
+
+                var root = System.Xml.Linq.XDocument.Load(manifest).Root;
+                string? assembly = root?.Attribute("EntryPointAssembly")?.Value;
+                string? type = root?.Attribute("EntryPointType")?.Value;
+                if (string.IsNullOrEmpty(assembly) || string.IsNullOrEmpty(type))
+                {
+                    return null;
+                }
+
+                string path = Path.Combine(folder, assembly + ".dll");
+                return File.Exists(path) ? (path, type) : null;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>What the marker file says when an install has been readied to run its own page; bump to redo every install.</summary>
+        /// <remarks>2: bridged stubs write out parameters back (Mandreel's <c>wait_event(out int)</c>).</remarks>
+        private const string ManagedPageStamp = "managed-page 2";
+
+        /// <summary>
+        /// Readies a Direct3D/XAML install to run its own managed page, once: bridged stubs for its
+        /// WinRT components (the native DLLs and .winmd stay), the Windows types they name, and the
+        /// patcher over the managed shell. False (logged) leaves the title on its page description.
+        /// </summary>
+        private static bool EnsureManagedPagePrepared(string folder)
+        {
+            string marker = Path.Combine(folder, "wpr-managed-page.txt");
+            try
+            {
+                if (File.Exists(marker) && File.ReadAllText(marker).Trim() == ManagedPageStamp)
+                {
+                    return true;
+                }
+
+                // A previous stub's .original would be patched instead of the new stub.
+                foreach (string winmd in Directory.GetFiles(folder, "*.winmd"))
+                {
+                    string staleOriginal = Path.ChangeExtension(winmd, ".dll") + ".original";
+                    if (File.Exists(staleOriginal))
+                    {
+                        File.Delete(staleOriginal);
+                    }
+                }
+
+                IReadOnlyList<string> stubbed = WinmdStubber.StubInPlace(folder, bridged: true);
+                WindowsTypeSynthesizer.SynthesizeIfNeeded(folder);
+                new ApplicationPatcher().Patch(folder, _ => { }, CancellationToken.None);
+                File.WriteAllText(marker, ManagedPageStamp);
+                WprTrace($"[wpr-bridge] readied {folder} to run its own page (stubs: {string.Join(", ", stubbed)})");
+                Trace.WriteLine($"[wpr-bridge] readied the install to run its own page (stubs: {string.Join(", ", stubbed)})");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"[wpr-bridge] could not ready the install to run its own page: {ex.GetType().Name}: {ex.Message}; using the page description");
+                return false;
+            }
+        }
+
         private static void TeardownAudioState()
         {
             // A movie still up when the game exits: release it (its sound is a SoundEffect
             // instance, so before the audio device goes) without posting its completion.
             try { WPR.Xna.Rhi.HostOverlay.Clear(completed: false); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"HostOverlay.Clear on teardown threw: {ex.Message}"); }
-            WPR.SilverlightCompability.DrawingSurfaceBackgroundGrid.ContentProviderSet = null;
-            WPR.SilverlightCompability.DrawingSurfaceBackgroundGrid.ResetActive();
-            WPR.SilverlightCompability.DrawingSurfaceBackgroundGrid.ManipulationHandlerSet = null;
+            System.Windows.Controls.DrawingSurfaceBackgroundGrid.ContentProviderSet = null;
+            System.Windows.Controls.DrawingSurfaceBackgroundGrid.ResetActive();
+            System.Windows.Controls.DrawingSurfaceBackgroundGrid.ManipulationHandlerSet = null;
             WPR.WinRT.ManipulationInput.Reset();
             try { WPR.HostDirect3D.HostFiles.CloseAll(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"HostFiles.CloseAll on teardown threw: {ex.Message}"); }
@@ -1717,6 +1860,13 @@ namespace WPR
             WPR.HostDirect3D.DrawingSurfaceHost.ResetDevice();
             try { WPR.Xna.Rhi.EmbeddedGameLoop.Clear(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"EmbeddedGameLoop.Clear on teardown threw: {ex.Message}"); }
+            // A Direct3D/XAML title that ran its own page: its guest, and the bridge to it.
+            System.Windows.Controls.DrawingSurface.ContentProviderSet = null;
+            System.Windows.Controls.DrawingSurface.ManipulationHandlerSet = null;
+            WPR.WinRT.WinRtComponentBridge.Reset();
+            try { _managedPageLoop?.Dispose(); }
+            catch (Exception ex) { Log.Warn(LogCategory.AppList, $"managed-page component teardown threw: {ex.Message}"); }
+            _managedPageLoop = null;
             try { WPR.Xna.Rhi.ErrorScreen.Reset(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"ErrorScreen.Reset on teardown threw: {ex.Message}"); }
             try { WPR.Xna.Rhi.AchievementToast.Reset(); }
@@ -1724,7 +1874,7 @@ namespace WPR
             WPR.Xna.Rhi.PresentationTurn.Reset();
             // Same for a MediaElement movie: ResetWprSingletons resets it again later, but by then
             // the audio device it plays through is gone.
-            try { WPR.SilverlightCompability.MediaElement.ResetForNewLaunch(); }
+            try { System.Windows.Controls.MediaElement.ResetForNewLaunch(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"MediaElement reset on audio teardown threw: {ex.Message}"); }
 
             try
@@ -1782,7 +1932,7 @@ namespace WPR
 
             // Application.Current lazy-creates a fresh instance on the next access, so it's
             // safe to clear to null here.
-            try { WindowsCompability.Application.ResetCurrent(); }
+            try { System.Windows.Application.ResetCurrent(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"Application.ResetCurrent threw: {ex.Message}"); }
 
             try
@@ -1815,6 +1965,10 @@ namespace WPR
             try { WPR.Engine.Sensors.SensorBackend.Gyroscope?.ResetForNewLaunch(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"Gyroscope provider reset threw: {ex.Message}"); }
 
+            // Touch outlives a game in the desktop launcher: slots, queued gestures, the primary.
+            try { Microsoft.Xna.Framework.Input.Touch.TouchPanel.ResetForNewLaunch(); }
+            catch (Exception ex) { Log.Warn(LogCategory.AppList, $"TouchPanel reset threw: {ex.Message}"); }
+
             // Silence the motor. A WP7 title that exits mid-buzz never gets to call
             // VibrateController.Stop() itself, and the provider is launcher-lifetime — so without
             // this the phone carries on vibrating with the game already gone. Just a Stop, not a
@@ -1827,8 +1981,8 @@ namespace WPR
             WPR.Common.WprHostEnvironment.CurrentTarget = null;
             // Set per launch in Start, before the run begins.
             WPR.Xna.Achievements.UnlistedAchievements.Allowed = true;
-            WPR.SilverlightCompability.Threading.Dispatcher.Detach();
-            try { WPR.SilverlightCompability.CompositionTarget.ResetForNewLaunch(); }
+            System.Windows.Threading.Dispatcher.Detach();
+            try { System.Windows.Media.CompositionTarget.ResetForNewLaunch(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"CompositionTarget reset threw: {ex.Message}"); }
 
             // Running storyboards hold the game's own page objects, and the desktop host outlives
@@ -1839,10 +1993,10 @@ namespace WPR
 
             // Elements still waiting for their Loaded hold the dead game's objects, like the
             // storyboards above.
-            try { WPR.SilverlightCompability.FrameworkElement.ResetPendingLoaded(); }
+            try { System.Windows.FrameworkElement.ResetPendingLoaded(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"pending-Loaded reset threw: {ex.Message}"); }
 
-            try { WPR.SilverlightCompability.Touch.ResetForNewLaunch(); }
+            try { System.Windows.Input.Touch.ResetForNewLaunch(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"Touch reset threw: {ex.Message}"); }
 
             // The three mixed-mode singletons. All are static registries holding objects that
@@ -1856,7 +2010,7 @@ namespace WPR
             try { Microsoft.Xna.Framework.SharedGraphicsDeviceManager.ResetForNewLaunch(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"SharedGraphicsDeviceManager reset threw: {ex.Message}"); }
 
-            try { WPR.SilverlightCompability.MediaElement.ResetForNewLaunch(); }
+            try { System.Windows.Controls.MediaElement.ResetForNewLaunch(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"MediaElement reset threw: {ex.Message}"); }
 
             // Keyed by the relative name a page asked for, and two games share this process on
@@ -1868,10 +2022,10 @@ namespace WPR
             // The open-popup registry holds every popup a game left open — strongly, since an
             // open popup is on screen. Without this the next title would composite the last
             // one's dialog over its first page, and pin its load context.
-            try { WPR.SilverlightCompability.Deployment.ResetForNewLaunch(); }
+            try { System.Windows.Deployment.ResetForNewLaunch(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"Deployment reset threw: {ex.Message}"); }
 
-            try { WPR.SilverlightCompability.Popup.ResetForNewLaunch(); }
+            try { System.Windows.Controls.Primitives.Popup.ResetForNewLaunch(); }
             catch (Exception ex) { Log.Warn(LogCategory.AppList, $"Popup reset threw: {ex.Message}"); }
 
             // Rasterised glyphs and the parsed font. Memory rather than correctness — the cache is

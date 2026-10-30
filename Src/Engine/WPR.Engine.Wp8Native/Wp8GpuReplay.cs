@@ -37,7 +37,7 @@ namespace WPR.Wp8Native
         private readonly Dictionary<long, Aon9Shader?> _shaders = new();
         private readonly Dictionary<(long, long), Effect?> _effects = new();
         private readonly Dictionary<long, RenderTarget2D> _targets = new();
-        private readonly Dictionary<long, (int Version, Texture2D Texture)> _textures = new();
+        private readonly Dictionary<long, (int Version, Texture Texture)> _textures = new();
         private readonly Dictionary<string, BlendState> _blends = new(StringComparer.Ordinal);
         private readonly Dictionary<string, DepthStencilState> _depths = new(StringComparer.Ordinal);
         private readonly Dictionary<string, RasterizerState> _rasters = new(StringComparer.Ordinal);
@@ -527,7 +527,6 @@ namespace WPR.Wp8Native
             // Constants, by each shader's own register map.
             SetConstants(effect, vertex, draw.VertexConstants);
             SetConstants(effect, pixel, draw.PixelConstants);
-
             // Fixed-function state.
             _device.BlendState = BlendForCached(draw.Blend, draw.BlendFactor);
             _device.DepthStencilState = draw.DepthTarget is null ? DepthStencilState.None : DepthForCached(draw.DepthStencil, draw.StencilRef);
@@ -1323,7 +1322,7 @@ namespace WPR.Wp8Native
         // Textures and state
         // ------------------------------------------------------------------------------
 
-        private Texture2D? TextureFor(GpuTexture texture)
+        private Texture? TextureFor(GpuTexture texture)
         {
             if (texture.RenderTarget is { } target)
             {
@@ -1348,13 +1347,18 @@ namespace WPR.Wp8Native
             };
 
             _textureUsed[image.Key] = _frameIndex;
-            if (_textures.TryGetValue(image.Key, out var known) && known.Version == image.Version &&
-                known.Texture.Width == image.Width && known.Texture.Height == image.Height && known.Texture.Format == format)
+            if (image.Faces is { Length: 5 } faces)
             {
-                return known.Texture;
+                return CubeFor(image, faces, format);
             }
 
-            Texture2D created = known.Texture is { } reuse && reuse.Width == image.Width && reuse.Height == image.Height && reuse.Format == format
+            if (_textures.TryGetValue(image.Key, out var known) && known.Version == image.Version &&
+                known.Texture is Texture2D same && same.Width == image.Width && same.Height == image.Height && same.Format == format)
+            {
+                return same;
+            }
+
+            Texture2D created = known.Texture is Texture2D reuse && reuse.Width == image.Width && reuse.Height == image.Height && reuse.Format == format
                 ? reuse
                 : new Texture2D(_device, image.Width, image.Height, false, format);
             if (!ReferenceEquals(created, known.Texture))
@@ -1363,6 +1367,38 @@ namespace WPR.Wp8Native
             }
 
             created.SetData(image.Blocks ?? image.Rgba);
+            _textures[image.Key] = (image.Version, created);
+            return created;
+        }
+
+        /// <summary>
+        /// A cube map's six faces as one host <see cref="TextureCube"/>. Direct3D 11's face order
+        /// (+X, -X, +Y, -Y, +Z, -Z) is XNA's <see cref="CubeMapFace"/> order. A shader that
+        /// declares <c>dcl_cube</c> reads nothing from a 2D texture, so before this every cube
+        /// sample in a WP8 title came back black.
+        /// </summary>
+        private TextureCube? CubeFor(TextureImage image, TextureImage[] faces, SurfaceFormat format)
+        {
+            if (_textures.TryGetValue(image.Key, out var known) && known.Version == image.Version &&
+                known.Texture is TextureCube same && same.Size == image.Width && same.Format == format)
+            {
+                return same;
+            }
+
+            TextureCube created = known.Texture is TextureCube reuse && reuse.Size == image.Width && reuse.Format == format
+                ? reuse
+                : new TextureCube(_device, image.Width, false, format);
+            if (!ReferenceEquals(created, known.Texture))
+            {
+                known.Texture?.Dispose();
+            }
+
+            created.SetData(CubeMapFace.PositiveX, image.Blocks ?? image.Rgba);
+            for (int i = 0; i < faces.Length; i++)
+            {
+                created.SetData((CubeMapFace)(i + 1), faces[i].Blocks ?? faces[i].Rgba);
+            }
+
             _textures[image.Key] = (image.Version, created);
             return created;
         }

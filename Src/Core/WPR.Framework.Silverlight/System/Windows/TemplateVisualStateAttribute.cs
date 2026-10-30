@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows
 {
     /// <summary>
     /// Shim for <c>System.Windows.TemplateVisualStateAttribute</c>. Marks a visual

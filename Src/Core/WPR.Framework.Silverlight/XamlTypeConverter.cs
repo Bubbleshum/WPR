@@ -150,9 +150,9 @@ namespace WPR.SilverlightCompability
             {
                 // A BitmapSource- or BitmapImage-typed property (a game control's own) needs one of
                 // those; a plain ImageSource could not be assigned to it.
-                if (targetType.IsAssignableFrom(typeof(WPR.WindowsCompability.BitmapImage))
+                if (targetType.IsAssignableFrom(typeof(System.Windows.Media.Imaging.BitmapImage))
                     && targetType != typeof(ImageSource))
-                    return new WPR.WindowsCompability.BitmapImage(new Uri(s, UriKind.RelativeOrAbsolute));
+                    return new System.Windows.Media.Imaging.BitmapImage(new Uri(s, UriKind.RelativeOrAbsolute));
                 return new ImageSource(s);
             }
 

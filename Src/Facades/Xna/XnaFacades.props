@@ -1,0 +1,14 @@
+<Project>
+  <!-- Imported by anything that runs games (both heads, harnesses): puts the XNA facade assemblies
+       in the output and the deps.json, so the Default context binds a game's Microsoft.Xna.* refs. -->
+  <ItemGroup>
+    <ProjectReference Include="$(MSBuildThisFileDirectory)Microsoft.Xna.Framework.csproj" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)Microsoft.Xna.Framework.Game.csproj" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)Microsoft.Xna.Framework.Graphics.csproj" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)Microsoft.Xna.Framework.Input.Touch.csproj" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)Microsoft.Xna.Framework.GamerServices.csproj" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)Microsoft.Xna.Framework.GamerServicesExtensions.csproj" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)Microsoft.Xna.Framework.Interop.csproj" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)Microsoft.Xna.Framework.MediaLibraryExtensions.csproj" />
+  </ItemGroup>
+</Project>

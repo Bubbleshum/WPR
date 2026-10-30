@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
     /// <summary>Shim for <c>System.Windows.Controls.RadioButton</c>.</summary>
     /// <remarks>

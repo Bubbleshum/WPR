@@ -25,6 +25,9 @@ namespace WPR.Wp8Native
         /// <summary>A handle value the image will not mistake for null or INVALID_HANDLE_VALUE.</summary>
         private const long FirstHandle = 0x00A00000;
 
+        /// <summary>sizeof(FILE) in MSVC's CRT on ARM: eight 4-byte fields.</summary>
+        private const int FileStructSize = 32;
+
         private sealed class OpenFile
         {
             public required FileStream Stream { get; init; }
@@ -417,7 +420,14 @@ namespace WPR.Wp8Native
                     wantsWrite ? FileAccess.ReadWrite : FileAccess.Read,
                     FileShare.ReadWrite);
 
-                long pointer = _emulator.AllocateHeap(16);
+                // The FILE is MSVC's struct (_ptr, _cnt, _base, _flag, _file, _charbuf, _bufsiz,
+                // _tmpfname: 32 bytes on ARM), zeroed: VC11's basic_filebuf points its get and put
+                // areas at _ptr/_cnt/_base, and std::streambuf reads them before calling the
+                // virtuals. Zero means "no buffer", so every read goes through uflow to this
+                // library. A 16-byte block left the last fields outside it, and a reused one handed
+                // the stream stale pointers (Where's My Perry: xsgetn copied from unmapped memory).
+                long pointer = _emulator.AllocateHeap(FileStructSize);
+                _emulator.WriteMemory(pointer, new byte[FileStructSize]);
                 OpenFile file = new() { Stream = stream, Path = path, Descriptor = _nextDescriptor++ };
 
                 _byPointer[pointer] = file;

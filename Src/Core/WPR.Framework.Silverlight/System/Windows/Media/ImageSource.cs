@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows.Media
 {
     /// <summary>
     /// Shim for <c>System.Windows.Media.ImageSource</c>. In Silverlight this is the

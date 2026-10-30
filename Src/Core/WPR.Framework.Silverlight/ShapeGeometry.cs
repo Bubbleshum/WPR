@@ -1,4 +1,5 @@
 using System;
+using System.Windows.Shapes;
 
 namespace WPR.SilverlightCompability
 {

@@ -1,7 +1,7 @@
 using System;
 using System.Net;
 
-namespace WPR.SilverlightCompability
+namespace System.Net.Browser
 {
     /// <summary>
     /// Shim for <c>System.Net.Browser.WebRequestCreator</c>.

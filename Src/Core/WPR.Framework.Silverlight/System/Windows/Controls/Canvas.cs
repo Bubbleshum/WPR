@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
     /// <summary>
     /// Absolute-positioning panel. Children are placed at their attached

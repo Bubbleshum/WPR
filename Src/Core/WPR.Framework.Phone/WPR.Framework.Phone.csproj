@@ -22,6 +22,17 @@
     <RootNamespace>Microsoft.Phone</RootNamespace>
   </PropertyGroup>
 
+  <!-- WP7's Microsoft.Phone also carried the navigation types and the Frame/Page base classes,
+       which WPR implements with the Silverlight shims; forward them so a game's
+       [Microsoft.Phone]System.Windows.Navigation.NavigationService binds by its own reference.
+       Generated at build (../../Facades/Forwarders.targets); Stopwatch is in PhoneForwarders.cs. -->
+  <Import Project="$(SolutionDir)Facades\Forwarders.targets" />
+  <ItemGroup>
+    <WprForwardFrom Include="WPR.Framework.Silverlight" />
+    <WprForwardNamespace Include="System.Windows.Navigation" />
+    <WprForwardType Include="System.Windows.Controls.Frame;System.Windows.Controls.Page" />
+  </ItemGroup>
+
   <!-- The heavy WP control/nav types (PhoneApplicationFrame/Page/FrameView, gestures) moved
        here from WPR.SilverlightCompability and derive from / use its System.Windows.* shims.
        Dependency is one-way: Microsoft.Phone -> WPR.SilverlightCompability. SL must never
@@ -42,6 +53,10 @@
     <!-- The IUriLauncher seam the WP7 launchers (WebBrowserTask first) leave the game through.
          Speaks System.Uri only, so the edge is one way: Microsoft.Phone -> WPR.Engine.Launchers. -->
     <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Launchers\WPR.Engine.Launchers.csproj" />
+    <!-- The WinRT types WP8.1 Silverlight's Microsoft.Phone names (ContractActivated's
+         Windows.ApplicationModel.Activation.IActivatedEventArgs). Aliased: on the desktop leg the
+         Windows SDK projection declares the same full names. One way: WinRT references nothing here. -->
+    <ProjectReference Include="..\WPR.Framework.WinRT\WPR.Framework.WinRT.csproj" Aliases="wprwinrt" />
   </ItemGroup>
 
   <!-- The test project reaches internals of the PhoneApplication* and gesture types. -->

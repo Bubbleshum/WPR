@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
 
-namespace WPR.SilverlightCompability.Threading
+namespace System.Windows.Threading
 {
     /// <summary>Shim for <c>System.Windows.Threading.DispatcherOperation</c>.</summary>
     public class DispatcherOperation

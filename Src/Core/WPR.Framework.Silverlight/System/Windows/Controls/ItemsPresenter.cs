@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
     /// <summary>Shim for <c>System.Windows.Controls.ItemsPresenter</c>: the place in an
     /// ItemsControl's template where its items panel goes.</summary>

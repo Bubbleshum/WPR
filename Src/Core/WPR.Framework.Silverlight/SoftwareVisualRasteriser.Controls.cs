@@ -181,7 +181,7 @@ namespace WPR.SilverlightCompability
 
             if (_bingSource == null || !string.Equals(_bingSourcePath, path, StringComparison.Ordinal))
             {
-                _bingSource = new WPR.WindowsCompability.BitmapImage(new Uri(path, UriKind.Absolute));
+                _bingSource = new System.Windows.Media.Imaging.BitmapImage(new Uri(path, UriKind.Absolute));
                 _bingSourcePath = path;
             }
 

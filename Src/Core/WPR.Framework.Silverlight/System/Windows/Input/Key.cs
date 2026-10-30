@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows.Input
 {
     /// <summary>Shim for <c>System.Windows.Input.Key</c>.</summary>
     public enum Key

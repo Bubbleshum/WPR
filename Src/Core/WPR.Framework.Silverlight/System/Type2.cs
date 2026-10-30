@@ -55,7 +55,7 @@ namespace WPR.WindowsCompability
             //
             // It also renamed the XNA assemblies to "FNA", which has been wrong since the spine
             // relocation: FNA defines no XNA API at all now, and every Microsoft.Xna.Framework.*
-            // type a game can name lives in WPR.Framework.Xna (see the resolver below).
+            // assembly a game can name is a WPR facade forwarding to the implementation.
             //
             // WPR hands the parser the Assembly objects itself and the type is then looked up with
             // Assembly.GetType — a pure managed lookup that doesn't trigger the CLR's cross-ALC
@@ -140,11 +140,9 @@ namespace WPR.WindowsCompability
 
         // The assembly a name inside a type name refers to.
         //
-        // * Any Microsoft.Xna.Framework* assembly is WPR.Framework.Xna. That is where the patcher
-        //   rescopes every XNA type a game binds (WprFrameworkXnaTypes), so a type name written
-        //   by the game at runtime has to land in the same place. The WP7 GraphicsDeviceManager
-        //   override is in WPR.Backend.FNA, but it derives from the WPR.Framework.Xna type of the
-        //   same name, which is what a serialised name means anyway.
+        // * System.Windows is the Silverlight shim assembly (see FindLoaded). Microsoft.Xna.Framework*
+        //   names need no rule: WPR ships a facade of each name that forwards to the implementation,
+        //   the same assemblies the game's own references bind.
         // * Anything else is looked for by simple name in the CALLER's load context first, then
         //   in every context. Matching on simple name across every ALC in the process is unsafe:
         //   when two games are resident at once, each ships its own copy of a common dependency
@@ -171,7 +169,10 @@ namespace WPR.WindowsCompability
             }
             catch
             {
-                return null;
+                // A host without the XNA facades (a test host): the types themselves live here.
+                return simple.StartsWith("Microsoft.Xna.Framework", StringComparison.OrdinalIgnoreCase)
+                    ? typeof(Microsoft.Xna.Framework.Vector2).Assembly
+                    : null;
             }
         }
 
@@ -181,9 +182,11 @@ namespace WPR.WindowsCompability
             string? simple = name.Name;
             if (string.IsNullOrEmpty(simple)) return null;
 
-            if (simple.StartsWith("Microsoft.Xna.Framework", StringComparison.OrdinalIgnoreCase))
+            // Silverlight's System.Windows is this assembly (the patcher renames game references
+            // to it); by name, the binder would hand back .NET's unrelated WPF-era facade.
+            if (string.Equals(simple, "System.Windows", StringComparison.OrdinalIgnoreCase))
             {
-                return typeof(Microsoft.Xna.Framework.Vector2).Assembly;
+                return typeof(System.Windows.UIElement).Assembly;
             }
 
             if (callerAlc != null)

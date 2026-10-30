@@ -5,7 +5,7 @@ using System;
 // because that is what the patcher rescopes a game's System.Windows.* typerefs to.
 using WPR.SilverlightCompability;
 
-namespace WPR.WindowsCompability
+namespace System.Windows.Media.Imaging
 {
     /// <summary>
     /// Shim for <c>System.Windows.Media.Imaging.WriteableBitmap</c>. In Silverlight this derives

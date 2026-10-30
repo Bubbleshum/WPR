@@ -4,7 +4,7 @@ using System;
 using WPR.SilverlightCompability;
 
 
-namespace WPR.WindowsCompability
+namespace System.Windows.Media.Imaging
 {
     // projection: System.Windows.Media.Imaging.BitmapImage. In Silverlight this
     // derives from BitmapSource which derives from ImageSource — we preserve the
@@ -60,8 +60,7 @@ namespace WPR.WindowsCompability
         ///   - Absolute file URIs → <c>LocalPath</c>.
         ///   - Relative URIs like <c>"/Resources/foo.png"</c> → strip the leading
         ///     slash so it resolves relative to the install dir (= cwd at launch).
-        /// Truly remote URIs (http(s)://) are stored verbatim — they won't load
-        /// today but a future renderer pass could fetch them.
+        /// Web URIs (http(s)://) are kept whole; the decoder downloads them.
         /// </summary>
         public BitmapImage(Uri uri) : base(UriToPath(uri))
         {
@@ -74,6 +73,7 @@ namespace WPR.WindowsCompability
         private static string UriToPath(Uri? uri)
         {
             if (uri == null) return string.Empty;
+            if (uri.IsAbsoluteUri && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)) return uri.AbsoluteUri;
             string s = uri.IsAbsoluteUri ? uri.LocalPath : uri.OriginalString;
             if (s.StartsWith("/", StringComparison.Ordinal)) s = s.Substring(1);
             return s;

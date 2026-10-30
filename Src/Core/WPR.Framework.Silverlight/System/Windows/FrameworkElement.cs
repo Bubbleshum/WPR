@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows
 {
     public class FrameworkElement : UIElement
     {
@@ -460,10 +460,10 @@ namespace WPR.SilverlightCompability
         // in XAML and read by user code via Resources[name]. Type is in the
         // WPR.WindowsCompability namespace (declared in this same assembly, see
         // ResourceDictionary.cs) to match the post-patch user-IL signature.
-        private WPR.WindowsCompability.ResourceDictionary? _resources;
+        private ResourceDictionary? _resources;
 
-        public WPR.WindowsCompability.ResourceDictionary Resources
-            => _resources ??= new WPR.WindowsCompability.ResourceDictionary();
+        public ResourceDictionary Resources
+            => _resources ??= new ResourceDictionary();
 
         /// <summary>True if this element has had its own <see cref="Resources"/>
         /// touched. Used by the StaticResource resolver so walking the ancestor

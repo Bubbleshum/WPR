@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows
 {
     /// <summary>Shim for <c>System.Windows.Style</c>. Carries setters keyed by
     /// property name (or DependencyProperty). <see cref="Apply"/> applies the

@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Input
 {
     /// <summary>Shim for <c>System.Windows.Input.ManipulationDeltaEventArgs</c>.</summary>
     public class ManipulationDeltaEventArgs : RoutedEventArgs

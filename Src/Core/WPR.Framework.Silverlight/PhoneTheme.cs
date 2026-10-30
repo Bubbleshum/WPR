@@ -25,7 +25,7 @@ namespace WPR.SilverlightCompability
         /// Optional override for the WP7 accent color used in
         /// <c>PhoneAccentColor</c>/<c>PhoneAccentBrush</c>/<c>PhoneTextAccentStyle</c>.
         /// The host sets this from user configuration before constructing
-        /// <c>WPR.WindowsCompability.Application</c> (which calls <see cref="Apply"/>);
+        /// <c>System.Windows.Application</c> (which calls <see cref="Apply"/>);
         /// leave null to keep the WP7 default <c>#1BA1E2</c> ("Cyan").
         /// </summary>
         public static Color? AccentColorOverride { get; set; }
@@ -34,7 +34,7 @@ namespace WPR.SilverlightCompability
         /// Merge the default phone theme into the given dictionary if it doesn't
         /// already define each key (so user App.xaml overrides win).
         /// </summary>
-        public static void Apply(WPR.WindowsCompability.ResourceDictionary target)
+        public static void Apply(ResourceDictionary target)
         {
             foreach (var kv in BuildDefaults())
             {
@@ -81,6 +81,18 @@ namespace WPR.SilverlightCompability
             yield return P("PhoneBorderBrush",          new SolidColorBrush(border));
             yield return P("PhoneInactiveBrush",        new SolidColorBrush(inactive));
             yield return P("TransparentBrush",          new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)));
+
+            // WP8's inverse set (the light surfaces of a dark theme: text boxes, toggles) and the
+            // semitransparent overlay, from WP8's dark ThemeResources.
+            var inverseBackground = Color.FromRgb(0xDD, 0xDD, 0xDD);
+            var inverseInactive   = Color.FromRgb(0xCC, 0xCC, 0xCC);
+            var semitransparent   = Color.FromArgb(0xAA, 0x00, 0x00, 0x00);
+            yield return P("PhoneInverseBackgroundColor", inverseBackground);
+            yield return P("PhoneInverseInactiveColor",   inverseInactive);
+            yield return P("PhoneSemitransparentColor",   semitransparent);
+            yield return P("PhoneInverseBackgroundBrush", new SolidColorBrush(inverseBackground));
+            yield return P("PhoneInverseInactiveBrush",   new SolidColorBrush(inverseInactive));
+            yield return P("PhoneSemitransparentBrush",   new SolidColorBrush(semitransparent));
 
             // --- Font sizes -------------------------------------------------
             yield return P("PhoneFontSizeSmall",        18.667);   // PT 14

@@ -114,24 +114,24 @@ public class WindowsPhoneTargetTests : IDisposable
     [Fact]
     public void Host_content_scale_factor_is_100_for_7x_and_the_device_scale_for_8x()
     {
-        int savedScale = SilverlightHostContent.Wp8ScaleFactor;
+        int savedScale = System.Windows.Interop.Content.Wp8ScaleFactor;
         try
         {
-            SilverlightHostContent.Wp8ScaleFactor = 160;
+            System.Windows.Interop.Content.Wp8ScaleFactor = 160;
             WprHostEnvironment.CurrentTarget = WindowsPhoneTarget.Wp71;
-            Assert.Equal(100, SilverlightHostContent.PlatformScaleFactor);
+            Assert.Equal(100, System.Windows.Interop.Content.PlatformScaleFactor);
             WprHostEnvironment.CurrentTarget = WindowsPhoneTarget.Wp70;
-            Assert.Equal(100, SilverlightHostContent.PlatformScaleFactor);
+            Assert.Equal(100, System.Windows.Interop.Content.PlatformScaleFactor);
             WprHostEnvironment.CurrentTarget = WindowsPhoneTarget.Wp80;
-            Assert.Equal(160, SilverlightHostContent.PlatformScaleFactor);
+            Assert.Equal(160, System.Windows.Interop.Content.PlatformScaleFactor);
             WprHostEnvironment.CurrentTarget = WindowsPhoneTarget.Wp81;
-            Assert.Equal(160, SilverlightHostContent.PlatformScaleFactor);
+            Assert.Equal(160, System.Windows.Interop.Content.PlatformScaleFactor);
             WprHostEnvironment.CurrentTarget = null;
-            Assert.Equal(100, SilverlightHostContent.PlatformScaleFactor);
+            Assert.Equal(100, System.Windows.Interop.Content.PlatformScaleFactor);
         }
         finally
         {
-            SilverlightHostContent.Wp8ScaleFactor = savedScale;
+            System.Windows.Interop.Content.Wp8ScaleFactor = savedScale;
         }
     }
 

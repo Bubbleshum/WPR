@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
     /// <summary>
     /// Backs <see cref="Grid.RowDefinitions"/>. Inherits from

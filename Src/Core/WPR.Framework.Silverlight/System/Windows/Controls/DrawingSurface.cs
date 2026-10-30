@@ -1,26 +1,40 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
-    /// <summary>Shim for WP8's <c>System.Windows.Controls.DrawingSurface</c>.</summary>
-    /// <remarks>
-    /// <para>An element a native component renders into, with a texture it hands back per frame.
-    /// A Direct3D/XAML game whose page carries one is hosted by the WP8 native runtime instead
-    /// (<c>NativeXamlComponent</c>), which plays this element's part itself.</para>
-    /// <para>What reaches here is a MANAGED app that puts one in a corner of its XAML: Microsoft
-    /// Bingo draws its particle effects (FrimaStudio's Icewave, native ARM) into one inside a
-    /// user control. A managed title cannot call into the ARM component yet, so the provider and
-    /// handler are only remembered and the element paints nothing - the rest of the page is
-    /// unaffected. Before the type existed, every page naming it failed to load.</para>
-    /// </remarks>
+    /// <summary>
+    /// Shim for WP8's <c>System.Windows.Controls.DrawingSurface</c>: an element whose content a
+    /// native Direct3D component draws into a texture of its own (Mandreel's Fruit Ninja and
+    /// Jetpack Joyride, Gameloft's WCP titles). The page hands it the component's provider; the
+    /// host the launch sets (<see cref="ContentProviderSet"/>) runs it. Unlike
+    /// <see cref="DrawingSurfaceBackgroundGrid"/> it is an element of the page, so on a landscape
+    /// page its texture and its pointer positions are landscape too.
+    /// </summary>
     public class DrawingSurface : FrameworkElement
     {
-        /// <summary>The content provider the app handed over.</summary>
+        /// <summary>The opaque content-provider object the page handed over.</summary>
         internal object? AttachedContentProvider { get; private set; }
 
-        /// <summary>The manipulation handler the app handed over.</summary>
+        /// <summary>The opaque manipulation-handler object the page handed over.</summary>
         internal object? AttachedManipulationHandler { get; private set; }
 
-        public void SetContentProvider(object? contentProvider) => AttachedContentProvider = contentProvider;
+        /// <summary>Set by the host for the launch: called with each provider a page hands over.</summary>
+        public static Action<object?>? ContentProviderSet { get; set; }
 
-        public void SetManipulationHandler(object? manipulationHandler) => AttachedManipulationHandler = manipulationHandler;
+        /// <summary>Set by the host for the launch: called with each manipulation handler a page hands over.</summary>
+        public static Action<object?>? ManipulationHandlerSet { get; set; }
+
+        /// <summary>Hand off the WinRT content provider, to <see cref="ContentProviderSet"/>.</summary>
+        public void SetContentProvider(object? contentProvider)
+        {
+            AttachedContentProvider = contentProvider;
+            InvalidateMeasure();
+            ContentProviderSet?.Invoke(contentProvider);
+        }
+
+        /// <summary>Hand off the WinRT manipulation handler (raw touch events), to <see cref="ManipulationHandlerSet"/>.</summary>
+        public void SetManipulationHandler(object? manipulationHandler)
+        {
+            AttachedManipulationHandler = manipulationHandler;
+            ManipulationHandlerSet?.Invoke(manipulationHandler);
+        }
     }
 }

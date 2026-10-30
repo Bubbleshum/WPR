@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Data
 {
     /// <summary>Shim for <c>System.Windows.Data.RelativeSourceMode</c>.</summary>
     public enum RelativeSourceMode { TemplatedParent, Self, FindAncestor, PreviousData }

@@ -1176,6 +1176,52 @@ its name; Fruit Ninja (WP7) got "Best score" (backfill) and "Best score (mode 2)
 `LeaderboardNamesTest` (7), WP8 contract `xbox live` (names checks pass; the 3 toast checks there
 fail on 0.2.07 already, since a7a69b20 moved unlock toasts in-game).
 
+### WP8.1 Silverlight apps talk to the web: Windows.Web.Http and friends (patcher v63, 2026-10-27)
+
+Written as v62 on this branch. Branch `0.2.09` numbered its own v60–v62 in parallel, and the port of
+0.2.09 into `xna-facades` (2026-10-28/29) folded both sets into one bump to **v63**; the version
+comment on `ApplicationPatcher.Version` lists what each number covered.
+
+**Live Store** (`d3b9565b-…`, One Live Interactive, WP8.1 Silverlight) is a community app store
+whose server (`store-api.live.net.co`) still answers. It died in `App..ctor` on
+`PhoneApplicationService.ContractActivated`, then in `MainPage..ctor` on WinRT's
+`Windows.Web.Http.HttpClient` (the per-game `Windows.dll` shell's private ctor). Now it lists the
+live catalogue with icons and opens an app's page. Added to `WPR.Framework.WinRT` (each rescoped by
+`WinRtImplementedTypes`, hence the bump):
+
+| namespace | what | behaviour worth knowing |
+| --- | --- | --- |
+| `Windows.Web.Http` (+ `.Filters`, `.Headers`) | `HttpClient` over .NET's, contents, request/response, header collections | WinRT's rules kept: a non-2xx status is a response, not a throw; bodies decompressed; `HttpBaseProtocolFilter.AllowAutoRedirect` reaches the handler. The body is read whole before the operation completes. A network failure throws with HRESULT `0x80072EE7`. Log: `[wpr-http] GET <url> -> 200, N bytes` (Trace) |
+| `Windows.Storage.Streams` | `DataReader`, `DataWriter`, `UnicodeEncoding`, `ByteOrder` | |
+| `Windows.Security.Credentials` | `PasswordVault`, `PasswordCredential` | per title, `PasswordVault.json` beside the local folder, **not encrypted**; a miss throws `0x80070490` as WinRT's |
+| `Windows.Security.Cryptography` | `CryptographicBuffer` | |
+| `Windows.Data.Xml.Dom`, `Windows.UI.Notifications` | DOM over System.Xml, toast templates | a toast is logged (`[wpr-winrt] toast:`), not shown |
+| `Windows.ApplicationModel.Activation`/`.Core`, `Security.Authentication.Web`, `Storage.Pickers` | the WP8.1 "AndContinue" calls and their continuation args | **every AndContinue comes back cancelled** (no picker or browser): posted to the caller's context as `CoreApplicationView.Activated` and `PhoneApplicationService.ContractActivated` (through `WinRtHost.ContractActivation`) |
+| `Windows.Foundation` / `Storage` / `Phone.Management.Deployment` | `WwwFormUrlDecoder`, `FileIO`, `KnownFolders` (per title), `InstallationManager.FindPackages` (the running title only) | |
+
+Silverlight-side, all general: **web images load** (`SilverlightImageDecoder` fetches an http(s)
+image off the paint path and repaints when it arrives; `BitmapImage` keeps the URL whole);
+**`{Binding}`/`{StaticResource}` on attached properties** (the Toolkit's
+`TurnstileFeatherEffect.FeatheringIndex="{Binding …}"` used to throw once per list row);
+**`TextBlock.Inlines`** with mixed text content (`<TextBlock>Read the <Underline>terms</Underline></TextBlock>`,
+drawn as plain text when `Text` is empty); `Application.Terminate()` (WP8, through
+`GameUnhandledException.RequestTermination`); `ContentControl.OnContentChanged(old, new)`;
+`AutomationProperties`; `Microsoft.Phone.Shell.ProgressIndicator` (stored, not drawn) and
+`SystemTray.ProgressIndicator` typed as it; WP8's `PhoneInverseBackground/InactiveBrush` and
+`PhoneSemitransparentBrush`. Not done: signing in (it is a web sign-in), "get" (downloads a XAP to
+install), Speech, `Geocoordinate`.
+
+**Readying an install twice used to destroy its native component.** `WinmdStubber.StubOne` (bridged)
+moved whatever `<name>.dll` it found to `<name>.dll.native_original`, deleting an existing backup
+first. On a second preparation (the managed-page stamp was bumped to `managed-page 2` for the
+out-parameter stubs) that `.dll` is the first pass's managed stub, so the only copy of the ARM
+component was replaced by a stub, and the title stopped with `Expected an ARMNT image (0x01C4), got
+0x014C` (AC Pirates' `SparkApp.dll`). Now an existing backup is always kept, and a managed `.dll`
+(CLI metadata: our own stub, never a component's native DLL) is replaced, not backed up.
+`WinmdStubberTests`. **Check before bumping `ManagedPageStamp`**: every prepared install, the phone's
+included, runs the stubber again on its next launch. To audit a root, list `*.native_original` whose
+PE machine is not `0x01C4`.
+
 ### N.O.V.A. 3 plays with no title work (2026-10-28)
 
 Gameloft's **N.O.V.A. 3** (`08312124-…`, 1 GB XAP, not DRM-wrapped) is a WP8 Direct3D/XAML title:
@@ -2403,6 +2449,78 @@ catalogue, results post `BestScore1:0` (distance) / `BestScore2:0` and read back
   on Android (tried, removed). `file-io=` (time and calls in file handlers) joined the `guest fps` line.
 - Left: one 50-60 ms gap every few seconds on the phone (a missed display refresh, not GC, not file
   I/O) and ~120-500 ms at a run's end (the game's own sync and save, ~600 file calls).
+
+### Asphalt 7: Heat races: cube maps, and vertex copies that reuse one whole-buffer copy (2026-10-28)
+
+Asphalt 7 (`013e9108-…`, Gameloft) is a WP8 Direct3D/XAML title: `Asphalt7HybridComponent.dll`
+(native ARM, `PhoneDirect3DXamlAppComponent.Direct3DBackground`) behind an obfuscated managed page
+(`PhoneDirect3DXamlAppInterop`, entry `A.RB`), on the inferred page description. Not DRM-wrapped.
+Earlier work (merge `e4cef9fb`) got it to a race: its page feeds touch from `Touch.FrameReported`
+(`XamlTouchFrames`), it resolves a multisampled race target (`ResolveSubresource`, slot 57), and
+its Back key answers an int. Two runtime defects remained, both general:
+
+- **Cube maps were flattened to face 0.** `DescribeTexture` kept one subresource, so a
+  `D3D11_RESOURCE_MISC_TEXTURECUBE` texture (ArraySize 6) lost faces 1-5 and the replay bound a
+  `Texture2D` to a `dcl_cube` sampler, which reads nothing: no sky in the reflections and a dull
+  car. `DescribeCubeFaces` gives a cube faces 1-5 as resources of their own
+  (`FrameCapture.Resource.CubeFaces`, filled from `D3D11_SUBRESOURCE_DATA[face * MipLevels]`);
+  `UpdateSubresource`/`Map` of a face's top level land there (`SubresourceTarget`) and bump the
+  cube's version; `TextureImage.Faces` carries them and `Wp8GpuReplay.CubeFor` builds a
+  `TextureCube` (D3D11's face order is XNA's `CubeMapFace` order). Lower mip levels are still
+  not kept, for any texture. **The tell**: `WPR_WP8_SHADER_DUMP` and a pixel shader with a
+  `dcl_cube` sampler (sampler dcl token `0x98000000`).
+- **A buffer bound at byte offsets was copied per draw.** The car and scenery meshes are one
+  interleaved 1.6 MB buffer (stride 44) bound in three slots at offsets 12, 20 and 28, one
+  attribute each, every slot spanning all its vertices. Each stream's range ended up to 28 bytes
+  past the buffer, so the whole-copy path (the N.O.V.A. 3 fix in `SnapshotStream`) refused it and
+  every draw took a fresh 1.6 MB range: ~400 MB/s of `byte[]` and managed memory past 2 GB within a
+  minute of racing. The whole copy is now padded (`WholeCopyPadding`, 2048, D3D11's largest stride)
+  and serves those streams. And `CopyResourceMemory` (CopyResource and the per-frame resolve) copies
+  guest to guest with `CopyMemory` instead of an array per row: ~240 MB/s of its own.
+
+Measured on D1 in a race, before → after: allocation ~400 → ~25 MB/s, managed 2.2 GB → 220-360 MB,
+replay 15 → 1-2.5 ms a frame, 32-50 → 55-59 fps. Found with `dotnet-trace collect --profile
+gc-verbose` on the harness and a TraceEvent aggregation of `GCAllocationTick` stacks.
+
+**The player's car looks grey from the chase camera, and that is the game's own lighting, not a
+replay defect** (settled 2026-10-29). In the countdown fly-by, where the camera sees its sunlit side,
+the race renders it white with its red side stripes and red mirror caps, as on a phone; from behind,
+the chase camera sees the shaded rear. Measured, so this is not chased again:
+
+- The race car samples a white 256x256 atlas with the stripes' red swatch top left (dumped and
+  checked); the stock `_body.tga` / `_body_low.tga` in `carTextures.zip` are grey with no stripes,
+  so the paint is applied before upload, on the CPU, and survives the replay.
+- Ambient: `0x10035f90` asks the irradiance manager (`[scene+0x12c]`) for the volume nearest the
+  car (`0x1030314c`). After a load the manager always sets the nearest-volume fallback
+  (`flags = (flags & 0xF0) | 8`, limit 1e10), and `0x10304604` blends that probe with the track's
+  default ambient by `distance / 1000`, clamped to 1. Hawaii (and Alps, Bahamas, Miami, Moscow,
+  New York, Rio) ships the same 98,856-byte placeholder `.ird`, whose volumes are ~100k units from
+  the race, so the blend is fully the default: the `Light Ambient Color` 0.4 x 3 x SH band 0
+  (0.282) = **0.339** in `c19`-`c21`.w. The garage (`GS_MenuMain`) uses 3.0 instead, and its
+  shader takes `c16` = 1 rather than the SH, which is why the garage car is fully bright.
+- The vertex shader multiplies that ambient by the normal's w (`mov r0.w, v1.w`). The normal is
+  `R32G32B32_FLOAT`, so w is 1 on Direct3D, GL and here alike.
+- The diffuse is `2 x 0.6 x c2.z (0.803 for the player) x N.L`, with `c18` (about -0.81, 0.42, 0.41
+  in object space) a low side light. The rear gets little of it.
+- No sRGB formats anywhere (BC1/BC2/BGRA8/RGBA8 UNORM, D24S8), every race draw replays, and
+  D1-D4 agree.
+
+Harness script (1280x768 landscape, from a clean store): `18 hold 640 400 0.2` (title), `30 hold 640
+400 0.2` (Quick Play → "Play tutorial?"), `38 hold 860 554 0.2` (Play Tutorial), `46 hold 1074 716
+0.2` (Select Car), `54 hold 1150 434 0.2` (close the Tiered Events tip), `60 hold 1094 712 0.2`
+(Continue), `68 hold 1096 714 0.2` (No Thanks to the sponsor); the race is on screen by ~100 s on
+D1/D2, later on D3/D4. `tilt -0.6 0 -0.8` steers (the tutorial's "tilt to the left").
+
+| cell | result |
+| --- | --- |
+| D1 D3D11 | ✅ title → menu → tutorial race, tilt steers, reflections |
+| D2 Vulkan | ✅ same |
+| D3 OpenGL | ✅ same (loads slower) |
+| D4 GLES 3.0 + no DXT | ✅ same (washed out, as D4 always is) |
+| A1/A2, P1–P3 | not run |
+
+Contract tests: cube faces and face updates in `Direct3DStateSuite`, offset-bound interleaved
+streams in `VertexSnapshotSuite`. No `ApplicationPatcher.Version` bump and no reinstall.
 
 ### Update checks and the About page's "what's new" (2026-09-29, Android)
 
@@ -4843,6 +4961,53 @@ its id) and `ReflectionAndDeploymentTests`.
 Not identity-binding. The touch and Deployment changes are shim behaviour and need no repatch;
 the driver fix is a native binary, so Android needs the APK repackaged.
 
+### Touch audit: short taps, the mouse as the first finger, one finger per consumer (2026-10-29)
+
+A pass over every input path (XNA `TouchPanel` and `Mouse`, the Silverlight router and
+`Touch.FrameReported`, the WP8 grid's manipulation feed, the WP8 native pointer feed) found five
+general defects. All shim/host behaviour: no patcher bump, no reinstall.
+
+- **A tap inside one frame never reached `GetState()`.** The SDL drain polls which fingers are down
+  when it runs, so a finger (or mouse button) that went down and up between two frames was never
+  in a slot, while gestures (event-fed) still saw a Tap. Now `SDL2_FNAPlatform.PollEvents` notes
+  each press and lift (`TouchPanel.NoteSourcePressed` / `NoteSourceLifted`, source ids from
+  `WprSourceFinger`), and `TouchPanel.Update` reports such a touch `Pressed` for one frame, then
+  `Released`. A source lifted and pressed again between two frames (a quick second tap; Android
+  pointer ids restart at 0) is a **new** touch with a new id, not the old one `Moved`
+  (`ForgetLiftedSources`).
+- **`Mouse.GetState()` ignored touch on Android.** `SDL_HINT_TOUCH_MOUSE_EVENTS` is 0 on every
+  platform (it stops a phantom mouse finger on desktop touchscreens), so on a phone the mouse never
+  had a button down, and titles that read input only through it (NFS Undercover's J2ME layer, SPY
+  Mouse) took no touch. WP7's mouse was the primary touch, and now it is again:
+  `TouchPanel.TryGetPrimaryTouch` (the touch that went down with nothing else in contact, until it
+  lifts; then none until every finger is up; the mouse-as-touch slot left out), read by `Mouse`
+  only when no real button is down. Side effect on the desktop: the harness `tap` now reaches
+  mouse-reading titles too (SPY Mouse: menu → Play → level 1 with plain `tap`).
+- **The Silverlight router followed `touches[0]`.** With two fingers down, lifting the first
+  handed the interaction to the second, and the first's click was lost. `PumpSilverlightTouch` now
+  follows one finger by id. A/B on Flowerz (finger on Help & Options, second on the grass, lift the
+  first): before, nothing; after, Options opens on the first lift.
+- **A consumer reading less often than `TouchPanel` advances lost short taps.** When a page pumps
+  `FrameworkDispatcher` itself, `TouchPanel` updates twice in a tick and the `Pressed` sample is
+  gone before `Wp8NativeSession.PumpTouch`, `SilverlightGame.PumpManipulationInput`,
+  `PumpSilverlightTouch` or `TouchFrameReporter` read it; each saw only a `Released` of an id it
+  never had down, and dropped it. Each now keeps the newest id it has seen: a `Released` of a
+  **newer** id is a whole missed tap, delivered as a press and (for the pointer feeds and
+  FrameReported) a release on the **next** update, because delivered together both reach the guest
+  in one `ProcessEvents` and a game that polls per frame never sees the finger down. An older id
+  never seen down is still dropped (a finger already down when the page appeared). Jetpack
+  Joyride's News button took no one-frame tap before this and does now.
+- **Touch outlived a game in the desktop launcher.** No reset existed, so the next game launched
+  inherited the slots, the primary and unread gestures (the Tap that hit the last game's Exit).
+  `TouchPanel.ResetForNewLaunch` (and `GestureDetector.Reset`), from `ResetWprSingletons`.
+
+Harness: local verbs `fdown/fmove/fup <src> x y` (fingers packed by index, as SDL does) and
+`qtap <src> x y` (a press and a lift noted between two frames, what SDL delivers for a sub-frame
+tap). The `[touch]` line reads the slots by reflection so it does not count as the game reading
+touch (calling `GetState()` there would flip the Silverlight host's "game reads touch" gate).
+Tests: `SyntheticTouchTests` (one-frame tap, lift-and-repress is a new touch, the mouse is the
+primary touch; every test now starts from `ResetForNewLaunch`).
+
 ### iRunner plays: the store API, settings that hold a game's class, a game-thread context (patcher v59, 2026-10-23)
 
 iRunner (`525de61b-…`, Droidhen, cocos2d-xna) bundles Umeng analytics, OpenXLive, Microsoft's ad
@@ -6953,42 +7118,72 @@ Minesweeper's and Sudoku's boards sit behind intro panels driven by visual state
 **Patcher table change (v50; written as v47 on branch toolkit-gestures).** Not identity-binding: `--repatch-installed` on the desktop,
 automatic on Android.
 
+### Games bind WPR by their own references (patcher v60–v61, 2026-10-26)
+
+**A shim type has the full name of the type it stands for, and lives in an assembly the game's own
+reference reaches.** The patcher no longer rewrites type references one by one; adding a type is
+writing the class, rebuilding, and nothing else: no table entry, no patcher bump, no repatch.
+
+| WP assembly a game references | how it reaches WPR |
+| --- | --- |
+| `Microsoft.Xna.Framework`, `.Game`, `.Graphics`, `.Input.Touch`, `.GamerServices`, `.GamerServicesExtensions`, `.Interop`, `.MediaLibraryExtensions` | facade assemblies of those names (`Src/Facades/Xna`, version 4.0.0.0, unsigned), nothing but `[TypeForwardedTo]` for every public `Microsoft.Xna.*` type of `WPR.Framework.Xna`, `WPR.Backend.FNA` and `WPR.Framework.Silverlight`. The game's reference is left untouched |
+| Silverlight's `System.Windows` (token `7cec85d7bea7798e`) | renamed as a whole to `WPR.Framework.Silverlight` (`IsSilverlightSystemWindows`), whose shims declare Silverlight's own namespaces. It also forwards the nine collection/`ICommand` types Silverlight kept there to `System.ObjectModel` (`SilverlightForwarders.cs`). .NET's own `System.Windows.dll` (token `b03f5f7f11d50a3a`, a WPF-era facade) is a different assembly and is left alone |
+| `Microsoft.Phone`, `Microsoft.Devices.Sensors`, `System.Device`, `Microsoft.Xbox`, `SharpDX.WP8` | WPR assemblies of those names, as before. `Microsoft.Phone` also forwards what WP7 kept in it but WPR implements with the Silverlight shims: `System.Windows.Navigation.*`, `Frame`, `Page` (generated) and `Stopwatch` (`PhoneForwarders.cs`) |
+
+**Forwarders are generated at build, never listed by hand.** `Src/Facades/Forwarders.targets` runs
+`ForwarderGen` (a small tool over System.Reflection.Metadata) before a project compiles: it lists
+the public top-level types of the `WprForwardFrom` assemblies that match `WprForwardNamespace` /
+`WprForwardType` and writes `obj/.../WprForwarders.g.cs`. So a type added to an implementation is
+forwarded on the next build. `XnaFacadeTests` (WPR.Tests) checks every facade forwards every
+implemented XNA type.
+
+**Proven, not assumed:** the runtime binds a game's `Microsoft.Xna.Framework, Version=4.0.0.0,
+PublicKeyToken=842cf8be1de50553` reference to WPR's **unsigned** facade in the Default context from
+the deps.json (logged with an `AssemblyLoad` hook in the harness), the same way `Microsoft.Phone`
+always bound. No resolver is involved. Anything that runs games must ship the facades: both heads
+and `scratchpad/gamerun` import `Src/Facades/Xna/XnaFacades.props`, and the Android head roots them
+for the trimmer. `Type2` still falls back to `WPR.Framework.Xna` for an XNA name when no facade
+loads (a test host).
+
+What the patcher still rewrites, and why each cannot be a name match:
+
+- **`MemberPatches`**: .NET's own members that must behave as WP7's did (`Monitor.Enter`,
+  `Module.Name`, `Assembly.Load`, path separators, isolated storage, named mutexes). The type is
+  .NET's, so only the call can change.
+- **`Patches`** keeps 14 entries: `GraphicsDeviceManager` (WP7 clamp, a different namespace in
+  `WPR.Backend.FNA.Compat`), the ServiceModel and JSON types that moved assembly in .NET, and
+  `ProtectedData` (WP7 kept it in `mscorlib.Extensions`).
+- **WinRT** (`WinRtProjectionTypes` / `WinRtImplementedTypes`): WP8 code references WinRT types
+  through a per-game synthesized `Windows.dll` of empty shells, so the implemented ones are
+  rescoped to `WPR.Framework.WinRT` at patch time. That list is built from the assembly, so a new
+  WinRT class needs no table entry, **but does need a repatch** (bump the version).
+
 ### When I touch a shim type
 
-Two distinct rebuild paths depending on what changed:
-
-1. **Shim implementation only** (`WPR.Framework.Silverlight/*.cs`,
-   `WPR.Framework.Phone/*.cs`, `WPR.WindowsCompability/*.cs`,
-   `WPR.Framework.Xna/*.cs` (including its `Compat/` overrides), GamerServices,
-   etc.): just rebuild — installed games will pick up the new behaviour on
-   next launch because they reference the shim assembly, not a snapshot of it.
-   **No reinstall needed.**
-2. **Patcher table change** (`Src/Core/WPR.Loader/ApplicationPatcher.cs` — adding
-   entries to `Patches` / `MemberPatches` / `WprFrameworkXnaTypes`, changing target
-   types): rebuild **and** **reinstall the affected games**, and bump
-   `ApplicationPatcher.Version` so the installer knows the IL is stale. The IL was
-   rewritten at install time; adding a new redirect now does nothing to
-   already-installed `.dll`s.
-
-   Note `WprFrameworkXnaTypes` (the set rescoped to `WPR.Framework.Xna`) is tested
-   **before** `Patches`, so a FullName in both silently loses its `Patches` redirect.
-
-The common "add a new shim type" task is **both**: add the shim class, add the
-patcher entry, rebuild, reinstall the affected game.
+1. **Shim or facade implementation** (any `WPR.Framework.*` project, `WPR.Backend.FNA/Compat`):
+   rebuild. Installed games pick it up on next launch, **including a type that did not exist
+   before**, as long as it has the real full name and sits in the assembly its WP assembly maps
+   to (table above). **No repatch.**
+2. **Patcher change** (`MemberPatches`, the remaining `Patches`, an IL pass, a WinRT class):
+   rebuild, bump `ApplicationPatcher.Version`, and repatch (`--repatch-installed` on the desktop,
+   automatic on Android).
 
 ### Shim file layout (project `WPR.Framework.Silverlight`)
 
-**Project name ≠ namespace.** Stage 3 renamed the *project* to
-`WPR.Framework.Silverlight`, but the code inside was deliberately left alone: every
-file still declares `namespace WPR.SilverlightCompability`, and that is what the
-patcher redirects to (`NewNamespace` in `ApplicationPatcher.cs`). Don't "fix" the
-namespace to match the folder — you'd have to rewrite the patcher tables and reinstall
-every game.
+**The folder IS the namespace (since patcher v61).** Every shim declares the namespace
+Silverlight declared, which is the folder it sits in: `System/Windows/Controls/Button.cs` is
+`namespace System.Windows.Controls`, class `Button`. That is what makes a game bind it (see
+"Games bind WPR by their own references"): **a shim with the wrong namespace or name is
+invisible to games**, so check both against the real type. Until 2026-10-26 every shim sat in one
+flat `WPR.SilverlightCompability` namespace and the patcher rewrote ~250 type references into it.
 
-This project's source tree mirrors the real Silverlight namespace hierarchy as
-directories — **one C# class per file, file path matches where the type lives
-upstream**. The directory structure is pure organisation; the assembly is one flat DLL
-in one flat namespace regardless of where on disk a file sits.
+Inside WPR code the shim namespaces come from `GlobalUsings.cs` (shim project, `Microsoft.Phone`,
+the tests); elsewhere add `using System.Windows...;`. `System.Windows.Shapes` is deliberately
+**not** global: its `Path` collides with `System.IO.Path`, so files drawing shapes import it.
+`WPR.SilverlightCompability` is now only WPR's helper code at the project root;
+`WPR.WindowsCompability` is the .NET-member replacements (`File2`, `Type2`, `NamedMutex`,
+`NormalizedPath*`, `PerGameIsolatedStorage`...) that `MemberPatches` target and that shadow no
+WP type.
 
 Examples:
 - `System.Windows.Shapes.Rectangle` → `System/Windows/Shapes/Rectangle.cs`

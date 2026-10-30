@@ -5,9 +5,9 @@ using System.Runtime.InteropServices;
 
 using WPR.Xna.Rhi;
 
-using SlImageSource = WPR.SilverlightCompability.ImageSource;
+using SlImageSource = System.Windows.Media.ImageSource;
 
-namespace WPR.WindowsCompability
+namespace System.Windows.Media.Imaging
 {
     /// <summary>
     /// Shim for <c>System.Windows.Media.Imaging.BitmapSource</c>. Inherits from

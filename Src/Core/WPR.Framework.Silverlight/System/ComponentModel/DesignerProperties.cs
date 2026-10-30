@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.SilverlightCompability
+namespace System.ComponentModel
 {
     /// <summary>
     /// Shim for <c>System.ComponentModel.DesignerProperties</c>. WP Toolkit controls

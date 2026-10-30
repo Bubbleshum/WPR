@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using WPR.SilverlightCompability;
-using Point = WPR.SilverlightCompability.Point;
+using Point = System.Windows.Point;
 
 namespace Microsoft.Phone.Controls
 {

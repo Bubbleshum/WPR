@@ -118,10 +118,10 @@ namespace Microsoft.Phone.Info
                     value = 180L * 1024 * 1024;
                     return true;
 
-                // Boxed as WPR.SilverlightCompability.Size, which is what the patcher rewrites the
+                // Boxed as System.Windows.Size, which is what the patcher rewrites the
                 // game's `unbox.any System.Windows.Size` to name. 49 call sites in the library.
                 case "PhysicalScreenResolution":
-                    value = new global::WPR.SilverlightCompability.Size(ScreenWidth, ScreenHeight);
+                    value = new global::System.Windows.Size(ScreenWidth, ScreenHeight);
                     return true;
 
                 // Doubles. Games unbox these as System.Double (29 sites) or Nullable<double>

@@ -4,7 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using WPR.WindowsCompability;
 using Xunit;
-using MessageBox = WPR.WindowsCompability.MessageBox;
+using MessageBox = System.Windows.MessageBox;
 
 namespace WPR.SilverlightCompability.Tests;
 

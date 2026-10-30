@@ -1,7 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Media
 {
     /// <summary>
     /// Shim for <c>System.Windows.Media.TimelineMarker</c> — a named point in a media file's

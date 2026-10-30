@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Input;
 using Microsoft.Xna.Framework.Input.Touch;
 using WPR.Engine.Input;
 using WPR.Xna.Rhi;
@@ -16,6 +17,10 @@ namespace WPR.SilverlightCompability.Tests;
 /// </summary>
 public class SyntheticTouchTests
 {
+    // TouchPanel is static: every test starts from no touches, as a new game does.
+    public SyntheticTouchTests() =>
+        typeof(TouchPanel).GetMethod("ResetForNewLaunch", BindingFlags.NonPublic | BindingFlags.Static)!.Invoke(null, null);
+
     [Fact]
     public void ATapIsReleasedForOneFrameAndThenGone()
     {
@@ -195,12 +200,152 @@ public class SyntheticTouchTests
         }
     }
 
+    private static readonly MethodInfo NotePressed = typeof(TouchPanel).GetMethod("NoteSourcePressed", BindingFlags.NonPublic | BindingFlags.Static)!;
+    private static readonly MethodInfo NoteLifted = typeof(TouchPanel).GetMethod("NoteSourceLifted", BindingFlags.NonPublic | BindingFlags.Static)!;
+    private static readonly MethodInfo UpdateTouch = typeof(TouchPanel).GetMethod("Update", BindingFlags.NonPublic | BindingFlags.Static)!;
+    private static readonly int NoFinger = (int)typeof(TouchPanel).GetField("NO_FINGER", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+
+    private static void Slot(int slot, int finger, float x, float y = 400) =>
+        typeof(TouchPanel).GetMethod("SetFinger", BindingFlags.NonPublic | BindingFlags.Static)!
+            .Invoke(null, new object[] { slot, finger, new Vector2(x, y) });
+
+    private static void Drain(Queue<Action> frames)
+    {
+        var input = DispatchProxy.Create<IInputBackend, DrainProxy>();
+        ((DrainProxy)(object)input).Frames = frames;
+        XnaBackend.SetInput(input);
+    }
+
+    [Fact]
+    public void ATapThatGoesDownAndUpBetweenTwoFramesIsPressedThenReleased()
+    {
+        // The drain polls which fingers are down when it runs; a finger that went down and up in
+        // between was never in GetState(), on any source. The phone reported every touch.
+        var frames = new Queue<Action>();
+        for (int i = 0; i < 4; i++) frames.Enqueue(() => { Slot(0, NoFinger, 0); Slot(1, NoFinger, 0); });
+        Drain(frames);
+        try
+        {
+            UpdateTouch.Invoke(null, null);
+            Assert.Empty(TouchPanel.GetState());
+
+            NotePressed.Invoke(null, new object[] { 3, new Vector2(120, 340), false });
+            NoteLifted.Invoke(null, new object[] { 3 });
+
+            var seen = new List<string>();
+            int id = 0;
+            for (int frame = 0; frame < 3; frame++)
+            {
+                UpdateTouch.Invoke(null, null);
+                TouchCollection state = TouchPanel.GetState();
+                seen.Add(state.Count == 0 ? "none" : state[0].State.ToString());
+                if (frame == 0)
+                {
+                    id = state[0].Id;
+                    Assert.Equal(new Vector2(120, 340), state[0].Position);
+                }
+                else if (state.Count > 0)
+                {
+                    Assert.Equal(id, state[0].Id);
+                }
+            }
+            Assert.Equal(new[] { "Pressed", "Released", "none" }, seen);
+        }
+        finally
+        {
+            XnaBackend.Clear();
+        }
+    }
+
+    [Fact]
+    public void ASourceLiftedAndPressedAgainBetweenFramesIsANewTouch()
+    {
+        // Android pointer ids restart at 0, and a quick second tap of one finger reuses its id:
+        // both used to read as the old touch Moved, with no lift between.
+        var frames = new Queue<Action>();
+        frames.Enqueue(() => { Slot(0, 5, 100); Slot(1, NoFinger, 0); });
+        frames.Enqueue(() => { Slot(0, 5, 300); Slot(1, NoFinger, 0); });
+        frames.Enqueue(() => { Slot(0, 5, 300); Slot(1, NoFinger, 0); });
+        Drain(frames);
+        try
+        {
+            UpdateTouch.Invoke(null, null);
+            int first = TouchPanel.GetState()[0].Id;
+
+            NoteLifted.Invoke(null, new object[] { 5 });
+            NotePressed.Invoke(null, new object[] { 5, new Vector2(300, 400), false });
+            UpdateTouch.Invoke(null, null);
+            TouchCollection state = TouchPanel.GetState();
+            Assert.Contains(state, t => t.Id == first && t.State == TouchLocationState.Released);
+            Assert.Contains(state, t => t.Id != first && t.State == TouchLocationState.Pressed);
+
+            UpdateTouch.Invoke(null, null);
+            TouchCollection after = TouchPanel.GetState();
+            Assert.Single(after);
+            Assert.Equal(TouchLocationState.Moved, after[0].State);
+            Assert.NotEqual(first, after[0].Id);
+        }
+        finally
+        {
+            XnaBackend.Clear();
+        }
+    }
+
+    [Fact]
+    public void TheMouseIsThePrimaryTouch()
+    {
+        // WP7's Mouse.GetState() was the first finger. On Android SDL makes no mouse from touch,
+        // so titles reading only the mouse took no touch at all.
+        TouchPanel.DisplayWidth = 800;
+        TouchPanel.DisplayHeight = 480;
+        foreach ((string name, int value) in new[] { ("INTERNAL_BackBufferWidth", 800), ("INTERNAL_BackBufferHeight", 480) })
+        {
+            typeof(Microsoft.Xna.Framework.Input.Mouse).GetField(name, BindingFlags.NonPublic | BindingFlags.Static)!.SetValue(null, value);
+        }
+        var frames = new Queue<Action>();
+        frames.Enqueue(() => { Slot(0, 1, 100, 200); Slot(1, NoFinger, 0); });  // first finger down
+        frames.Enqueue(() => { Slot(0, 1, 110, 210); Slot(1, 2, 600, 50); });  // second finger joins
+        frames.Enqueue(() => { Slot(0, 2, 600, 50); Slot(1, NoFinger, 0); });  // first lifts
+        frames.Enqueue(() => { Slot(0, 2, 610, 60); Slot(1, NoFinger, 0); });  // second still down
+        frames.Enqueue(() => { Slot(0, NoFinger, 0); Slot(1, NoFinger, 0); }); // all up
+        frames.Enqueue(() => { Slot(0, 2, 700, 300); Slot(1, NoFinger, 0); }); // a new touch
+        Drain(frames);
+        try
+        {
+            var seen = new List<(ButtonState, int, int)>();
+            for (int frame = 0; frame < 6; frame++)
+            {
+                UpdateTouch.Invoke(null, null);
+                MouseState mouse = Microsoft.Xna.Framework.Input.Mouse.GetState();
+                seen.Add((mouse.LeftButton, mouse.X, mouse.Y));
+            }
+
+            Assert.Equal((ButtonState.Pressed, 100, 200), seen[0]);
+            Assert.Equal((ButtonState.Pressed, 110, 210), seen[1]);
+            // The primary lifted: released where it was, and the other finger does not take over.
+            Assert.Equal(ButtonState.Released, seen[2].Item1);
+            Assert.Equal(ButtonState.Released, seen[3].Item1);
+            Assert.Equal(ButtonState.Released, seen[4].Item1);
+            Assert.Equal((ButtonState.Pressed, 700, 300), seen[5]);
+        }
+        finally
+        {
+            XnaBackend.Clear();
+        }
+    }
+
     public class DrainProxy : DefaultProxy
     {
         public Queue<Action> Frames = new Queue<Action>();
 
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
         {
+            if (targetMethod!.Name == nameof(IInputBackend.GetMouseState))
+            {
+                // No hardware mouse: at the origin, no buttons.
+                for (int i = 1; i < args!.Length; i++) args[i] = i < 3 ? 0 : ButtonState.Released;
+                return null;
+            }
             if (targetMethod!.Name == nameof(IInputBackend.UpdateTouchPanelState))
             {
                 // Like the real drain: every slot not written this frame is cleared first.

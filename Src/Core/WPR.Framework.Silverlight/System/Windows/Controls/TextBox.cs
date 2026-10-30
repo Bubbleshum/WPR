@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
     /// <summary>
     /// Stub for <c>System.Windows.Controls.TextBox</c>. Editable text input. WPR currently

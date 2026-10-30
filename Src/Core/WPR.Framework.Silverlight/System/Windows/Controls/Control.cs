@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
     /// <summary>Minimal stand-in for a Control base — the WP TextBox derives from Control, but
     /// our framework collapses Control to FrameworkElement since most of Control's chrome

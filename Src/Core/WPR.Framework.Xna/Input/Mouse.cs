@@ -9,6 +9,7 @@
 
 #region Using Statements
 using System;
+using Microsoft.Xna.Framework.Input.Touch;
 using WPR.Xna.Rhi;
 #endregion
 
@@ -64,6 +65,49 @@ namespace Microsoft.Xna.Framework.Input
 
 		#endregion
 
+		/* WPR: where the primary touch last put the mouse, and the hardware position at that time. */
+		private static bool reportedFromTouch;
+		private static int touchMouseX, touchMouseY, hardwareX, hardwareY;
+
+		/// <summary>
+		/// The primary touch as the mouse, in backbuffer coordinates. WP7's <c>Mouse.GetState()</c>
+		/// reported the first finger: LeftButton Pressed while it was down, at its position, and
+		/// the position kept after it lifted. Titles read their input through it alone (NFS
+		/// Undercover's J2ME layer, SPY Mouse); on Android SDL synthesises no mouse from touch
+		/// (SDL_HINT_TOUCH_MOUSE_EVENTS is off, see SDL2_FNAPlatform), so they took no touch at
+		/// all there. A real mouse button wins, and the mouse-as-touch slot is not a touch here.
+		/// The last touch position is kept until the hardware pointer moves.
+		/// </summary>
+		private static bool FromPrimaryTouch(int rawX, int rawY, ref ButtonState left, out int x, out int y)
+		{
+			if (TouchPanel.TryGetPrimaryTouch(out Vector2 touch, out bool down))
+			{
+				x = (int) ((double) touch.X * INTERNAL_BackBufferWidth / Math.Max(1, TouchPanel.DisplayWidth));
+				y = (int) ((double) touch.Y * INTERNAL_BackBufferHeight / Math.Max(1, TouchPanel.DisplayHeight));
+				if (down)
+				{
+					left = ButtonState.Pressed;
+				}
+				reportedFromTouch = true;
+				touchMouseX = x;
+				touchMouseY = y;
+				hardwareX = rawX;
+				hardwareY = rawY;
+				return true;
+			}
+
+			if (reportedFromTouch && rawX == hardwareX && rawY == hardwareY)
+			{
+				x = touchMouseX;
+				y = touchMouseY;
+				return true;
+			}
+
+			reportedFromTouch = false;
+			x = y = 0;
+			return false;
+		}
+
 		#region Public Events
 
 		public static Action<int> ClickedEXT;
@@ -92,6 +136,12 @@ namespace Microsoft.Xna.Framework.Input
 				out x1,
 				out x2
 			);
+
+			// WPR: on the phone the mouse was the primary touch (see the remarks below).
+			if (left == ButtonState.Released && FromPrimaryTouch(x, y, ref left, out int tx, out int ty))
+			{
+				return new MouseState(tx, ty, INTERNAL_MouseWheel, left, middle, right, x1, x2);
+			}
 
 			// Scale the mouse coordinates for the faux-backbuffer
 			// WPR: and turn them with a backbuffer shown turned (PresentationTurn).

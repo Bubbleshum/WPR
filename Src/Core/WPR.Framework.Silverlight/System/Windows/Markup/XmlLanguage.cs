@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Markup
 {
     /// <summary>
     /// Shim for <c>System.Windows.Markup.XmlLanguage</c>. Wraps an IETF language tag
