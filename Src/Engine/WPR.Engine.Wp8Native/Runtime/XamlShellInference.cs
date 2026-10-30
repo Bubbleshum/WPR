@@ -266,6 +266,24 @@ namespace WPR.Wp8Native
                         {
                             steps.Add(new XamlShellStep("CreateInstance", other.Method.ParameterTypes.Select(t => DefaultFor(t, "", null)).ToArray()) { Class = call.Class });
                         }
+                        // new C() of another class, then calls on that instance: GTA: San Andreas's
+                        // page makes a wp8Hal.WarEvents and hands it its C# WarCallback through
+                        // SetCallback. Left out, the engine called through the null callback the first
+                        // time it sent the page a command.
+                        else if (call.IsNew && call.Parameters == 0 && phase != Phase.Lifecycle && metadata.DefaultInterface(call.Class) is not null)
+                        {
+                            steps.Add(new XamlShellStep(WinRtRuntime.ActivateInstanceStep) { Class = call.Class });
+                        }
+                        else if (!call.IsStatic && !call.IsNew && !call.IsFunctionPointer && phase != Phase.Lifecycle &&
+                                 !call.Method.StartsWith("get_", StringComparison.Ordinal) &&
+                                 !call.Method.StartsWith("add_", StringComparison.Ordinal) &&
+                                 !call.Method.StartsWith("remove_", StringComparison.Ordinal) &&
+                                 steps.Any(s => s.Class == call.Class && s.Method is WinRtRuntime.ActivateInstanceStep or "CreateInstance") &&
+                                 metadata.FindMethod(call.Class, call.Method) is { } instanceMethod &&
+                                 StringArgumentsKnown(call, instanceMethod.Method))
+                        {
+                            steps.Add(new XamlShellStep(call.Method, Arguments(call, instanceMethod.Method)) { Class = call.Class });
+                        }
                         // A static of another class, usually handing the engine a C# callback it
                         // later calls unconditionally (Doodle God Blitz's DeviceWrapper.SetLanguageHandler
                         // and a dozen more: left out, the engine called through null 16 frames in).
@@ -433,6 +451,29 @@ namespace WPR.Wp8Native
                     : Has("Manufacturer") || Has("Family") ? "NOKIA"
                     : Has("DeviceName") || Has("Model") ? "RM-821_eu_euro1_276"
                     : null;
+            }
+
+            /// <summary>
+            /// Whether every string the call passes is one the IL shows. A string the page computed from
+            /// its own state is usually guarded by it: AC Pirates opens a launch URI on its Lua bridge
+            /// only <c>if (m_uri != null)</c>, which is null on a normal start, and a guessed "" for it
+            /// is a call the phone never made.
+            /// </summary>
+            private static bool StringArgumentsKnown(ShellCall call, WinmdReader.MethodLayout method)
+            {
+                int count = method.ParameterTypes.Count;
+                for (int i = 0; i < count; i++)
+                {
+                    int fromEnd = count - 1 - i;
+                    object? known = i < call.Evaluated.Length && call.Evaluated[i] is { } evaluated ? evaluated
+                        : fromEnd < call.TrailingConstants.Length ? call.TrailingConstants[^(fromEnd + 1)] : null;
+                    if (method.ParameterTypes[i] == "String" && known is not string)
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
             }
 
             private object?[] Arguments(ShellCall call, WinmdReader.MethodLayout method)

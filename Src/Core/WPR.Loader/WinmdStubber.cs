@@ -244,19 +244,7 @@ namespace WPR
         }
 
         /// <summary>Whether the file is a managed assembly (has CLI metadata); unreadable counts as not.</summary>
-        private static bool IsManagedAssembly(string path)
-        {
-            try
-            {
-                using FileStream stream = File.OpenRead(path);
-                using var pe = new System.Reflection.PortableExecutable.PEReader(stream);
-                return pe.HasMetadata;
-            }
-            catch (Exception ex) when (ex is BadImageFormatException or IOException)
-            {
-                return false;
-            }
-        }
+        private static bool IsManagedAssembly(string path) => ManagedImage.IsManaged(path);
 
         private static void DeclareTypeRecursive(
             TypeDefinition src,

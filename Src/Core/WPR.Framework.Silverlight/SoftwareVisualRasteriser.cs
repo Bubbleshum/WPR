@@ -190,6 +190,14 @@ namespace WPR.SilverlightCompability
                     PaintImage(surface, image, bounds, opacity, drawClip);
                     break;
 
+                // A hosted Direct3D component's picture is drawn under the page by the host, so
+                // the element is a window onto it: whatever the page painted behind it (GTA: San
+                // Andreas's black LayoutRoot) is cleared, and what comes after it in the tree
+                // still draws over the game, which is the phone's order.
+                case DrawingSurface drawingSurface when drawingSurface.AttachedContentProvider != null:
+                    surface.Clear(drawClip);
+                    break;
+
                 case TextBlock text:
                     PaintText(surface, text, bounds, opacity, scaleY, drawClip);
                     break;
@@ -1122,6 +1130,10 @@ namespace WPR.SilverlightCompability
                     hash.Add((int)media.Stretch);
                     break;
 
+                case DrawingSurface drawingSurface:
+                    hash.Add(drawingSurface.AttachedContentProvider != null);
+                    break;
+
                 case Image image:
                     hash.Add(RuntimeHelpers.GetHashCode(image.Source));
                     hash.Add((int)image.Stretch);
@@ -1280,6 +1292,16 @@ namespace WPR.SilverlightCompability
             public int Width => _w;
 
             public int Height => _h;
+
+            /// <summary>Makes <paramref name="clip"/> fully transparent: a window onto what is under the page.</summary>
+            public void Clear(Rect clip)
+            {
+                ToPixels(clip, clip, out int x0, out int y0, out int x1, out int y1);
+                for (int y = y0; y < y1; y++)
+                {
+                    Array.Clear(_px, (y * _w) + x0, Math.Max(0, x1 - x0));
+                }
+            }
 
             public void FillRect(Rect area, Rect clip, uint premultiplied)
             {
