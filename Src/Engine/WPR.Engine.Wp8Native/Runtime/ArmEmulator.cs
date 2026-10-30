@@ -65,6 +65,13 @@ namespace WPR.Wp8Native
 
         private int _methodsTraced;
 
+        /// <summary>The last host vtable method called, with its thread and caller (diagnostic, racy).</summary>
+        public string? RecentMethodCall => _recentMethod is { } name ? $"{name} t{_recentMethodThread} lr=0x{_recentMethodLr:X8}" : null;
+
+        private string? _recentMethod;
+        private long _recentMethodLr;
+        private int _recentMethodThread;
+
         private static readonly long ImportTraceLimit =
             long.TryParse(Environment.GetEnvironmentVariable("WPR_WP8_IMPORT_TRACE"), out long n) ? n : 0;
 
@@ -488,7 +495,24 @@ namespace WPR.Wp8Native
                     return $"stop-at addresses are unsupported on {_cpu.Capabilities.Name}";
                 }
 
-                RunResult result = _cpu.Run(startAddress, instructionBudget);
+                // In slices, so a thread that never enters a trap can be preempted between them
+                // (GuestThreads.cs, PreemptAfterSlice).
+                long next = startAddress;
+                long remaining = instructionBudget;
+                RunResult result;
+                while (true)
+                {
+                    long slice = Math.Min(remaining, PreemptSliceInstructions);
+                    result = _cpu.Run(next, slice);
+                    remaining -= slice;
+                    if (result.Outcome != RunOutcome.Budget || remaining <= 0)
+                    {
+                        break;
+                    }
+
+                    next = PreemptAfterSlice();
+                }
+
                 return result.Outcome == RunOutcome.Faulted ? result.Fault ?? "the CPU faulted" : null;
             }
             catch (CpuMemoryException ex)
@@ -1351,6 +1375,54 @@ namespace WPR.Wp8Native
                 byte[] bytes = _image.Raw.Slice((int)section.RawPointer, (int)section.RawSize).ToArray();
                 _cpu.MemWrite(_image.ImageBase + section.VirtualAddress, bytes);
             }
+
+            ProtectDataSections(_image, _image.ImageBase);
+        }
+
+        /// <summary>
+        /// Takes execute permission off the pages of an image's non-code sections (.data, .rdata,
+        /// .bss...), leaving them read-write, as Windows maps them (no-execute is always on for ARM).
+        /// A page any code section touches keeps everything.
+        /// </summary>
+        /// <remarks>
+        /// The image used to be mapped read-write-execute as a whole. A host write into an
+        /// executable page has to drop the JIT's translations for it (dynarmic halts the block and
+        /// clears its fast dispatch table), and the host writes into image data all the time: every
+        /// out-parameter that lands in a global. GTA: San Andreas reads QueryPerformanceCounter into
+        /// a global ~760,000 times a second; those writes alone were a quarter of its guest thread.
+        /// </remarks>
+        internal void ProtectDataSections(PeImage image, long imageBase)
+        {
+            var code = new HashSet<long>();
+            foreach (PeSection section in image.Sections.Where(s => s.IsExecutable))
+            {
+                long first = (imageBase + section.VirtualAddress) & ~(PageSize - 1);
+                long end = Align(imageBase + section.VirtualAddress + Math.Max(1, section.MappedSize), PageSize);
+                for (long page = first; page < end; page += PageSize)
+                {
+                    code.Add(page);
+                }
+            }
+
+            foreach (PeSection section in image.Sections.Where(s => !s.IsExecutable && s.MappedSize > 0))
+            {
+                long first = (imageBase + section.VirtualAddress) & ~(PageSize - 1);
+                long end = Align(imageBase + section.VirtualAddress + section.MappedSize, PageSize);
+                long run = -1;
+                for (long page = first; page <= end; page += PageSize)
+                {
+                    bool data = page < end && !code.Contains(page);
+                    if (data && run < 0)
+                    {
+                        run = page;
+                    }
+                    else if (!data && run >= 0)
+                    {
+                        _cpu.MemProtect(run, page - run, Common.UC_PROT_READ | Common.UC_PROT_WRITE);
+                        run = -1;
+                    }
+                }
+            }
         }
 
         private void MapScratchRegions()
@@ -1879,6 +1951,7 @@ namespace WPR.Wp8Native
             _cpu.RegWrite(Arm.UC_ARM_REG_R12, _cpu.RegRead(Arm.UC_ARM_REG_LR));
             _lastTrap = slot.Name;
             _lastTrapAddress = address;
+            _trapsEntered++;
             _blocksSinceTrap = 0;
 
             switch (slot.Kind)
@@ -1954,6 +2027,9 @@ namespace WPR.Wp8Native
                     }
 
                     _vtableCalls.Add(slot.Name);
+                    _recentMethod = slot.Name;
+                    _recentMethodLr = _cpu.RegRead(Arm.UC_ARM_REG_LR);
+                    _recentMethodThread = CurrentThreadId;
                     if (_vtableCalls.Count > 4096)
                     {
                         // Bounded: a live host makes millions of these over a session.

@@ -121,6 +121,7 @@ namespace WPR.Wp8Native
                 }
 
                 byte[] code = aon9.AsSpan(codeOffset, codeSize).ToArray();
+                ClearMinimumPrecision(code);
                 int droppedOutputs = isPixel ? DropExtraColourOutputs(code) : 0;
                 // Read before CompactVertexInputs renumbers them: the replay speaks original registers.
                 Dictionary<int, (int, int)> declaredInputs = isPixel ? [] : DeclaredInputRegisters(code);
@@ -131,8 +132,10 @@ namespace WPR.Wp8Native
 
                 List<Aon9ConstantArray> arrays = ConstantArraysFor(code, isPixel, registers, maps);
                 Dictionary<(string, int), int> inputs = chunks.TryGetValue("ISGN", out ReadOnlyMemory<byte> isgn)
-                    ? InputSignature(isgn.Span)
-                    : [];
+                    ? InputSignature(isgn.Span, extended: false)
+                    : chunks.TryGetValue("ISG1", out ReadOnlyMemory<byte> isg1)
+                        ? InputSignature(isg1.Span, extended: true)
+                        : [];
 
                 return new Aon9Shader
                 {
@@ -217,6 +220,73 @@ namespace WPR.Wp8Native
             }
 
             return dropped;
+        }
+
+        /// <summary>
+        /// Clears the minimum-precision hint (bits 14-15, <c>D3DSP_MIN_PRECISION_MASK</c>) from every
+        /// register parameter, in place, and returns how many carried one.
+        /// </summary>
+        /// <remarks>
+        /// <para>The Windows 8 compiler marks a register of a feature level 9 program that the HLSL
+        /// declared <c>min16float</c> (1) or <c>min10float</c> (2) there. Before Windows 8 those bits
+        /// were reserved, and MojoShader still treats them so: "Reserved bit #1 in destination token
+        /// must be zero" fails the whole program. GTA: San Andreas's two shaders mark every texture
+        /// coordinate, colour output and colour input, so none compiled, every draw was skipped and
+        /// the game ran at 60 fps on a black screen.</para>
+        /// <para>The hint only allows a lower precision; computing at full precision is always a
+        /// correct implementation of it, which is what clearing it asks for. Literal values of
+        /// <c>def</c>/<c>defb</c>/<c>defi</c> and the usage token of a <c>dcl</c> are not register
+        /// parameters and are left alone.</para>
+        /// </remarks>
+        internal static int ClearMinimumPrecision(byte[] code)
+        {
+            const uint MinimumPrecision = 0x0000C000;
+            if (code.Length < 4 || ((U32(code, 0) >> 8) & 0xFF) < 2)
+            {
+                return 0;   // version 1 programs carry no instruction lengths
+            }
+
+            int cleared = 0;
+            int at = 4;
+            while (at + 4 <= code.Length)
+            {
+                uint token = U32(code, at);
+                if (token == 0x0000FFFF)
+                {
+                    break;
+                }
+
+                uint opcode = token & 0xFFFF;
+                if (opcode == 0xFFFE)
+                {
+                    at += 4 + (int)(((token >> 16) & 0x7FFF) * 4);
+                    continue;
+                }
+
+                int length = (int)((token >> 24) & 0xF);
+                bool literal = opcode is 81 or 47 or 48;   // def, defb, defi: only the destination is a register
+                int first = opcode == 31 ? 1 : 0;          // dcl: the usage token comes first
+                int last = literal ? Math.Min(length, 1) : length;
+                for (int i = first; i < last; i++)
+                {
+                    int position = at + 4 + (i * 4);
+                    if (position + 4 > code.Length)
+                    {
+                        break;
+                    }
+
+                    uint parameter = U32(code, position);
+                    if ((parameter & 0x80000000) != 0 && (parameter & MinimumPrecision) != 0)
+                    {
+                        BinaryPrimitives.WriteUInt32LittleEndian(code.AsSpan(position), parameter & ~MinimumPrecision);
+                        cleared++;
+                    }
+                }
+
+                at += 4 + (length * 4);
+            }
+
+            return cleared;
         }
 
         /// <summary>
@@ -522,14 +592,24 @@ namespace WPR.Wp8Native
             return chunks;
         }
 
-        /// <summary>ISGN: count, 8, then 24-byte elements { name offset, semantic index, system value, type, register, mask... }.</summary>
-        private static Dictionary<(string, int), int> InputSignature(ReadOnlySpan<byte> isgn)
+        /// <summary>
+        /// ISGN: count, 8, then 24-byte elements { name offset, semantic index, system value, type,
+        /// register, mask... }. ISG1 (<paramref name="extended"/>): the same with a stream number in
+        /// front and a minimum precision behind, 32 bytes each.
+        /// </summary>
+        /// <remarks>
+        /// The Windows 8.1 compiler writes ISG1 instead of ISGN for any shader, min-precision or not.
+        /// GTA: San Andreas ships its shaders compiled that way (Assets\DX11Cache.dat); read as having
+        /// no inputs, no element fed any register and every draw was skipped.
+        /// </remarks>
+        private static Dictionary<(string, int), int> InputSignature(ReadOnlySpan<byte> isgn, bool extended)
         {
             Dictionary<(string, int), int> inputs = [];
             int count = (int)U32(isgn, 0);
+            int size = extended ? 32 : 24;
             for (int i = 0; i < count; i++)
             {
-                int at = 8 + (i * 24);
+                int at = 8 + (i * size) + (extended ? 4 : 0);
                 int nameOffset = (int)U32(isgn, at);
                 int end = isgn[nameOffset..].IndexOf((byte)0);
                 string name = Encoding.ASCII.GetString(isgn.Slice(nameOffset, end)).ToUpperInvariant();

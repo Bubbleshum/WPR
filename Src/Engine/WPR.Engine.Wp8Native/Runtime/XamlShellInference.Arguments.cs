@@ -118,6 +118,7 @@ namespace WPR.Wp8Native
 
                 Stack<object?> stack = new();
                 Dictionary<int, object?> locals = [];
+                _properties.Clear();
                 object? Pop() => stack.Count > 0 ? stack.Pop() : Unknown.Value;
                 static double? Num(object? v) => v switch { double d => d, long l => l, _ => null };
 
@@ -468,6 +469,13 @@ namespace WPR.Wp8Native
                 return TypeName(blob.ReadTypeHandle());
             }
 
+            /// <summary>
+            /// Values the evaluated method has just given a property (<c>set_X</c>), by declaring type
+            /// and name, so a later <c>get_X</c> reads them back. GTA: San Andreas does
+            /// <c>RenderResolution = NativeResolution</c> straight after setting the latter.
+            /// </summary>
+            private readonly Dictionary<(string?, string), object?> _properties = [];
+
             /// <summary>A call during <see cref="EvaluateArguments"/>: pops its arguments and pushes what is known of its result.</summary>
             private bool Call(ILOpCode op, int token, Stack<object?> stack, Dictionary<int, object?> locals)
             {
@@ -539,6 +547,16 @@ namespace WPR.Wp8Native
 
                 double? Arg(int i) => i < args.Length ? args[i] switch { double d => d, long l => l, _ => null } : null;
                 object? result = Unknown.Value;
+                if (header.IsInstance && name.StartsWith("set_", StringComparison.Ordinal) && count == 1)
+                {
+                    _properties[(owner, name[4..])] = args[0];
+                }
+                else if (header.IsInstance && name.StartsWith("get_", StringComparison.Ordinal) && count == 0 &&
+                         _properties.TryGetValue((owner, name[4..]), out object? known))
+                {
+                    result = known;
+                }
+
                 switch (owner, name)
                 {
                     case ("System.Windows.Interop.Content", "get_ActualWidth"):
@@ -546,6 +564,17 @@ namespace WPR.Wp8Native
                         break;
                     case ("System.Windows.Interop.Content", "get_ActualHeight"):
                         result = (double)Wp8Display.LogicalHeight;
+                        break;
+                    // An element of the page (the DrawingSurface the component draws into, the
+                    // LayoutRoot) fills it, and a page is laid out in its own orientation: a
+                    // Landscape page's elements are 800x480 DIPs, unlike Host.Content above. GTA:
+                    // San Andreas sizes its whole render from DrawingSurface.ActualWidth/Height;
+                    // answered portrait, it drew its landscape screens into a 768x1280 texture.
+                    case ("System.Windows.FrameworkElement", "get_ActualWidth"):
+                        result = (double)(Landscape ? Wp8Display.LogicalHeight : Wp8Display.LogicalWidth);
+                        break;
+                    case ("System.Windows.FrameworkElement", "get_ActualHeight"):
+                        result = (double)(Landscape ? Wp8Display.LogicalWidth : Wp8Display.LogicalHeight);
                         break;
                     case ("System.Windows.Interop.Content", "get_ScaleFactor"):
                         result = (long)Wp8Display.Scale;

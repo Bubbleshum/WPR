@@ -72,6 +72,10 @@ namespace WPR.Wp8Native
         private DateTime _statsAt;
         private long _statsPresented;
         private int _sensorLogged;
+        private int _silentReports;
+
+        /// <summary>Stopwatch ticks the guest spent waiting for the host's tick after a frame, since the last stats line.</summary>
+        private long _guestWaitTicks;
 
         /// <param name="executable">The title's executable (or Direct3D/XAML component) inside its install folder.</param>
         /// <param name="sandboxRoot">Where the title's local folder lives on the host.</param>
@@ -464,6 +468,10 @@ namespace WPR.Wp8Native
                 {
                     Log("threads: " + line);
                 }
+
+                // A thread switched out between two instructions because it entered no trap for a
+                // whole slice (GuestThreads.PreemptAfterSlice): a title that polls memory to wait.
+                Log($"threads: {_emulator.Preemptions} preemption(s), {_emulator.ThreadSwitches} switch(es)");
             }
             catch (Exception)
             {
@@ -573,7 +581,7 @@ namespace WPR.Wp8Native
 
                 // The last file operations: a failure is often a file that did not open, and the
                 // game's own message rarely names the path in a form that survives.
-                foreach (string line in emulator.Stubs.Files.Log.TakeLast(12))
+                foreach (string line in emulator.Stubs.Files.Log.TakeLast(Environment.GetEnvironmentVariable("WPR_WP8_FILE_LOG") == "1" ? int.MaxValue : 12))
                 {
                     Log("   file: " + line);
                 }
@@ -695,7 +703,9 @@ namespace WPR.Wp8Native
 
             if (!_closing)
             {
+                long waitFrom = System.Diagnostics.Stopwatch.GetTimestamp();
                 _tick.Wait(250);
+                Interlocked.Add(ref _guestWaitTicks, System.Diagnostics.Stopwatch.GetTimestamp() - waitFrom);
             }
         }
 
@@ -754,7 +764,9 @@ namespace WPR.Wp8Native
             // with nothing to show for it.
             if (!_closing)
             {
+                long waitFrom = System.Diagnostics.Stopwatch.GetTimestamp();
                 _tick.Wait(250);
+                Interlocked.Add(ref _guestWaitTicks, System.Diagnostics.Stopwatch.GetTimestamp() - waitFrom);
             }
         }
 
@@ -1205,6 +1217,7 @@ namespace WPR.Wp8Native
             Log($"guest fps={(_presented - _statsPresented) / seconds:0.0} frames={_presented} drawn={_drawn} " +
                 $"longest-gap={_longestGapTicks * 1000 / System.Diagnostics.Stopwatch.Frequency}ms hitches>50ms={_hitches} gc-pause={(gcPause - _statsGcPause).TotalMilliseconds:0}ms " +
                 $"host updates={_hostUpdates} draws={_hostDraws} " +
+                $"guest-wait={Interlocked.Exchange(ref _guestWaitTicks, 0) * 1000 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, _presented - _statsPresented)}ms/frame " +
                 $"file-io={((_emulator?.Stubs.Files.IoTicks ?? 0) - _statsIoTicks) * 1000 / System.Diagnostics.Stopwatch.Frequency}ms/{(_emulator?.Stubs.Files.IoCalls ?? 0) - _statsIoCalls} " +
                 $"drawlist-build total={build * 1000 / System.Diagnostics.Stopwatch.Frequency}ms textures={_textures.Count} " +
                 $"gpu: replayed={_replay?.DrawsReplayed} skipped={_replay?.DrawsSkipped} frames-dropped={_gpuFramesDropped} {_replay?.Statistics()} unrecorded={string.Join(",", _emulator?.Direct3D.GpuSkipped.Select(p => $"{p.Key}:{p.Value}") ?? [])} " +
@@ -1271,6 +1284,15 @@ namespace WPR.Wp8Native
                 {
                     long calls = emulator.CallOrderTotal;
                     Log($"guest has not presented for {seconds:0}s: {calls - _statsCalls:N0} host call(s) since the last report");
+                    _silentReports = calls == _statsCalls ? _silentReports + 1 : 0;
+                    if (calls == _statsCalls && emulator.RecentMethodCall is { } method)
+                    {
+                        Log($"   last host method: {method}");
+                    }
+                    if (_silentReports >= 3 && Environment.GetEnvironmentVariable("WPR_WP8_HALT_ON_STALL") == "1")
+                    {
+                        emulator.Stop("halted: no host call for a whole report (WPR_WP8_HALT_ON_STALL)");
+                    }
                     // Racy snapshot of the per-import counts; retried, because the guest is writing
                     // them as fast as it can. The hottest deltas name the loop.
                     KeyValuePair<string, int>[]? counts = null;
