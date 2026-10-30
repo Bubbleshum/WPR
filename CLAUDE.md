@@ -7165,8 +7165,10 @@ What the patcher still rewrites, and why each cannot be a name match:
    before**, as long as it has the real full name and sits in the assembly its WP assembly maps
    to (table above). **No repatch.**
 2. **Patcher change** (`MemberPatches`, the remaining `Patches`, an IL pass, a WinRT class):
-   rebuild, bump `ApplicationPatcher.Version`, and repatch (`--repatch-installed` on the desktop,
-   automatic on Android).
+   rebuild, bump `ApplicationPatcher.Version`, and repatch. Both heads repatch an outdated install
+   when it is launched (Android `GameLauncher`; the desktop's `MainWindowDesktop.RepatchIfOutdatedAsync`
+   since 2026-10-30, which used to leave it to the Repatch button). `--repatch-installed` still
+   does every install at once on the desktop.
 
 ### Shim file layout (project `WPR.Framework.Silverlight`)
 
