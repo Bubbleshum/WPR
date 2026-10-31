@@ -625,9 +625,15 @@ namespace WPR.Wp8Native
 
         /// <summary>
         /// void qsort(void* base, size_t count, size_t size, int (*compare)(const void*, const void*)):
-        /// an insertion sort over guest memory, asking the image's comparator through a callback
-        /// for each step. Quadratic, which is fine for the small tables games sort.
+        /// a bottom-up merge sort over guest memory, asking the image's comparator through a
+        /// callback for each comparison.
         /// </summary>
+        /// <remarks>
+        /// Not an insertion sort: GTA: San Andreas sorts a table of a few thousand entries while
+        /// loading, and the quadratic version made ~1.6M guest calls for it (about ten seconds of
+        /// black screen on a phone, half of it in GC). This makes n log n comparisons, copies guest
+        /// to guest, and allocates nothing per comparison. Equal elements keep their order.
+        /// </remarks>
         private void Qsort()
         {
             long array = _frame.Arg(0);
@@ -642,53 +648,92 @@ namespace WPR.Wp8Native
                 return;
             }
 
-            // Scratch for the element being inserted, so the comparator sees real memory.
-            long held = _emulator.AllocateHeap(size);
+            // Each pass merges runs of `width` from src into dst; the two swap after a pass.
+            long bytes = (long)count * size;
+            long scratch = _emulator.AllocateHeap(bytes);
+            long src = array, dst = scratch;
+            int width = 1, lo = 0, mid = 0, hi = 0, i = 0, j = 0, k = 0;
 
-            void Insert(int i)
+            // One delegate for every comparison, not a closure per call.
+            Action onCompared = null!;
+            onCompared = Compared;
+
+            void StartPair()
             {
-                if (i >= count)
+                mid = Math.Min(lo + width, count);
+                hi = Math.Min(lo + (2 * width), count);
+                i = lo;
+                j = mid;
+                k = lo;
+            }
+
+            void CopyRun(int from, int length)
+            {
+                _emulator.CopyMemory(dst + ((long)k * size), src + ((long)from * size), (long)length * size);
+                k += length;
+            }
+
+            // Runs the merge until it needs the comparator (and returns) or the sort is done.
+            void Continue()
+            {
+                while (true)
                 {
-                    _frame.Return(0);
-                    _emulator.ContinueAt(returnTo);
-                    return;
+                    if (i < mid && j < hi)
+                    {
+                        _emulator.CallEmulated("qsort comparator", compare,
+                            [src + ((long)i * size), src + ((long)j * size)], onCompared, recycle: true);
+                        return;
+                    }
+
+                    // One run is used up; the rest of the other is already in order.
+                    CopyRun(i, mid - i);
+                    CopyRun(j, hi - j);
+                    i = mid;
+                    j = hi;
+
+                    lo = hi;
+                    if (lo >= count)
+                    {
+                        (src, dst) = (dst, src);
+                        width *= 2;
+                        if (width >= count)
+                        {
+                            break;
+                        }
+
+                        lo = 0;
+                    }
+
+                    StartPair();
                 }
 
-                _emulator.WriteMemory(held, _emulator.ReadMemory(array + ((long)i * size), size));
-                Shift(i, i - 1);
-            }
-
-            void Shift(int i, int j)
-            {
-                if (j < 0)
+                if (src != array)
                 {
-                    Place(i, 0);
-                    return;
+                    _emulator.CopyMemory(array, src, bytes);
                 }
 
-                long candidate = array + ((long)j * size);
-                _emulator.CallEmulated("qsort comparator", compare, [candidate, held], onReturn: () =>
-                {
-                    int order = unchecked((int)(uint)_frame.Arg(0));
-                    if (order > 0)
-                    {
-                        _emulator.WriteMemory(candidate + size, _emulator.ReadMemory(candidate, size));
-                        Shift(i, j - 1);
-                    }
-                    else
-                    {
-                        Place(i, j + 1);
-                    }
-                }, recycle: true);
+                _emulator.FreeHeap(scratch);
+                _frame.Return(0);
+                _emulator.ContinueAt(returnTo);
             }
 
-            void Place(int i, int slot)
+            void Compared()
             {
-                _emulator.WriteMemory(array + ((long)slot * size), _emulator.ReadMemory(held, size));
-                Insert(i + 1);
+                int order = unchecked((int)(uint)_frame.Arg(0));
+                if (order <= 0)
+                {
+                    CopyRun(i++, 1);
+                }
+                else
+                {
+                    CopyRun(j++, 1);
+                }
+
+                Continue();
             }
 
-            Insert(1);
+            StartPair();
+            Continue();
         }
             private readonly Dictionary<int, long> _strtokNext = new();
 

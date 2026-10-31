@@ -65,7 +65,7 @@ namespace WPR.Common
             {
                 // FileMode.Create, not OpenOrCreate: OpenOrCreate does not truncate, so a
                 // shorter replacement leaves the tail of the old file behind. This copy
-                // re-runs on every launch to deploy updated achievement catalogues, and a
+                // re-runs whenever the APK changes to deploy updated achievement catalogues, and a
                 // catalogue that loses a few bytes between releases would arrive as invalid
                 // JSON -- which HardcodedAchievementCatalogue.Load swallows, so the game
                 // simply shows no achievements rather than reporting anything.
