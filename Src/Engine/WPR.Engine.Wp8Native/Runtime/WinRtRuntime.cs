@@ -462,7 +462,74 @@ namespace WPR.Wp8Native
         /// <summary>How many moves a drag is broken into when the script does not say.</summary>
         private const int DragStepsDefault = 12;
 
-        private long _pointerArgs;
+        /// <summary>
+        /// What one pointer event says: each event gets its own PointerEventArgs, as on the phone.
+        /// </summary>
+        private sealed class PointerSnapshot
+        {
+            public float X, Y;
+            public bool InContact, Primary;
+            public uint Id;
+            public int Slot, Frame;
+        }
+
+        /// <summary>
+        /// The PointerEventArgs handed out. A game may keep the args and read them after its handler
+        /// has returned: Halo: Spartan Assault AddRefs them and reads them on its own thread. With
+        /// one shared object answering for whatever event came last, a lift read that way named the
+        /// next press's finger, the lifted finger was never let go, and the fire button stayed held
+        /// (fingers going on and off fast in a mission, 2026-10-31). An args object is reused only
+        /// once the game has released it; the pool grows while it holds them, up to a bound.
+        /// </summary>
+        private readonly List<(long Args, uint FreeCount, PointerSnapshot Event)> _pointerArgsPool = new();
+        private int _pointerArgsNext;
+        private long _pointerDevice;
+        private const int PointerArgsPoolLimit = 128;
+
+        /// <summary>The args of the event being delivered, shared by every handler of that event.</summary>
+        private long _currentPointerArgs;
+
+        /// <summary>Fresh args for the pointer event now in the fields above.</summary>
+        private long NextPointerArgs()
+        {
+            int pick = -1;
+            for (int i = 0; i < _pointerArgsPool.Count && pick < 0; i++)
+            {
+                int index = (_pointerArgsNext + i) % _pointerArgsPool.Count;
+                (long args, uint freeCount, _) = _pointerArgsPool[index];
+                if (_emulator.ReadUInt32(args + 4) <= freeCount)
+                {
+                    pick = index;
+                }
+            }
+
+            if (pick < 0)
+            {
+                if (_pointerArgsPool.Count < PointerArgsPoolLimit)
+                {
+                    var created = new PointerSnapshot();
+                    long args = BuildPointerArgs(created);
+                    _pointerArgsPool.Add((args, _emulator.ReadUInt32(args + 4), created));
+                    pick = _pointerArgsPool.Count - 1;
+                }
+                else
+                {
+                    // Every one still held: reuse the oldest rather than make objects without end.
+                    pick = _pointerArgsNext % _pointerArgsPool.Count;
+                }
+            }
+
+            _pointerArgsNext = pick + 1;
+            PointerSnapshot e = _pointerArgsPool[pick].Event;
+            e.X = _pointerX;
+            e.Y = _pointerY;
+            e.InContact = _pointerInContact;
+            e.Primary = IsPrimaryPointer;
+            e.Id = _pointerId;
+            e.Slot = _pointerSlot;
+            e.Frame = ProcessEventsCalls;
+            return _pointerArgsPool[pick].Args;
+        }
 
         /// <summary>
         /// One pointer event: which CoreWindow event, where, which finger, and whether a live host
@@ -535,6 +602,38 @@ namespace WPR.Wp8Native
 
         /// <summary>Which event is being delivered (pressed, moved, released): PointerUpdateKind.</summary>
         private int _pointerSlot;
+
+        /// <summary>
+        /// Counts the guest's input turns: one per ProcessEvents, or per frame of a XAML title.
+        /// </summary>
+        private int _inputTurn;
+
+        /// <summary>The turn each pointer last went down on.</summary>
+        private readonly Dictionary<uint, int> _pressedOnTurn = new();
+
+        /// <summary>Starts a new input turn. Called once per guest frame, before its input.</summary>
+        internal void BeginInputTurn() => _inputTurn++;
+
+        /// <summary>
+        /// Whether the next live step is the lift of a finger that went down on this same turn.
+        /// Such a lift waits for the next turn, so the game sees the finger down for at least one
+        /// of its frames, as every touch on the phone was.
+        /// </summary>
+        /// <remarks>
+        /// The host queues touch at its own rate (60 a second) and the guest takes it once a frame,
+        /// so a game slower than that (Halo: Spartan Assault in a mission, 40-55 fps on a Galaxy
+        /// S24) would otherwise get a quick tap's press and lift in one ProcessEvents, and a game
+        /// that polls which pointers are down once a frame would never see the tap. The events
+        /// behind the held lift wait too, so their order is kept.
+        /// </remarks>
+        private bool ReleaseHeldForNextTurn()
+        {
+            PointerStep next = _pending.Peek();
+            return next.Live
+                && next.Slot == SlotAddPointerReleased
+                && _pressedOnTurn.TryGetValue(next.Id, out int turn)
+                && turn == _inputTurn;
+        }
 
         /// <summary>Pointers in contact now, and the primary one (0 when none is).</summary>
         private readonly HashSet<uint> _contacts = new();
@@ -783,7 +882,7 @@ namespace WPR.Wp8Native
                 _gestureIndex++;
             }
 
-            if (_pending.Count == 0)
+            if (_pending.Count == 0 || ReleaseHeldForNextTurn())
             {
                 return false;
             }
@@ -806,6 +905,11 @@ namespace WPR.Wp8Native
             _pointerId = next.Id;
             _pointerSlot = next.Slot;
             TrackPrimary(next.Slot, next.Id);
+            if (next.Slot == SlotAddPointerPressed)
+            {
+                _pressedOnTurn[next.Id] = _inputTurn;
+            }
+            _currentPointerArgs = NextPointerArgs();
 
             int slot = next.Slot;
             List<long> handlers = WindowHandlersFor(slot);
@@ -857,7 +961,7 @@ namespace WPR.Wp8Native
                 // Every live event queued this frame goes out this frame. One a frame was
                 // enough for one finger; with two moving, events arrived twice as fast as
                 // they left and the controls fell further behind every frame.
-                while (_pending.Count > 0 && _pending.Peek().Live)
+                while (_pending.Count > 0 && _pending.Peek().Live && !ReleaseHeldForNextTurn())
                 {
                     if (DeliverInput(continueWith, sender))
                     {
@@ -977,7 +1081,7 @@ namespace WPR.Wp8Native
                 _emulator.CallEmulated(
                     $"CoreWindow::{name}",
                     invoke,
-                    [handler, sender, PointerArgs()],
+                    [handler, sender, _currentPointerArgs],
                     onReturn: () => InvokeWindowHandlers(handlers, next, name, sender, done),
                     recycle: true);
                 return;
@@ -1204,12 +1308,8 @@ namespace WPR.Wp8Native
         /// get_Properties, get_IsInContact. Only the two a game reads are implemented, and
         /// the rest fall through to discovery so the trace names anything else it wants.
         /// </remarks>
-        private long PointerArgs()
+        private long BuildPointerArgs(PointerSnapshot e)
         {
-            if (_pointerArgs != 0)
-            {
-                return _pointerArgs;
-            }
 
             // Windows.UI.Input.IPointerPoint, in the order Windows.UI.winmd declares it:
             // PointerDevice, Position, RawPosition, PointerId, FrameId, Timestamp,
@@ -1219,7 +1319,7 @@ namespace WPR.Wp8Native
             // PointerId was answered with a 64-bit timestamp. Every tap it was ever handed
             // therefore landed at (1.4e-45, whatever), and a splash that accepts any touch
             // was the only thing that could look as if input worked.
-            long device = CreateDiscoveryObject(
+            long device = _pointerDevice != 0 ? _pointerDevice : _pointerDevice = CreateDiscoveryObject(
                 "IPointerDevice",
                 slotCount: 8,
                 known: new Dictionary<int, (string, Action)>
@@ -1235,7 +1335,7 @@ namespace WPR.Wp8Native
                 {
                     // Held in the landscape space the image composes in; handed over in the
                     // portrait window space it expects - see ToWindow.
-                    (float x, float y) = ToWindow(_pointerX, _pointerY);
+                    (float x, float y) = ToWindow(e.X, e.Y);
                     _emulator.WriteSingle(Arg(1) + 0, x);
                     _emulator.WriteSingle(Arg(1) + 4, y);
                 }
@@ -1269,7 +1369,7 @@ namespace WPR.Wp8Native
             {
                 if (ArmEmulator.IsStackAddress(Arg(1)))
                 {
-                    (float x, float y) = ToWindow(_pointerX, _pointerY);
+                    (float x, float y) = ToWindow(e.X, e.Y);
                     _emulator.WriteSingle(Arg(1) + 0, x);
                     _emulator.WriteSingle(Arg(1) + 4, y);
                     _emulator.WriteSingle(Arg(1) + 8, 0f);
@@ -1283,7 +1383,7 @@ namespace WPR.Wp8Native
                 slotCount: 30,
                 known: new Dictionary<int, (string, Action)>
                 {
-                    [InspectableSlots + 0] = ("get_Pressure", single(() => _pointerInContact ? 0.5f : 0f)),
+                    [InspectableSlots + 0] = ("get_Pressure", single(() => e.InContact ? 0.5f : 0f)),
                     [InspectableSlots + 1] = ("get_IsInverted", flag(() => false)),
                     [InspectableSlots + 2] = ("get_IsEraser", flag(() => false)),
                     [InspectableSlots + 3] = ("get_Orientation", single(() => 0f)),
@@ -1293,13 +1393,13 @@ namespace WPR.Wp8Native
                     [InspectableSlots + 7] = ("get_ContactRect", contact),
                     [InspectableSlots + 8] = ("get_ContactRectRaw", contact),
                     [InspectableSlots + 9] = ("get_TouchConfidence", flag(() => true)),
-                    [InspectableSlots + 10] = ("get_IsLeftButtonPressed", flag(() => _pointerInContact)),
+                    [InspectableSlots + 10] = ("get_IsLeftButtonPressed", flag(() => e.InContact)),
                     [InspectableSlots + 11] = ("get_IsRightButtonPressed", flag(() => false)),
                     [InspectableSlots + 12] = ("get_IsMiddleButtonPressed", flag(() => false)),
                     [InspectableSlots + 13] = ("get_MouseWheelDelta", () => ReturnUInt32(0)),
                     [InspectableSlots + 14] = ("get_IsHorizontalMouseWheel", flag(() => false)),
-                    [InspectableSlots + 15] = ("get_IsPrimary", flag(() => IsPrimaryPointer)),
-                    [InspectableSlots + 16] = ("get_IsInRange", flag(() => _pointerInContact)),
+                    [InspectableSlots + 15] = ("get_IsPrimary", flag(() => e.Primary)),
+                    [InspectableSlots + 16] = ("get_IsInRange", flag(() => e.InContact)),
                     [InspectableSlots + 17] = ("get_IsCanceled", flag(() => false)),
                     [InspectableSlots + 18] = ("get_IsBarrelButtonPressed", flag(() => false)),
                     [InspectableSlots + 19] = ("get_IsXButton1Pressed", flag(() => false)),
@@ -1307,7 +1407,7 @@ namespace WPR.Wp8Native
 
                     // PointerUpdateKind: Other 0, LeftButtonPressed 1, LeftButtonReleased 2.
                     [InspectableSlots + 21] = ("get_PointerUpdateKind", () => ReturnUInt32(
-                        _pointerSlot == SlotAddPointerPressed ? 1u : _pointerSlot == SlotAddPointerReleased ? 2u : 0u)),
+                        e.Slot == SlotAddPointerPressed ? 1u : e.Slot == SlotAddPointerReleased ? 2u : 0u)),
                     [InspectableSlots + 22] = ("HasUsage", () => { if (ArmEmulator.IsStackAddress(Arg(3))) { _emulator.WriteBoolean(Arg(3), false); } Return(HResultOk); }),
                     [InspectableSlots + 23] = ("GetUsageValue", () => Return(unchecked((int)0x80070057))),
                 });
@@ -1324,8 +1424,8 @@ namespace WPR.Wp8Native
                     // window; there is none here, so it is the same point. This is the one this
                     // game reads.
                     [InspectableSlots + 2] = ("get_RawPosition", position),
-                    [InspectableSlots + 3] = ("get_PointerId", () => ReturnUInt32(_pointerId)),
-                    [InspectableSlots + 4] = ("get_FrameId", () => ReturnUInt32((uint)ProcessEventsCalls)),
+                    [InspectableSlots + 3] = ("get_PointerId", () => ReturnUInt32(e.Id)),
+                    [InspectableSlots + 4] = ("get_FrameId", () => ReturnUInt32((uint)e.Frame)),
                     [InspectableSlots + 5] = ("get_Timestamp", () =>
                     {
                         // Microseconds. A flick or a slingshot is a position difference over a
@@ -1333,7 +1433,7 @@ namespace WPR.Wp8Native
                         // evenly spaced, and unrelated to how often the image reads the clock.
                         if (ArmEmulator.IsStackAddress(Arg(1)))
                         {
-                            _emulator.WriteUInt64(Arg(1), (ulong)ProcessEventsCalls * 16667UL);
+                            _emulator.WriteUInt64(Arg(1), (ulong)e.Frame * 16667UL);
                         }
 
                         Return(HResultOk);
@@ -1343,7 +1443,7 @@ namespace WPR.Wp8Native
                     {
                         if (ArmEmulator.IsStackAddress(Arg(1)))
                         {
-                            _emulator.WriteBoolean(Arg(1), _pointerInContact);
+                            _emulator.WriteBoolean(Arg(1), e.InContact);
                         }
 
                         Return(HResultOk);
@@ -1353,7 +1453,7 @@ namespace WPR.Wp8Native
             // Windows.UI.Core.IPointerEventArgs: CurrentPoint, KeyModifiers,
             // GetIntermediatePoints. Handled lives on ICoreWindowEventArgs, a separate
             // interface this runtime cannot distinguish through its QueryInterface.
-            _pointerArgs = CreateDiscoveryObject(
+            return CreateDiscoveryObject(
                 "IPointerEventArgs",
                 slotCount: 12,
                 known: new Dictionary<int, (string, Action)>
@@ -1362,8 +1462,6 @@ namespace WPR.Wp8Native
                     [InspectableSlots + 1] = ("get_KeyModifiers", () => ReturnUInt32(0)),
                     [InspectableSlots + 2] = ("GetIntermediatePoints", () => ReturnObject(EmptyVectorView())),
                 });
-
-            return _pointerArgs;
         }
 
         private void RegisterAppModelObjects()
@@ -1433,6 +1531,7 @@ namespace WPR.Wp8Native
                         // is where input belongs. The count is also what says how many times
                         // the game got round its own main loop.
                         ProcessEventsCalls++;
+                        BeginInputTurn();
 
                         long resumeAt = _emulator.ReturnAddress;
                         Return(HResultOk);

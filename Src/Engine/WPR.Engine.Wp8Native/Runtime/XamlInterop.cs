@@ -986,6 +986,8 @@ namespace WPR.Wp8Native
 
         private void NextFrame()
         {
+            BeginInputTurn();
+
             // Background work the game queued runs between frames - the closest a single CPU
             // gets to the thread pool it was written for - then audio, then the other guest
             // threads, then any input that is due. Audio comes before the threads so a mixer

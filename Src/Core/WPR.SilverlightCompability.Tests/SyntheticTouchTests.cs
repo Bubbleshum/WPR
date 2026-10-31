@@ -15,6 +15,7 @@ namespace WPR.SilverlightCompability.Tests;
 /// reserved TouchPanel slot that nothing else clears. A tap must leave GetState() the way a real
 /// finger does: Pressed, then Released for one frame, then nothing.
 /// </summary>
+[Collection(nameof(TouchPanel))]
 public class SyntheticTouchTests
 {
     // TouchPanel is static: every test starts from no touches, as a new game does.
@@ -381,4 +382,10 @@ public class SyntheticTouchTests
             return base.Invoke(targetMethod, args);
         }
     }
+}
+
+/// <summary>TouchPanel is static: its tests must not run beside each other.</summary>
+[CollectionDefinition(nameof(TouchPanel), DisableParallelization = true)]
+public class TouchPanelCollection
+{
 }

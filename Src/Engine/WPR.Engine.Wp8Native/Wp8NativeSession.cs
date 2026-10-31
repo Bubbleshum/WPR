@@ -845,12 +845,6 @@ namespace WPR.Wp8Native
             _releaseNext.Clear();
 
             HashSet<int>? seen = null;
-            if (touches.Count > 0 && touches.Any(t => t.State is TouchLocationState.Pressed or TouchLocationState.Released))
-            {
-                System.Diagnostics.Trace.WriteLine("[wpr-touchdiag] host: " + string.Join("  ",
-                    touches.Select(t => $"{t.State} #{t.Id} ({t.Position.X:0},{t.Position.Y:0})")) +
-                    $"  | feed down [{string.Join(",", _fingers.Keys)}]");
-            }
             foreach (TouchLocation touch in touches)
             {
                 if (touch.State == TouchLocationState.Invalid)
@@ -902,7 +896,6 @@ namespace WPR.Wp8Native
             foreach (int gone in _fingers.Keys.Where(k => seen is null || !seen.Contains(k)).ToArray())
             {
                 (float x, float y) = _fingers[gone];
-                System.Diagnostics.Trace.WriteLine($"[wpr-touchdiag] host: #{gone} vanished, lifted");
                 _fingers.Remove(gone);
                 emulator.WinRt.InjectPointer(WinRtRuntime.PointerKind.Released, x, y, PointerIdFor(gone));
             }
