@@ -123,6 +123,10 @@ namespace WPR.Wp8Native
                 byte[] code = aon9.AsSpan(codeOffset, codeSize).ToArray();
                 ClearMinimumPrecision(code);
                 int droppedOutputs = isPixel ? DropExtraColourOutputs(code) : 0;
+                if (!isPixel)
+                {
+                    code = KeepDepthInsideClipVolume(code, registers);
+                }
                 // Read before CompactVertexInputs renumbers them: the replay speaks original registers.
                 Dictionary<int, (int, int)> declaredInputs = isPixel ? [] : DeclaredInputRegisters(code);
                 if (!isPixel)
@@ -220,6 +224,147 @@ namespace WPR.Wp8Native
             }
 
             return dropped;
+        }
+
+        /// <summary>The fraction of w a vertex's depth is moved inside the clip volume by (2^-20).</summary>
+        internal const float DepthInset = 1f / (1 << 20);
+
+        /// <summary>
+        /// Rewrites a vertex program so its position's depth is pulled a hair inside the clip
+        /// volume: z' = z (1 - 2e) + w e, with e = <see cref="DepthInset"/>. Returns the new program,
+        /// or the same one when it writes no depth or has no spare temp or constant register.
+        /// </summary>
+        /// <remarks>
+        /// <para>Direct3D keeps a vertex at exactly z = 0 or z = w; screen-space 2D is drawn there
+        /// all the time, at depth 1 (the far plane) or 0. MojoShader's GLSL maps Direct3D's depth to
+        /// OpenGL's as <c>z * 2 - w</c>, which puts such a vertex exactly on OpenGL's clip plane, and
+        /// OpenGL drivers clip it: Intel's desktop GL and the Galaxy S24's Adreno GLES both did.
+        /// GTA: San Andreas draws its menus' map backdrop, artwork and legal text at z = w, so on
+        /// OpenGL only the glyphs at z = 0 that happened to survive were left. Direct3D 11 and Vulkan
+        /// drew them. Every vertex shader of every draw is moved by the same affine map, so depth
+        /// order and equality between draws are unchanged; 2^-20 of the range is far below what a
+        /// 24-bit depth buffer's comparisons between distinct surfaces depend on.</para>
+        /// <para>Each write to oPos (RASTOUT 0) is sent to a spare temp instead, and before the end
+        /// token: <c>mul rN.z, rN.z, cK.x</c>, <c>mad rN.z, rN.w, cK.y, rN.z</c>, <c>mov oPos, rN</c>,
+        /// with <c>def cK, 1 - 2e, e, 0, 0</c> placed first, above every constant the program
+        /// uses and its constant table covers. Instruction token: opcode in bits 0-15, parameter
+        /// count in bits 24-27. Register parameter: bit 31, type in bits 28-30 and 11-12, number in
+        /// bits 0-10, write mask (destination) in bits 16-19, swizzle (source) in bits 16-23.</para>
+        /// </remarks>
+        internal static byte[] KeepDepthInsideClipVolume(byte[] code, int constantRegisters)
+        {
+            const int Temp = 0, Const = 2, RasterOut = 4;
+            if (code.Length < 4 || ((U32(code, 0) >> 8) & 0xFF) < 2)
+            {
+                return code;
+            }
+
+            int highestTemp = -1, highestConst = constantRegisters - 1;
+            var positionWrites = new List<int>();
+            bool writesDepth = false;
+            int end = -1;
+            int at = 4;
+            while (at + 4 <= code.Length)
+            {
+                uint token = U32(code, at);
+                if (token == 0x0000FFFF)
+                {
+                    end = at;
+                    break;
+                }
+
+                uint opcode = token & 0xFFFF;
+                if (opcode == 0xFFFE)
+                {
+                    at += 4 + (int)(((token >> 16) & 0x7FFF) * 4);
+                    continue;
+                }
+
+                int length = (int)((token >> 24) & 0xF);
+                bool literal = opcode is 81 or 47 or 48;   // def, defb, defi: only the destination is a register
+                int first = opcode == 31 ? 1 : 0;          // dcl: the usage token comes first
+                int last = literal ? Math.Min(length, 1) : length;
+                for (int i = first; i < last; i++)
+                {
+                    int position = at + 4 + (i * 4);
+                    if (position + 4 > code.Length)
+                    {
+                        break;
+                    }
+
+                    uint parameter = U32(code, position);
+                    if ((parameter & 0x80000000) == 0)
+                    {
+                        continue;
+                    }
+
+                    int type = (int)(((parameter >> 28) & 0x7) | ((parameter >> 8) & 0x18));
+                    int number = (int)(parameter & 0x7FF);
+                    if (type == Temp)
+                    {
+                        highestTemp = Math.Max(highestTemp, number);
+                    }
+                    else if (type == Const)
+                    {
+                        highestConst = Math.Max(highestConst, number);
+                    }
+                    else if (type == RasterOut && number == 0 && i == first)
+                    {
+                        positionWrites.Add(position);
+                        writesDepth |= (parameter & 0x40000) != 0;   // .z in the write mask
+                    }
+                }
+
+                at += 4 + (length * 4);
+            }
+
+            int spare = highestTemp + 1, inset = highestConst + 1;
+            if (end < 0 || !writesDepth || spare > 11 || inset > 255)
+            {
+                return code;   // vs_2_0 has r0-r11 and at least c0-c255
+            }
+
+            static uint Destination(int type, int number, uint mask) =>
+                0x80000000u | ((uint)(type & 7) << 28) | ((uint)(type & 0x18) << 8) | (mask << 16) | (uint)number;
+            static uint Source(int type, int number, uint swizzle) =>
+                0x80000000u | ((uint)(type & 7) << 28) | ((uint)(type & 0x18) << 8) | (swizzle << 16) | (uint)number;
+            const uint XXXX = 0x00, YYYY = 0x55, ZZZZ = 0xAA, WWWW = 0xFF, XYZW = 0xE4;
+
+            byte[] patched = code.ToArray();
+            foreach (int position in positionWrites)
+            {
+                uint parameter = U32(patched, position);
+                uint kept = parameter & 0x00FF0000;   // write mask and result modifier
+                BinaryPrimitives.WriteUInt32LittleEndian(patched.AsSpan(position), Destination(Temp, spare, 0) | kept);
+            }
+
+            uint[] def =
+            [
+                81u | (5u << 24), Destination(Const, inset, 0xF),
+                BitConverter.SingleToUInt32Bits(1f - (2f * DepthInset)), BitConverter.SingleToUInt32Bits(DepthInset), 0, 0,
+            ];
+            uint[] tail =
+            [
+                5u | (3u << 24), Destination(Temp, spare, 0x4), Source(Temp, spare, ZZZZ), Source(Const, inset, XXXX),          // mul rN.z, rN.z, cK.x
+                4u | (4u << 24), Destination(Temp, spare, 0x4), Source(Temp, spare, WWWW), Source(Const, inset, YYYY), Source(Temp, spare, ZZZZ),   // mad rN.z, rN.w, cK.y, rN.z
+                1u | (2u << 24), Destination(RasterOut, 0, 0xF), Source(Temp, spare, XYZW),                                      // mov oPos, rN
+            ];
+
+            var result = new List<byte>(patched.Length + ((def.Length + tail.Length) * 4));
+            result.AddRange(patched.AsSpan(0, 4).ToArray());
+            foreach (uint word in def)
+            {
+                result.AddRange(BitConverter.GetBytes(word));
+            }
+
+            result.AddRange(patched.AsSpan(4, end - 4).ToArray());
+            foreach (uint word in tail)
+            {
+                result.AddRange(BitConverter.GetBytes(word));
+            }
+
+            result.AddRange(patched.AsSpan(end).ToArray());
+            return result.ToArray();
         }
 
         /// <summary>
