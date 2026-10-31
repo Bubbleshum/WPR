@@ -104,10 +104,22 @@ namespace Microsoft.Phone.Shell
             }
         }
 
-        public void HandleApplicationExit()
+        public void HandleApplicationExit() => HandleApplicationExit(terminated: false);
+
+        /// <summary>
+        /// The app's run has ended. <paramref name="terminated"/>: it ended itself, through
+        /// <c>Application.Terminate()</c> or a quit exception it declined to handle, and then the
+        /// phone raised neither Deactivated nor Closing. GTA: San Andreas quits from its pause
+        /// menu with Terminate(), and its Closing handler calls into its native component, whose
+        /// main thread is still inside that quit and never answers: the game froze on quitting.
+        /// </summary>
+        public void HandleApplicationExit(bool terminated)
         {
-            _Deactivated?.Invoke(this, new DeactivatedEventArgs { Reason = DeactivationReason.UserAction });
-            _Closing?.Invoke(this, new ClosingEventArgs());
+            if (!terminated)
+            {
+                _Deactivated?.Invoke(this, new DeactivatedEventArgs { Reason = DeactivationReason.UserAction });
+                _Closing?.Invoke(this, new ClosingEventArgs());
+            }
 
             // Recycle so the next launch starts with an empty subscriber list and has not
             // launched yet. ApplicationLaunch.ResetWprSingletons does the same swap

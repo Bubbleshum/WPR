@@ -101,11 +101,28 @@ namespace WPR.Wp8Native
 
             _bridgeSignal.Release();
             BridgeCallQueued?.Invoke();
-            if (!call.Done.Wait(timeout))
+            BridgeCallWaiting = $"{call.ClassName}.{call.Member}";
+            try
             {
-                call.Error ??= "timed out";
-                BridgeNote($"{call.ClassName}.{call.Member}: no answer within {timeout.TotalSeconds:0}s");
+                if (!call.Done.Wait(timeout))
+                {
+                    call.Error ??= "timed out";
+                    BridgeNote($"{call.ClassName}.{call.Member}: no answer within {timeout.TotalSeconds:0}s");
+                }
             }
+            finally
+            {
+                BridgeCallWaiting = null;
+            }
+        }
+
+        private volatile string? _bridgeCallWaiting;
+
+        /// <summary>The bridge call a managed thread is waiting on right now, if any (for a watchdog).</summary>
+        public string? BridgeCallWaiting
+        {
+            get => _bridgeCallWaiting;
+            private set => _bridgeCallWaiting = value;
         }
 
         private void BridgeNote(string line)

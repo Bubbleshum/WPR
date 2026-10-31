@@ -120,6 +120,7 @@ namespace WPR.Wp8Native
                 IsBackground = true,
             };
             _guest.Start();
+            _watchdog = new System.Threading.Timer(Watchdog, null, TimeSpan.FromSeconds(WatchdogSeconds), TimeSpan.FromSeconds(WatchdogSeconds));
         }
 
         /// <summary>The 2D draw list's effect and blank texture, made on the first frame (the device may not exist at <see cref="Start"/>).</summary>
@@ -802,6 +803,7 @@ namespace WPR.Wp8Native
 
             _hostUpdates++;
             _updatesSinceDraw++;
+            Volatile.Write(ref _lastUpdateTimestamp, System.Diagnostics.Stopwatch.GetTimestamp());
             ReportStatistics();
         }
 
@@ -1293,29 +1295,8 @@ namespace WPR.Wp8Native
                     {
                         emulator.Stop("halted: no host call for a whole report (WPR_WP8_HALT_ON_STALL)");
                     }
-                    // Racy snapshot of the per-import counts; retried, because the guest is writing
-                    // them as fast as it can. The hottest deltas name the loop.
-                    KeyValuePair<string, int>[]? counts = null;
-                    for (int attempt = 0; attempt < 50 && counts is null; attempt++)
-                    {
-                        try { counts = emulator.CallCounts.ToArray(); } catch (InvalidOperationException) { }
-                    }
 
-                    if (counts is not null)
-                    {
-                        var deltas = counts
-                            .Select(kv => (kv.Key, Delta: kv.Value - (_lastCounts.TryGetValue(kv.Key, out int was) ? was : 0)))
-                            .Where(d => d.Delta > 0)
-                            .OrderByDescending(d => d.Delta)
-                            .Take(8);
-                        foreach (var (name, delta) in deltas)
-                        {
-                            Log($"   hot: {delta,12:N0}  {name}");
-                        }
-
-                        _lastCounts = counts.ToDictionary(kv => kv.Key, kv => kv.Value);
-                    }
-
+                    LogHotImports(emulator);
                     _statsCalls = calls;
                 }
                 catch (Exception ex)
@@ -1333,6 +1314,101 @@ namespace WPR.Wp8Native
             _statsIoCalls = _emulator?.Stubs.Files.IoCalls ?? 0;
         }
 
+        /// <summary>
+        /// The imports the guest has called most since the last such report: they name the loop
+        /// it is in. A racy snapshot of counts the guest is writing as fast as it can, retried.
+        /// </summary>
+        private void LogHotImports(ArmEmulator emulator)
+        {
+            lock (_hotImportsLock)
+            {
+                KeyValuePair<string, int>[]? counts = null;
+                for (int attempt = 0; attempt < 50 && counts is null; attempt++)
+                {
+                    try { counts = emulator.CallCounts.ToArray(); } catch (InvalidOperationException) { }
+                }
+
+                if (counts is null)
+                {
+                    return;
+                }
+
+                var deltas = counts
+                    .Select(kv => (kv.Key, Delta: kv.Value - (_lastCounts.TryGetValue(kv.Key, out int was) ? was : 0)))
+                    .Where(d => d.Delta > 0)
+                    .OrderByDescending(d => d.Delta)
+                    .Take(8);
+                foreach (var (name, delta) in deltas)
+                {
+                    Log($"   hot: {delta,12:N0}  {name}");
+                }
+
+                _lastCounts = counts.ToDictionary(kv => kv.Key, kv => kv.Value);
+            }
+        }
+
+        // ------------------------------------------------------------------------------
+        // Watchdog
+        // ------------------------------------------------------------------------------
+
+        /// <summary>Seconds without a host update before the watchdog reports.</summary>
+        private const int WatchdogSeconds = 10;
+
+        private System.Threading.Timer? _watchdog;
+        private long _lastUpdateTimestamp;
+        private long _watchdogCalls;
+        private long _watchdogStall;
+        private int _watchdogReports;
+
+        /// <summary>
+        /// Reports, from a thread of its own, a host frame loop that has stopped running. The
+        /// statistics above are written by that loop, so a stall that holds the host thread
+        /// itself (a call into the page's component that the guest never answers, say) would
+        /// otherwise leave nothing in the log: no frames, no stall report, until the player
+        /// gives up and closes the game.
+        /// </summary>
+        private void Watchdog(object? state)
+        {
+            long last = Volatile.Read(ref _lastUpdateTimestamp);
+            if (_closing || last == 0 || _capture is not null || _emulator is not { } emulator)
+            {
+                return;
+            }
+
+            double stalled = (System.Diagnostics.Stopwatch.GetTimestamp() - last) / (double)System.Diagnostics.Stopwatch.Frequency;
+            if (stalled < WatchdogSeconds)
+            {
+                return;
+            }
+
+            // A backgrounded app stops its loop too; a minute of reports says all there is to say.
+            _watchdogReports = last == _watchdogStall ? _watchdogReports + 1 : 1;
+            _watchdogStall = last;
+            if (_watchdogReports > 6)
+            {
+                return;
+            }
+
+            try
+            {
+                long calls = emulator.CallOrderTotal;
+                Log($"host frame loop has not run for {stalled:0}s; host waiting on a page call: {emulator.WinRt.BridgeCallWaiting ?? "no"}");
+                Log($"   guest: {emulator.LastSlice}; {calls - _watchdogCalls:N0} host call(s) since the last check");
+                if (emulator.RecentMethodCall is { } method)
+                {
+                    Log($"   last host method: {method}");
+                }
+
+                LogHotImports(emulator);
+                _watchdogCalls = calls;
+            }
+            catch (Exception ex)
+            {
+                Log($"watchdog report failed: {ex.Message}");
+            }
+        }
+
+        private readonly object _hotImportsLock = new();
         private int _audioLogged;
         private int _unsupportedLogged;
         private long _statsCalls;
@@ -1450,6 +1526,7 @@ namespace WPR.Wp8Native
         {
             {
                 _closing = true;
+                _watchdog?.Dispose();
                 TextInputEXT.TextInput -= OnTextInput;
                 try { _emulator?.Stop("host disposed"); } catch { }
                 WakeGuest();

@@ -1247,7 +1247,8 @@ namespace WPR
 
                         try
                         {
-                            PhoneApplicationService.Current!.HandleApplicationExit();
+                            PhoneApplicationService.Current!.HandleApplicationExit(
+                                terminated: WPR.Xna.Rhi.GameUnhandledException.TerminationRequested);
                         }
                         catch (Exception ex)
                         {
@@ -1365,7 +1366,9 @@ namespace WPR
                 // collected (or we hit the cap and log the failure).
                 try
                 {
-                    PhoneApplicationService.Current?.HandleApplicationExit();
+                    // Before ResetWprSingletons, which clears the flag.
+                    PhoneApplicationService.Current?.HandleApplicationExit(
+                        terminated: WPR.Xna.Rhi.GameUnhandledException.TerminationRequested);
                     ResetWprSingletons();
 
                     TeardownLog("singletons reset; detaching trace listener");

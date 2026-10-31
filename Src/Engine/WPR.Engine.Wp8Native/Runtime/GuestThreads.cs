@@ -509,6 +509,21 @@ namespace WPR.Wp8Native
         /// <summary>Times a time slice switched a thread out between two instructions.</summary>
         public int Preemptions { get; private set; }
 
+        private sealed record SliceEnd(int Thread, long Pc, long Lr, bool Trapped);
+
+        // One object per slice (millions of instructions apart), swapped whole so a reader on
+        // another thread never sees half of one.
+        private volatile SliceEnd? _lastSlice;
+
+        /// <summary>
+        /// Where the CPU was at the end of the last whole slice, for a watchdog on another thread.
+        /// A slice ends only after millions of instructions, so this names a thread that has been
+        /// running for a long time, not where every thread is.
+        /// </summary>
+        public string LastSlice => _lastSlice is { } s
+            ? $"thread {s.Thread} at pc 0x{s.Pc:X8} lr 0x{s.Lr:X8} ({(s.Trapped ? "calling the host" : "no host call")} in that slice)"
+            : "no whole slice yet";
+
         private long _trapsEntered;
 
         /// <summary>Host calls (traps) the guest has made, of every kind.</summary>
@@ -538,6 +553,7 @@ namespace WPR.Wp8Native
             long pc = _cpu.RegRead(Arm.UC_ARM_REG_PC);
             long cpsr = _cpu.RegRead(Arm.UC_ARM_REG_CPSR);
             long here = (pc & ~1L) | ((cpsr & 0x20) != 0 ? 1 : 0);
+            _lastSlice = new SliceEnd(CurrentThread.Id, pc & ~1L, _cpu.RegRead(Arm.UC_ARM_REG_LR), _trapsEntered != _trapsAtSlice);
             bool enteredTraps = _trapsEntered != _trapsAtSlice;
             _trapsAtSlice = _trapsEntered;
 
