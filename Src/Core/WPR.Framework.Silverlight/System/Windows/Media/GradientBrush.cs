@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Media
 {
     /// <summary>Shim for <c>System.Windows.Media.GradientSpreadMethod</c>.</summary>
     public enum GradientSpreadMethod

@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
     /// <summary>
     /// Shim for <c>System.Windows.Controls.ScrollViewer</c>: a single-content host that measures

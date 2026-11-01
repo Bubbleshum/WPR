@@ -92,6 +92,41 @@ public sealed class PointerSuite : IContractSuite
         rt.InjectPointer(WinRtRuntime.PointerKind.Released, 100, 100, 5);
         Deliver(() => { });
         ReturnFromHandler();
+
+        // ---- a tap whose press and lift reach the guest in one frame ----
+        // The host queues touch at 60 a second and a slower guest takes it once a frame; on the
+        // phone a touch was down for at least one of the game's frames.
+        rt.InjectPointer(WinRtRuntime.PointerKind.Pressed, 400, 300, 9);
+        rt.InjectPointer(WinRtRuntime.PointerKind.Released, 400, 300, 9);
+        continued = false;
+        h.Check("a press and its lift queued together: the press is delivered", Deliver(() => continued = true));
+        call = Called();
+        h.Check("   to the Pressed handler", call.Target == game.Invoke);
+        long heldArgs = call.Args;
+        Invoke(heldArgs, 1);   // AddRef: the game keeps the press's args, as Halo does
+        ReturnFromHandler();
+        h.Check("   and the lift waits for the next frame", continued);
+        continued = false;
+        h.Check("next frame the lift is delivered", Deliver(() => continued = true));
+        call = Called();
+        h.Check("   to the Released handler", call.Target == released.Invoke);
+        h.Check("   with args of its own, not the press's that the game still holds", call.Args != heldArgs);
+        ReturnFromHandler();
+        h.Check("   and the loop continues", continued);
+        h.Check("args kept from the press still describe the press after the lift",
+            PointerIdOf(heldArgs) == 9 && InContact(heldArgs), $"id {PointerIdOf(heldArgs)}");
+    }
+
+    private long PointerIdOf(long args)
+    {
+        long point = Ret(args, WinRtSystemInterfaces.Slot("Windows.UI.Core.IPointerEventArgs", "get_CurrentPoint"));
+        return Ret(point, WinRtSystemInterfaces.Slot("Windows.UI.Input.IPointerPoint", "get_PointerId"));
+    }
+
+    private bool InContact(long args)
+    {
+        long point = Ret(args, WinRtSystemInterfaces.Slot("Windows.UI.Core.IPointerEventArgs", "get_CurrentPoint"));
+        return (Ret(point, WinRtSystemInterfaces.Slot("Windows.UI.Input.IPointerPoint", "get_IsInContact")) & 0xFF) == 1;
     }
 
     private bool IsPrimary(long args)
@@ -105,7 +140,15 @@ public sealed class PointerSuite : IContractSuite
 
     private string _why = "";
 
-    private bool Deliver(Action continueWith) => (bool)DeliverInputMethod.Invoke(E.WinRt, [continueWith, _window])!;
+    private static readonly MethodInfo BeginInputTurn = typeof(WinRtRuntime).GetMethod(
+        "BeginInputTurn", BindingFlags.NonPublic | BindingFlags.Instance)!;
+
+    /// <summary>One guest frame's input, as ProcessEvents delivers it.</summary>
+    private bool Deliver(Action continueWith)
+    {
+        BeginInputTurn.Invoke(E.WinRt, null);
+        return (bool)DeliverInputMethod.Invoke(E.WinRt, [continueWith, _window])!;
+    }
 
     /// <summary>A guest delegate whose Invoke is image code - never run here; r12 names what the runtime called.</summary>
     private (long Handler, long Invoke) FakeDelegate(int index)

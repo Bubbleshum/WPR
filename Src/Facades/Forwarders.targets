@@ -1,0 +1,35 @@
+<Project>
+  <!--
+    Generated type forwarders. A project that imports this and lists
+      <WprForwardFrom Include="WPR.Framework.Xna" />          (assemblies it references)
+      <WprForwardNamespace Include="Microsoft.Xna.Framework" /> (namespace prefixes)
+      <WprForwardType Include="System.Windows.Controls.Frame" /> (single types)
+    gets [TypeForwardedTo] for every public top-level type of those assemblies that matches, written
+    before compile by ForwarderGen. A type added to an implementation is forwarded on the next
+    build; there is no list to keep in step.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="$(MSBuildThisFileDirectory)ForwarderGen\ForwarderGen.csproj"
+                      ReferenceOutputAssembly="false" Private="false"
+                      SkipGetTargetFrameworkProperties="true" SetTargetFramework="TargetFramework=net10.0" />
+  </ItemGroup>
+
+  <Target Name="WprGenerateForwarders"
+          AfterTargets="ResolveAssemblyReferences" BeforeTargets="CoreCompile"
+          Condition="'@(WprForwardFrom)' != ''">
+    <MSBuild Projects="$(MSBuildThisFileDirectory)ForwarderGen\ForwarderGen.csproj"
+             Targets="GetTargetPath" Properties="TargetFramework=net10.0">
+      <Output TaskParameter="TargetOutputs" PropertyName="_WprForwarderGen" />
+    </MSBuild>
+    <PropertyGroup>
+      <_WprForwardersFile>$(IntermediateOutputPath)WprForwarders.g.cs</_WprForwardersFile>
+      <_WprForwardRefs>$(IntermediateOutputPath)WprForwarders.refs</_WprForwardRefs>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(_WprForwardRefs)" Lines="@(ReferencePath)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <Exec Command="&quot;$(DOTNET_HOST_PATH)&quot; &quot;$(_WprForwarderGen)&quot; --out &quot;$(_WprForwardersFile)&quot; --fromlist &quot;$(_WprForwardRefs)&quot; @(WprForwardFrom->'--only %(Identity)', ' ') @(WprForwardNamespace->'--ns %(Identity)', ' ') @(WprForwardType->'--type %(Identity)', ' ')" />
+    <ItemGroup>
+      <Compile Include="$(_WprForwardersFile)" />
+      <FileWrites Include="$(_WprForwardersFile);$(_WprForwardRefs)" />
+    </ItemGroup>
+  </Target>
+</Project>

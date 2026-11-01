@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Documents
 {
     /// <summary>Shim for <c>System.Windows.Documents.BlockCollection</c>.</summary>
     public sealed class BlockCollection : PresentationFrameworkCollection<Block>

@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows.Documents
 {
     /// <summary>Shim for <c>System.Windows.Documents.Block</c>.</summary>
     public abstract class Block : TextElement

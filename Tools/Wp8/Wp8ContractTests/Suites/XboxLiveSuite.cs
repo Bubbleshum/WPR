@@ -1,7 +1,6 @@
 using System.Reflection;
 using Microsoft.Xna.Framework.GamerServices;
 using WPR.Common;
-using WPR.Engine.Notifications;
 using WPR.Engine.Online;
 using WPR.Wp8Native;
 using WPR.XboxLive;
@@ -375,29 +374,29 @@ public sealed class XboxLiveSuite : IContractSuite
         }
     }
 
-    private sealed class Toasts : INotificationManager
+    /// <summary>
+    /// The unlocks queued for the in-game pop-up (<see cref="AchievementToast"/>), which replaced
+    /// the system notification in a7a69b20. No drawer is registered here, so the queue holds every
+    /// request until it is read, as "<c>{score}G - {name}</c>".
+    /// </summary>
+    private sealed class Toasts
     {
-        public List<string> Shown { get; } = new();
-        public string? LaunchActionId => null;
-        public event EventHandler<NotificationActivatedEventArgs>? NotificationActivated { add { } remove { } }
-        public event EventHandler<NotificationDismissedEventArgs>? NotificationDismissed { add { } remove { } }
-        public Task Initialize() => Task.CompletedTask;
+        private readonly List<string> _shown = new();
 
-        public Task ShowNotification(Notification notification, DateTimeOffset? expirationTime = null)
+        public List<string> Shown
         {
-            lock (Shown)
+            get
             {
-                Shown.Add(notification.Body ?? string.Empty);
+                lock (_shown)
+                {
+                    while (AchievementToast.TryTake(out AchievementToastRequest? request))
+                    {
+                        _shown.Add($"{request!.Score}G - {request.Name}");
+                    }
+
+                    return new List<string>(_shown);
+                }
             }
-
-            return Task.CompletedTask;
-        }
-
-        public Task ScheduleNotification(Notification notification, DateTimeOffset deliveryTime, DateTimeOffset? expirationTime = null) =>
-            ShowNotification(notification, expirationTime);
-
-        public void Dispose()
-        {
         }
     }
 
@@ -443,7 +442,7 @@ public sealed class XboxLiveSuite : IContractSuite
     {
         const string Product = "00000000-0000-0000-0000-0000000000a8";
         IAchievementStore? previousStore = XnaBackend.Achievements;
-        INotificationManager? previousToasts = NotificationBackend.Manager;
+        AchievementToast.Reset();
         ILeaderboardService? previousBoards = OnlineBackend.Leaderboards;
         IProgressSync? previousProgress = OnlineBackend.Progress;
         Configuration? previousConfig = Configuration.Current;
@@ -465,7 +464,6 @@ public sealed class XboxLiveSuite : IContractSuite
         {
             Configuration.Current = new Configuration(root);
             XnaBackend.SetAchievements(store);
-            NotificationBackend.SetManager(toasts);
             OnlineBackend.Set(new OnlineServices { Leaderboards = boards, Progress = progress });
             WprHostEnvironment.CurrentProductId = Product;
 
@@ -542,7 +540,7 @@ public sealed class XboxLiveSuite : IContractSuite
                 XnaBackend.SetAchievements(previousStore);
             }
 
-            NotificationBackend.SetManager(previousToasts);
+            AchievementToast.Reset();
             OnlineBackend.Set(new OnlineServices { Leaderboards = previousBoards, Progress = previousProgress });
             Configuration.Current = previousConfig!;
             WprHostEnvironment.CurrentProductId = previousProduct!;

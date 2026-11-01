@@ -19,6 +19,14 @@ namespace WPR.Wp8Native
         /// (<see cref="Direct3DRuntime.GpuFrameReplayed"/>) so buffers it held can be reused.
         /// </summary>
         public long Serial { get; init; } = -1;
+
+        /// <summary>
+        /// How much of the back buffer is the picture, from its top-left: the render target size a
+        /// background grid's provider asked for in PrepareResources. The phone gave the provider a
+        /// target that size and stretched it to the screen; Asphalt 7 races at 600x1000 of a
+        /// 768x1280 screen. Null is the whole back buffer.
+        /// </summary>
+        public (int Width, int Height)? Shown { get; init; }
     }
 
     public abstract record GpuCommand;

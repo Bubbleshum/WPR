@@ -100,7 +100,7 @@ namespace WPR.SilverlightCompability.Tests
             try
             {
                 HostContext.CurrentInstallFolder = dir;
-                var info = WPR.WindowsCompability.Application.GetResourceStream(
+                var info = System.Windows.Application.GetResourceStream(
                     new Uri("Content/Strings/x.xml", UriKind.Relative), typeof(PureSilverlightHostTests).Assembly);
                 Assert.NotNull(info?.Stream);
                 info!.Stream!.Dispose();

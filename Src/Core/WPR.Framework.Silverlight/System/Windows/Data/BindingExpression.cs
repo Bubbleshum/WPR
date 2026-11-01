@@ -2,7 +2,7 @@ using System;
 using System.ComponentModel;
 using System.Reflection;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Data
 {
     /// <summary>
     /// A live binding attached to a target property. One-way only in 1.5: source's value flows
@@ -366,7 +366,7 @@ namespace WPR.SilverlightCompability
             }
             // A Uri bound to Image.Source / ImageBrush.ImageSource, as Silverlight's converter allows.
             if (value is Uri imageUri && typeof(ImageSource).IsAssignableFrom(target))
-                return new WPR.WindowsCompability.BitmapImage(imageUri);
+                return new System.Windows.Media.Imaging.BitmapImage(imageUri);
             // Light-touch coercion: numeric/string round-trip via XamlTypeConverter when possible.
             try
             {

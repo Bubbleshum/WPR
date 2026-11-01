@@ -65,8 +65,26 @@ namespace WPR.Wp8Native
 
         private int _methodsTraced;
 
+        /// <summary>The last host vtable method called, with its thread and caller (diagnostic, racy).</summary>
+        public string? RecentMethodCall => _recentMethod is { } name ? $"{name} t{_recentMethodThread} lr=0x{_recentMethodLr:X8}" : null;
+
+        private string? _recentMethod;
+        private long _recentMethodLr;
+        private int _recentMethodThread;
+
         private static readonly long ImportTraceLimit =
             long.TryParse(Environment.GetEnvironmentVariable("WPR_WP8_IMPORT_TRACE"), out long n) ? n : 0;
+
+        /// <summary>
+        /// WPR_WP8_IMPORT_TRACE_AFTER=S: the import trace starts S seconds into the run instead of at
+        /// the first call, for what goes wrong a minute in (startup makes millions of calls).
+        /// </summary>
+        private static readonly double ImportTraceAfterSeconds =
+            double.TryParse(Environment.GetEnvironmentVariable("WPR_WP8_IMPORT_TRACE_AFTER"),
+                System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double s) ? s : 0;
+
+        private readonly System.Diagnostics.Stopwatch _importTraceClock = System.Diagnostics.Stopwatch.StartNew();
+        private long _importsTraced;
 
         private readonly List<string> _callOrder = new();
         private readonly Queue<string> _recentCalls = new();
@@ -202,7 +220,7 @@ namespace WPR.Wp8Native
         public int TrapSlotsAllocated => _traps.Count;
 
         public string? TrapNameAt(long address)
-            => _traps.TryGetValue(address & ~3L, out TrapSlot? slot) ? slot.Name : null;
+            => _traps.TryGetValue(address & ~3L, out TrapSlot? slot) && slot.Kind != TrapKind.Free ? slot.Name : null;
 
         /// <summary>The engine underneath, for the report and for tests.</summary>
         public IArmCpu Cpu => _cpu;
@@ -248,7 +266,7 @@ namespace WPR.Wp8Native
                 var counts = new Dictionary<string, int>(StringComparer.Ordinal);
                 foreach (TrapSlot slot in _traps.Values.ToArray())
                 {
-                    if (slot.Kind == TrapKind.Import && slot.Calls > 0)
+                    if (slot is { Kind: TrapKind.Import, Calls: > 0 })
                     {
                         counts[slot.Name] = counts.GetValueOrDefault(slot.Name) + (int)slot.Calls;
                     }
@@ -488,7 +506,24 @@ namespace WPR.Wp8Native
                     return $"stop-at addresses are unsupported on {_cpu.Capabilities.Name}";
                 }
 
-                RunResult result = _cpu.Run(startAddress, instructionBudget);
+                // In slices, so a thread that never enters a trap can be preempted between them
+                // (GuestThreads.cs, PreemptAfterSlice).
+                long next = startAddress;
+                long remaining = instructionBudget;
+                RunResult result;
+                while (true)
+                {
+                    long slice = Math.Min(remaining, PreemptSliceInstructions);
+                    result = _cpu.Run(next, slice);
+                    remaining -= slice;
+                    if (result.Outcome != RunOutcome.Budget || remaining <= 0)
+                    {
+                        break;
+                    }
+
+                    next = PreemptAfterSlice();
+                }
+
                 return result.Outcome == RunOutcome.Faulted ? result.Fault ?? "the CPU faulted" : null;
             }
             catch (CpuMemoryException ex)
@@ -560,7 +595,7 @@ namespace WPR.Wp8Native
             {
                 RejectedWrites.Add(
                     $"refused a {data.Length}-byte write to 0x{address:X8} - that is the trap page" +
-                    (_lastTrap is null ? string.Empty : $" (during {_lastTrap})"));
+                    (LastTrap is null ? string.Empty : $" (during {LastTrap})"));
                 return;
             }
 
@@ -624,7 +659,7 @@ namespace WPR.Wp8Native
             {
                 RejectedWrites.Add(
                     $"refused a {data.Length}-byte write to 0x{address:X8} - that is the trap page" +
-                    (_lastTrap is null ? string.Empty : $" (during {_lastTrap})"));
+                    (LastTrap is null ? string.Empty : $" (during {LastTrap})"));
                 return;
             }
 
@@ -1016,7 +1051,7 @@ namespace WPR.Wp8Native
 
             // lr still holds the emulated return address, which names the code that asked -
             // the stub itself is never the culprit, only the messenger.
-            string entry = $"{_lastTrap ?? "host"} called from 0x{_cpu.RegRead(Arm.UC_ARM_REG_LR) & ~1L:X8} " +
+            string entry = $"{LastTrap ?? "host"} called from 0x{_cpu.RegRead(Arm.UC_ARM_REG_LR) & ~1L:X8} " +
                            $"wrote {length} bytes into {room} bytes of room at " +
                            $"0x{address:X8} ({DescribeAllocation(address)})" +
                            Newline + "      called from:" + Newline + ScanStack(64);
@@ -1053,7 +1088,7 @@ namespace WPR.Wp8Native
                 if (_writeLog.Count < WriteLogLimit)
                 {
                     _writeLog.Add(
-                        $"{_lastTrap ?? "host"} wrote {length} bytes " +
+                        $"{LastTrap ?? "host"} wrote {length} bytes " +
                         $"to +0x{address - start:X2} of {label} (host side)");
                 }
 
@@ -1188,7 +1223,7 @@ namespace WPR.Wp8Native
 
         private void RecordAllocation(long pointer, long size)
         {
-            var record = (pointer, size, _lastTrap ?? "host setup", _cpu.RegRead(Arm.UC_ARM_REG_LR));
+            var record = (pointer, size, _lastTrapBase ?? "host setup", _cpu.RegRead(Arm.UC_ARM_REG_LR));
 
             // A reused block keeps its place in the list - the list is ordered by address and
             // the binary search below depends on that - and takes on its new requester.
@@ -1351,6 +1386,54 @@ namespace WPR.Wp8Native
                 byte[] bytes = _image.Raw.Slice((int)section.RawPointer, (int)section.RawSize).ToArray();
                 _cpu.MemWrite(_image.ImageBase + section.VirtualAddress, bytes);
             }
+
+            ProtectDataSections(_image, _image.ImageBase);
+        }
+
+        /// <summary>
+        /// Takes execute permission off the pages of an image's non-code sections (.data, .rdata,
+        /// .bss...), leaving them read-write, as Windows maps them (no-execute is always on for ARM).
+        /// A page any code section touches keeps everything.
+        /// </summary>
+        /// <remarks>
+        /// The image used to be mapped read-write-execute as a whole. A host write into an
+        /// executable page has to drop the JIT's translations for it (dynarmic halts the block and
+        /// clears its fast dispatch table), and the host writes into image data all the time: every
+        /// out-parameter that lands in a global. GTA: San Andreas reads QueryPerformanceCounter into
+        /// a global ~760,000 times a second; those writes alone were a quarter of its guest thread.
+        /// </remarks>
+        internal void ProtectDataSections(PeImage image, long imageBase)
+        {
+            var code = new HashSet<long>();
+            foreach (PeSection section in image.Sections.Where(s => s.IsExecutable))
+            {
+                long first = (imageBase + section.VirtualAddress) & ~(PageSize - 1);
+                long end = Align(imageBase + section.VirtualAddress + Math.Max(1, section.MappedSize), PageSize);
+                for (long page = first; page < end; page += PageSize)
+                {
+                    code.Add(page);
+                }
+            }
+
+            foreach (PeSection section in image.Sections.Where(s => !s.IsExecutable && s.MappedSize > 0))
+            {
+                long first = (imageBase + section.VirtualAddress) & ~(PageSize - 1);
+                long end = Align(imageBase + section.VirtualAddress + section.MappedSize, PageSize);
+                long run = -1;
+                for (long page = first; page <= end; page += PageSize)
+                {
+                    bool data = page < end && !code.Contains(page);
+                    if (data && run < 0)
+                    {
+                        run = page;
+                    }
+                    else if (!data && run >= 0)
+                    {
+                        _cpu.MemProtect(run, page - run, Common.UC_PROT_READ | Common.UC_PROT_WRITE);
+                        run = -1;
+                    }
+                }
+            }
         }
 
         private void MapScratchRegions()
@@ -1396,13 +1479,29 @@ namespace WPR.Wp8Native
 
             /// <summary>A <see cref="Return"/> whose slot goes back on the free list once it fires.</summary>
             RecycledReturn,
+
+            /// <summary>A fired <see cref="RecycledReturn"/> waiting on the free list. Entering one does nothing.</summary>
+            Free,
         }
 
-        private sealed class TrapSlot(string name, TrapKind kind, Action? handler)
+        /// <remarks>
+        /// A recycled return slot keeps its object for the life of the emulator: firing marks it
+        /// <see cref="TrapKind.Free"/> and reusing it rewrites the fields. A guest that calls back
+        /// a million times while loading (GTA's qsort did) then allocates no slot and no name, and
+        /// <c>_traps</c> is not mutated per callback, which a report thread reads concurrently.
+        /// </remarks>
+        private sealed class TrapSlot(string name, TrapKind kind, Action? handler, bool isReturn = false)
         {
-            public string Name { get; } = name;
+            /// <summary>The slot's name; for a return trap, the name of the call it returns from.</summary>
+            public string BaseName { get; set; } = name;
 
-            public TrapKind Kind { get; } = kind;
+            /// <summary>Whether <see cref="Name"/> reads "&lt;BaseName&gt;&lt;-return".</summary>
+            public bool IsReturn { get; set; } = isReturn;
+
+            /// <summary>Built when read (reports, failures), so a call through the slot allocates nothing.</summary>
+            public string Name => IsReturn ? BaseName + "<-return" : BaseName;
+
+            public TrapKind Kind { get; set; } = kind;
 
             /// <summary>What runs. For an import, filled on first call with the handler Dispatch would pick.</summary>
             public Action? Handler { get; set; } = handler;
@@ -1423,6 +1522,55 @@ namespace WPR.Wp8Native
         /// </remarks>
         public long RegisterVtableMethod(string name, Action handler)
             => AllocateTrapSlot(name, TrapKind.VtableMethod, handler);
+
+        private readonly Dictionary<string, long> _objectMethodTraps = new(StringComparer.Ordinal);
+        private readonly Dictionary<(long Trap, long Self), Action> _objectMethodHandlers = new();
+        private readonly Dictionary<long, Action> _objectMethodOnly = new();
+
+        /// <summary>
+        /// A vtable method of the host object at <paramref name="self"/>. Methods of the same
+        /// name and vtable slot share one trap slot, which finds the handler by the object the guest called
+        /// through (r0, <c>this</c>).
+        /// </summary>
+        /// <remarks>
+        /// A slot per method per object filled the 16,384-slot trap page: every collection,
+        /// vector view or async operation the host hands out has 38 or more methods, and a title
+        /// that asks for one each frame (N.O.V.A. 3 reads its achievement list) ran out after
+        /// about 430 objects. Shared, a new object costs no slot. Only for objects whose methods
+        /// are always called with the object itself as <c>this</c>, as single-interface COM objects are.
+        /// </remarks>
+        public long RegisterObjectMethod(string name, int slot, long self, Action handler)
+        {
+            string key = $"{name}#{slot}";
+            if (!_objectMethodTraps.TryGetValue(key, out long trap))
+            {
+                long allocated = 0;
+                allocated = AllocateTrapSlot(name, TrapKind.VtableMethod, () => DispatchObjectMethod(allocated, name));
+                trap = allocated;
+                _objectMethodTraps[key] = trap;
+                _objectMethodOnly[trap] = handler;
+            }
+            else
+            {
+                _objectMethodOnly.Remove(trap);
+            }
+
+            _objectMethodHandlers[(trap, self)] = handler;
+            return trap;
+        }
+
+        private void DispatchObjectMethod(long trap, string name)
+        {
+            long self = _cpu.RegRead(Arm.UC_ARM_REG_R0) & 0xFFFFFFFFL;
+            if (_objectMethodHandlers.TryGetValue((trap, self), out Action? handler) ||
+                _objectMethodOnly.TryGetValue(trap, out handler))
+            {
+                handler();
+                return;
+            }
+
+            throw new InvalidOperationException($"{name} called on 0x{self:X8}, which is not an object this method was registered for");
+        }
 
         /// <summary>Turns a trap address into a value safe to store as an ARM function pointer.</summary>
         public static long ThumbEntry(long trapAddress) => trapAddress | 1;
@@ -1447,14 +1595,17 @@ namespace WPR.Wp8Native
         /// two entries, already placed on an even word by the caller.
         /// </remarks>
         public long CallEmulated(string debugName, long function, ReadOnlySpan<long> arguments, Action onReturn)
-            => CallEmulated(debugName, function, arguments, onReturn, recycle: false);
+            => CallEmulated(debugName, function, arguments, onReturn, recycle: true);
 
         /// <param name="recycle">
-        /// Give the return trap back once it has fired. Every C++ throw calls one funclet per
-        /// cleanup plus the catch, and a 64 KB trap page is 16,384 slots: a title that throws
-        /// for control flow (Angry Birds Space throws dozens per screen change) used to be on a
-        /// clock. Only for callers that never refer to the trap again - fault domains keep
-        /// theirs, so they do not recycle.
+        /// Give the return trap back once it has fired. A 64 KB trap page is 16,384 slots, so
+        /// anything that calls into the guest repeatedly is on a clock otherwise: every C++ throw
+        /// calls one funclet per cleanup plus the catch (Angry Birds Space throws dozens per screen
+        /// change), and every deferred callback (a ThreadPoolTimer tick, a work item, a ConcRT
+        /// chore) takes one. Where's My Perry's periodic timer filled the page in about two
+        /// minutes, two slots a tick (its AddRef and its Invoke). The default since then: a caller
+        /// that keeps the address (a fault domain, a running chore) lets go of it in the return
+        /// handler, which is the moment the slot is freed, so nothing holds a recycled address.
         /// </param>
         public long CallEmulated(string debugName, long function, ReadOnlySpan<long> arguments, Action onReturn, bool recycle)
         {
@@ -1490,8 +1641,8 @@ namespace WPR.Wp8Native
             }
 
             long returnTrap = recycle && _freeReturnTraps.Count > 0
-                ? ReuseReturnTrap($"{debugName}<-return", onReturn)
-                : AllocateTrapSlot($"{debugName}<-return", recycle ? TrapKind.RecycledReturn : TrapKind.Return, onReturn);
+                ? ReuseReturnTrap(debugName, onReturn, isReturn: true)
+                : AllocateTrapSlot(debugName, recycle ? TrapKind.RecycledReturn : TrapKind.Return, onReturn, isReturn: true);
 
             _cpu.RegWrite(Arm.UC_ARM_REG_LR, ThumbEntry(returnTrap));
             _cpu.RegWrite(Arm.UC_ARM_REG_R12, function);
@@ -1724,11 +1875,15 @@ namespace WPR.Wp8Native
         /// A recycled slot needs no new code: every slot is the same svc ; bx r12, and only the
         /// host-side table says what it means.
         /// </summary>
-        private long ReuseReturnTrap(string name, Action onReturn)
+        private long ReuseReturnTrap(string name, Action onReturn, bool isReturn = false)
         {
-            long slot = _freeReturnTraps.Pop();
-            _traps[slot] = new TrapSlot(name, TrapKind.RecycledReturn, onReturn);
-            return slot;
+            long address = _freeReturnTraps.Pop();
+            TrapSlot slot = _traps[address];
+            slot.BaseName = name;
+            slot.IsReturn = isReturn;
+            slot.Handler = onReturn;
+            slot.Kind = TrapKind.RecycledReturn;
+            return address;
         }
 
         /// <summary>Whether an address is a return trap still waiting to fire.</summary>
@@ -1736,18 +1891,25 @@ namespace WPR.Wp8Native
             => _traps.TryGetValue(address & ~1L, out TrapSlot? slot) &&
                slot.Kind is TrapKind.Return or TrapKind.RecycledReturn;
 
-        private long AllocateTrapSlot(string name, TrapKind kind, Action? handler)
+        private long AllocateTrapSlot(string name, TrapKind kind, Action? handler, bool isReturn = false)
         {
             if (_trapNext + 4 > TrapBase + TrapSize)
             {
-                throw new InvalidOperationException($"Trap page is full ({TrapSize} bytes).");
+                // Name what filled it: a page that runs out is something taking a slot per call
+                // and never giving it back, and only the slot names say which.
+                string most = string.Join(", ", _traps.Values
+                    .GroupBy(t => $"{t.Kind} {t.BaseName}")
+                    .OrderByDescending(g => g.Count())
+                    .Take(5)
+                    .Select(g => $"{g.Key} x{g.Count()}"));
+                throw new InvalidOperationException($"Trap page is full ({TrapSize} bytes); most slots: {most}.");
             }
 
             long slot = _trapNext;
             _trapNext += 4;
 
             _cpu.MemWrite(slot, _cpu.TrapSlot.ToArray());
-            _traps[slot] = new TrapSlot(name, kind, handler);
+            _traps[slot] = new TrapSlot(name, kind, handler, isReturn);
             return slot;
         }
 
@@ -1869,24 +2031,35 @@ namespace WPR.Wp8Native
 
         private void EnterTrap(long address)
         {
-            if (!_traps.TryGetValue(address, out TrapSlot? slot))
+            if (!_traps.TryGetValue(address, out TrapSlot? slot) || slot.Kind == TrapKind.Free)
             {
                 return;
             }
 
+            // A recycled slot can be taken again by the handler itself (a callback that calls
+            // straight back into the guest), so what the messages below name is read now.
+            string baseName = slot.BaseName;
+            bool isReturn = slot.IsReturn;
+            Action? handler = slot.Handler;
+            string TrapName() => isReturn ? baseName + "<-return" : baseName;
+
             // Default the tail-call register to the return address, so the bx r12 sitting
             // in this slot behaves as a plain return unless the handler says otherwise.
             _cpu.RegWrite(Arm.UC_ARM_REG_R12, _cpu.RegRead(Arm.UC_ARM_REG_LR));
-            _lastTrap = slot.Name;
+            _lastTrapBase = baseName;
+            _lastTrapIsReturn = isReturn;
             _lastTrapAddress = address;
+            _trapsEntered++;
             _blocksSinceTrap = 0;
 
             switch (slot.Kind)
             {
                 case TrapKind.Import:
                     CallOrderTotal++;
-                    if (CallOrderTotal <= ImportTraceLimit
-                        && !slot.Name.EndsWith("CriticalSection", StringComparison.Ordinal))
+                    if (ImportTraceLimit > 0 && _importsTraced < ImportTraceLimit
+                        && !slot.Name.EndsWith("CriticalSection", StringComparison.Ordinal)
+                        && (ImportTraceAfterSeconds <= 0 || _importTraceClock.Elapsed.TotalSeconds >= ImportTraceAfterSeconds)
+                        && ++_importsTraced > 0)
                     {
                         System.Diagnostics.Trace.WriteLine(
                             $"[wpr-wp8-import] #{CallOrderTotal} t{CurrentThreadId} {slot.Name} lr=0x{_cpu.RegRead(Arm.UC_ARM_REG_LR):X8} " +
@@ -1954,6 +2127,9 @@ namespace WPR.Wp8Native
                     }
 
                     _vtableCalls.Add(slot.Name);
+                    _recentMethod = slot.Name;
+                    _recentMethodLr = _cpu.RegRead(Arm.UC_ARM_REG_LR);
+                    _recentMethodThread = CurrentThreadId;
                     if (_vtableCalls.Count > 4096)
                     {
                         // Bounded: a live host makes millions of these over a session.
@@ -1974,7 +2150,8 @@ namespace WPR.Wp8Native
                 // Fires once: free the slot now, before the handler runs, so a handler that
                 // immediately calls back into emulated code can take the same slot again.
                 case TrapKind.RecycledReturn:
-                    _traps.Remove(address);
+                    slot.Kind = TrapKind.Free;
+                    slot.Handler = null;
                     _freeReturnTraps.Push(address);
                     break;
             }
@@ -1993,31 +2170,35 @@ namespace WPR.Wp8Native
                 // changes what it measures, so it is off unless WPR_HOSTTIME is set.
                 long started = TimingStubs ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
 
-                if (slot.Handler is not null)
+                // An import's handler may have just been bound above; a fired recycled slot has
+                // already let go of its own, so that one runs from what was read on entry.
+                Action? run = slot.Kind == TrapKind.Free ? handler : slot.Handler;
+                if (run is not null)
                 {
-                    slot.Handler();
+                    run();
                 }
                 else
                 {
-                    _stubs.Dispatch(slot.Name);
+                    _stubs.Dispatch(baseName);
                 }
 
                 if (TimingStubs)
                 {
-                    _hostTime[slot.Name] =
-                        _hostTime.GetValueOrDefault(slot.Name)
+                    string name = TrapName();
+                    _hostTime[name] =
+                        _hostTime.GetValueOrDefault(name)
                         + (System.Diagnostics.Stopwatch.GetTimestamp() - started);
                 }
             }
             catch (Exception ex) when (ex is not CpuMemoryException)
             {
-                HostFailure ??= $"{slot.Name} threw {ex.GetType().Name}: {ex.Message}{TopFrames(ex)}";
-                Stop($"the host stub for {slot.Name} failed: {ex.Message}");
+                HostFailure ??= $"{TrapName()} threw {ex.GetType().Name}: {ex.Message}{TopFrames(ex)}";
+                Stop($"the host stub for {TrapName()} failed: {ex.Message}");
             }
             catch (CpuMemoryException ex)
             {
-                HostFailure ??= $"{slot.Name} touched unmapped memory: {ex.Message}";
-                Stop($"the host stub for {slot.Name} touched unmapped memory");
+                HostFailure ??= $"{TrapName()} touched unmapped memory: {ex.Message}";
+                Stop($"the host stub for {TrapName()} touched unmapped memory");
             }
         }
 
@@ -2067,9 +2248,11 @@ namespace WPR.Wp8Native
         public string? NullCallRegisters { get; private set; }
 
         /// <summary>The last trap entered before the run ended - who was on the stack.</summary>
-        public string? LastTrap => _lastTrap;
+        public string? LastTrap => _lastTrapIsReturn ? _lastTrapBase + "<-return" : _lastTrapBase;
 
-        private string? _lastTrap;
+        // The name of the last trap entered, kept in two parts so entering one allocates nothing.
+        private string? _lastTrapBase;
+        private bool _lastTrapIsReturn;
         private long _lastTrapAddress;
 
         /// <summary>Reads and writes through a null pointer, which are tolerated.</summary>
@@ -2299,7 +2482,7 @@ namespace WPR.Wp8Native
 
             HeapExecution ??= $"jumped into the heap at 0x{address:X8} from 0x{_cpu.RegRead(Arm.UC_ARM_REG_LR) & ~1L:X8}" +
                               Newline + "                " + DescribeAllocation(address) +
-                              Newline + "                last trap entered: " + (_lastTrap ?? "(none)");
+                              Newline + "                last trap entered: " + (LastTrap ?? "(none)");
             Stop($"jumped into the heap at 0x{address:X8} - that is data, not code");
         }
 
@@ -2488,7 +2671,7 @@ namespace WPR.Wp8Native
             RejectedWrites.Add(
                 $"emulated code at 0x{_cpu.RegRead(Arm.UC_ARM_REG_PC):X8} wrote {size} bytes " +
                 $"(0x{value:X}) to trap slot 0x{address:X8}" +
-                (_lastTrap is null ? string.Empty : $" - last trap was {_lastTrap}"));
+                (LastTrap is null ? string.Empty : $" - last trap was {LastTrap}"));
         }
 
         private void OnBlockEntered(long address, int size)
@@ -2510,7 +2693,7 @@ namespace WPR.Wp8Native
             Runaway = $"{RunawayBlockLimit:N0} basic blocks with no call across the boundary, " +
                       $"looping at 0x{address:X8}" +
                       Newline + "                " + DescribeNullCall() +
-                      Newline + "                last trap entered: " + (_lastTrap ?? "(none)") +
+                      Newline + "                last trap entered: " + (LastTrap ?? "(none)") +
                       Newline + "                call stack:" + Newline + WalkHere() +
                       Newline + "                code addresses on the stack:" + Newline + ScanStack(64);
             Stop($"runaway loop at 0x{address:X8} - {RunawayBlockLimit:N0} blocks without a single call out");

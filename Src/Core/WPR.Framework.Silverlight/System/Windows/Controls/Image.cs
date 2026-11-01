@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
     /// <summary>
     /// Bitmap image leaf. <see cref="Source"/> is typed <see cref="ImageSource"/> so

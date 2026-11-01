@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows.Documents
 {
     /// <summary>Shim for <c>System.Windows.Documents.Inline</c>.</summary>
     public abstract class Inline : TextElement

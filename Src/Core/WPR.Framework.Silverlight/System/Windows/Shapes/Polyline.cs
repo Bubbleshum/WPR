@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Shapes
 {
     /// <summary>Shim for <c>System.Windows.Shapes.Polyline</c> (open; a Fill still fills it as if closed).</summary>
     public class Polyline : Shape

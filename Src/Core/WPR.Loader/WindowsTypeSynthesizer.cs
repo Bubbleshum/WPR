@@ -49,6 +49,9 @@ namespace WPR
 
             foreach (var dllPath in dlls)
             {
+                // Native DLLs are skipped by their headers, not by Cecil throwing (see ManagedImage).
+                if (!ManagedImage.IsManaged(dllPath)) continue;
+
                 AssemblyDefinition? asm = null;
                 try { asm = AssemblyDefinition.ReadAssembly(dllPath, rp); }
                 catch { continue; /* unreadable / native */ }

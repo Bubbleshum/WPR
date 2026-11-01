@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Input
 {
     public class TouchPoint
     {

@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Media.Imaging
 {
     /// <summary>Shim for <c>System.Windows.Media.Imaging.BitmapCreateOptions</c>.</summary>
     [Flags]

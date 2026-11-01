@@ -1,6 +1,7 @@
 using global::System;
 using global::System.Collections.Generic;
 using global::System.Runtime.InteropServices;
+using global::System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Foundation;
 using WPR.WinRT;
 
@@ -75,12 +76,15 @@ namespace Windows.ApplicationModel.Store
 
         public DateTimeOffset ExpirationDate => DateTimeOffset.MaxValue;
 
-        /// <summary>Never raised: the licence never changes.</summary>
-        public event LicenseChangedEventHandler? LicenseChanged
-        {
-            add { }
-            remove { }
-        }
+        private EventRegistrationTokenTable<LicenseChangedEventHandler>? _licenseChanged;
+
+        /// <summary>
+        /// Never raised: the licence never changes. In WinRT's token form, as game IL binds it
+        /// (<c>EventRegistrationToken add_LicenseChanged</c>, <c>remove_LicenseChanged(token)</c>).
+        /// </summary>
+        public EventRegistrationToken add_LicenseChanged(LicenseChangedEventHandler handler) => EventRegistrationTokenTable<LicenseChangedEventHandler>.GetOrCreateEventRegistrationTokenTable(ref _licenseChanged).AddEventHandler(handler);
+
+        public void remove_LicenseChanged(EventRegistrationToken token) => _licenseChanged?.RemoveEventHandler(token);
     }
 
     /// <summary>Shim for <c>Windows.ApplicationModel.Store.LicenseChangedEventHandler</c>.</summary>

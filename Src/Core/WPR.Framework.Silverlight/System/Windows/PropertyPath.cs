@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows
 {
     /// <summary>Shim for <c>System.Windows.PropertyPath</c>.
     /// Stores the dotted path; we don't resolve it (Bindings carry their own Path string).</summary>

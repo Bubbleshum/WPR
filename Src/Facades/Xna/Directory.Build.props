@@ -1,0 +1,57 @@
+<Project>
+  <!--
+    XNA facade assemblies (trial, branch xna-facades).
+
+    Each project in this folder builds an assembly with the name of a WP7/WP8 XNA assembly
+    (its file name IS the assembly name) and contains nothing but [TypeForwardedTo] attributes,
+    so a game's untouched reference [Microsoft.Xna.Framework.Graphics]Texture2D resolves to the
+    implementation in WPR.Framework.Xna. The patcher then no longer has to rescope XNA typerefs.
+
+    All facades forward the same types: every public Microsoft.Xna.* type of the implementation
+    assemblies, generated at build (../Forwarders.targets). Where WP7 placed a type does not
+    matter, every facade answers for every implemented type, and a type added to an
+    implementation is forwarded on the next build.
+  -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <!-- Eight projects share this folder, so each needs its own obj/ (NuGet's project.assets.json
+       is per intermediate folder) and bin/. -->
+  <PropertyGroup>
+    <BaseIntermediateOutputPath>obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+    <BaseOutputPath>bin\$(MSBuildProjectName)\</BaseOutputPath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
+    <TargetFrameworks>net10.0;net10.0-android</TargetFrameworks>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(OS)' == 'Windows_NT' ">
+    <TargetFrameworks>net10.0-windows10.0.17763.0;net10.0-android</TargetFrameworks>
+  </PropertyGroup>
+  <PropertyGroup>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net10.0-android'">24.0</SupportedOSPlatformVersion>
+    <!-- Games reference 4.0.0.0; the binder accepts an equal or higher version. -->
+    <AssemblyVersion>4.0.0.0</AssemblyVersion>
+    <FileVersion>4.0.0.0</FileVersion>
+    <Version>4.0.0</Version>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- The root namespace defaults to the project name, and on Android the SDK generates a
+         Resource class in it: for Microsoft.Xna.Framework.Game that makes "Game" a namespace, and
+         the forwarder for the Game TYPE stops compiling. A facade has no resources at all. -->
+    <RootNamespace>WPR.Facades.Xna</RootNamespace>
+    <AndroidGenerateResourceDesigner>false</AndroidGenerateResourceDesigner>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <Import Project="$(MSBuildThisFileDirectory)..\Forwarders.targets" />
+  <ItemGroup>
+    <WprForwardFrom Include="WPR.Framework.Xna;WPR.Backend.FNA;WPR.Framework.Silverlight" />
+    <WprForwardNamespace Include="Microsoft.Xna.Framework" />
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Xna\WPR.Framework.Xna.csproj" />
+    <!-- GamerServicesComponent derives from the spine and lives in the backend. -->
+    <ProjectReference Include="$(SolutionDir)Backends\WPR.Backend.FNA\WPR.Backend.FNA.csproj" />
+    <!-- UIElementRenderer rasterises a Silverlight tree. -->
+    <ProjectReference Include="$(SolutionDir)Core\WPR.Framework.Silverlight\WPR.Framework.Silverlight.csproj" />
+  </ItemGroup>
+</Project>

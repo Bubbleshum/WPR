@@ -27,9 +27,9 @@ namespace WPR.Wp8Native
     /// display (<see cref="Wp8Display"/>); a constant the IL loads right before the call (a
     /// <c>true</c>, a <c>1</c>, a string literal) is passed as written; an event subscription gets a
     /// no-op handler; an argument of one of the component's own interfaces gets a host object that
-    /// answers defaults; anything else gets the type's default. That is less than a hand-written
-    /// description knows - which branch a handler takes, what a C# callback answers - so the
-    /// hand-written ones in <see cref="XamlShells"/> still win; this is what runs when there is none.</para>
+    /// answers defaults; anything else gets the type's default. This is the only page description
+    /// WPR has: there are no per-title ones (the contract suite checks it against three written out
+    /// by hand from decompiled pages).</para>
     /// <para>Nothing in this file may name an XNA or engine type: the probe compiles it.</para>
     /// </remarks>
     public static partial class XamlShellInference
@@ -266,6 +266,24 @@ namespace WPR.Wp8Native
                         {
                             steps.Add(new XamlShellStep("CreateInstance", other.Method.ParameterTypes.Select(t => DefaultFor(t, "", null)).ToArray()) { Class = call.Class });
                         }
+                        // new C() of another class, then calls on that instance: GTA: San Andreas's
+                        // page makes a wp8Hal.WarEvents and hands it its C# WarCallback through
+                        // SetCallback. Left out, the engine called through the null callback the first
+                        // time it sent the page a command.
+                        else if (call.IsNew && call.Parameters == 0 && phase != Phase.Lifecycle && metadata.DefaultInterface(call.Class) is not null)
+                        {
+                            steps.Add(new XamlShellStep(WinRtRuntime.ActivateInstanceStep) { Class = call.Class });
+                        }
+                        else if (!call.IsStatic && !call.IsNew && !call.IsFunctionPointer && phase != Phase.Lifecycle &&
+                                 !call.Method.StartsWith("get_", StringComparison.Ordinal) &&
+                                 !call.Method.StartsWith("add_", StringComparison.Ordinal) &&
+                                 !call.Method.StartsWith("remove_", StringComparison.Ordinal) &&
+                                 steps.Any(s => s.Class == call.Class && s.Method is WinRtRuntime.ActivateInstanceStep or "CreateInstance") &&
+                                 metadata.FindMethod(call.Class, call.Method) is { } instanceMethod &&
+                                 StringArgumentsKnown(call, instanceMethod.Method))
+                        {
+                            steps.Add(new XamlShellStep(call.Method, Arguments(call, instanceMethod.Method)) { Class = call.Class });
+                        }
                         // A static of another class, usually handing the engine a C# callback it
                         // later calls unconditionally (Doodle God Blitz's DeviceWrapper.SetLanguageHandler
                         // and a dozen more: left out, the engine called through null 16 frames in).
@@ -380,7 +398,12 @@ namespace WPR.Wp8Native
                 // Then the first boolean; a void call only when it is named for the key (Spark2's
                 // OnBackButtonPressed), since a handler also sets unrelated state on the way.
                 string? Returns(ShellCall c) => metadata.FindMethod(classId, c.Method)?.Method.ReturnType;
+                // A number from a method named for the key comes before any other boolean: Asphalt 7
+                // asks OnBackKeyPress(true) and closes when it answers more than 0, and only then
+                // asks IsOpenIGP (an overlay this host never opens) - which, taken as the decision,
+                // kept every press from the game. The host reads such an answer as "> 0".
                 IEnumerable<ShellCall> ranked = own.Where(c => c.NextCall == "set_Cancel" && Returns(c) == "Boolean")
+                    .Concat(own.Where(c => Returns(c) == "Int32" && c.Method.Contains("Back", StringComparison.OrdinalIgnoreCase)))
                     .Concat(own.Where(c => Returns(c) == "Boolean"))
                     .Concat(own.Where(c => Returns(c) == "Void" && c.Method.Contains("Back", StringComparison.OrdinalIgnoreCase)));
                 foreach (ShellCall call in ranked)
@@ -389,7 +412,8 @@ namespace WPR.Wp8Native
 
                     bool quitWhen = returns == "Void" || call.NextCall != "set_Cancel";
                     List<XamlShellStep> otherwise = Steps(own.SkipWhile(c => c != call).Skip(1).ToList(), Phase.Lifecycle);
-                    return new XamlBackKey(call.Method, otherwise, closing ?? [], quitWhen);
+                    object?[] arguments = metadata.FindMethod(classId, call.Method) is { } found ? Arguments(call, found.Method) : [];
+                    return new XamlBackKey(call.Method, otherwise, closing ?? [], quitWhen) { QuitIfArguments = arguments };
                 }
 
                 return null;
@@ -427,6 +451,29 @@ namespace WPR.Wp8Native
                     : Has("Manufacturer") || Has("Family") ? "NOKIA"
                     : Has("DeviceName") || Has("Model") ? "RM-821_eu_euro1_276"
                     : null;
+            }
+
+            /// <summary>
+            /// Whether every string the call passes is one the IL shows. A string the page computed from
+            /// its own state is usually guarded by it: AC Pirates opens a launch URI on its Lua bridge
+            /// only <c>if (m_uri != null)</c>, which is null on a normal start, and a guessed "" for it
+            /// is a call the phone never made.
+            /// </summary>
+            private static bool StringArgumentsKnown(ShellCall call, WinmdReader.MethodLayout method)
+            {
+                int count = method.ParameterTypes.Count;
+                for (int i = 0; i < count; i++)
+                {
+                    int fromEnd = count - 1 - i;
+                    object? known = i < call.Evaluated.Length && call.Evaluated[i] is { } evaluated ? evaluated
+                        : fromEnd < call.TrailingConstants.Length ? call.TrailingConstants[^(fromEnd + 1)] : null;
+                    if (method.ParameterTypes[i] == "String" && known is not string)
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
             }
 
             private object?[] Arguments(ShellCall call, WinmdReader.MethodLayout method)
@@ -706,12 +753,21 @@ namespace WPR.Wp8Native
                     return;
                 }
 
-                byte[] il = _pe.GetMethodBody(method.RelativeVirtualAddress).GetILBytes() ?? [];
+                MethodBodyBlock body = _pe.GetMethodBody(method.RelativeVirtualAddress);
+                byte[] il = body.GetILBytes() ?? [];
+                bool handlers = body.ExceptionRegions.Length > 0;
                 List<(ILOpCode Op, int Token, object? Constant)> code = Decode(il);
                 for (int i = 0; i < code.Count; i++)
                 {
                     (ILOpCode op, int token, _) = code[i];
                     if (op is not (ILOpCode.Call or ILOpCode.Callvirt or ILOpCode.Newobj or ILOpCode.Ldftn or ILOpCode.Ldvirtftn))
+                    {
+                        continue;
+                    }
+
+                    // A call on a branch this device never takes (the flipped-orientation arm of an
+                    // OrientationChanged handler) is not something the page does here.
+                    if (followCalls && IsUnreachable(il, i, handlers))
                     {
                         continue;
                     }

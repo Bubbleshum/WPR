@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Input
 {
     /// <summary>
     /// Shim for <c>System.Windows.Input.Touch</c>. WP/Silverlight apps subscribe to

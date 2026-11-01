@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
     /// <summary>Shim for <c>System.Windows.Controls.SelectionMode</c>.</summary>
     public enum SelectionMode

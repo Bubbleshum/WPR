@@ -223,9 +223,19 @@ public sealed class HubClient : IDisposable
 
     // ------------------------------------------------------------- game files
 
-    /// <summary>Signed-in only: does the server have this package, and would it like it?</summary>
-    public Task<GameFileInfo> GetGameFileInfoAsync(string sha256, CancellationToken ct = default) =>
-        SendAsync<GameFileInfo>(HttpMethod.Get, $"api/game-files/{sha256.ToLowerInvariant()}", null, auth: true, ct);
+    /// <summary>
+    /// Signed-in only: does the server have this package, and would it like it? With the title and
+    /// its manifest version the answer also says whether the hub needs any more of that title
+    /// (<see cref="GameFileInfo.NotNeeded"/>).
+    /// </summary>
+    public Task<GameFileInfo> GetGameFileInfoAsync(string sha256, string? titleId = null, string? version = null, CancellationToken ct = default)
+    {
+        var query = new List<string>();
+        if (!string.IsNullOrEmpty(titleId)) query.Add("title_id=" + Uri.EscapeDataString(TitleIds.Normalize(titleId)));
+        if (!string.IsNullOrEmpty(version)) query.Add("version=" + Uri.EscapeDataString(version));
+        string path = $"api/game-files/{sha256.ToLowerInvariant()}" + (query.Count > 0 ? "?" + string.Join("&", query) : "");
+        return SendAsync<GameFileInfo>(HttpMethod.Get, path, null, auth: true, ct);
+    }
 
     public static async Task<string> ComputeSha256Async(string path, CancellationToken ct = default)
     {
@@ -241,7 +251,10 @@ public sealed class HubClient : IDisposable
     /// got to. Returns the final state: "complete", "failed" (e.g. the file
     /// didn't match its hash), "in_progress" (someone else is sending it) or
     /// "not_wanted" (storage full, or server logging off). Only used with server logging on.
+    /// A start the hub declines because it holds every package it needs for the title comes back
+    /// with no status and <see cref="GameFileUploadState.IsNotNeeded"/>.
     /// </summary>
+    /// <param name="version">The package's own manifest version, so the hub can decline a version it holds.</param>
     /// <param name="offer">From a crash receipt; null to use the signed-in account instead.</param>
     public async Task<GameFileUploadState> UploadGameFileAsync(
         string packagePath,
@@ -249,7 +262,8 @@ public sealed class HubClient : IDisposable
         string? titleId = null,
         string? titleName = null,
         IProgress<(long Sent, long Total)>? progress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? version = null)
     {
         var size = new FileInfo(packagePath).Length;
         var sha = offer?.Sha256 ?? await ComputeSha256Async(packagePath, ct).ConfigureAwait(false);
@@ -260,8 +274,9 @@ public sealed class HubClient : IDisposable
         {
             size,
             file_name = Path.GetFileName(packagePath),
-            title_id = titleId,
+            title_id = titleId is null ? null : TitleIds.Normalize(titleId),
             title_name = titleName,
+            version,
         }).ConfigureAwait(false);
 
         if (state.Status != "receiving" || state.UploadUrl is null)

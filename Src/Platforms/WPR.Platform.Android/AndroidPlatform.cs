@@ -178,7 +178,7 @@ namespace WPR.Platform.Android
                 Hub ??= WPR.Shell.HubSetup.TryCreate("android", new Online.AndroidGamePackageSource(_context),
                     new WPR.Database.Online.EfOnlineLocalStore(), WPR.XnaAchievementSeeder.SeedCataloguesAsync,
                     id => WPR.GameIconStore.Find(id) != null, WPR.GameIconStore.SaveDownloaded,
-                    WPR.ApplicationInstaller.InstalledTitlesForHub);
+                    WPR.ApplicationInstaller.InstalledTitlesForHub, WPR.XnaAchievementSeeder.InstalledCataloguesForHub);
                 if (Hub != null) caps.Online(Hub.Services);
 
                 // A game process that died without ending its run is a native crash only if

@@ -57,6 +57,22 @@ at that time. Ranked by impact within each group.
     a refresh. Not GC and not file access; cause not pinned down. Separately, a 120-500 ms pause
     when a run ends is the game's own save (~600 file operations). Branch
     `claude/jetpack-joyride-5e24a7`, commit `6bdcfb9b`.
+12. **Asphalt 7's Exit Game ends on the error screen** (2026-11-01). The deadlock is fixed
+    (`261c0116`, XAudio2 `GetState`), but the game then calls through a null object in its own
+    tracking teardown (`this` null in `0x10312C94`, reached from `0x10311B52`, loading from
+    the install root) and stops with CPU exception 12. Back closes it. On a phone a crash at
+    that point would just close the app, and it may never be reached there, since the exit
+    callback's `Terminate()` would end the process first. Why the object is null here is open.
+13. **Asphalt 7's races still drop a frame now and then on the S24** (2-6 gaps over 50 ms per
+    5 s at 57-61 fps, build 52). What is left is the GPU: a host frame with one game frame to
+    replay sometimes waits ~29 ms in the swap. Cutting GPU work per frame is the next step (a
+    race frame is ~64 draws plus one full-screen copy, every target carries Depth24Stencil8 and
+    FNA3D loads and stores colour and depth on every pass). Read `late host frame` lines in the
+    session log for the split.
+14. **Release 0.2.09 checks not run for the Asphalt 7 work** (`261c0116`, `b366a472`): desktop
+    Vulkan and OpenGL, the emulator (A1/A2), a Mali device. Verified on D3D11 and the S24
+    (Vulkan) only. The guest-clock change in `b366a472` touches every WP8 title whose host
+    falls behind: it was checked on Rio, MC4, Amazing Alex and AC Pirates on the desktop.
 
 ## Silverlight shims
 

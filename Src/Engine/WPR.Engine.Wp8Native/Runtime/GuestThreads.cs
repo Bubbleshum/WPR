@@ -1,4 +1,4 @@
-using UnicornEngine.Const;
+﻿using UnicornEngine.Const;
 
 namespace WPR.Wp8Native
 {
@@ -46,6 +46,16 @@ namespace WPR.Wp8Native
 
             /// <summary>When a timed wait it is blocked in runs out (Stopwatch ticks); 0 for an untimed wait.</summary>
             public long WakeAt { get; set; }
+
+            /// <summary>
+            /// Where it resumes (bit 0 = Thumb) when a time slice switched it out between two
+            /// instructions rather than inside a trap; 0 otherwise. Its saved r12 is then its own
+            /// value, not a resume address.
+            /// </summary>
+            public long PreemptedPc { get; set; }
+
+            /// <summary>Its FPSCR (rounding mode, flush-to-zero), saved with the VFP registers.</summary>
+            public long Fpscr { get; set; }
 
             /// <summary>Instructions retired while this thread held the CPU (WPR_WP8_CALLSTATS only).</summary>
             public long Retired { get; set; }
@@ -336,7 +346,9 @@ namespace WPR.Wp8Native
                     : t.Ready is null ? "runnable"
                     : $"blocked{(t.Why is null ? "" : $" on {t.Why}")}";
                 string where = t.Registers is { } r && t != _currentThread
-                    ? $" resume 0x{r[Index(Arm.UC_ARM_REG_R12)]:X8} lr 0x{r[Index(Arm.UC_ARM_REG_LR)]:X8}"
+                    ? t.PreemptedPc != 0
+                        ? $" (preempted) pc 0x{t.PreemptedPc & ~1L:X8} lr 0x{r[Index(Arm.UC_ARM_REG_LR)]:X8}"
+                        : $" resume 0x{r[Index(Arm.UC_ARM_REG_R12)]:X8} lr 0x{r[Index(Arm.UC_ARM_REG_LR)]:X8}"
                     : "";
                 yield return $"thread {t.Id} '{t.Name}': {state}{where}";
             }
@@ -378,6 +390,7 @@ namespace WPR.Wp8Native
             }
 
             thread.Vfp = vfp;
+            thread.Fpscr = _cpu.RegRead(Arm.UC_ARM_REG_FPSCR);
         }
 
         /// <summary>When the main loop last handed the CPU to the other threads (Stopwatch ticks).</summary>
@@ -417,9 +430,14 @@ namespace WPR.Wp8Native
                         continue;
                     }
 
+                    // The fair cursor is left where it is: moving it past a woken worker skipped
+                    // the yielding threads in between, every time. N.O.V.A. 3's sound streamer
+                    // sleeps with Concurrency::wait between reads and sat just past the mixer; once
+                    // a mission added a thread the mixer wakes, both were always picked here, the
+                    // round robin always restarted beyond the streamer, and it never ran again:
+                    // silence from the first mission on.
                     if (candidate.Ready is not null && WokenByWait(candidate) && candidate.Ready())
                     {
-                        _roundRobin = (_threads.IndexOf(candidate) + 1) % _threads.Count;
                         return candidate;
                     }
                 }
@@ -490,7 +508,137 @@ namespace WPR.Wp8Native
             return _threads.Count > 1 && BlockCurrentThread(() => true, why: "time slice");
         }
 
-        private void SwitchTo(GuestThread thread)
+        /// <summary>Instructions the CPU runs before the scheduler may preempt the running thread.</summary>
+        internal const long PreemptSliceInstructions = 4_000_000;
+
+        /// <summary>Times a time slice switched a thread out between two instructions.</summary>
+        public int Preemptions { get; private set; }
+
+        private sealed record SliceEnd(int Thread, long Pc, long Lr, bool Trapped);
+
+        // One object per slice (millions of instructions apart), swapped whole so a reader on
+        // another thread never sees half of one.
+        private volatile SliceEnd? _lastSlice;
+
+        /// <summary>
+        /// Where the CPU was at the end of the last whole slice, for a watchdog on another thread.
+        /// A slice ends only after millions of instructions, so this names a thread that has been
+        /// running for a long time, not where every thread is.
+        /// </summary>
+        public string LastSlice => _lastSlice is { } s
+            ? $"thread {s.Thread} at pc 0x{s.Pc:X8} lr 0x{s.Lr:X8} ({(s.Trapped ? "calling the host" : "no host call")} in that slice)"
+            : "no whole slice yet";
+
+        private long _trapsEntered;
+
+        /// <summary>Host calls (traps) the guest has made, of every kind.</summary>
+        internal long TrapsEntered => _trapsEntered;
+        private long _trapsAtSlice = -1;
+        private long _resumeAt;
+        private long _preemptStub;
+        private long _preemptData;
+
+        /// <summary>
+        /// Called between two CPU slices, outside any trap. When the running thread entered no
+        /// trap for a whole slice and another thread can run, it is switched out where it stands
+        /// (every register live, pc and flags included) and the other one carries on. Returns
+        /// where the CPU continues (bit 0 = Thumb).
+        /// </summary>
+        /// <remarks>
+        /// Threads otherwise switch only inside traps (a wait, a sleep, the frame boundary, the
+        /// <see cref="TimeSlice"/> in LeaveCriticalSection). A thread that polls memory without
+        /// calling anything never reaches one, and the thread it waits for never runs: GTA: San
+        /// Andreas's main thread spins on a flag its loader thread sets, with no import in the
+        /// loop, and the game stopped presenting for good 13 frames in. A phone preempts.
+        /// A thread that does call into the host keeps the CPU as before, so titles that worked
+        /// with cooperative switching are scheduled as they were.
+        /// </remarks>
+        internal long PreemptAfterSlice()
+        {
+            long pc = _cpu.RegRead(Arm.UC_ARM_REG_PC);
+            long cpsr = _cpu.RegRead(Arm.UC_ARM_REG_CPSR);
+            long here = (pc & ~1L) | ((cpsr & 0x20) != 0 ? 1 : 0);
+            _lastSlice = new SliceEnd(CurrentThread.Id, pc & ~1L, _cpu.RegRead(Arm.UC_ARM_REG_LR), _trapsEntered != _trapsAtSlice);
+            bool enteredTraps = _trapsEntered != _trapsAtSlice;
+            _trapsAtSlice = _trapsEntered;
+
+            // Inside an IT block (CPSR IT bits) the stub could not restore the IT state.
+            if (enteredTraps || _threads.Count < 2 || (cpsr & 0x0600FC00) != 0)
+            {
+                return here;
+            }
+
+            GuestThread me = CurrentThread;
+            if (PickNext(me) is not { } next)
+            {
+                return here;
+            }
+
+            Save(me);
+            me.Ready = null;
+            me.OnResume = null;
+            me.Why = null;
+            me.WakeAt = 0;
+            me.PreemptedPc = here;
+            Preemptions++;
+            if (Preemptions <= 8)
+            {
+                ThreadNote($"thread {me.Id} preempted at 0x{pc & ~1L:X8} after a slice with no host call; thread {next.Id} runs");
+            }
+
+            SwitchTo(next, fromTrap: false);
+            return _resumeAt;
+        }
+
+        /// <summary>
+        /// The Thumb stub a trap's <c>bx r12</c> enters to resume a preempted thread: it loads the
+        /// saved flags, then r12 and pc, from a data block written just before. One of each serves
+        /// every thread, because the stub runs straight after the trap that wrote it.
+        /// </summary>
+        private long PreemptResumeStub(long r12, long pc, long cpsr)
+        {
+            if (_preemptStub == 0)
+            {
+                // Data and code on pages of their own, so writing the data block never touches a
+                // page that holds code (a JIT has to drop translations for that).
+                long block = AllocateHeap(3 * PageSize);
+                _preemptData = Align(block, PageSize);
+                _preemptStub = _preemptData + PageSize;
+                _executableHeap.Add((_preemptStub, _preemptStub + PageSize));
+                if (_heapExecuteProtected)
+                {
+                    GrantExecute(_preemptStub, PageSize);
+                }
+
+                byte[] code =
+                [
+                    0xDF, 0xF8, 0x10, 0xC0, // ldr.w r12, [pc, #16]   ; the data block
+                    0xDC, 0xF8, 0x08, 0xC0, // ldr.w r12, [r12, #8]   ; saved CPSR
+                    0x8C, 0xF3, 0x00, 0x8C, // msr   APSR_nzcvqg, r12
+                    0xDF, 0xF8, 0x04, 0xC0, // ldr.w r12, [pc, #4]    ; the data block
+                    0x9C, 0xE8, 0x00, 0x90, // ldm.w r12, {r12, pc}
+                    0, 0, 0, 0,             // the data block's address
+                ];
+                BitConverter.GetBytes((uint)_preemptData).CopyTo(code, 20);
+                _cpu.MemWrite(_preemptStub, code);
+            }
+
+            Span<byte> data = stackalloc byte[12];
+            BitConverter.TryWriteBytes(data, (uint)r12);
+            BitConverter.TryWriteBytes(data[4..], (uint)(pc | 1));
+            BitConverter.TryWriteBytes(data[8..], (uint)cpsr);
+            _cpu.MemWriteFrom(_preemptData, data);
+            return _preemptStub;
+        }
+
+        private void SwitchTo(GuestThread thread) => SwitchTo(thread, fromTrap: true);
+
+        /// <param name="fromTrap">
+        /// True inside a trap, whose closing <c>bx r12</c> carries on in the thread switched to;
+        /// false between two time slices (<see cref="PreemptAfterSlice"/>), where the caller
+        /// continues at <see cref="_resumeAt"/>.
+        /// </param>
+        private void SwitchTo(GuestThread thread, bool fromTrap)
         {
             _sliceStart = _cpu.InstructionsRetired;
             if (HostStubs.CountCalls)
@@ -504,6 +652,35 @@ namespace WPR.Wp8Native
             for (int i = 0; i < 64; i++)
             {
                 _cpu.VfpWrite(i, thread.Vfp![i]);
+            }
+
+            if (thread.Fpscr != 0)
+            {
+                _cpu.RegWrite(Arm.UC_ARM_REG_FPSCR, thread.Fpscr);
+            }
+
+            if (thread.PreemptedPc != 0)
+            {
+                // Switched out between two instructions, so every register is live, r12 included.
+                long resume = thread.PreemptedPc;
+                thread.PreemptedPc = 0;
+                if (fromTrap)
+                {
+                    // The trap ends with bx r12: point it at a stub that restores the flags, r12
+                    // and pc this thread was stopped with.
+                    _resumeAt = 0;
+                    _cpu.RegWrite(Arm.UC_ARM_REG_R12, ThumbEntry(PreemptResumeStub(
+                        thread.Registers![Index(Arm.UC_ARM_REG_R12)], resume, thread.Registers![Index(Arm.UC_ARM_REG_CPSR)])));
+                }
+                else
+                {
+                    _resumeAt = resume;
+                }
+            }
+            else
+            {
+                // Saved inside a trap: it carries on where that trap's bx r12 would have gone.
+                _resumeAt = fromTrap ? 0 : thread.Registers![Index(Arm.UC_ARM_REG_R12)];
             }
 
             // RestoreRegisters put the thread's own r12 - its resume address - back, which is

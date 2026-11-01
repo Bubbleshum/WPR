@@ -1,3 +1,5 @@
+extern alias wprwinrt;
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -16,11 +18,13 @@ namespace Microsoft.Phone.Shell
         private static PhoneApplicationService? _Current;
         public static PhoneApplicationService? Current => _Current;
 
-        private bool _AppActivated = false;
+        private bool _Launched;
 
         static PhoneApplicationService()
         {
             _Current = new PhoneApplicationService();
+            // An "AndContinue" call (file picker, web sign-in) comes back here on WP8.1 Silverlight.
+            wprwinrt::WPR.WinRT.WinRtHost.ContractActivation += args => _Current?.ContractActivated?.Invoke(_Current, args);
         }
 
         public PhoneApplicationService()
@@ -41,56 +45,41 @@ namespace Microsoft.Phone.Shell
         public Version ContractVersion { get; } = new Version(8, 0);
 
         /// <summary>
-        /// Drives the WP7 boot lifecycle from <c>ApplicationLaunch</c>. A fresh launch
-        /// (<paramref name="anew"/>=true) raises <see cref="Launching"/>; a resume (anew=false)
-        /// does not. <see cref="Activated"/> is raised on BOTH paths unless the caller passes
-        /// <paramref name="raiseActivated"/>=<c>false</c>, and always with
-        /// <see cref="ActivatedEventArgs.IsApplicationInstancePreserved"/>=<c>true</c>.
+        /// Drives the phone's lifecycle from <c>ApplicationLaunch</c>, as Windows Phone raised it.
+        /// A cold start (<paramref name="anew"/>=true) raises <see cref="Launching"/> and nothing
+        /// else, once per service: a second cold start on the same service does nothing. A resume
+        /// (anew=false: the app came back to the front, or a <c>MediaPlayerLauncher</c> movie
+        /// ended) raises <see cref="Activated"/> with
+        /// <see cref="ActivatedEventArgs.IsApplicationInstancePreserved"/>=<c>true</c>, a dormant
+        /// resume: the process never died, so there is no tombstone to restore.
         /// <para>
-        /// <b>Launching on anew=true:</b> games that build their scene graph in the Launching
-        /// handler (e.g. MonstaFish) otherwise sit on a black Clear(Color.Black) forever.
-        /// </para>
-        /// <para>
-        /// <b>Activated on a fresh launch (kept):</b> several titles key level/HUD setup off the
-        /// activation signal. Star Wars: The Battle for Hoth is the concrete case — its in-game
-        /// HUD only unfolds when the post-boot Activated drives the flow; drop it and the
-        /// coin / command-point icons never leave alpha 0 (HUD looks empty) on a cold start even
-        /// though a later resume shows them. So Activated is raised at boot AND on resume.
-        /// </para>
-        /// <para>
-        /// <b>IsApplicationInstancePreserved is always true (not <c>!anew</c>):</b> a fresh launch
-        /// has nothing to restore, so handlers that treat Activated+preserved=<c>false</c> as a
-        /// tombstone-restore signal must not run that path at boot. Battlewagon's
-        /// <c>Current_Activated</c> does exactly that — with preserved=false it runs
-        /// <c>SystemData.ContinueGame()</c> -> <c>MapData.FromFile()</c>, which on a fresh install
-        /// overwrites the <c>MapData</c> just loaded in <c>LoadContent</c> with an empty
-        /// <c>new MapData()</c> (null <c>MapSeasons</c>) and jumps to the title scene, whose
-        /// <c>Initialise()</c> NREs on the null array (the game sat on its animated-bomb loading
-        /// screen forever). Reporting the instance as preserved makes such handlers early-out
-        /// (<c>if (e.IsApplicationInstancePreserved) return;</c>) while preserved-agnostic handlers
-        /// (Hoth) are unaffected. On a genuine resume (anew=false, e.g. a MediaPlayerLauncher
-        /// round-trip) preserved=true is also correct — the WPR process never died.
-        /// </para>
-        /// <para>
-        /// <b><paramref name="raiseActivated"/>=false — the per-game opt-out:</b> the boot
-        /// Activated above is a WPR invention (real WP7 raises Launching only at cold start), and
-        /// a title that runs its own init AND treats Activated as "re-initialise" then does that
-        /// work twice. Doodle God aborts on it — see <c>GameLifecycleQuirks</c>, which is the only
-        /// thing that passes false and which names the games. Never passed on the resume path:
-        /// there Activated is the genuine WP7 signal.
+        /// Until 2026-10-27 WPR also raised Activated at a cold start (preserved=true, to keep
+        /// tombstone-restore handlers away) and raised the cold start twice, once before
+        /// <c>Game.Run</c>. The phone did neither (MSDN jj206947, on 7.x and 8.0 alike), and several
+        /// titles broke on it and were then listed by name: Doodle God ran its full initialisation
+        /// a second time, Chickens Can't Fly took the boot Activated for a fast app switch and skipped
+        /// loading its saved state, AE 3D Motor restored a tombstone it never saved, and iRunner's
+        /// analytics started a second session. The titles that seemed to need the boot Activated did
+        /// not: Star Wars: The Battle for Hoth's handler only completes a playing video (the
+        /// launcher movie's resume does that), and Battlewagon's ignores a preserved activation.
         /// </para>
         /// </summary>
-        public void HandleApplicationStart(bool anew, bool raiseActivated = true)
+        public void HandleApplicationStart(bool anew)
         {
 #if DEBUG
-            string raising = (anew ? "Launching" : "") + (anew && raiseActivated ? "+" : "") + (raiseActivated ? "Activated" : "");
-            Trace.WriteLine($"[wpr-trace] PhoneApplicationService.HandleApplicationStart(anew={anew}) firing {raising} (preserved=true)" +
-                $"{(raiseActivated ? "" : " [boot Activated suppressed for this game]")}. " +
-                $"Subscribers: Launching={CountInvocations(_Launching)} Activated={CountInvocations(_Activated)}");
+            Trace.WriteLine($"[wpr-trace] PhoneApplicationService.HandleApplicationStart(anew={anew}) " +
+                (anew ? (_Launched ? "ignored: Launching was already raised" : "firing Launching") : "firing Activated (preserved=true)") +
+                $". Subscribers: Launching={CountInvocations(_Launching)} Activated={CountInvocations(_Activated)}");
 #endif
 
             if (anew)
             {
+                if (_Launched)
+                {
+                    return;
+                }
+
+                _Launched = true;
                 try { _Launching?.Invoke(this, new LaunchingEventArgs()); }
                 catch (Exception ex)
                 {
@@ -100,20 +89,10 @@ namespace Microsoft.Phone.Shell
                     _ = ex;
 #endif
                 }
-            }
 
-            if (!raiseActivated)
-            {
-                // Deliberately leaves _AppActivated false. It is what the Activated `add`
-                // accessor replays to a late subscriber, so setting it here would re-deliver
-                // exactly the activation this call was asked to suppress — the game subscribes
-                // in its ctor today, but that is its choice, not a guarantee.
                 return;
             }
 
-            // Always raise Activated (boot AND resume), but as an instance-preserved
-            // (fast-resume) signal so cold-start handlers skip tombstone-restore logic.
-            // See the remarks above for why this satisfies both Hoth and Battlewagon.
             try { _Activated?.Invoke(this, new ActivatedEventArgs { IsApplicationInstancePreserved = true }); }
             catch (Exception ex)
             {
@@ -123,17 +102,27 @@ namespace Microsoft.Phone.Shell
                 _ = ex;
 #endif
             }
-
-            _AppActivated = true;
         }
 
-        public void HandleApplicationExit()
-        {
-            _Deactivated?.Invoke(this, new DeactivatedEventArgs { Reason = DeactivationReason.UserAction });
-            _Closing?.Invoke(this, new ClosingEventArgs());
+        public void HandleApplicationExit() => HandleApplicationExit(terminated: false);
 
-            // Recycle so the next launch starts with an empty subscriber list and
-            // _AppActivated=false. ApplicationLaunch.ResetWprSingletons does the same swap
+        /// <summary>
+        /// The app's run has ended. <paramref name="terminated"/>: it ended itself, through
+        /// <c>Application.Terminate()</c> or a quit exception it declined to handle, and then the
+        /// phone raised neither Deactivated nor Closing. GTA: San Andreas quits from its pause
+        /// menu with Terminate(), and its Closing handler calls into its native component, whose
+        /// main thread is still inside that quit and never answers: the game froze on quitting.
+        /// </summary>
+        public void HandleApplicationExit(bool terminated)
+        {
+            if (!terminated)
+            {
+                _Deactivated?.Invoke(this, new DeactivatedEventArgs { Reason = DeactivationReason.UserAction });
+                _Closing?.Invoke(this, new ClosingEventArgs());
+            }
+
+            // Recycle so the next launch starts with an empty subscriber list and has not
+            // launched yet. ApplicationLaunch.ResetWprSingletons does the same swap
             // via reflection for the ALC-unload path.
             _Current = new PhoneApplicationService();
         }
@@ -159,31 +148,12 @@ namespace Microsoft.Phone.Shell
             add
             {
 #if DEBUG
-                Trace.WriteLine($"[wpr-trace] PhoneApplicationService.Activated += handler (_AppActivated={_AppActivated})");
+                Trace.WriteLine("[wpr-trace] PhoneApplicationService.Activated += handler");
 #endif
-                // Always retain the subscriber so it receives FUTURE activations — e.g. a
-                // MediaPlayerLauncher round-trip re-firing Activated so a game's
-                // OnGameActivated runs and completes a video (CVideoPlayer.DoPlayVideoComplete
-                // -> LoadLevel). The original code only invoked-and-dropped when _AppActivated
-                // was already set, which is the COMMON case (games subscribe in Initialize,
-                // after ApplicationLaunch primes HandleApplicationStart) — so their handler was
-                // never stored and missed every later activation, hanging Star Wars: The Battle
-                // for Hoth on a black screen at level start.
+                // Retained for every FUTURE activation (a resume, e.g. a MediaPlayerLauncher movie
+                // ending, which is what continues Star Wars: The Battle for Hoth into its level).
+                // Nothing is replayed to a late subscriber: a cold start raises no Activated.
                 _Activated += value;
-
-                // If the app already booted past HandleApplicationStart by the time this handler
-                // attaches (the common case — games subscribe in their ctor/Initialize, AFTER
-                // ApplicationLaunch primes the cold-start signal), replay it once now so the
-                // handler doesn't miss it. It MUST report IsApplicationInstancePreserved=true,
-                // exactly like HandleApplicationStart: on this host a cold start has nothing to
-                // restore, so a tombstone-restore handler (Battlewagon's Current_Activated ->
-                // LoadingScene) must early-out instead of running the restore path and NRE-ing.
-                // (This used to be false; it never bit while the game and ApplicationLaunch were
-                // on separate PhoneApplicationService instances, but they share one now.)
-                if (_AppActivated)
-                {
-                    value?.Invoke(this, new ActivatedEventArgs { IsApplicationInstancePreserved = true });
-                }
             }
             remove { _Activated -= value; }
         }
@@ -203,6 +173,13 @@ namespace Microsoft.Phone.Shell
         }
 
         public event EventHandler<RunningInBackgroundEventArgs>? RunningInBackground;
+
+        /// <summary>
+        /// WP8.1 Silverlight: the app was re-activated through a contract (a file picker or web
+        /// sign-in returning, a share target, a voice command). WPR raises it only for the
+        /// "AndContinue" calls, each of which comes back cancelled (no picker or browser here).
+        /// </summary>
+        public event EventHandler<wprwinrt::Windows.ApplicationModel.Activation.IActivatedEventArgs>? ContractActivated;
 
         internal void RaiseLaunching() => _Launching?.Invoke(this, new LaunchingEventArgs());
         internal void RaiseClosing() => _Closing?.Invoke(this, new ClosingEventArgs());

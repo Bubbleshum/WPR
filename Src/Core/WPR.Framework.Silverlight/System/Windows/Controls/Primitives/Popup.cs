@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls.Primitives
 {
     /// <summary>
     /// Shim for <c>System.Windows.Controls.Primitives.Popup</c>. In Silverlight this

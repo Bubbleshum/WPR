@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
     /// <summary>
     /// Single-content host. <see cref="Content"/> is typed as <c>object?</c> — a UIElement
@@ -43,6 +43,7 @@ namespace WPR.SilverlightCompability
                 cc._presenter = cc.BuildPresenter(e.NewValue);
                 cc._presenter?.SetParent(cc);
                 cc.InvalidateMeasure();
+                cc.OnContentChanged(e.OldValue, e.NewValue);
             }
             else if (d is Frame frame)
             {
@@ -54,6 +55,11 @@ namespace WPR.SilverlightCompability
                 // read it: the loading page stayed on screen for ever.
                 frame.ReplaceContentDirectly(e.NewValue);
             }
+        }
+
+        /// <summary>Silverlight's hook for a subclass, called after the new content is in place.</summary>
+        protected virtual void OnContentChanged(object? oldContent, object? newContent)
+        {
         }
 
         public static readonly DependencyProperty ContentTemplateProperty =

@@ -241,7 +241,7 @@ namespace WPR.Platform.Windows.Pages
         /// seed selection from <see cref="Configuration.AccentColor"/>, and on
         /// change persist the chosen hex back to configuration plus update the
         /// preview swatch. The actual phone theme reads this on next game launch
-        /// (in <c>WPR.WindowsCompability.Application</c>'s ctor); we don't apply
+        /// (in <c>System.Windows.Application</c>'s ctor); we don't apply
         /// it live to running games because <c>PhoneTheme</c>-keyed brushes get
         /// captured into individual element <c>Style</c>s during XAML load.
         /// </summary>

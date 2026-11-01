@@ -7,7 +7,7 @@
 
 using System;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
     /// <summary>
     /// Shim for <c>System.Windows.Controls.Border</c>. Single-child decoration

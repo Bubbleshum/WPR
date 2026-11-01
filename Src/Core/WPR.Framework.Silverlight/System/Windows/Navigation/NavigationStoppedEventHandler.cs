@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Navigation
 {
     public delegate void NavigationStoppedEventHandler(object sender, NavigationEventArgs e);
 }

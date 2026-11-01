@@ -90,8 +90,7 @@ namespace WPR.Platform.Android.Native
 
             // Hardcoded achievement catalogues (manifest + icon PNGs), one folder per
             // product. Recursive copy handles the per-product subfolders.
-            Filesystem.CopyFolderFromAssets(context.Assets!, "Database/Achievements",
-                Path.Combine(databaseDir, "Achievements"));
+            CopyCataloguesIfApkChanged(context, Path.Combine(databaseDir, "Achievements"));
 
             // Reconcile installed games against their catalogues (non-destructive; never
             // resets unlock progress). Non-fatal.
@@ -99,6 +98,61 @@ namespace WPR.Platform.Android.Native
             catch (Exception ex)
             {
                 Log.Warn(LogCategory.Startup, $"Startup achievement reconcile failed (non-fatal): {ex.Message}");
+            }
+        }
+
+        private const string CatalogueStampFile = ".wpr-apk-stamp";
+
+        /// <summary>
+        /// Copies the bundled achievement catalogues out of the APK, but only when the APK is not the
+        /// one that copied them last.
+        /// </summary>
+        /// <remarks>
+        /// The catalogues are ~4,900 files. Rewriting them all on every launcher start took about
+        /// 3.5 s on a Galaxy S24, and a home-screen shortcut starts a fresh launcher process each
+        /// time and waits for this before starting the game, so every shortcut launch sat on a black
+        /// screen that long. The catalogues only change with the APK, so the copy is keyed on the
+        /// package's version code and install time (a reinstall of the same version changes the
+        /// latter). A missing or unreadable stamp copies, as before.
+        /// </remarks>
+        private static void CopyCataloguesIfApkChanged(Context context, string targetDir)
+        {
+            string stampPath = Path.Combine(targetDir, CatalogueStampFile);
+            string? stamp = null;
+            try
+            {
+                global::Android.Content.PM.PackageInfo? info = context.PackageManager?.GetPackageInfo(context.PackageName!, 0);
+                if (info != null)
+                {
+                    long versionCode = OperatingSystem.IsAndroidVersionAtLeast(28) ? info.LongVersionCode : info.VersionCode;
+                    stamp = $"{versionCode}|{info.LastUpdateTime}";
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warn(LogCategory.Startup, $"Could not read package info for the catalogue stamp: {ex.Message}");
+            }
+
+            try
+            {
+                if (stamp != null && File.Exists(stampPath) && File.ReadAllText(stampPath) == stamp)
+                {
+                    return;
+                }
+            }
+            catch (Exception)
+            {
+                // Unreadable stamp: copy.
+            }
+
+            var started = System.Diagnostics.Stopwatch.StartNew();
+            Filesystem.CopyFolderFromAssets(context.Assets!, "Database/Achievements", targetDir);
+            Log.Info(LogCategory.Startup, $"Achievement catalogues copied from the APK in {started.ElapsedMilliseconds} ms.");
+
+            if (stamp != null)
+            {
+                try { File.WriteAllText(stampPath, stamp); }
+                catch (Exception ex) { Log.Warn(LogCategory.Startup, $"Could not write the catalogue stamp: {ex.Message}"); }
             }
         }
         /// <summary>

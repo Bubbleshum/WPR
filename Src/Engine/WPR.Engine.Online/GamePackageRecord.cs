@@ -38,6 +38,13 @@ namespace WPR.Engine.Online
 
         public DateTimeOffset InstalledAt { get; set; } = DateTimeOffset.UtcNow;
 
+        /// <summary>
+        /// The version the package's own manifest states (<see cref="PackageManifestVersion"/>),
+        /// e.g. <c>1.0.0.0</c>; null when it states none. Sent as a report's <c>app_version</c> and
+        /// with an upload, so WPR Hub can say it needs no more packages of this game.
+        /// </summary>
+        public string? Version { get; set; }
+
         private static readonly JsonSerializerOptions Json = new JsonSerializerOptions { WriteIndented = true };
 
         /// <summary>
@@ -58,6 +65,7 @@ namespace WPR.Engine.Online
                     Sha256 = Convert.ToHexString(hash).ToLowerInvariant(),
                     Size = package.Length,
                     PackageFileName = package is FileStream fs ? Path.GetFileName(fs.Name) : null,
+                    Version = PackageManifestVersion.FromPackage(package),
                 };
             }
             finally
@@ -74,7 +82,10 @@ namespace WPR.Engine.Online
                 string path = Path.Combine(installFolder, FileName);
                 if (!File.Exists(path)) return null;
                 GamePackageRecord? record = JsonSerializer.Deserialize<GamePackageRecord>(File.ReadAllText(path));
-                return record is { Sha256.Length: 64 } ? record : null;
+                if (record is not { Sha256.Length: 64 }) return null;
+                // Written before the version was recorded: the install holds the same manifests.
+                record.Version ??= PackageManifestVersion.FromInstallFolder(installFolder);
+                return record;
             }
             catch (Exception)
             {

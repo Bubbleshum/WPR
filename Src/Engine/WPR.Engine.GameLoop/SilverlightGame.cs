@@ -7,6 +7,12 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Microsoft.Xna.Framework.Input.Touch;
 using WPR.SilverlightCompability;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Navigation;
+using System.Windows.Threading;
 
 namespace WPR
 {
@@ -88,6 +94,7 @@ namespace WPR
 
         // Silverlight touch routing state — see PumpSilverlightTouch.
         private bool _touchDown;
+        private int _touchId;
         private float _lastTouchX;
         private float _lastTouchY;
         private bool _touchFailed;
@@ -210,16 +217,21 @@ namespace WPR
 
             // Dispatcher.BeginInvoke posts from here on run on this thread, from Update, as on
             // the phone: a post made while the app boots runs once the first frame starts.
-            WPR.SilverlightCompability.Threading.Dispatcher.AttachToCurrentThread();
+            System.Windows.Threading.Dispatcher.AttachToCurrentThread();
 
             SilverlightAppHost.HostResult result = SilverlightAppHost.BootInContext(
                 _installFolder,
                 _userAssembly,
                 _entryPointTypeName,
-                _onAppCreated);
+                _onAppCreated,
+                HookFrame);
 
             RootFrame = result.RootFrame;
             _layoutRoot = (UIElement?)(result.RootVisual ?? result.RootFrame);
+            if (RootFrame != null && !_frameHooked)
+            {
+                HookFrame(RootFrame);
+            }
 
             // EVERY navigation needs the same treatment as the first one, not just the start
             // page. A mixed-mode title is not one page: Sid Meier's Pirates! goes LogoPage ->
@@ -228,15 +240,6 @@ namespace WPR
             // the first had ActualWidth/ActualHeight of zero, never saw LayoutUpdated, and left
             // that renderer null — a NullReferenceException out of the game's own draw, once a
             // frame, on the page where the game actually is.
-            if (RootFrame != null)
-            {
-                // Not Navigated: that is raised before the page's OnNavigatedTo (as on the phone),
-                // and the page's orientation is only settled once OnNavigatedTo has run.
-                RootFrame.WprNavigationCompleted += OnFrameNavigated;
-                // A page swapped in by writing Frame.Content (Flowerz does every screen change
-                // this way) needs the same layout and orientation as a navigated one.
-                RootFrame.WprContentReplaced += (_, _) => OnFrameNavigated(RootFrame, null!);
-            }
 
             // The page the app navigated to decides which way round the screen is. Half the
             // mixed-mode library is landscape, and until this ran they were all given a portrait
@@ -398,7 +401,7 @@ namespace WPR
             // top of the tick: Gravity Guy 2's Cocos2D posts FrameworkDispatcher.Update from its
             // update, and run before pumpsBefore below that pump went uncounted, the fallback
             // pumped a second time, and every tap's release was lost (PLAY stayed pressed).
-            WPR.SilverlightCompability.Threading.Dispatcher.PumpQueued();
+            System.Windows.Threading.Dispatcher.PumpQueued();
 
             // Components only — the pump is suppressed.
             base.Update(gameTime);
@@ -461,6 +464,25 @@ namespace WPR
         /// through. Orientation is re-read because each WP7 page declares its own — a portrait
         /// page reached from a landscape one turns the surface back.
         /// </remarks>
+        /// <summary>
+        /// Lays out every page the frame shows, the start page included: the boot hands the frame
+        /// over before navigating to it (<see cref="SilverlightAppHost.BootInContext"/>), so the
+        /// start page is arranged at the screen's size before its Loaded handlers read it.
+        /// </summary>
+        private void HookFrame(PhoneApplicationFrame frame)
+        {
+            _frameHooked = true;
+            RootFrame = frame;
+            // Not Navigated: that is raised before the page's OnNavigatedTo (as on the phone),
+            // and the page's orientation is only settled once OnNavigatedTo has run.
+            frame.WprNavigationCompleted += OnFrameNavigated;
+            // A page swapped in by writing Frame.Content (Flowerz does every screen change
+            // this way) needs the same layout and orientation as a navigated one.
+            frame.WprContentReplaced += (_, _) => OnFrameNavigated(frame, null!);
+        }
+
+        private bool _frameHooked;
+
         private void OnFrameNavigated(object sender, NavigationEventArgs e)
         {
             try
@@ -510,6 +532,16 @@ namespace WPR
             // it (Microsoft Mahjong); Microsoft Minesweeper's game page says LandscapeLeft, and
             // drew upside down with the right-hand turn.
             WPR.Xna.Rhi.EmbeddedGameLoop.PageLandscapeLeft = landscape && page.Orientation == PageOrientation.LandscapeLeft;
+
+            // The same turn decides the page's host coordinates (touch points and transforms
+            // relative to nothing are in the phone's portrait frame). A WP page is 480x800 DIPs.
+            WPR.SilverlightCompability.HostFrame.Set(landscape, WPR.Xna.Rhi.EmbeddedGameLoop.PageLandscapeLeft, 800, 480);
+
+            // After the turn above is decided: the page hears it has turned, as on the phone.
+            if (landscape)
+            {
+                page.WprShownLandscape();
+            }
 
             // Only touch the device when the way round actually changes. This runs on every
             // navigation now, and ApplyChanges is a device reset — re-issuing it per page would
@@ -807,6 +839,15 @@ namespace WPR
         /// </summary>
         private readonly System.Collections.Generic.Dictionary<int, (double X, double Y)> _framedFingers = new();
 
+        // The newest TouchPanel id each touch consumer has seen. A Released sample of a newer id
+        // is a whole tap that went down and up between two reads of TouchPanel (it advances
+        // twice in a tick when a page pumps FrameworkDispatcher itself), so its Pressed sample
+        // was never seen; it is delivered as a press and a release. An older id never seen down
+        // is a finger that was already down before this page, and its lift stays dropped.
+        private int _newestManipulationId;
+        private readonly System.Collections.Generic.List<(int Id, double X, double Y)> _manipulationUpNext = new();
+        private int _newestRoutedId;
+
         private void PumpManipulationInput()
         {
             if (!WPR.WinRT.ManipulationInput.IsAttached)
@@ -820,10 +861,21 @@ namespace WPR
                 _touchReadsSeen = TouchPanel.WprReadCount;
                 var points = new System.Collections.Generic.List<(int, TouchAction, double, double)>(touches.Count + _framedFingers.Count);
                 var seen = new System.Collections.Generic.HashSet<int>();
+                foreach ((int id, double x, double y) in _manipulationUpNext)
+                {
+                    seen.Add(id);
+                    points.Add((id, TouchAction.Up, x, y));
+                }
+                _manipulationUpNext.Clear();
                 foreach (TouchLocation touch in touches)
                 {
-                    seen.Add(touch.Id);
+                    if (!seen.Add(touch.Id))
+                    {
+                        continue;
+                    }
                     bool wasDown = _framedFingers.ContainsKey(touch.Id);
+                    bool unseen = touch.Id > _newestManipulationId;
+                    _newestManipulationId = Math.Max(_newestManipulationId, touch.Id);
                     TouchAction action = touch.State switch
                     {
                         TouchLocationState.Released => TouchAction.Up,
@@ -836,6 +888,14 @@ namespace WPR
                     {
                         if (!_framedFingers.Remove(touch.Id))
                         {
+                            if (!unseen)
+                            {
+                                continue;
+                            }
+                            // Down now, Up next tick: a handler that queues for the game's next
+                            // update would otherwise see the finger gone before it was down.
+                            points.Add((touch.Id, TouchAction.Down, touch.Position.X, touch.Position.Y));
+                            _manipulationUpNext.Add((touch.Id, touch.Position.X, touch.Position.Y));
                             continue;
                         }
                     }
@@ -932,10 +992,41 @@ namespace WPR
                 TouchCollection touches = TouchPanel.GetState();
                 _touchReadsSeen = TouchPanel.WprReadCount;
 
-                // One finger. WP7 menus are single-touch, and the router models one interaction;
-                // taking the first sample keeps which finger is "the" finger stable for the life
-                // of a press.
-                if (touches.Count == 0)
+                // One finger. WP7 menus are single-touch, and the router models one interaction:
+                // the finger that opened it, followed by id until it lifts. Taking touches[0]
+                // every frame handed the interaction to whichever finger the drain packed first,
+                // so lifting the first of two fingers moved the press onto the second and its
+                // release waited for that one to lift.
+                TouchLocation touch = default;
+                bool found = false;
+                int newest = _newestRoutedId;
+                foreach (TouchLocation candidate in touches)
+                {
+                    _newestRoutedId = Math.Max(_newestRoutedId, candidate.Id);
+                }
+                foreach (TouchLocation candidate in touches)
+                {
+                    if (!_touchDown && candidate.State == TouchLocationState.Released && candidate.Id > newest)
+                    {
+                        // A whole tap between two reads (see _newestRoutedId).
+                        SilverlightTouchRouter.Press(root, candidate.Position.X, candidate.Position.Y);
+                        SilverlightTouchRouter.Release(candidate.Position.X, candidate.Position.Y);
+                        _lastTouchX = candidate.Position.X;
+                        _lastTouchY = candidate.Position.Y;
+                        return;
+                    }
+
+                    if (_touchDown
+                        ? candidate.Id == _touchId
+                        : candidate.State == TouchLocationState.Pressed || candidate.State == TouchLocationState.Moved)
+                    {
+                        touch = candidate;
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (!found)
                 {
                     // A release can arrive as the absence of any sample rather than as a Released
                     // one — the drain clears the slot on the same tick some platforms report the
@@ -948,7 +1039,7 @@ namespace WPR
                     return;
                 }
 
-                TouchLocation touch = touches[0];
+                _touchId = touch.Id;
                 _lastTouchX = touch.Position.X;
                 _lastTouchY = touch.Position.Y;
 

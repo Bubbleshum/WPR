@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Markup
 {
     /// <summary>
     /// Marks the property that receives a type's default XAML children.

@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows
 {
     public class UIElement : DependencyObject
     {
@@ -92,6 +92,9 @@ namespace WPR.SilverlightCompability
             set => SetValue(IsHitTestVisibleProperty, value);
         }
 
+        /// <summary>Whether files may be dropped on the element. Stored only: a phone has no drag and drop.</summary>
+        public bool AllowDrop { get; set; }
+
         /// <summary>Stored; the rasteriser snaps to pixels regardless.</summary>
         public bool UseLayoutRounding { get; set; } = true;
 
@@ -140,6 +143,52 @@ namespace WPR.SilverlightCompability
 
         public event MouseButtonEventHandler? MouseLeftButtonDown;
         public event MouseButtonEventHandler? MouseLeftButtonUp;
+
+#pragma warning disable CS0067
+        /// <summary>
+        /// Declared so the accessors a control names resolve. There is no capture model (see
+        /// <see cref="CaptureMouse"/>), so nothing is ever captured and nothing is lost.
+        /// </summary>
+        public event MouseEventHandler? LostMouseCapture;
+#pragma warning restore CS0067
+
+        public static readonly RoutedEvent KeyDownEvent = new(nameof(KeyDown), typeof(UIElement));
+        public static readonly RoutedEvent KeyUpEvent = new(nameof(KeyUp), typeof(UIElement));
+        public static readonly RoutedEvent MouseLeftButtonDownEvent = new(nameof(MouseLeftButtonDown), typeof(UIElement));
+        public static readonly RoutedEvent MouseLeftButtonUpEvent = new(nameof(MouseLeftButtonUp), typeof(UIElement));
+        public static readonly RoutedEvent ManipulationStartedEvent = new(nameof(ManipulationStarted), typeof(UIElement));
+        public static readonly RoutedEvent ManipulationDeltaEvent = new(nameof(ManipulationDelta), typeof(UIElement));
+        public static readonly RoutedEvent ManipulationCompletedEvent = new(nameof(ManipulationCompleted), typeof(UIElement));
+        public static readonly RoutedEvent TapEvent = new(nameof(Tap), typeof(UIElement));
+        public static readonly RoutedEvent DoubleTapEvent = new(nameof(DoubleTap), typeof(UIElement));
+        public static readonly RoutedEvent HoldEvent = new(nameof(Hold), typeof(UIElement));
+
+        /// <summary>
+        /// Subscribes <paramref name="handler"/> to the CLR event <paramref name="routedEvent"/>
+        /// names. <paramref name="handledEventsToo"/> is accepted and not honoured: the router stops
+        /// at the first element that marks a press handled, so an ancestor's handler added this way
+        /// misses presses a descendant handled.
+        /// </summary>
+        public void AddHandler(RoutedEvent routedEvent, Delegate handler, bool handledEventsToo)
+        {
+            System.Reflection.EventInfo? e = FindEvent(routedEvent);
+            if (e != null && handler != null) e.AddEventHandler(this, handler);
+        }
+
+        public void AddHandler(RoutedEvent routedEvent, Delegate handler) => AddHandler(routedEvent, handler, false);
+
+        public void RemoveHandler(RoutedEvent routedEvent, Delegate handler)
+        {
+            System.Reflection.EventInfo? e = FindEvent(routedEvent);
+            if (e != null && handler != null) e.RemoveEventHandler(this, handler);
+        }
+
+        private System.Reflection.EventInfo? FindEvent(RoutedEvent? routedEvent)
+        {
+            if (routedEvent == null) return null;
+            return GetType().GetEvent(routedEvent.Name,
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        }
 
         /// <summary>Delivers a press to this element. Returns true if a handler marked it handled.</summary>
         /// <remarks>
@@ -257,9 +306,12 @@ namespace WPR.SilverlightCompability
         /// </remarks>
         public GeneralTransform TransformToVisual(UIElement? relativeTo)
         {
-            Point from = HitTester.OriginInRoot(this);
-            Point to = relativeTo == null ? new Point(0, 0) : HitTester.OriginInRoot(relativeTo);
-            return new MatrixTransform(new Matrix(1, 0, 0, 1, from.X - to.X, from.Y - to.Y));
+            // Through the phone's host frame, which on a landscape page is portrait and is also the
+            // root visual's (the frame's) own space (HostFrame). Between two elements below the root
+            // the turn cancels and this is the plain offset it always was.
+            Matrix from = WPR.SilverlightCompability.HostFrame.ElementToHost(this);
+            Matrix to = relativeTo == null ? Matrix.Identity : WPR.SilverlightCompability.HostFrame.ElementToHost(relativeTo);
+            return new MatrixTransform(WPR.SilverlightCompability.HostFrame.Multiply(from, to.TryInvert() ?? Matrix.Identity));
         }
 
         public Size DesiredSize { get; private set; }

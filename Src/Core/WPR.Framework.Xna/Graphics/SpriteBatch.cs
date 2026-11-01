@@ -407,6 +407,22 @@ namespace Microsoft.Xna.Framework.Graphics
 			lock (_wprActiveLock) { _wprActive.Remove(batch); }
 		}
 
+		// Set when WPR's loop swallowed an exception outside Game.Draw's own catch (an Update,
+		// a GameTimer handler), so a batch may have been abandoned mid-Begin. Only then does the
+		// next Draw force-end what is still open. A batch left open across Present is legal XNA:
+		// Glu's CGraphics2d (Deer Hunter 3D) keeps its Immediate batch begun from one frame's end
+		// to the next frame's first End, and resetting it unasked broke every later Draw.
+		private static volatile bool _wprFrameThrew;
+
+		internal static void WprNoteFrameThrew() => _wprFrameThrew = true;
+
+		internal static int WprForceEndAllIfAFrameThrew()
+		{
+			if (!_wprFrameThrew) return 0;
+			_wprFrameThrew = false;
+			return WprForceEndAll();
+		}
+
 		internal static int WprForceEndAll()
 		{
 			SpriteBatch[] snapshot;

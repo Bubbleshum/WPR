@@ -26,7 +26,7 @@ namespace Microsoft.Phone.Tasks
         /// later from the chooser UI; we have no chooser, so synthesise a
         /// user-cancel result so any continuation logic in user code unblocks.
         /// </summary>
-        public void Show()
+        public override void Show()
         {
             RaiseCompleted(new PhotoResult(TaskResult.Cancel));
         }

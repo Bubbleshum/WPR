@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows.Media
 {
     /// <summary>Shim for <c>System.Windows.Media.SkewTransform</c>, drawn by the rasteriser's skew path.</summary>
     /// <remarks>

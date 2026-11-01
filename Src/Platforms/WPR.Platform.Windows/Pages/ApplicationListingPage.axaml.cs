@@ -141,7 +141,8 @@ namespace WPR.Platform.Windows.Pages
             string name = appItem.Name ?? productId;
 
             // A game patched before v38 still reads the old shared store, so clearing its own store
-            // would appear to do nothing. The desktop never repatches by itself, so say so.
+            // would appear to do nothing. The desktop repatches an outdated install when it is
+            // launched (MainWindowDesktop.RepatchIfOutdatedAsync), not before clearing data, so say so.
             if (appItem.Model.PatchedVersion < WPR.ApplicationPatcher.Version &&
                 appItem.Model.ApplicationType != WPR.Models.ApplicationType.ModernNative)
             {

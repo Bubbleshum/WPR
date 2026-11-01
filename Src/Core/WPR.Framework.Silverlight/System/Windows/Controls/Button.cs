@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
     /// <remarks>
     /// <c>Click</c>, <c>RaiseClick</c> and <c>ClickMode</c> live on <see cref="ButtonBase"/>,

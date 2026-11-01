@@ -4,7 +4,7 @@ using System;
 using WPR.SilverlightCompability;
 
 
-namespace WPR.WindowsCompability
+namespace System.Windows.Media.Imaging
 {
     // projection: System.Windows.Media.Imaging.BitmapImage. In Silverlight this
     // derives from BitmapSource which derives from ImageSource — we preserve the
@@ -22,6 +22,11 @@ namespace WPR.WindowsCompability
         /// has no semantic effect — we just round-trip it.
         /// </summary>
         public BitmapCreateOptions CreateOptions { get; set; } = BitmapCreateOptions.None;
+
+        /// <summary>WP's decode-at-size hints. Stored; the image is decoded at its own size.</summary>
+        public int DecodePixelWidth { get; set; }
+
+        public int DecodePixelHeight { get; set; }
 
         public BitmapImage()
         {
@@ -55,16 +60,20 @@ namespace WPR.WindowsCompability
         ///   - Absolute file URIs → <c>LocalPath</c>.
         ///   - Relative URIs like <c>"/Resources/foo.png"</c> → strip the leading
         ///     slash so it resolves relative to the install dir (= cwd at launch).
-        /// Truly remote URIs (http(s)://) are stored verbatim — they won't load
-        /// today but a future renderer pass could fetch them.
+        /// Web URIs (http(s)://) are kept whole; the decoder downloads them.
         /// </summary>
         public BitmapImage(Uri uri) : base(UriToPath(uri))
         {
+            // UriSource reads back what the constructor was given, as in Silverlight. It stayed
+            // null, and Microsoft Bingo's ImageButton (UriSource.ToString() on every source it is
+            // handed) threw from inside its popup buttons' constructors: no popup ever showed.
+            _uriSource = uri;
         }
 
         private static string UriToPath(Uri? uri)
         {
             if (uri == null) return string.Empty;
+            if (uri.IsAbsoluteUri && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)) return uri.AbsoluteUri;
             string s = uri.IsAbsoluteUri ? uri.LocalPath : uri.OriginalString;
             if (s.StartsWith("/", StringComparison.Ordinal)) s = s.Substring(1);
             return s;

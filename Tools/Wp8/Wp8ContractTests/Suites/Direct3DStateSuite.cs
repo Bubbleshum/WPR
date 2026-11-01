@@ -83,6 +83,43 @@ public sealed class Direct3DStateSuite : IContractSuite
 
         Check("CopyResource copies the staging texture's pixels into the texture", Contents(texture).SequenceEqual(pixels));
 
+        // ResolveSubresource(dst, 0, src, 0, format): nothing here is multisampled, so it is a copy
+        // (Asphalt 7 resolves its race into the texture it then draws on the screen).
+        long resolved = Texture(defaultDesc);
+        M(context, 57, resolved, 0, texture, 0, 87);
+        Check("ResolveSubresource copies the source's pixels into the destination", Contents(resolved).SequenceEqual(pixels));
+
+        // A cube map (ArraySize 6, MiscFlags TEXTURECUBE) keeps all six faces, each filled from its own
+        // D3D11_SUBRESOURCE_DATA entry and reached by its subresource index (Asphalt 7's car paint
+        // and sky sample one; with face 0 alone every cube sample read nothing).
+        long cubeDesc = Desc(8, 8, 28, 0, 0x8, 0);
+        e.WriteUInt32(cubeDesc + 12, 6);
+        e.WriteUInt32(cubeDesc + 40, 0x4);
+        long cubeInit = h.Buffer(12 * 6);
+        for (int face = 0; face < 6; face++)
+        {
+            long faceData = h.Buffer(8 * 8 * 4);
+            e.WriteMemory(faceData, Enumerable.Repeat((byte)(0x10 + face), 8 * 8 * 4).ToArray());
+            e.WriteUInt32(cubeInit + (face * 12), (uint)faceData);
+            e.WriteUInt32(cubeInit + (face * 12) + 4, 8 * 4);
+        }
+
+        long cube = Texture(cubeDesc, cubeInit);
+        byte[] Face(int face)
+        {
+            long mapped = h.Buffer(12);
+            M(context, 14, cube, face, 1, 0, mapped);
+            byte[] bytes = e.ReadMemory(h.U32(mapped), 8 * 8 * 4);
+            M(context, 15, cube, face);
+            return bytes;
+        }
+
+        Check("a cube map keeps each face's initial data", Enumerable.Range(0, 6).All(f => Face(f).All(b => b == 0x10 + f)));
+        long faceUpdate = h.Buffer(8 * 8 * 4);
+        e.WriteMemory(faceUpdate, Enumerable.Repeat((byte)0x77, 8 * 8 * 4).ToArray());
+        M(context, 48, cube, 3, 0, faceUpdate, 8 * 4, 0);
+        Check("UpdateSubresource of face 3 lands in face 3 only", Face(3).All(b => b == 0x77) && Face(2).All(b => b == 0x12) && Face(0).All(b => b == 0x10));
+
         // A texture created with no initial data reads as zeros even on a reused heap block: 2020: My
         // Country's sprite atlas showed an old loading screen between its sprites otherwise.
         long dirty = e.AllocateHeap(pixels.Length);

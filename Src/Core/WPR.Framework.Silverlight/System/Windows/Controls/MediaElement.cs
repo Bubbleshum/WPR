@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
     /// <summary>
     /// Shim for <c>System.Windows.Controls.MediaElement</c>.
@@ -491,18 +491,5 @@ namespace WPR.SilverlightCompability
                 System.Diagnostics.Trace.WriteLine("[wpr-mixed] MediaElement event handler threw: " + ex);
             }
         }
-    }
-
-    /// <summary>
-    /// Shim for <c>System.Windows.Media.TimelineMarkerRoutedEventHandler</c>.
-    /// </summary>
-    public delegate void TimelineMarkerRoutedEventHandler(object sender, TimelineMarkerRoutedEventArgs e);
-
-    /// <summary>
-    /// Shim for <c>System.Windows.Media.TimelineMarkerRoutedEventArgs</c>.
-    /// </summary>
-    public class TimelineMarkerRoutedEventArgs : RoutedEventArgs
-    {
-        public TimelineMarker? Marker { get; set; }
     }
 }

@@ -86,6 +86,20 @@
             /// <summary>True once anything has been written into it.</summary>
             public bool HasContent { get; set; }
 
+            /// <summary>The texture's mip count, as created (only level 0 is kept).</summary>
+            public int MipLevels { get; set; } = 1;
+
+            /// <summary>
+            /// Faces 1-5 of a cube map (D3D11_RESOURCE_MISC_TEXTURECUBE, six array slices); face 0
+            /// is this resource itself. Null for anything that is not a cube.
+            /// </summary>
+            /// <remarks>
+            /// Each face is a resource of its own, with its own storage, so every per-texture path
+            /// (decode, the caches keyed by storage address) works on it unchanged. Only level 0 of
+            /// each face is kept, like every other texture here.
+            /// </remarks>
+            public Resource[]? CubeFaces { get; set; }
+
             /// <summary>
             /// Bumped on every write of content - create with data, UpdateSubresource, a copy, a
             /// Map. Anything caching a decoded copy keys on (Storage, Version), so a texture the
@@ -101,6 +115,18 @@
             /// mesh drawn every frame is copied once rather than once per draw.
             /// </summary>
             internal List<(int Offset, int Stride, int First, int Count, byte[] Data)>? Snapshots { get; set; }
+
+            /// <summary>The bytes held by <see cref="Snapshots"/>.</summary>
+            internal long SnapshotBytes { get; set; }
+
+            /// <summary>
+            /// The whole buffer copied at <see cref="WholeCopyVersion"/>, once its draws' ranges
+            /// cost more than copying all of it: every stream of it is then served from this one
+            /// array at its own <see cref="VertexStream.DataOffset"/>.
+            /// </summary>
+            internal byte[]? WholeCopy { get; set; }
+
+            internal int WholeCopyVersion { get; set; } = -1;
 
             /// <summary>
             /// A constant buffer's contents copied at <see cref="ConstantCopyVersion"/>, shared by
@@ -139,6 +165,13 @@
 
             /// <summary>Which vertex <see cref="Data"/> starts at.</summary>
             public int FirstVertex { get; init; }
+
+            /// <summary>
+            /// Where in <see cref="Data"/> vertex <see cref="FirstVertex"/> starts: vertex v is at
+            /// <c>DataOffset + (v - FirstVertex) * Stride</c>. Zero for a copy of just the draw's
+            /// range; the stream's byte offset when <see cref="Data"/> is the whole buffer.
+            /// </summary>
+            public int DataOffset { get; init; }
         }
 
         /// <summary>Everything bound at the moment a draw was issued.</summary>
@@ -199,6 +232,22 @@
             return call with { Indices = indices, Streams = streams };
         }
 
+        /// <summary>The most vertex ranges kept per buffer version (see <see cref="SnapshotStream"/>).</summary>
+        internal const int MaxSnapshotRanges = 64;
+
+        /// <summary>Range copies kept per buffer version hold at least this many bytes (twice the buffer's size when larger).</summary>
+        internal const long MinSnapshotBudget = 1024 * 1024;
+
+        /// <summary>The largest buffer copied whole (see <see cref="Resource.WholeCopy"/>).</summary>
+        internal const long MaxWholeCopy = 16 * 1024 * 1024;
+
+        /// <summary>
+        /// Zeroed bytes after a whole copy, so a stream bound at a byte offset into the buffer can be
+        /// served from it: such a stream's last vertex runs past the buffer's end by the offset,
+        /// though the element it reads does not. Direct3D 11's largest stride is 2048.
+        /// </summary>
+        internal const int WholeCopyPadding = 2048;
+
         private static VertexStream SnapshotStream(
             ArmEmulator emulator, DrawCall call, VertexStream stream, int lowest, int highest)
         {
@@ -239,10 +288,22 @@
             // of a 3D scene is static meshes, and copying each one out per draw per frame cost
             // allocation on this thread and garbage collection pauses on the renderer's.
             FrameCapture.Resource buffer = stream.Buffer;
+            long end = stream.Offset + (((long)first + count) * stream.Stride);
+            if (buffer.WholeCopy is { } whole && buffer.WholeCopyVersion == buffer.Version && first >= 0 && end <= whole.Length)
+            {
+                return stream with { Data = whole, FirstVertex = 0, DataOffset = stream.Offset };
+            }
+
             if (buffer.SnapshotVersion != buffer.Version || buffer.Snapshots is null)
             {
                 buffer.SnapshotVersion = buffer.Version;
-                (buffer.Snapshots ??= []).Clear();
+                RetireSnapshots(emulator, buffer);
+                buffer.Snapshots ??= [];
+                if (buffer.WholeCopy is { } stale && buffer.WholeCopyVersion != buffer.Version)
+                {
+                    emulator.Direct3D.RetireSnapshotArray(stale);
+                    buffer.WholeCopy = null;
+                }
             }
 
             foreach (var known in buffer.Snapshots)
@@ -256,23 +317,63 @@
 
             try
             {
-                byte[] data = emulator.ReadMemory(
-                    stream.Buffer.Storage + stream.Offset + ((long)first * stream.Stride),
-                    (int)length);
-
-                // A ring buffer gets many small ranges per version; keep the list short.
-                if (buffer.Snapshots.Count >= 16)
+                // Once the ranges copied out of one version of a buffer add up to more than the
+                // buffer, copy all of it once and serve every stream from that. N.O.V.A. 3 keeps a
+                // level's meshes in one 1.2 MB vertex buffer and binds each submesh at its own byte
+                // offset, with index ranges spanning thousands of vertices: per-range copies were
+                // ~250 KB a draw, re-taken every frame as the list overflowed, ~300 MB/s of byte[]
+                // (most of it on the large object heap) and managed memory past 3 GB in play.
+                //
+                // Asphalt 7 binds one interleaved buffer (stride 44) in three slots at byte offsets 12,
+                // 20 and 28, one attribute each, so every stream's range ended up to 28 bytes past the
+                // buffer and was refused here: each draw took a fresh 1.6 MB range, ~400 MB/s of
+                // byte[] in a race. The copy is padded so those streams share it.
+                if (buffer.SnapshotBytes + length > buffer.StorageSize && buffer.StorageSize is > 0 and <= MaxWholeCopy &&
+                    first >= 0 && end <= buffer.StorageSize + Math.Min(stream.Offset, WholeCopyPadding))
                 {
-                    buffer.Snapshots.Clear();
+                    byte[] all = emulator.Direct3D.TakeSnapshotArray((int)buffer.StorageSize + WholeCopyPadding);
+                    emulator.ReadMemory(buffer.Storage, all.AsSpan(0, (int)buffer.StorageSize));
+                    Array.Clear(all, (int)buffer.StorageSize, WholeCopyPadding);
+                    buffer.WholeCopy = all;
+                    buffer.WholeCopyVersion = buffer.Version;
+                    RetireSnapshots(emulator, buffer);
+                    return stream with { Data = all, FirstVertex = 0, DataOffset = stream.Offset };
+                }
+
+                byte[] data = emulator.Direct3D.TakeSnapshotArray((int)length);
+                emulator.ReadMemory(stream.Buffer.Storage + stream.Offset + ((long)first * stream.Stride), data.AsSpan());
+
+                // A ring buffer gets many small ranges per version; keep the list bounded by what
+                // it holds as well as by how many.
+                if (buffer.Snapshots.Count >= MaxSnapshotRanges || buffer.SnapshotBytes + length > Math.Max(MinSnapshotBudget, 2 * buffer.StorageSize))
+                {
+                    RetireSnapshots(emulator, buffer);
                 }
 
                 buffer.Snapshots.Add((stream.Offset, stream.Stride, first, count, data));
+                buffer.SnapshotBytes += length;
                 return stream with { Data = data, FirstVertex = first };
             }
             catch (Exception)
             {
                 return stream;
             }
+        }
+
+        /// <summary>Hands a buffer's range copies back to the pool (<see cref="Direct3DRuntime.RetireSnapshotArray"/>) and empties its list.</summary>
+        private static void RetireSnapshots(ArmEmulator emulator, Resource buffer)
+        {
+            if (buffer.Snapshots is { } snapshots)
+            {
+                foreach (var snapshot in snapshots)
+                {
+                    emulator.Direct3D.RetireSnapshotArray(snapshot.Data);
+                }
+
+                snapshots.Clear();
+            }
+
+            buffer.SnapshotBytes = 0;
         }
 
         private readonly List<DrawCall> _draws = new();
@@ -494,7 +595,7 @@
                 return [0f, 0f];
             }
 
-            int at = (((index + call.BaseVertex) - stream.FirstVertex) * stream.Stride) + element.Offset;
+            int at = stream.DataOffset + (((index + call.BaseVertex) - stream.FirstVertex) * stream.Stride) + element.Offset;
             return ReadFormat(stream.Data, at, element.Format);
         }
 
@@ -583,7 +684,8 @@
             if (buffer.IndexSnapshotVersion != buffer.Version || buffer.IndexSnapshots is null)
             {
                 buffer.IndexSnapshotVersion = buffer.Version;
-                (buffer.IndexSnapshots ??= []).Clear();
+                RetireIndexSnapshots(emulator, buffer);
+                buffer.IndexSnapshots ??= [];
             }
 
             foreach (var known in buffer.IndexSnapshots)
@@ -610,7 +712,7 @@
                 // ones per version. Keep the list bounded either way.
                 if (buffer.IndexSnapshots.Count >= 64)
                 {
-                    buffer.IndexSnapshots.Clear();
+                    RetireIndexSnapshots(emulator, buffer);
                 }
 
                 buffer.IndexSnapshots.Add((call.IndexOffset, call.StartIndex, count, call.IndexFormat, indices, lowest, highest));
@@ -619,10 +721,28 @@
             return (indices, lowest, highest);
         }
 
+        /// <summary>Hands a buffer's resolved index arrays back to the pool and empties its list.</summary>
+        private static void RetireIndexSnapshots(ArmEmulator emulator, Resource buffer)
+        {
+            if (buffer.IndexSnapshots is { } snapshots)
+            {
+                foreach (var snapshot in snapshots)
+                {
+                    emulator.Direct3D.RetireIndexArray(snapshot.Indices);
+                }
+
+                snapshots.Clear();
+            }
+        }
+
         private static int[] ResolveIndices(ArmEmulator emulator, DrawCall call)
         {
             int count = Math.Clamp(call.IndexCount, 0, 200_000);
-            int[] indices = new int[count];
+
+            // A sequence for a non-indexed draw is cached for good (_sequences), so it never comes
+            // from the pool, whose arrays go back once their frame is replayed.
+            bool indexed = call.IndexBuffer is { Storage: not 0 };
+            int[] indices = indexed ? emulator.Direct3D.TakeIndexArray(count) : new int[count];
 
             if (call.IndexBuffer is null || call.IndexBuffer.Storage == 0)
             {

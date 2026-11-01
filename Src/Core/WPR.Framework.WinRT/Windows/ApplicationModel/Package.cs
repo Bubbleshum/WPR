@@ -21,6 +21,15 @@ namespace Windows.ApplicationModel
         public Windows.Storage.StorageFolder InstalledLocation => new(WinRtHost.InstalledPath);
 
         public PackageId Id => new();
+
+        /// <summary>
+        /// WP8: starts this package with launch parameters. WPR runs one title at a time, so a
+        /// title asking to relaunch itself (Gameloft's promotion library does) is only logged.
+        /// </summary>
+        public void Launch(string parameters)
+        {
+            global::System.Diagnostics.Trace.WriteLine($"[wpr-winrt] Package.Launch(\"{parameters}\") ignored");
+        }
     }
 
     /// <summary>Shim for <c>Windows.ApplicationModel.PackageId</c>: the title's identity as WPR installed it.</summary>
@@ -37,6 +46,9 @@ namespace Windows.ApplicationModel
         public PackageVersion Version => WinRtHost.Version;
 
         public string Publisher => string.Empty;
+
+        /// <summary>WP8: the Store product id, i.e. the title's ProductID.</summary>
+        public string ProductId => WinRtHost.ProductId;
     }
 
     /// <summary>Shim for <c>Windows.ApplicationModel.PackageVersion</c> (a WinRT struct: public fields).</summary>

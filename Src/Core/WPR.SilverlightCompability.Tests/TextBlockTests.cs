@@ -10,7 +10,7 @@ namespace WPR.SilverlightCompability.Tests
             var tb = new TextBlock();
             Assert.Equal(string.Empty, tb.Text);
             Assert.Equal(14.0, tb.FontSize);
-            Assert.Equal("Segoe UI", tb.FontFamily);
+            Assert.Equal("Segoe UI", tb.FontFamily.Source);
             Assert.Null(tb.Foreground);
             Assert.Equal(TextAlignment.Left, tb.TextAlignment);
             Assert.Equal(TextWrapping.NoWrap, tb.TextWrapping);
@@ -54,7 +54,7 @@ namespace WPR.SilverlightCompability.Tests
             var tb = (TextBlock)XamlReader.Load(xaml);
             Assert.Equal("Hello", tb.Text);
             Assert.Equal(24, tb.FontSize);
-            Assert.Equal("Arial", tb.FontFamily);
+            Assert.Equal("Arial", tb.FontFamily.Source);
             Assert.IsType<SolidColorBrush>(tb.Foreground);
             Assert.Equal(TextAlignment.Center, tb.TextAlignment);
             Assert.Equal(TextWrapping.Wrap, tb.TextWrapping);

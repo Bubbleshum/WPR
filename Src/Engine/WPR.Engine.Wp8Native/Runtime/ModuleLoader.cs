@@ -257,12 +257,18 @@ namespace WPR.Wp8Native
 
                 try
                 {
-                    if (new FileInfo(file).Length != _image.Raw.Length)
+                    // A component a managed stub took the place of keeps its native image beside
+                    // it (PeImage.Load); that is the file the main image came from. Missing this
+                    // left the main unnamed, and the first LoadLibrary of it mapped a second copy
+                    // with its own globals (AC Pirates' SparkApp.dll, a null call at frame 0).
+                    string native = file + ".native_original";
+                    string compared = File.Exists(native) ? native : file;
+                    if (new FileInfo(compared).Length != _image.Raw.Length)
                     {
                         continue;
                     }
 
-                    using FileStream stream = File.OpenRead(file);
+                    using FileStream stream = File.OpenRead(compared);
                     byte[] header = new byte[headerLength];
                     stream.ReadExactly(header);
                     if (_image.Raw[..headerLength].SequenceEqual(header))
@@ -519,6 +525,7 @@ namespace WPR.Wp8Native
 
             // The whole range is written, so a range an unloaded module left behind holds none of it.
             _cpu.MemWrite(imageBase, memory);
+            ProtectDataSections(image, imageBase);
 
             LoadedModule module = new(name, InstallFolder + Path.GetRelativePath(_packageRoot, path), path, image, imageBase, isMain: false)
             {

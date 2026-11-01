@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Shapes
 {
     /// <summary>Shim for <c>System.Windows.Shapes.Line</c>.</summary>
     public class Line : Shape

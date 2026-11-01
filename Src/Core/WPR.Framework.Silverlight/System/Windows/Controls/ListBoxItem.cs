@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
     /// <summary>Shim for <c>System.Windows.Controls.ListBoxItem</c>: the container a list puts
     /// round an item. Draws its content; selection is stored.</summary>

@@ -42,7 +42,8 @@ namespace WPR.Wp8Native
     /// texture headed for the GPU, its blocks as shipped (<see cref="Blocks"/>, tightly packed,
     /// <see cref="BlockFormat"/> 1/2/3 for BC1/BC2/BC3) with <see cref="Rgba"/> empty.
     /// </summary>
-    public sealed record TextureImage(long Key, int Version, int Width, int Height, byte[] Rgba, byte[]? Blocks = null, int BlockFormat = 0);
+    /// <remarks><see cref="Faces"/> is set for a cube map: faces 1-5, this image being face 0.</remarks>
+    public sealed record TextureImage(long Key, int Version, int Width, int Height, byte[] Rgba, byte[]? Blocks = null, int BlockFormat = 0, TextureImage[]? Faces = null);
 
     /// <summary>
     /// Decoded guest textures by storage address, each dropped once nothing has asked for it for
@@ -267,6 +268,32 @@ namespace WPR.Wp8Native
         /// BC decoder beside the XNA one. <see cref="DecodeBlocks"/> stays for the probe's software
         /// rasteriser and the WPR_WP8_GPU=0 draw list, which have no device to hand the blocks to.
         /// </remarks>
+        /// <summary>
+        /// <see cref="TextureForGpu"/>, plus faces 1-5 when the texture is a cube map. A cube with
+        /// a face that cannot be read is handed over as face 0 alone.
+        /// </summary>
+        internal static TextureImage? CubeOrTextureForGpu(ArmEmulator emulator, Resource? texture)
+        {
+            TextureImage? image = TextureForGpu(emulator, texture);
+            if (image is null || texture?.CubeFaces is not { } faces || texture.PixelWidth != texture.PixelHeight)
+            {
+                return image;
+            }
+
+            var images = new TextureImage[faces.Length];
+            for (int i = 0; i < faces.Length; i++)
+            {
+                if (TextureForGpu(emulator, faces[i]) is not { } face)
+                {
+                    return image;
+                }
+
+                images[i] = face;
+            }
+
+            return image with { Faces = images };
+        }
+
         internal static TextureImage? TextureForGpu(ArmEmulator emulator, Resource? texture)
         {
             if (texture is null || texture.BlockBytes == 0)

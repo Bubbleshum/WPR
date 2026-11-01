@@ -15,7 +15,7 @@ namespace Microsoft.Phone.Tasks
         /// Launch the capture UI. There isn't one, so raise a cancel immediately rather than
         /// leaving the caller waiting on a Completed that will never arrive.
         /// </summary>
-        public void Show()
+        public override void Show()
         {
             RaiseCompleted(new PhotoResult(TaskResult.Cancel));
         }

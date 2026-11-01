@@ -3,7 +3,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using WPR.SilverlightCompability.Threading;
+using System.Windows.Threading;
 using Xunit;
 
 namespace WPR.SilverlightCompability.Tests

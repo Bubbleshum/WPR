@@ -205,7 +205,8 @@ namespace WPR
                 wm = new XmlDocument();
                 wm.AppendChild(wm.CreateComment(" Synthesised by WPR: the package's WMAppManifest.xml was missing or unreadable. "));
                 XmlElement deployment = wm.CreateElement("Deployment");
-                deployment.SetAttribute("AppPlatformVersion", inspection.Runtime == InspectedRuntime.Native ? "8.0" : "7.1");
+                deployment.SetAttribute("AppPlatformVersion",
+                    WPR.Common.WindowsPhoneTarget.Fallback(inspection.Runtime == InspectedRuntime.Native).ToString());
                 wm.AppendChild(deployment);
                 app = wm.CreateElement("App");
                 deployment.AppendChild(app);

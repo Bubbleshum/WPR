@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Media
 {
     /// <summary>Shim for <c>System.Windows.Media.VisualTreeHelper</c>. The few
     /// methods user code touches are static enumerators we satisfy with
@@ -36,6 +36,8 @@ namespace WPR.SilverlightCompability
         public static IEnumerable<UIElement> FindElementsInHostCoordinates(Point intersectingPoint, UIElement subtree)
         {
             if (subtree == null) return Array.Empty<UIElement>();
+            // Host coordinates are the phone's portrait frame on a landscape page (HostFrame).
+            intersectingPoint = WPR.SilverlightCompability.HostFrame.ToPage(intersectingPoint);
             // HitTest takes the point in the subtree's PARENT's space.
             Point parentOrigin = subtree.Parent == null ? new Point(0, 0) : HitTester.OriginInRoot(subtree.Parent);
             return HitTester.HitTest(subtree, intersectingPoint.X - parentOrigin.X, intersectingPoint.Y - parentOrigin.Y);

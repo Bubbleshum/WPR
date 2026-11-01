@@ -4,8 +4,14 @@ using System.Reflection;
 using System.Runtime.Loader;
 using System.Xml;
 using WPR.SilverlightCompability;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Navigation;
+using System.Windows.Threading;
 using Microsoft.Phone.Controls;
-using SLApplication = WPR.WindowsCompability.Application;
+using SLApplication = System.Windows.Application;
 // WPR.SilverlightCompability defines the Silverlight shape Path, which would make a bare Path ambiguous.
 using Path = System.IO.Path;
 
@@ -84,7 +90,7 @@ namespace WPR
             };
 
             Assembly userAsm = alc.LoadFromAssemblyPath(asmPath);
-            HostResult booted = BootLoadedAssembly(installFolder, userAsm, entryPointTypeName, null);
+            HostResult booted = BootLoadedAssembly(installFolder, userAsm, entryPointTypeName, null, null);
             booted.LoadContext = alc;
             return booted;
         }
@@ -101,6 +107,13 @@ namespace WPR
         /// caller that fired the lifecycle afterwards would have the game running before it was
         /// told the app had launched.
         /// </param>
+        /// <param name="beforeStartPage">
+        /// Run with the root frame just before it navigates to the start page, so the host can
+        /// hook its navigation (layout, orientation) first. Silverlight lays a page out before
+        /// raising its Loaded, and a page that sizes something from an element's
+        /// <c>ActualWidth</c> in a Loaded handler reads 0 otherwise: GTA: San Andreas sized its
+        /// whole Direct3D surface from its DrawingSurface's, and drew a 0x0 picture.
+        /// </param>
         /// <remarks>
         /// Used by the mixed-mode host, which cannot call <see cref="Boot"/>: that creates an
         /// assembly load context of its own, and <c>ApplicationLaunch</c> has already built one
@@ -110,7 +123,8 @@ namespace WPR
             string installFolder,
             Assembly userAssembly,
             string entryPointTypeName,
-            Action<object>? afterAppCreated = null)
+            Action<object>? afterAppCreated = null,
+            Action<PhoneApplicationFrame>? beforeStartPage = null)
         {
             if (installFolder == null) throw new ArgumentNullException(nameof(installFolder));
             if (userAssembly == null) throw new ArgumentNullException(nameof(userAssembly));
@@ -120,14 +134,15 @@ namespace WPR
             WPR.SilverlightCompability.HostContext.CurrentInstallFolder = installFolder;
             WPR.Common.WprHostEnvironment.CurrentInstallFolder = installFolder;
 
-            return BootLoadedAssembly(installFolder, userAssembly, entryPointTypeName, afterAppCreated);
+            return BootLoadedAssembly(installFolder, userAssembly, entryPointTypeName, afterAppCreated, beforeStartPage);
         }
 
         private static HostResult BootLoadedAssembly(
             string installFolder,
             Assembly userAsm,
             string entryPointTypeName,
-            Action<object>? afterAppCreated)
+            Action<object>? afterAppCreated,
+            Action<PhoneApplicationFrame>? beforeStartPage)
         {
             HostContext.UserAssembly = userAsm;
             Type? appType = userAsm.GetType(entryPointTypeName, throwOnError: false);
@@ -177,7 +192,7 @@ namespace WPR
             // to the start page was queued behind those posts. Galactic Reign posts the creation
             // of its armada objects from App startup, and its MenuPage's view model reads them in
             // its constructor (NullReferenceException, black screen, when the page came first).
-            WPR.SilverlightCompability.Threading.Dispatcher.PumpQueued();
+            System.Windows.Threading.Dispatcher.PumpQueued();
 
             UIElement? rootVisual = SLApplication.Current.RootVisual;
             PhoneApplicationFrame? rootFrame = rootVisual as PhoneApplicationFrame;
@@ -193,6 +208,9 @@ namespace WPR
 
             if (rootFrame != null && startPage != null && rootFrame.CurrentSource == null)
             {
+                // The host hooks the frame first, so the start page is laid out like any other
+                // page before its Loaded handlers run (see BootInContext).
+                beforeStartPage?.Invoke(rootFrame);
                 try { rootFrame.Navigate(startPage); }
                 catch (Exception ex)
                 {

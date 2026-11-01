@@ -6,15 +6,8 @@ using System.Runtime.Loader;
 using System.Text;
 using WPR.SilverlightCompability;
 
-namespace WPR.WindowsCompability
+namespace System.Windows
 {
-    /// <summary>A retrieved resource stream and its content type.</summary>
-    public class StreamResourceInfo
-    {
-        public Stream? Stream { get; set; }
-        public string? ContentType { get; set; }
-    }
-
     public class Application
     {
         private static Application? _Current;
@@ -126,7 +119,7 @@ namespace WPR.WindowsCompability
             // Bridge for the SilverlightCompability XAML reader's StaticResource
             // resolver — it can't reference us directly (would be a circular
             // project ref), so we register a callback that exposes our Resources.
-            WPR.SilverlightCompability.XamlReader.ApplicationResourceLookup = key =>
+            System.Windows.Markup.XamlReader.ApplicationResourceLookup = key =>
             {
                 // Deep, so an app-level StaticResource finds a key that lives in one of App.xaml's
                 // merged theme dictionaries rather than inline.
@@ -184,8 +177,12 @@ namespace WPR.WindowsCompability
              * So terminate only for an exception the GAME ITSELF DEFINED. That is exactly the
              * shape of the quit idiom — you cannot signal "the user chose to exit" with an NRE,
              * so titles declare a private type for it (Cut the Rope's QuitException) — while
-             * ordinary bugs surface as BCL exceptions and stay non-fatal, as they are today. */
-            return !IsDefinedByTheGame(exception.GetType());
+             * ordinary bugs surface as BCL exceptions and stay non-fatal, as they are today.
+             *
+             * The other quit idiom is navigating back off the app's only page: GoBack() with no
+             * entry throws, and left unhandled the phone closed the app (Fruit Ninja 2013's "Exit"
+             * box). That throw comes from the platform, not a bug in the game, so it closes too. */
+            return !IsDefinedByTheGame(exception.GetType()) && !System.Windows.Controls.Frame.IsGoBackWithNoEntry(exception);
         }
 
         /// <summary>
@@ -210,6 +207,13 @@ namespace WPR.WindowsCompability
             }
         }
 
+        /// <summary>
+        /// WP8's <c>Application.Terminate()</c>: closes the app at the end of the current frame.
+        /// As on the phone, <c>Closing</c> is not raised. Microsoft Bingo calls it from Back on its
+        /// main menu.
+        /// </summary>
+        public void Terminate() => WPR.Xna.Rhi.GameUnhandledException.RequestTermination();
+
         /// <summary>Drops the cached singleton so a future Boot starts clean. Used at app shutdown.</summary>
         public static void ResetCurrent()
         {
@@ -222,11 +226,11 @@ namespace WPR.WindowsCompability
         }
 
         /// <summary>
-        /// Parse "#AARRGGBB" or "#RRGGBB" hex into a <see cref="WPR.SilverlightCompability.Color"/>.
+        /// Parse "#AARRGGBB" or "#RRGGBB" hex into a <see cref="Color"/>.
         /// Returns false (with <paramref name="color"/> default) on malformed input rather
         /// than throwing — the caller falls back to the WP7 default accent.
         /// </summary>
-        private static bool TryParseAccentColor(string hex, out WPR.SilverlightCompability.Color color)
+        private static bool TryParseAccentColor(string hex, out Color color)
         {
             color = default;
             string s = hex.Trim();
@@ -250,7 +254,7 @@ namespace WPR.WindowsCompability
                 g = (byte)((v >> 8) & 0xFF);
                 b = (byte)(v & 0xFF);
             }
-            color = WPR.SilverlightCompability.Color.FromArgb(a, r, g, b);
+            color = Color.FromArgb(a, r, g, b);
             return true;
         }
 
@@ -299,7 +303,7 @@ namespace WPR.WindowsCompability
 
             // "/Library;component/x" is a resource of Library, not of the caller: Arkadium's pages,
             // styles and images live in Arkadium.Common.WP8 and are named that way from the app.
-            assembly = WPR.SilverlightCompability.Frame.ComponentAssembly(uri, assembly);
+            assembly = System.Windows.Controls.Frame.ComponentAssembly(uri, assembly);
 
             string path = uri.OriginalString.TrimStart('/');
 

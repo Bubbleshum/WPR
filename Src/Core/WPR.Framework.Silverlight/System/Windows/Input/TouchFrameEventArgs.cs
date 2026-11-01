@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Input
 {
     /// <summary>Shim for <c>System.Windows.Input.TouchFrameEventArgs</c>.</summary>
     /// <remarks>
@@ -46,7 +46,7 @@ namespace WPR.SilverlightCompability
         {
             var collection = new TouchPointCollection();
             Point origin = Origin(relativeTo);
-            foreach (RawPoint raw in _points) collection.Add(ToTouchPoint(raw, origin));
+            foreach (RawPoint raw in _points) collection.Add(ToTouchPoint(raw, origin, relativeTo == null));
             return collection;
         }
 
@@ -54,7 +54,7 @@ namespace WPR.SilverlightCompability
         {
             foreach (RawPoint raw in _points)
             {
-                if (raw.Id == _primaryId) return ToTouchPoint(raw, Origin(relativeTo));
+                if (raw.Id == _primaryId) return ToTouchPoint(raw, Origin(relativeTo), relativeTo == null);
             }
             return null;
         }
@@ -65,10 +65,11 @@ namespace WPR.SilverlightCompability
         private static Point Origin(UIElement? relativeTo) =>
             relativeTo == null ? new Point(0, 0) : HitTester.OriginInRoot(relativeTo);
 
-        private static TouchPoint ToTouchPoint(RawPoint raw, Point origin) => new TouchPoint
+        // Relative to nothing is the phone's host frame, portrait on a landscape page (HostFrame).
+        private static TouchPoint ToTouchPoint(RawPoint raw, Point origin, bool host = false) => new TouchPoint
         {
             Action = raw.Action,
-            Position = new Point(raw.Position.X - origin.X, raw.Position.Y - origin.Y),
+            Position = host ? HostFrame.ToHost(raw.Position) : new Point(raw.Position.X - origin.X, raw.Position.Y - origin.Y),
             TouchDevice = new TouchDevice { Id = raw.Id, DirectlyOver = raw.DirectlyOver },
         };
     }

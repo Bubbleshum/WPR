@@ -79,10 +79,19 @@ namespace WPR.Wp8Native
             public int LastSeq;
             public bool Started;
             public long Frames;
+            public long PlayedFrames;        // of its slices the host has finished
+            public byte[]? Pending;          // the chunk being fed in slices
+            public int PendingAt;
+
+            public bool FullyFed => Stage >= 3 && Pending is null;
         }
 
         private readonly List<QueuedBuffer> _queue = [];
         private int _fed;                    // host submissions so far
+
+        // Slices on the host and not yet finished, oldest first.
+        private readonly Queue<(int Seq, QueuedBuffer Buffer, long Frames)> _inFlight = new();
+        private long _inFlightFrames;
 
         public XAudio2Format? Format => format;
 
@@ -96,6 +105,30 @@ namespace WPR.Wp8Native
 
         /// <summary>Frames of buffers that have ended.</summary>
         public long SamplesPlayed { get; private set; }
+
+        /// <summary>
+        /// Frames still to play in the buffers queued, less the slices the host has finished;
+        /// <see cref="long.MaxValue"/> while one loops for ever.
+        /// </summary>
+        public long QueuedFrames
+        {
+            get
+            {
+                Account();
+                long frames = 0;
+                foreach (QueuedBuffer b in _queue)
+                {
+                    if (b.Infinite && !b.ExitLoop && b.Stage < 2)
+                    {
+                        return long.MaxValue;
+                    }
+
+                    frames += Math.Max(0, b.Frames - b.PlayedFrames);
+                }
+
+                return frames;
+            }
+        }
 
         /// <summary>
         /// Queues one XAUDIO2_BUFFER. <paramref name="audio"/> is the buffer's bytes in the voice's
@@ -148,12 +181,36 @@ namespace WPR.Wp8Native
             _queue.Add(buffer);
         }
 
+        /// <summary>
+        /// OnVoiceProcessingPassStart's BytesRequired: the bytes, in the voice's own format, that top
+        /// what is still to play up to <paramref name="leadSeconds"/>; 0 while it has enough.
+        /// </summary>
+        public long BytesRequired(double leadSeconds)
+        {
+            if (format is not { SampleRate: > 0, BlockAlign: > 0 } f)
+            {
+                return 0;
+            }
+
+            long queued = QueuedFrames;
+            long wanted = (long)(f.SampleRate * leadSeconds) - queued;
+            if (queued == long.MaxValue || wanted <= 0)
+            {
+                return 0;
+            }
+
+            return f.Tag == 2 && f.SamplesPerBlock > 0
+                ? (wanted + f.SamplesPerBlock - 1) / f.SamplesPerBlock * f.BlockAlign
+                : wanted * f.BlockAlign;
+        }
+
         /// <summary>Everything queued ends now and is reported ended at the next retire.</summary>
         public void Flush()
         {
             foreach (QueuedBuffer b in _queue)
             {
                 b.Stage = 3;
+                b.Pending = null;
                 b.LastSeq = 0;
             }
 
@@ -170,9 +227,17 @@ namespace WPR.Wp8Native
         }
 
         /// <summary>
-        /// Keeps up to three chunks queued on the host. <paramref name="callback"/> receives
-        /// (callback slot, buffer context) for each OnBufferStart due.
+        /// Keeps the host fed: at least three slices and <see cref="HostLeadSeconds"/> of sound
+        /// queued on it. <paramref name="callback"/> receives (callback slot, buffer context) for
+        /// each OnBufferStart due.
         /// </summary>
+        /// <remarks>
+        /// A chunk is handed over in slices of about 20 ms, so how much of a buffer has played is
+        /// known to a slice rather than only once all of it has: a game streaming a few long
+        /// buffers and topping up from OnVoiceProcessingPassStart's BytesRequired (Mandreel's
+        /// mixer, ~240 ms each) is asked for more while the last one still plays, not after the
+        /// host has run dry.
+        /// </remarks>
         public void Feed(Action<int, long> callback)
         {
             if (output is null)
@@ -180,18 +245,53 @@ namespace WPR.Wp8Native
                 return;
             }
 
+            Account();
+            int channels = format?.OutChannels ?? 2;
+            int slice = Math.Max(256, (format?.SampleRate ?? 44100) / 50) * channels * 2;
+            long lead = (long)((format?.SampleRate ?? 44100) * HostLeadSeconds);
             foreach (QueuedBuffer b in _queue)
             {
-                while (b.Stage < 3 && _fed - output.Completed < 3)
+                while (!b.FullyFed && (_inFlight.Count < 3 || _inFlightFrames < lead))
                 {
-                    byte[]? chunk = NextChunk(b);
-                    if (chunk is null || chunk.Length == 0)
+                    if (b.Pending is null)
                     {
-                        continue;
+                        byte[]? chunk = NextChunk(b);
+                        if (chunk is null || chunk.Length == 0)
+                        {
+                            continue;
+                        }
+
+                        b.Pending = chunk;
+                        b.PendingAt = 0;
                     }
 
-                    output.Submit(chunk);
+                    byte[] piece;
+                    if (b.PendingAt == 0 && b.Pending.Length <= slice + (slice / 2))
+                    {
+                        piece = b.Pending;
+                    }
+                    else
+                    {
+                        int length = Math.Min(slice, b.Pending.Length - b.PendingAt);
+                        if (b.Pending.Length - b.PendingAt - length < slice / 2)
+                        {
+                            length = b.Pending.Length - b.PendingAt;   // no runt slice at the end
+                        }
+
+                        piece = b.Pending.AsSpan(b.PendingAt, length).ToArray();
+                    }
+
+                    b.PendingAt += piece.Length;
+                    if (b.PendingAt >= b.Pending.Length)
+                    {
+                        b.Pending = null;
+                    }
+
+                    output.Submit(piece);
                     _fed++;
+                    long frames = piece.Length / (channels * 2);
+                    _inFlight.Enqueue((_fed, b, frames));
+                    _inFlightFrames += frames;
                     b.LastSeq = _fed;
                     if (!b.Started)
                     {
@@ -200,10 +300,30 @@ namespace WPR.Wp8Native
                     }
                 }
 
-                if (b.Stage < 3)
+                if (!b.FullyFed)
                 {
                     return;
                 }
+            }
+        }
+
+        /// <summary>Sound kept queued on the host beyond the three-slice minimum.</summary>
+        public const double HostLeadSeconds = 0.5;
+
+        /// <summary>Credits finished slices to their buffers.</summary>
+        private void Account()
+        {
+            if (output is null)
+            {
+                return;
+            }
+
+            int completed = output.Completed;
+            while (_inFlight.Count > 0 && _inFlight.Peek().Seq <= completed)
+            {
+                var (_, b, frames) = _inFlight.Dequeue();
+                b.PlayedFrames += frames;
+                _inFlightFrames -= frames;
             }
         }
 
@@ -217,7 +337,7 @@ namespace WPR.Wp8Native
             while (_queue.Count > 0)
             {
                 QueuedBuffer b = _queue[0];
-                if (b.Stage < 3 || completed < b.LastSeq)
+                if (!b.FullyFed || completed < b.LastSeq)
                 {
                     break;
                 }

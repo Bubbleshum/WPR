@@ -19,6 +19,9 @@ namespace WPR.Engine.Online
 
         /// <summary>Installed games' names and icons, offered to the hub (see <see cref="ITitleDetailsSync"/>).</summary>
         public ITitleDetailsSync? TitleDetails { get; init; }
+
+        /// <summary>Games' achievement definitions and icons, offered to the hub (see <see cref="IAchievementDefinitionsSync"/>).</summary>
+        public IAchievementDefinitionsSync? AchievementDefinitions { get; init; }
     }
 
     /// <summary>
@@ -61,6 +64,9 @@ namespace WPR.Engine.Online
         /// <summary>Installed games' details for the hub's title pages; the installer offers, the flush sends.</summary>
         public static ITitleDetailsSync? TitleDetails { get; private set; }
 
+        /// <summary>Games' achievement catalogues for the hub; the seeder offers, the flush sends.</summary>
+        public static IAchievementDefinitionsSync? AchievementDefinitions { get; private set; }
+
         public static void Set(OnlineServices services)
         {
             Leaderboards = services.Leaderboards;
@@ -71,6 +77,7 @@ namespace WPR.Engine.Online
             GameServices = services.GameServices;
             Invites = services.Invites;
             TitleDetails = services.TitleDetails;
+            AchievementDefinitions = services.AchievementDefinitions;
         }
 
         public static void SetLeaderboards(ILeaderboardService? service) => Leaderboards = service;
@@ -80,7 +87,7 @@ namespace WPR.Engine.Online
         /// <summary>
         /// Send whatever is queued: crash reports and the game packages the hub asked for,
         /// leaderboard scores, achievement unlocks and play sessions, and installed games' details
-        /// the hub lacks. The launcher calls this at
+        /// and achievement definitions the hub lacks. The launcher calls this at
         /// startup, after every game run and after sign-in. Never throws.
         /// </summary>
         public static Task FlushAsync()
@@ -93,7 +100,8 @@ namespace WPR.Engine.Online
             Task scores = Leaderboards?.FlushAsync() ?? Task.CompletedTask;
             Task progress = Progress?.FlushAsync() ?? Task.CompletedTask;
             Task details = TitleDetails?.FlushAsync() ?? Task.CompletedTask;
-            return Task.WhenAll(crashes, scores, progress, details);
+            Task definitions = AchievementDefinitions?.FlushAsync() ?? Task.CompletedTask;
+            return Task.WhenAll(crashes, scores, progress, details, definitions);
         }
     }
 }

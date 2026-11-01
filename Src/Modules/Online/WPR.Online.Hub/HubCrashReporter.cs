@@ -176,6 +176,7 @@ public sealed class HubCrashReporter : ICrashReporter
             TitleName = Truncate(game?.TitleName, 255),
             XapHash = package?.Sha256,
             XapSize = package?.Size,
+            AppVersion = Truncate(package?.Version, 50),
             RuntimePath = game?.RuntimePath,
             GraphicsBackend = Truncate(game?.GraphicsBackend?.ToLowerInvariant(), 16),
             LogTail = string.IsNullOrEmpty(scrubbed) ? null : TruncateStart(scrubbed, MaxLogTailChars),
@@ -337,10 +338,19 @@ public sealed class HubCrashReporter : ICrashReporter
                 }
 
                 var progress = new Progress<(long Sent, long Total)>(p => UploadProgress?.Invoke(upload.TitleName, p.Sent, p.Total));
-                GameFileUploadState state = await hub.UploadGameFileAsync(file, upload.Offer, upload.TitleId, upload.TitleName, progress)
-                    .ConfigureAwait(false);
+                GameFileUploadState state = await hub.UploadGameFileAsync(file, upload.Offer, upload.TitleId, upload.TitleName, progress,
+                    version: upload.Package.Version).ConfigureAwait(false);
 
-                _connection.Log($"game package upload for {upload.TitleName}: {state.Status} ({state.Offset}/{state.Size}){(state.Error is { } err ? " " + err : "")}");
+                if (state.IsNotNeeded)
+                {
+                    // The hub holds this game at this version, or an admin marked its packages
+                    // complete: nothing to send, now or later.
+                    _connection.Log($"game package upload for {upload.TitleName}: not needed, the hub has what it needs for this game");
+                    DiskQueue<PendingUpload>.Delete(newest.Path);
+                    continue;
+                }
+
+                _connection.Log($"game package upload for {upload.TitleName}: {state.Status ?? "(no status)"} ({state.Offset}/{state.Size}){(state.Error is { } err ? " " + err : "")}");
 
                 // Everything but "still receiving" is final: complete, failed (hash mismatch on
                 // the hub), in_progress (another player is sending it), not_wanted.
@@ -392,6 +402,7 @@ public sealed class HubCrashReporter : ICrashReporter
             TitleName = Truncate(crash.TitleName, 255),
             XapHash = package?.Sha256,
             XapSize = package?.Size,
+            AppVersion = Truncate(package?.Version, 50),
             RuntimePath = crash.RuntimePath,
             GraphicsBackend = Truncate(crash.GraphicsBackend?.ToLowerInvariant(), 16),
             ExceptionType = Truncate(crash.ExceptionType, 255),

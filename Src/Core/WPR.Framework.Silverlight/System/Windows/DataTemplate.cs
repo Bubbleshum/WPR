@@ -1,7 +1,7 @@
 using System;
 using System.Xml.Linq;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows
 {
     /// <summary>
     /// XAML-defined factory for instantiating UI per-data-item. The template captures a

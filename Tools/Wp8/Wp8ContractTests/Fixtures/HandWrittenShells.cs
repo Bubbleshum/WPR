@@ -1,11 +1,15 @@
-namespace WPR.Wp8Native
+using WPR.Wp8Native;
+
+namespace Wp8ContractTests.Fixtures
 {
     /// <summary>
-    /// The managed pages of the Direct3D/XAML titles WPR knows how to host, written out from
-    /// their decompiled MainPage/App code. Keyed by the component DLL the manifest's
-    /// <c>ActivatableClasses</c> names.
+    /// Test fixture: the managed pages of three Direct3D/XAML titles, written out by hand from
+    /// their decompiled MainPage/App code. WPR shipped these as per-title descriptions until
+    /// 2026-10-26; it now only infers a page (<see cref="XamlShellInference"/>), and the contract
+    /// suites check the inference against these. Keyed by the component DLL the manifest's
+    /// <c>ActivatableClasses</c> names. Nothing outside the tests may read this.
     /// </summary>
-    public static class XamlShells
+    public static class HandWrittenShells
     {
         // The managed WP8 page set WindowBounds in DIPs (ActualWidth x ActualHeight, 480x800 on
         // every device), NativeResolution and RenderResolution in physical pixels
@@ -94,7 +98,8 @@ namespace WPR.Wp8Native
                     new("add_ResumePhoneMusicEvent", XamlShell.Callback),
                     new("add_GetDeviceFirmwareVersionEvent", new XamlCallback("8.0.10521.0")),
                     new("add_GetRegionCodeEvent", new XamlCallback("US")),
-                    new("add_GetDeviceNameEvent", new XamlCallback("WP8")),
+                    // GetDeviceName answers DeviceStatus.DeviceName ("WP8" only when that is empty).
+                    new("add_GetDeviceNameEvent", new XamlCallback("RM-821_eu_euro1_276")),
                     new("InitIGPModule"),
                     new("FakeInitXBLUser"),
                     new("SetIGPState", false),

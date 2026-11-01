@@ -67,8 +67,12 @@ namespace Microsoft.Xna.Framework.GamerServices
                 //
                 // First subscriber in a session: 2s delay to give the ctor and
                 // Initialize() time to settle. Late subscribers: no delay, they're
-                // simulating "you missed the initial sign-in, here it is now".
-                int delayMs = FirstSignInSessionDone ? 0 : DelaySignedInMillis;
+                // simulating "you missed the initial sign-in, here it is now". A first
+                // subscriber that arrives once the loop is ticking has nothing left to
+                // settle: on the phone the profile was signed in long before, and XNA
+                // reported it on the next GamerServices update. Deer Hunter 3D subscribes
+                // from its main menu and reads the gamer about a second later.
+                int delayMs = FirstSignInSessionDone || Microsoft.Xna.Framework.Game.WprTicking ? 0 : DelaySignedInMillis;
 #if DEBUG
                 Trace.WriteLine($"[wpr-trace] SignedInGamer.SignedIn: scheduling Task.Delay({delayMs}ms) → serialised invoke");
 #endif
@@ -136,10 +140,10 @@ namespace Microsoft.Xna.Framework.GamerServices
 
                 if (achievementStored.Count == 0)
                 {
-                    // No rows for this product: the game has no hardcoded achievement catalogue
-                    // (Database/Achievements/<productId>/achievements.json), which XnaAchievementSeeder
-                    // seeds at install time. Return an empty collection — the game still advances past
-                    // sign-in, it just shows no achievements.
+                    // No rows for this product: neither a catalogue shipped with WPR nor one built
+                    // from the package lists anything (XnaAchievementSeeder seeds both, at install and
+                    // before each launch). Return an empty collection — the game still advances past
+                    // sign-in; an award it makes later still gets a row (UnlistedAchievements).
                     //
                     // This used to fall back to a live TrueAchievements web scrape. That scraper was
                     // removed (2026-08-07): the hardcoded catalogue is the source of truth, and the
@@ -222,14 +226,27 @@ namespace Microsoft.Xna.Framework.GamerServices
                     Log.Warn(LogCategory.GamerServices, $"More then two achievements with key {achievementKey} exists!");
                 }
 
+                if (achievements.Count == 0 && store != null && !string.IsNullOrEmpty(productId) &&
+                    !string.IsNullOrEmpty(achievementKey) && WPR.Xna.Achievements.UnlistedAchievements.Allowed)
+                {
+                    // A key the catalogue does not list (the package hides it, or the title has no
+                    // catalogue at all). The phone's Xbox LIVE knew every achievement, so the award
+                    // landed; here it gets its own row, and from there it is earned, toasted and
+                    // uploaded exactly as a catalogue row is. Not for a curated catalogue
+                    // (UnlistedAchievements.Allowed is false then): that one is authoritative.
+                    achievements.Add(await store.AddAsync(
+                        WPR.Xna.Achievements.UnlistedAchievements.NewRow(productId, achievementKey)));
+                    Trace.WriteLine($"[wpr-achievement] '{achievementKey}' is not in the catalogue for product " +
+                        $"'{productId}'; created its row.");
+                }
+
                 if (achievements.Count == 0)
                 {
                     /* Diagnostic: AwardAchievement fired but we have no matching row
-                     * to flip. Two common reasons:
-                     *   1) This game has no hardcoded catalogue under
-                     *      Database/Achievements/<productId>/achievements.json, so
-                     *      XnaAchievementSeeder seeded nothing for it at install.
-                     *   2) The catalogue IS seeded, but its Key column doesn't match
+                     * to flip. Unlisted keys get a row above, so this is a title with a
+                     * curated catalogue (Database/Achievements/<productId>/achievements.json,
+                     * shipped with WPR) or a run with no store registered. For a curated one:
+                     *      the catalogue's Key column doesn't match
                      *      the INTERNAL KEY the game passes to AwardAchievement (the
                      *      game's own constant) — e.g. the catalogue was authored with
                      *      display names instead of the game's keys.

@@ -2,7 +2,7 @@ using System;
 using System.Threading;
 using Microsoft.Xna.Framework;
 
-namespace WPR.SilverlightCompability.Threading
+namespace System.Windows.Threading
 {
     /// <summary>Shim for <c>System.Windows.Threading.DispatcherTimer</c>.</summary>
     /// <remarks>

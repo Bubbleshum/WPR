@@ -17,6 +17,50 @@ namespace WPR.Platform.Windows.Views
         private MainViewNavigator _Navigator;
 
         /// <summary>
+        /// Repatches an install whose <see cref="WPR.Models.Application.PatchedVersion"/> is behind
+        /// <see cref="ApplicationPatcher.Version"/>, before it is launched. A patcher change can be
+        /// identity-binding (v61 moved every Silverlight shim into its real namespace), and such an
+        /// install does not start until it is repatched; the desktop used to leave that to the
+        /// player's Repatch button. A WP8 native title is ARM code with no IL to redo, as on Android.
+        /// A failed repatch is not a reason to refuse the game: what is on disk is launched, the
+        /// failure goes to WPR Hub, and PatchedVersion stays behind so the next launch tries again.
+        /// </summary>
+        private static async Task RepatchIfOutdatedAsync(WPR.Models.Application app)
+        {
+            if (app.PatchedVersion >= ApplicationPatcher.Version || app.ApplicationType == ApplicationType.ModernNative)
+                return;
+
+            Log.Info(LogCategory.AppList,
+                $"Repatching {app.Name} before launch (patched by v{app.PatchedVersion}, patcher is v{ApplicationPatcher.Version}).");
+            ApplicationInstallError err;
+            Exception? thrown = null;
+            try
+            {
+                err = await ApplicationInstaller.RepatchAsync(app, _ => { }, System.Threading.CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                thrown = ex;
+                err = ApplicationInstallError.PatchFailed;
+            }
+
+            if (err == ApplicationInstallError.None) return;
+
+            Log.Error(LogCategory.AppList, $"Repatch before launch failed ({err}), launching anyway. {thrown}");
+            try
+            {
+                string installFolder = System.IO.Path.Combine(
+                    Configuration.Current!.DataPath(WPR.Models.Application.DataStoreFolder), app.ProductId!);
+                WPR.Engine.Online.OnlineBackend.Crashes?.Report(WPR.Engine.Online.CrashReport.ForInstallProblem(
+                    "launch-repatch", err.ToString(),
+                    thrown ?? new InvalidOperationException($"Repatch before launch answered {err}; the install log has the cause."),
+                    app.ProductId, app.Name,
+                    package: null, installFolder: installFolder, continued: "launched anyway"));
+            }
+            catch (Exception) { /* reporting only */ }
+        }
+
+        /// <summary>
         /// The logging window's stop button: record the request and close whichever game is running.
         /// A game that has hung does not come back from that, and the launch awaits it, so if it has
         /// not gone within a few seconds the report is sent from here instead.
@@ -127,6 +171,11 @@ namespace WPR.Platform.Windows.Views
 
             ApplicationLaunchRequest.Incoming += async (sender, args) =>
             {
+                // An install patched by an older WPR is brought up to date before it runs, as
+                // Android's GameLauncher does. Every launch comes through here (the games list,
+                // the hub page, a shortcut), so this is the one place for it.
+                await RepatchIfOutdatedAsync(args.Target);
+
                 Hide();
 
                 // "Play with logging": the verbose log for this run, a topmost stop button, and the

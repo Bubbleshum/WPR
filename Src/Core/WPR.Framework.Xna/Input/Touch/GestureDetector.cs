@@ -65,6 +65,18 @@ namespace Microsoft.Xna.Framework.Input.Touch
 
 		#endregion
 
+		/// <summary>WPR: back to no fingers and no gesture, for the next game (TouchPanel.ResetForNewLaunch).</summary>
+		internal static void Reset()
+		{
+			activeFingerId = TouchPanel.NO_FINGER;
+			secondFingerId = TouchPanel.NO_FINGER;
+			callBelatedPinchComplete = false;
+			fingerIds.Clear();
+			justDoubleTapped = false;
+			state = GestureState.NONE;
+			velocity = Vector2.Zero;
+		}
+
 		#region Private Constants
 
 		/* How far (in pixels) the user can move their finger in a gesture

@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Net
 {
     /// <summary>
     /// Shim for <c>System.Net.HttpUtility</c> (Silverlight/WP put HttpUtility in the

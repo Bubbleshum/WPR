@@ -13,6 +13,9 @@ namespace WPR.Wp8Native
                 public static readonly Unknown Value = new();
             }
 
+            /// <summary>The address of a local holding a known value (<c>ldloca</c>), e.g. a <c>Nullable&lt;int&gt;</c> read through it.</summary>
+            private sealed record LocalAddress(int Index);
+
             /// <summary>
             /// The arguments of the call at instruction <paramref name="callIndex"/>, as the page computes
             /// them on this display, by running the method's IL from its start up to that call over a tiny
@@ -35,11 +38,45 @@ namespace WPR.Wp8Native
             /// </remarks>
             public object?[] EvaluateArguments(byte[] il, int callIndex, int parameters)
             {
-                object?[] none = new object?[parameters];
                 if (parameters == 0)
                 {
-                    return none;
+                    return [];
                 }
+
+                return Execute(il, callIndex, parameters, out _) ?? new object?[parameters];
+            }
+
+            /// <summary>
+            /// True when the call at <paramref name="callIndex"/> sits on a branch the page cannot take
+            /// on this device: running the method from its start, every conditional branch on the way
+            /// was decided by a known value and the path left the method without reaching the call.
+            /// </summary>
+            /// <remarks>
+            /// N.O.V.A. 3's OrientationChanged handler is <c>if ((e.Orientation &amp; 0x12) == 0x12)
+            /// OnNormalOrientation(); else if ((e.Orientation &amp; 0x22) == 0x22) OnFlippedOrientation();</c>.
+            /// Both calls were collected, the flipped one ran last, and the game drew upside down.
+            /// A method with exception handlers never answers true: a handler is not reached by
+            /// straight-line flow, which this machine follows.
+            /// </remarks>
+            public bool IsUnreachable(byte[] il, int callIndex, bool hasExceptionRegions)
+            {
+                if (hasExceptionRegions)
+                {
+                    return false;
+                }
+
+                return Execute(il, callIndex, 0, out bool determined) is null && determined;
+            }
+
+            /// <summary>
+            /// Runs the method up to <paramref name="callIndex"/>: the top <paramref name="parameters"/>
+            /// stack values there, or null when the path does not reach it. <paramref name="determined"/>
+            /// is false once a branch was decided by an unknown value (or the run could not be followed).
+            /// </summary>
+            private object?[]? Execute(byte[] il, int callIndex, int parameters, out bool determined)
+            {
+                determined = true;
+                object?[]? none = null;
 
                 List<(int Offset, ILOpCode Op, long Operand, int Next)> code = [];
                 Dictionary<int, int> byOffset = [];
@@ -75,11 +112,13 @@ namespace WPR.Wp8Native
 
                 if (callIndex >= code.Count)
                 {
+                    determined = false;
                     return none;
                 }
 
                 Stack<object?> stack = new();
                 Dictionary<int, object?> locals = [];
+                _properties.Clear();
                 object? Pop() => stack.Count > 0 ? stack.Pop() : Unknown.Value;
                 static double? Num(object? v) => v switch { double d => d, long l => l, _ => null };
 
@@ -92,7 +131,7 @@ namespace WPR.Wp8Native
                         for (int i = parameters - 1; i >= 0; i--)
                         {
                             object? v = Pop();
-                            result[i] = v is long l ? (double)l : v is double or SizeF ? v : null;
+                            result[i] = v is long l ? (double)l : v is double or SizeF or string ? v : null;
                         }
 
                         return result;
@@ -156,9 +195,19 @@ namespace WPR.Wp8Native
                             break;
                         case ILOpCode.Ldloca_s:
                         case ILOpCode.Ldloca:
-                            // Its address escapes (a struct initialised or called through it).
-                            locals[(int)operand] = Unknown.Value;
-                            stack.Push(Unknown.Value);
+                            // Its address escapes (a struct initialised or called through it), unless
+                            // it holds a known value: then a call reading it (Nullable.Value) may use it,
+                            // and anything else that takes the address forgets it (see Call).
+                            if (locals.GetValueOrDefault((int)operand, Unknown.Value) is Unknown or null)
+                            {
+                                locals[(int)operand] = Unknown.Value;
+                                stack.Push(Unknown.Value);
+                            }
+                            else
+                            {
+                                stack.Push(new LocalAddress((int)operand));
+                            }
+
                             break;
                         case ILOpCode.Starg_s:
                         case ILOpCode.Starg:
@@ -326,6 +375,11 @@ namespace WPR.Wp8Native
                                 object? v = Pop();
                                 bool? truth = Num(v) is { } d ? d != 0 : v is null ? false : null;
                                 bool wantsTrue = op is ILOpCode.Brtrue or ILOpCode.Brtrue_s;
+                                if (truth is null)
+                                {
+                                    determined = false;
+                                }
+
                                 if (truth == wantsTrue)
                                 {
                                     jump = next + (int)operand;
@@ -355,18 +409,24 @@ namespace WPR.Wp8Native
                                         jump = next + (int)operand;
                                     }
                                 }
+                                else
+                                {
+                                    determined = false;
+                                }
 
                                 break;
                             }
 
                         case ILOpCode.Switch:
                             Pop(); // an unknown case: falls through past the table
+                            determined = false;
                             break;
                         case ILOpCode.Call:
                         case ILOpCode.Callvirt:
                         case ILOpCode.Newobj:
-                            if (!Call(op, (int)operand, stack))
+                            if (!Call(op, (int)operand, stack, locals))
                             {
+                                determined = false;
                                 return none;
                             }
 
@@ -380,6 +440,7 @@ namespace WPR.Wp8Native
                     {
                         if (!byOffset.TryGetValue(target, out int index))
                         {
+                            determined = false;
                             return none;
                         }
 
@@ -391,11 +452,32 @@ namespace WPR.Wp8Native
                     }
                 }
 
+                determined = false; // ran out of steps
                 return none;
             }
 
+            /// <summary>The generic type a generic instantiation names (<c>Nullable`1</c> for <c>Nullable&lt;int&gt;</c>); null for any other type spec.</summary>
+            private string? GenericTypeName(TypeSpecificationHandle spec)
+            {
+                BlobReader blob = _md.GetBlobReader(_md.GetTypeSpecification(spec).Signature);
+                if (blob.ReadSignatureTypeCode() != SignatureTypeCode.GenericTypeInstance)
+                {
+                    return null;
+                }
+
+                blob.ReadByte(); // CLASS or VALUETYPE
+                return TypeName(blob.ReadTypeHandle());
+            }
+
+            /// <summary>
+            /// Values the evaluated method has just given a property (<c>set_X</c>), by declaring type
+            /// and name, so a later <c>get_X</c> reads them back. GTA: San Andreas does
+            /// <c>RenderResolution = NativeResolution</c> straight after setting the latter.
+            /// </summary>
+            private readonly Dictionary<(string?, string), object?> _properties = [];
+
             /// <summary>A call during <see cref="EvaluateArguments"/>: pops its arguments and pushes what is known of its result.</summary>
-            private bool Call(ILOpCode op, int token, Stack<object?> stack)
+            private bool Call(ILOpCode op, int token, Stack<object?> stack, Dictionary<int, object?> locals)
             {
                 EntityHandle target = MetadataTokens.EntityHandle(token);
                 if (target.Kind == HandleKind.MethodSpecification)
@@ -410,7 +492,8 @@ namespace WPR.Wp8Native
                 {
                     case HandleKind.MemberReference:
                         MemberReference member = _md.GetMemberReference((MemberReferenceHandle)target);
-                        owner = member.Parent.Kind is HandleKind.TypeReference or HandleKind.TypeDefinition ? TypeName(member.Parent) : null;
+                        owner = member.Parent.Kind is HandleKind.TypeReference or HandleKind.TypeDefinition ? TypeName(member.Parent)
+                            : member.Parent.Kind == HandleKind.TypeSpecification ? GenericTypeName((TypeSpecificationHandle)member.Parent) : null;
                         name = _md.GetString(member.Name);
                         signatureHandle = member.Signature;
                         break;
@@ -440,13 +523,40 @@ namespace WPR.Wp8Native
                     args[i] = stack.Count > 0 ? stack.Pop() : Unknown.Value;
                 }
 
+                object? instance = null;
                 if (header.IsInstance && op != ILOpCode.Newobj && stack.Count > 0)
                 {
-                    stack.Pop();
+                    instance = stack.Pop();
+                }
+
+                // A local whose address is passed on may be written through it, except by the
+                // Nullable readers below.
+                bool readsNullable = owner == "System.Nullable`1" && name is "get_Value" or "get_HasValue" or "GetValueOrDefault";
+                foreach (object? escaped in args.Append(readsNullable ? null : instance))
+                {
+                    if (escaped is LocalAddress address)
+                    {
+                        locals[address.Index] = Unknown.Value;
+                    }
+                }
+
+                if (readsNullable && instance is LocalAddress held)
+                {
+                    instance = locals.GetValueOrDefault(held.Index, Unknown.Value);
                 }
 
                 double? Arg(int i) => i < args.Length ? args[i] switch { double d => d, long l => l, _ => null } : null;
                 object? result = Unknown.Value;
+                if (header.IsInstance && name.StartsWith("set_", StringComparison.Ordinal) && count == 1)
+                {
+                    _properties[(owner, name[4..])] = args[0];
+                }
+                else if (header.IsInstance && name.StartsWith("get_", StringComparison.Ordinal) && count == 0 &&
+                         _properties.TryGetValue((owner, name[4..]), out object? known))
+                {
+                    result = known;
+                }
+
                 switch (owner, name)
                 {
                     case ("System.Windows.Interop.Content", "get_ActualWidth"):
@@ -455,11 +565,56 @@ namespace WPR.Wp8Native
                     case ("System.Windows.Interop.Content", "get_ActualHeight"):
                         result = (double)Wp8Display.LogicalHeight;
                         break;
+                    // An element of the page (the DrawingSurface the component draws into, the
+                    // LayoutRoot) fills it, and a page is laid out in its own orientation: a
+                    // Landscape page's elements are 800x480 DIPs, unlike Host.Content above. GTA:
+                    // San Andreas sizes its whole render from DrawingSurface.ActualWidth/Height;
+                    // answered portrait, it drew its landscape screens into a 768x1280 texture.
+                    case ("System.Windows.FrameworkElement", "get_ActualWidth"):
+                        result = (double)(Landscape ? Wp8Display.LogicalHeight : Wp8Display.LogicalWidth);
+                        break;
+                    case ("System.Windows.FrameworkElement", "get_ActualHeight"):
+                        result = (double)(Landscape ? Wp8Display.LogicalWidth : Wp8Display.LogicalHeight);
+                        break;
                     case ("System.Windows.Interop.Content", "get_ScaleFactor"):
                         result = (long)Wp8Display.Scale;
                         break;
+                    // Microsoft.Phone.Info.DeviceStatus: what WPR's phone reports (the same answers
+                    // a device question by name gets, XamlShellInference.DeviceAnswer).
+                    case ("Microsoft.Phone.Info.DeviceStatus", "get_DeviceName"):
+                        result = "RM-821_eu_euro1_276";
+                        break;
+                    case ("Microsoft.Phone.Info.DeviceStatus", "get_DeviceManufacturer"):
+                        result = "NOKIA";
+                        break;
+                    case ("Microsoft.Phone.Info.DeviceStatus", "get_DeviceHardwareVersion"):
+                        result = "1.0.0.0";
+                        break;
+                    case ("Microsoft.Phone.Info.DeviceStatus", "get_DeviceFirmwareVersion"):
+                        result = "8.0.10521.0";
+                        break;
+                    // A Nullable<T> holding a known value (null is "no value").
+                    case ("System.Nullable`1", "get_HasValue") when instance is not Unknown:
+                        result = instance is null ? 0L : 1L;
+                        break;
+                    case ("System.Nullable`1", "get_Value" or "GetValueOrDefault") when instance is long or double:
+                        result = instance;
+                        break;
+                    // The answer to a message box when nobody can be asked: its first button, as
+                    // WPR's Guide answers one with no presenter.
+                    case ("Microsoft.Xna.Framework.GamerServices.Guide", "EndShowMessageBox"):
+                        result = 0L;
+                        break;
+                    case (_, "ToString") when count == 0 && instance is string text:
+                        result = text;
+                        break;
                     case ("Microsoft.Phone.Shell.SystemTray", "get_IsVisible"):
                         result = SystemTrayVisible ? 1L : 0L;
+                        break;
+                    // The page's orientation as its SupportedOrientations lays it out (PageOrientation:
+                    // LandscapeLeft 18, PortraitUp 5): what OrientationChanged reports and the page reads.
+                    case ("Microsoft.Phone.Controls.OrientationChangedEventArgs" or "Microsoft.Phone.Controls.PhoneApplicationPage", "get_Orientation"):
+                        result = Landscape ? 18L : 5L;
                         break;
                     case ("System.Math", "Floor") when Arg(0) is { } f:
                         result = Math.Floor(f);

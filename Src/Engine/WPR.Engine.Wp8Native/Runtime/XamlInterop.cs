@@ -134,6 +134,14 @@ namespace WPR.Wp8Native
         /// messages (MandreelMessages.cs); the host starts its own before <c>CreateContentProvider</c>.
         /// </summary>
         public bool MandreelMessages { get; init; }
+
+        /// <summary>
+        /// The page feeds touch to the component from <c>Touch.FrameReported</c> (<see cref="XamlTouchFrame"/>)
+        /// rather than through a manipulation handler. Used only when the class answers no
+        /// <c>IDrawingSurfaceManipulationHandler</c>: on the phone a page with both would hand each
+        /// touch to the component twice.
+        /// </summary>
+        public XamlTouchFrame? TouchFrame { get; init; }
     }
 
     public sealed partial class WinRtRuntime
@@ -308,6 +316,9 @@ namespace WPR.Wp8Native
 
         private void InvokeMember(string method, object?[] arguments, Action<long> then) => InvokeMember(method, arguments, null, then);
 
+        /// <summary>The step that stands for <c>new C()</c> of another package class (<see cref="XamlShellStep.Class"/>).</summary>
+        public const string ActivateInstanceStep = "ActivateInstance";
+
         private void InvokeMember(string method, object?[] arguments, string? onClass, Action<long> then)
         {
             if (onClass is not null && onClass != _shell!.ClassId)
@@ -367,10 +378,12 @@ namespace WPR.Wp8Native
         {
             List<long> core = [];
             List<uint> vfp = [];
+            LentArgs lent = new();
             for (int i = 0; i < target.ParameterTypes.Count; i++)
             {
                 object? value = i < arguments.Length ? arguments[i] : null;
-                Marshal(target.ParameterTypes[i], value, core, vfp);
+                lent.Index = i;
+                Marshal(target.ParameterTypes[i], value, core, vfp, lent);
             }
 
             bool hasResult = target.ReturnType != "Void";
@@ -383,6 +396,7 @@ namespace WPR.Wp8Native
 
             CallSlot($"{layout.FullName.Split('.')[^1]}::{method}", pointer, target.Slot, core, vfp, hr =>
             {
+                ReturnLent(lent, arguments);
                 long result = hasResult ? _emulator.ReadUInt32(outSlot) : 0;
                 Log($"{method}({Describe(arguments)}) = 0x{hr:X8}{(hasResult ? $" -> 0x{result:X8}" : "")}");
                 then(result);
@@ -424,6 +438,21 @@ namespace WPR.Wp8Native
                 if (!_packageObjects.TryGetValue(className, out PackageObject? obj))
                 {
                     _packageObjects[className] = obj = new PackageObject(factory);
+                }
+
+                if (method == ActivateInstanceStep)
+                {
+                    // new C() in the page: IActivationFactory::ActivateInstance(IInspectable**), slot 6.
+                    long outInstance = _scratch + 4;
+                    _emulator.WriteUInt32(outInstance, 0);
+                    CallSlot($"{className}::ActivateInstance", factory, 6, [outInstance], [], hr =>
+                    {
+                        obj.Instance = _emulator.ReadUInt32(outInstance);
+                        obj.Interfaces.Clear();
+                        Log($"{className}: ActivateInstance = 0x{hr:X8}, instance 0x{obj.Instance:X8}");
+                        then(obj.Instance);
+                    });
+                    return;
                 }
 
                 bool isStatic = false;
@@ -496,12 +525,122 @@ namespace WPR.Wp8Native
                 _ => a.ToString(),
             }));
 
-        private void Marshal(string type, object? value, List<long> core, List<uint> vfp)
+        /// <summary>
+        /// What one call lent the guest: managed arrays (copied back afterwards) and out-parameter
+        /// slots (read back into the call's arguments), all freed after the call.
+        /// </summary>
+        private sealed class LentArgs
         {
+            public int Index;
+
+            public List<(long Guest, Array Managed)> Arrays { get; } = [];
+
+            public List<(int Index, long Guest, string Type)> Outs { get; } = [];
+        }
+
+        /// <summary>
+        /// A WinRT out parameter (<c>T&amp;</c>): a zeroed guest slot the callee writes, read back
+        /// by <see cref="ReturnLent"/> into the call's argument for the stub to copy out.
+        /// Mandreel's <c>wait_event(out int size)</c> is the measured case: with a null pointer the
+        /// page read every message's size as 0 and parsed an empty string.
+        /// </summary>
+        private void MarshalOut(string type, List<long> core, LentArgs? lent)
+        {
+            long slot = _emulator.AllocateHeap(8);
+            _emulator.WriteUInt64(slot, 0);
+            core.Add(slot);
+            lent?.Outs.Add((lent.Index, slot, type[..^1]));
+        }
+
+        private void ReturnLent(LentArgs lent, object?[] arguments)
+        {
+            foreach ((long guest, Array managed) in lent.Arrays)
+            {
+                byte[] copy = _emulator.ReadMemory(guest, Buffer.ByteLength(managed));
+                Buffer.BlockCopy(copy, 0, managed, 0, copy.Length);
+                _emulator.FreeHeap(guest);
+            }
+
+            foreach ((int index, long guest, string type) in lent.Outs)
+            {
+                uint low = _emulator.ReadUInt32(guest);
+                ulong wide = low | ((ulong)_emulator.ReadUInt32(guest + 4) << 32);
+                object value = type switch
+                {
+                    "Int32" => (int)low,
+                    "UInt32" => low,
+                    "Boolean" => (low & 0xFF) != 0,
+                    "Byte" => (byte)low,
+                    "Int16" => (short)low,
+                    "UInt16" or "Char" => (ushort)low,
+                    "Single" => BitConverter.UInt32BitsToSingle(low),
+                    "Double" => BitConverter.UInt64BitsToDouble(wide),
+                    "Int64" => (long)wide,
+                    "UInt64" => wide,
+                    "String" => low == 0 ? "" : _strings.ReadText(low),
+                    _ => new GuestRef(low),
+                };
+                if (index < arguments.Length)
+                {
+                    arguments[index] = value;
+                }
+
+                _emulator.FreeHeap(guest);
+            }
+
+            lent.Arrays.Clear();
+            lent.Outs.Clear();
+        }
+
+        /// <summary>
+        /// A WinRT array parameter (<c>T[]</c>): two words, the length and a pointer to the
+        /// elements, as the ABI passes PassArray and FillArray alike. The elements are copied into
+        /// the guest; <see cref="ReturnLentArrays"/> copies them back after the call, so a fill
+        /// array (Mandreel's <c>get_message_event_data2(byte[])</c>) reaches the page's own array.
+        /// </summary>
+        private void MarshalArray(object? value, List<long> core, LentArgs? lent)
+        {
+            if ((value is HostManaged { Value: Array managed } ? managed : value as Array) is not { } array ||
+                !array.GetType().GetElementType()!.IsPrimitive || array.Length == 0)
+            {
+                core.Add(0);
+                core.Add(0);
+                return;
+            }
+
+            int bytes = Buffer.ByteLength(array);
+            byte[] copy = new byte[bytes];
+            Buffer.BlockCopy(array, 0, copy, 0, bytes);
+            long guest = _emulator.AllocateHeap(bytes);
+            _emulator.WriteMemory(guest, copy);
+            core.Add(array.Length);
+            core.Add(guest);
+            lent?.Arrays.Add((guest, array));
+        }
+
+        private void Marshal(string type, object? value, List<long> core, List<uint> vfp, LentArgs? lent = null)
+        {
+            if (type.EndsWith("[]", StringComparison.Ordinal))
+            {
+                MarshalArray(value, core, lent);
+                return;
+            }
+
+            if (type.EndsWith('&') && lent != null)
+            {
+                MarshalOut(type, core, lent);
+                return;
+            }
+
             switch (type)
             {
                 case "Single":
                     vfp.Add(BitConverter.SingleToUInt32Bits(Convert.ToSingle(value ?? 0f)));
+                    break;
+                case "Double":
+                    ulong bits = BitConverter.DoubleToUInt64Bits(Convert.ToDouble(value ?? 0d));
+                    vfp.Add((uint)bits);
+                    vfp.Add((uint)(bits >> 32));
                     break;
                 case "Windows.Foundation.Size":
                 case "Windows.Foundation.Point":
@@ -522,6 +661,10 @@ namespace WPR.Wp8Native
                         XamlShell.Callback => CallbackDelegate(type, new XamlCallback()),
                         XamlCallback callback => CallbackDelegate(type, callback),
                         XamlHostObject hosted => HostObjectFor(hosted.InterfaceName),
+                        GuestRef guest => guest.Pointer,
+                        Delegate handler => ManagedDelegate(type, handler),
+                        HostManaged managed => ManagedInterfaceObject(type, managed.Value),
+                        bool b => b ? 1 : 0,
                         int n => n,
                         uint n => n,
                         long n => n,
@@ -843,6 +986,8 @@ namespace WPR.Wp8Native
 
         private void NextFrame()
         {
+            BeginInputTurn();
+
             // Background work the game queued runs between frames - the closest a single CPU
             // gets to the thread pool it was written for - then audio, then the other guest
             // threads, then any input that is due. Audio comes before the threads so a mixer
@@ -863,6 +1008,13 @@ namespace WPR.Wp8Native
 
         private void InputThenDraw()
         {
+            // A title running its own managed page: what the page asked of the component since
+            // the last turn (ComponentBridge.cs).
+            if (ServeBridgeCallInFrame(InputThenDraw))
+            {
+                return;
+            }
+
             // Calls the page's handlers make back into the component, a frame after the event.
             if (_followUps.Count > 0)
             {
@@ -877,8 +1029,11 @@ namespace WPR.Wp8Native
                 return;
             }
 
-            if (_providerDisconnected)
+            if (_providerDisconnected || AwaitingPageTurn)
             {
+                // AwaitingPageTurn: the page handed over its provider from a handler that has more
+                // to say (AC Pirates' Loaded goes on to SetDeviceData); on the phone the first
+                // frame waited for the UI thread to return, and the engine reads what follows.
                 // In the background the grid has disconnected the provider: nothing is drawn and
                 // no input reaches a page that is not on screen. The loop still turns - paced by
                 // the host's tick, so it does not spin - because a Suspending deferral and the
@@ -915,7 +1070,8 @@ namespace WPR.Wp8Native
             if (DeliverBack(PrepareAndDraw) ||
                 DeliverSensors(InputThenDraw) ||
                 DeliverKeys(InputThenDraw) ||
-                (_manipulationHost != 0 && DeliverInput(PrepareAndDraw, _manipulationHost)))
+                (_manipulationHost != 0 && DeliverInput(PrepareAndDraw, _manipulationHost)) ||
+                (_manipulationHost == 0 && _shell?.TouchFrame is not null && DeliverTouchFrame(PrepareAndDraw)))
             {
                 return;
             }
@@ -1028,6 +1184,23 @@ namespace WPR.Wp8Native
 
             CallSlot("Provider::PrepareResources", _providerNative, SlotProviderPrepareResources, [time, size], [], _ =>
             {
+                // The provider writes back the render target size it wants. The phone handed Draw a
+                // target that size and stretched it to the screen; here the back buffer stays the
+                // screen's, the provider draws into its top-left corner (its viewport is the size it
+                // asked for), and the present stretches that corner (GpuFrame.Shown). Asphalt 7
+                // races at 600x1000 of a 768x1280 screen: without this the race filled the corner and
+                // the menu it left behind stayed on the rest.
+                int wantedWidth = (int)MathF.Round(BitConverter.ToSingle(_emulator.ReadMemory(size, 4), 0));
+                int wantedHeight = (int)MathF.Round(BitConverter.ToSingle(_emulator.ReadMemory(size + 4, 4), 0));
+                bool smaller = wantedWidth > 0 && wantedHeight > 0 && wantedWidth <= surfaceWidth && wantedHeight <= surfaceHeight &&
+                               (wantedWidth < surfaceWidth || wantedHeight < surfaceHeight);
+                (int, int)? shown = smaller ? (wantedWidth, wantedHeight) : null;
+                if (shown != _emulator.Direct3D.ShownSize)
+                {
+                    Log($"provider asks for a {(smaller ? $"{wantedWidth}x{wantedHeight}" : "full-size")} render target; showing {(smaller ? "that corner stretched" : "the whole back buffer")}");
+                }
+
+                _emulator.Direct3D.ShownSize = shown;
                 CallSlot("Provider::Draw", _providerNative, SlotProviderDraw, [_hostDevice, _hostContext, _hostTarget], [], hr =>
                 {
                     ComponentFrames++;
@@ -1391,6 +1564,14 @@ namespace WPR.Wp8Native
             if (!_emulator.IsExecutableCode(function))
             {
                 Log($"{name}: 0x{function:X8} is not code");
+                if (_bridged)
+                {
+                    // The page made this call itself and has its own answer to a failed one; on
+                    // the phone it would have been the page's exception, not the whole app's end.
+                    then(0x80004001);
+                    return;
+                }
+
                 Fail($"{name} has no code");
                 return;
             }

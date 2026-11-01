@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls.Primitives
 {
     /// <summary>Shim for <c>System.Windows.Controls.Primitives.ManipulationState</c>: whether a
     /// scrolling control is idle, under a finger, or coasting.</summary>

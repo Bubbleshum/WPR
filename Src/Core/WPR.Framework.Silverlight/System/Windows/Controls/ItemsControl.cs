@@ -1,7 +1,7 @@
 using System;
 using System.Collections;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Controls
 {
     /// <summary>
     /// Items host. Inherits from StackPanel so its visual is just its Children stacked.

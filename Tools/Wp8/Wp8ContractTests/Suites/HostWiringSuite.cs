@@ -1,3 +1,4 @@
+using Wp8ContractTests.Fixtures;
 using System.Collections;
 using System.Reflection;
 using WPR.Common;
@@ -407,13 +408,13 @@ public sealed class HostWiringSuite : IContractSuite
         E.WriteUInt32(provider, (uint)vtable);
         long device = _h.Buffer(8), runtimeHost = _h.Buffer(8);
 
-        XamlShell alex = XamlShells.ForComponent("AlexXamlComponent.dll")!;
+        XamlShell alex = HandWrittenShells.ForComponent("AlexXamlComponent.dll")!;
         h.Check("Amazing Alex's shell deactivates and activates FusionMain",
             alex.Deactivated.Select(s => s.Method).SequenceEqual(["Deactivate"]) && alex.Activated.Select(s => s.Method).SequenceEqual(["Activate"]));
-        XamlShell mc4 = XamlShells.ForComponent("MC4HybridComponent.dll")!;
+        XamlShell mc4 = HandWrittenShells.ForComponent("MC4HybridComponent.dll")!;
         h.Check("Modern Combat 4's shell re-reads the licence on activation and calls nothing on deactivation",
             mc4.Deactivated.Count == 0 && mc4.Activated.Select(s => s.Method).SequenceEqual(["SetFullVersion"]));
-        XamlShell spark = XamlShells.ForComponent("SparkApp.dll")!;
+        XamlShell spark = HandWrittenShells.ForComponent("SparkApp.dll")!;
         h.Check("AC Pirates' shell calls nothing (empty Application_Deactivated/Activated)", spark.Deactivated.Count == 0 && spark.Activated.Count == 0);
 
         Field("_shell").SetValue(rt, alex);

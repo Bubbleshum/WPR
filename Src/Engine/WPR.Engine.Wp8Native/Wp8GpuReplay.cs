@@ -37,7 +37,7 @@ namespace WPR.Wp8Native
         private readonly Dictionary<long, Aon9Shader?> _shaders = new();
         private readonly Dictionary<(long, long), Effect?> _effects = new();
         private readonly Dictionary<long, RenderTarget2D> _targets = new();
-        private readonly Dictionary<long, (int Version, Texture2D Texture)> _textures = new();
+        private readonly Dictionary<long, (int Version, Texture Texture)> _textures = new();
         private readonly Dictionary<string, BlendState> _blends = new(StringComparer.Ordinal);
         private readonly Dictionary<string, DepthStencilState> _depths = new(StringComparer.Ordinal);
         private readonly Dictionary<string, RasterizerState> _rasters = new(StringComparer.Ordinal);
@@ -170,6 +170,12 @@ namespace WPR.Wp8Native
 
         /// <summary>The back buffer the last replayed frame drew into, which <see cref="Present"/> shows.</summary>
         private RenderTarget2D? _lastBackBuffer;
+        private (int Width, int Height)? _lastShown;
+
+        /// <summary>The part of the back buffer that is the picture (<see cref="GpuFrame.Shown"/>), stretched to the window by Present.</summary>
+        private Rectangle ShownPart(RenderTarget2D backBuffer) => _lastShown is (int w, int h) && w > 0 && h > 0
+            ? new Rectangle(0, 0, Math.Min(w, backBuffer.Width), Math.Min(h, backBuffer.Height))
+            : new Rectangle(0, 0, backBuffer.Width, backBuffer.Height);
 
         /// <summary>
         /// Replays one frame's commands into the render targets. Each frame the guest presents is
@@ -177,6 +183,7 @@ namespace WPR.Wp8Native
         /// </summary>
         public void Replay(GpuFrame frame)
         {
+            _lastShown = frame.Shown;
             long started = System.Diagnostics.Stopwatch.GetTimestamp();
             try
             {
@@ -408,18 +415,19 @@ namespace WPR.Wp8Native
                 return;
             }
 
+            Rectangle shown = ShownPart(backBuffer);
             _blit.Begin(SpriteSortMode.Immediate, BlendState.Opaque, SamplerState.LinearClamp, DepthStencilState.None, RasterizerState.CullNone);
             if (turn == PresentTurn.Clockwise)
             {
                 // Portrait (px, py) lands at (height - py, px): rotate +90 degrees about the
                 // top-left, then move right by the portrait height.
-                float scale = Math.Min(windowWidth / (float)backBuffer.Height, windowHeight / (float)backBuffer.Width);
-                _blit.Draw(backBuffer, new Vector2(backBuffer.Height * scale, 0), null, Color.White, MathHelper.PiOver2, Vector2.Zero, scale, SpriteEffects.None, 0f);
+                float scale = Math.Min(windowWidth / (float)shown.Height, windowHeight / (float)shown.Width);
+                _blit.Draw(backBuffer, new Vector2(shown.Height * scale, 0), shown, Color.White, MathHelper.PiOver2, Vector2.Zero, scale, SpriteEffects.None, 0f);
             }
             else
             {
-                float scale = Math.Min(windowWidth / (float)backBuffer.Width, windowHeight / (float)backBuffer.Height);
-                _blit.Draw(backBuffer, Vector2.Zero, null, Color.White, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+                float scale = Math.Min(windowWidth / (float)shown.Width, windowHeight / (float)shown.Height);
+                _blit.Draw(backBuffer, Vector2.Zero, shown, Color.White, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
             }
 
             _blit.End();
@@ -437,9 +445,10 @@ namespace WPR.Wp8Native
 
             // Portrait to landscape: rotate by -90 degrees about the top-left, then drop it down
             // by the portrait width, so portrait (px, py) lands at (py, width - px).
-            float scale = Math.Min(windowWidth / (float)backBuffer.Height, windowHeight / (float)backBuffer.Width);
+            Rectangle shown = ShownPart(backBuffer);
+            float scale = Math.Min(windowWidth / (float)shown.Height, windowHeight / (float)shown.Width);
             _blit.Begin(SpriteSortMode.Immediate, BlendState.Opaque, SamplerState.LinearClamp, DepthStencilState.None, RasterizerState.CullNone);
-            _blit.Draw(backBuffer, new Vector2(0, backBuffer.Width * scale), null, Color.White, -MathHelper.PiOver2, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            _blit.Draw(backBuffer, new Vector2(0, shown.Width * scale), shown, Color.White, -MathHelper.PiOver2, Vector2.Zero, scale, SpriteEffects.None, 0f);
             _blit.End();
         }
 
@@ -527,7 +536,6 @@ namespace WPR.Wp8Native
             // Constants, by each shader's own register map.
             SetConstants(effect, vertex, draw.VertexConstants);
             SetConstants(effect, pixel, draw.PixelConstants);
-
             // Fixed-function state.
             _device.BlendState = BlendForCached(draw.Blend, draw.BlendFactor);
             _device.DepthStencilState = draw.DepthTarget is null ? DepthStencilState.None : DepthForCached(draw.DepthStencil, draw.StencilRef);
@@ -766,17 +774,34 @@ namespace WPR.Wp8Native
             public int LastUsed;
         }
 
-        private readonly Dictionary<(byte[] Data, int Stride, string Key), UploadedStream> _uploaded = new(UploadedComparer.Instance);
+        private readonly Dictionary<(byte[] Data, long Stride, string Key), UploadedStream> _uploaded = new(UploadedComparer.Instance);
+
+        // The keys of _uploaded by their array, so ForgetStream is a lookup: the recorder reuses
+        // vertex copies every frame, and scanning the whole cache for each one took a third of the
+        // host thread (Asphalt 7's menu fell to 38 fps).
+        private readonly Dictionary<byte[], List<(byte[] Data, long Stride, string Key)>> _uploadedByArray = new(ReferenceEqualityComparer.Instance);
+
+        private void ForgetUploadKey((byte[] Data, long Stride, string Key) key)
+        {
+            if (_uploadedByArray.TryGetValue(key.Data, out var keys))
+            {
+                keys.Remove(key);
+                if (keys.Count == 0)
+                {
+                    _uploadedByArray.Remove(key.Data);
+                }
+            }
+        }
         private byte[] _scratch = new byte[64 * 1024];
 
-        private sealed class UploadedComparer : IEqualityComparer<(byte[] Data, int Stride, string Key)>
+        private sealed class UploadedComparer : IEqualityComparer<(byte[] Data, long Stride, string Key)>
         {
             public static readonly UploadedComparer Instance = new();
 
-            public bool Equals((byte[] Data, int Stride, string Key) a, (byte[] Data, int Stride, string Key) b)
+            public bool Equals((byte[] Data, long Stride, string Key) a, (byte[] Data, long Stride, string Key) b)
                 => ReferenceEquals(a.Data, b.Data) && a.Stride == b.Stride && ReferenceEquals(a.Key, b.Key);
 
-            public int GetHashCode((byte[] Data, int Stride, string Key) k)
+            public int GetHashCode((byte[] Data, long Stride, string Key) k)
                 => HashCode.Combine(RuntimeHelpers.GetHashCode(k.Data), k.Stride, RuntimeHelpers.GetHashCode(k.Key));
         }
 
@@ -920,7 +945,7 @@ namespace WPR.Wp8Native
                 FrameCapture.VertexStream? stream = slot.Slot >= 0 && slot.Slot < geometry.Streams.Count ? geometry.Streams[slot.Slot] : null;
                 int offsetInData = stream is null ? 0 : firstVertex - stream.FirstVertex;
                 if (stream is not { Data: { } data, Stride: >= 0 } ||
-                    (stream.Stride > 0 && (offsetInData < 0 || offsetInData + vertexCount > data.Length / stream.Stride)))
+                    (stream.Stride > 0 && (offsetInData < 0 || offsetInData + vertexCount > (data.Length - stream.DataOffset) / stream.Stride)))
                 {
                     Warn($"stream {slot.Slot}", $"vertex stream {slot.Slot} had no data");
                     (missing ??= []).AddRange(slot.Registers);
@@ -929,17 +954,25 @@ namespace WPR.Wp8Native
 
                 if (stream.Stride > 0)
                 {
-                    var key = (data, stream.Stride, slot.Key);
+                    // One array may hold a whole buffer that several streams read at their own byte
+                    // offsets (FrameCapture.Resource.WholeCopy): each offset is its own upload.
+                    var key = (data, ((long)stream.DataOffset << 32) | (uint)stream.Stride, slot.Key);
                     if (!_uploaded.TryGetValue(key, out UploadedStream? uploaded))
                     {
                         _uploaded[key] = uploaded = new UploadedStream { FirstSeen = _frameIndex };
+                        if (!_uploadedByArray.TryGetValue(data, out var keys))
+                        {
+                            _uploadedByArray[data] = keys = [];
+                        }
+
+                        keys.Add(key);
                     }
 
                     uploaded.LastUsed = _frameIndex;
                     if (uploaded.Buffer is null && uploaded.FirstSeen != _frameIndex)
                     {
-                        int all = data.Length / stream.Stride;
-                        byte[] packed = Repack(slot, data, stream.Stride, 0, all);
+                        int all = (data.Length - stream.DataOffset) / stream.Stride;
+                        byte[] packed = Repack(slot, data, stream.Stride, 0, all, stream.DataOffset);
                         uploaded.Buffer = new VertexBuffer(_device, slot.Declaration, all, BufferUsage.WriteOnly);
                         uploaded.Buffer.SetData(packed, 0, all * slot.Declaration.VertexStride);
                         StreamsCached++;
@@ -954,7 +987,7 @@ namespace WPR.Wp8Native
                 }
 
                 // Through the shared dynamic buffer: just this draw's vertices.
-                byte[] scratch = Repack(slot, data, stream.Stride, stream.Stride == 0 ? 0 : offsetInData, vertexCount);
+                byte[] scratch = Repack(slot, data, stream.Stride, stream.Stride == 0 ? 0 : offsetInData, vertexCount, stream.DataOffset);
                 if (!_vertexBuffers.TryGetValue(slot.Key, out var cached))
                 {
                     cached = (slot.Declaration, null);
@@ -1045,7 +1078,7 @@ namespace WPR.Wp8Native
         /// Repacks <paramref name="count"/> vertices starting at <paramref name="first"/> into the
         /// scratch buffer (a stride of 0 repeats the one element).
         /// </summary>
-        private byte[] Repack(SlotPlan slot, byte[] data, int sourceStride, int first, int count)
+        private byte[] Repack(SlotPlan slot, byte[] data, int sourceStride, int first, int count, int dataOffset = 0)
         {
             int stride = slot.Declaration.VertexStride;
             int length = count * stride;
@@ -1060,7 +1093,7 @@ namespace WPR.Wp8Native
                 bool copy = e.SourceFormat is not (87 or 31 or 11 or 12 or 24 or 30 or 14 or 35 or 36 or 49 or 51 or 38);
                 for (int i = 0; i < count; i++)
                 {
-                    ReadOnlySpan<byte> source = data.AsSpan(((first + i) * sourceStride) + e.SourceOffset);
+                    ReadOnlySpan<byte> source = data.AsSpan(dataOffset + ((first + i) * sourceStride) + e.SourceOffset);
                     Span<byte> to = target.Slice((i * stride) + e.Offset, e.Size);
                     if (copy)
                     {
@@ -1083,19 +1116,17 @@ namespace WPR.Wp8Native
         /// </summary>
         public void ForgetStream(byte[] data)
         {
-            List<(byte[], int, string)>? stale = null;
-            foreach (var (key, uploaded) in _uploaded)
+            if (!_uploadedByArray.Remove(data, out var keys))
             {
-                if (ReferenceEquals(key.Data, data))
-                {
-                    uploaded.Buffer?.Dispose();
-                    (stale ??= []).Add(key);
-                }
+                return;
             }
 
-            foreach (var key in stale ?? [])
+            foreach (var key in keys)
             {
-                _uploaded.Remove(key);
+                if (_uploaded.Remove(key, out UploadedStream? uploaded))
+                {
+                    uploaded.Buffer?.Dispose();
+                }
             }
         }
 
@@ -1141,7 +1172,7 @@ namespace WPR.Wp8Native
                 return;
             }
 
-            List<(byte[], int, string)>? stale = null;
+            List<(byte[], long, string)>? stale = null;
             foreach (var (key, uploaded) in _uploaded)
             {
                 if (uploaded.LastUsed < _frameIndex - 120)
@@ -1154,6 +1185,7 @@ namespace WPR.Wp8Native
             foreach (var key in stale ?? [])
             {
                 _uploaded.Remove(key);
+                ForgetUploadKey(key);
             }
         }
 
@@ -1321,7 +1353,7 @@ namespace WPR.Wp8Native
         // Textures and state
         // ------------------------------------------------------------------------------
 
-        private Texture2D? TextureFor(GpuTexture texture)
+        private Texture? TextureFor(GpuTexture texture)
         {
             if (texture.RenderTarget is { } target)
             {
@@ -1346,13 +1378,18 @@ namespace WPR.Wp8Native
             };
 
             _textureUsed[image.Key] = _frameIndex;
-            if (_textures.TryGetValue(image.Key, out var known) && known.Version == image.Version &&
-                known.Texture.Width == image.Width && known.Texture.Height == image.Height && known.Texture.Format == format)
+            if (image.Faces is { Length: 5 } faces)
             {
-                return known.Texture;
+                return CubeFor(image, faces, format);
             }
 
-            Texture2D created = known.Texture is { } reuse && reuse.Width == image.Width && reuse.Height == image.Height && reuse.Format == format
+            if (_textures.TryGetValue(image.Key, out var known) && known.Version == image.Version &&
+                known.Texture is Texture2D same && same.Width == image.Width && same.Height == image.Height && same.Format == format)
+            {
+                return same;
+            }
+
+            Texture2D created = known.Texture is Texture2D reuse && reuse.Width == image.Width && reuse.Height == image.Height && reuse.Format == format
                 ? reuse
                 : new Texture2D(_device, image.Width, image.Height, false, format);
             if (!ReferenceEquals(created, known.Texture))
@@ -1361,6 +1398,38 @@ namespace WPR.Wp8Native
             }
 
             created.SetData(image.Blocks ?? image.Rgba);
+            _textures[image.Key] = (image.Version, created);
+            return created;
+        }
+
+        /// <summary>
+        /// A cube map's six faces as one host <see cref="TextureCube"/>. Direct3D 11's face order
+        /// (+X, -X, +Y, -Y, +Z, -Z) is XNA's <see cref="CubeMapFace"/> order. A shader that
+        /// declares <c>dcl_cube</c> reads nothing from a 2D texture, so before this every cube
+        /// sample in a WP8 title came back black.
+        /// </summary>
+        private TextureCube? CubeFor(TextureImage image, TextureImage[] faces, SurfaceFormat format)
+        {
+            if (_textures.TryGetValue(image.Key, out var known) && known.Version == image.Version &&
+                known.Texture is TextureCube same && same.Size == image.Width && same.Format == format)
+            {
+                return same;
+            }
+
+            TextureCube created = known.Texture is TextureCube reuse && reuse.Size == image.Width && reuse.Format == format
+                ? reuse
+                : new TextureCube(_device, image.Width, false, format);
+            if (!ReferenceEquals(created, known.Texture))
+            {
+                known.Texture?.Dispose();
+            }
+
+            created.SetData(CubeMapFace.PositiveX, image.Blocks ?? image.Rgba);
+            for (int i = 0; i < faces.Length; i++)
+            {
+                created.SetData((CubeMapFace)(i + 1), faces[i].Blocks ?? faces[i].Rgba);
+            }
+
             _textures[image.Key] = (image.Version, created);
             return created;
         }

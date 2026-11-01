@@ -653,6 +653,12 @@ namespace Microsoft.Xna.Framework.Graphics
 		#region Public Present Method
 
 		private static int _wprPresentTraceCount;
+		/// <summary>
+		/// How long the last present's swap took (Stopwatch ticks): a host frame that comes late
+		/// with little work of its own spent the rest here, waiting on the GPU or the display.
+		/// </summary>
+		public static long WprLastSwapTicks;
+
 		public void Present()
 		{
 			if (_wprPresentTraceCount < 10)
@@ -684,6 +690,7 @@ namespace Microsoft.Xna.Framework.Graphics
 			}
 			// WPR: a desktop game running fullscreen is letterboxed to its own aspect ratio; null
 			// (windowed, and every phone) fills the drawable exactly as before.
+			long swapStart = System.Diagnostics.Stopwatch.GetTimestamp();
 			try
 			{
 				XnaBackend.Graphics.SwapBuffers(
@@ -692,6 +699,7 @@ namespace Microsoft.Xna.Framework.Graphics
 					WPR.Xna.Rhi.PresentationLetterbox.Destination,
 					PresentationParameters.DeviceWindowHandle
 				);
+				WprLastSwapTicks = System.Diagnostics.Stopwatch.GetTimestamp() - swapStart;
 			}
 			finally
 			{

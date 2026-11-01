@@ -1,6 +1,6 @@
 using System;
 
-namespace WPR.SilverlightCompability
+namespace System.Windows.Data
 {
     /// <summary>Shim for <c>System.Windows.Data.IValueConverter</c>.</summary>
     public interface IValueConverter

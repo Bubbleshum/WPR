@@ -41,6 +41,6 @@ namespace WPR.WindowsCompability
         private static string For(string path, FileMode mode) =>
             (mode == FileMode.Open
                 ? ContentPaths.Resolve(path)
-                : ContentPaths.Normalize(path))!;
+                : ContentPaths.ForWrite(path))!;
     }
 }

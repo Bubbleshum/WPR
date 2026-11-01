@@ -6,17 +6,17 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Xna.Framework.GamerServices;
 
+using WPR.Achievements;
 using WPR.Common;
 using WPR.Models;
 
 namespace WPR
 {
     /// <summary>
-    /// Populates / keeps in sync the local achievements DB from the committed,
-    /// hardcoded catalogue (<see cref="HardcodedAchievementCatalogue"/>) — the sole
-    /// source of achievements. No network, no scanning of game assemblies: a game
-    /// only gets achievements if it ships a catalogue under
-    /// <c>Database/Achievements/&lt;productId&gt;/</c>.
+    /// Populates / keeps in sync the local achievements DB from the game's catalogue
+    /// (<see cref="HardcodedAchievementCatalogue"/>): the one WPR ships under
+    /// <c>Database/Achievements/&lt;productId&gt;/</c>, or, for a game it ships none for, the one
+    /// built from the installed package (<see cref="GeneratedAchievementCatalogues"/>).
     ///
     /// Reconciliation is <b>non-destructive</b>: new entries are inserted with
     /// <c>IsEarned = false</c>, changed metadata (name / description / score / icon)
@@ -35,7 +35,10 @@ namespace WPR
             if (string.IsNullOrEmpty(productId)) return;
             try
             {
+                // No catalogue ships for this game: build one from the package just installed.
+                GeneratedAchievementCatalogues.EnsureFor(productId);
                 await ReconcileAsync(AchievementContext.Current, productId, appName, HardcodedAchievementCatalogue.Load(productId));
+                OfferToHub(productId);
             }
             catch (Exception ex)
             {
@@ -54,9 +57,6 @@ namespace WPR
         {
             try
             {
-                IReadOnlyList<string> catalogueIds = HardcodedAchievementCatalogue.ProductIds();
-                if (catalogueIds.Count == 0) return;
-
                 Dictionary<string, string> installed;
                 try
                 {
@@ -70,6 +70,22 @@ namespace WPR
                         $"XnaAchievementSeeder: cannot read installed apps for reconcile: {ex.Message}");
                     return;
                 }
+
+                // Installed games with no shipped catalogue and none from the current generator
+                // (installed before generation existed, or by an older generator) get one built
+                // in the background, so startup does not wait on reading their packages.
+                List<string> missing = installed.Keys
+                    .Where(id => GeneratedAchievementCatalogues.NeedsOne(id) &&
+                                 PackageAchievementCatalogue.WrittenVersion(GeneratedAchievementCatalogues.Directory(id)) < PackageAchievementCatalogue.GeneratorVersion)
+                    .ToList();
+                if (missing.Count > 0)
+                {
+                    Dictionary<string, string> names = installed;
+                    _ = Task.Run(() => GenerateMissingAsync(missing, names));
+                }
+
+                IReadOnlyList<string> catalogueIds = HardcodedAchievementCatalogue.ProductIds();
+                if (catalogueIds.Count == 0) return;
 
                 // Games restored from WPR Hub have rows without an install; they get catalogue
                 // updates too, or a corrected key would leave their row orphaned.
@@ -135,12 +151,143 @@ namespace WPR
         }
 
         /// <summary>
+        /// Serialises generating and reconciling a generated catalogue: the startup backfill
+        /// (<see cref="GenerateMissingAsync"/>, in the background) and a launch
+        /// (<see cref="PrepareForLaunchAsync"/>) may both reach the same game, and two contexts
+        /// reconciling one product at once would each insert its rows.
+        /// </summary>
+        private static readonly System.Threading.SemaphoreSlim GenerationGate = new(1, 1);
+
+        /// <summary>
+        /// Before a game runs: a game with no bundled catalogue gets the one built from its package
+        /// (if it has none yet from the current generator) and its rows reconciled, so the game's
+        /// first <c>GetAchievements</c> lists what the package declares. That covers games installed
+        /// before catalogues were generated, whose backfill at launcher start runs in the
+        /// background and may not have reached them, and hosts that never run the backfill.
+        /// Returns true when the title's achievements come from a curated catalogue shipped with
+        /// WPR, which is authoritative (an award for a key it does not list is not given a row).
+        /// Never throws.
+        /// </summary>
+        public static async Task<bool> PrepareForLaunchAsync(string productId, string appName)
+        {
+            if (string.IsNullOrWhiteSpace(productId)) return false;
+            try
+            {
+                if (!GeneratedAchievementCatalogues.NeedsOne(productId)) return true;
+                await GenerationGate.WaitAsync().ConfigureAwait(false);
+                try
+                {
+                    bool written = GeneratedAchievementCatalogues.EnsureFor(productId);
+                    List<HardcodedAchievement> catalogue = HardcodedAchievementCatalogue.Load(productId);
+                    if (catalogue.Count == 0) return false;
+                    // The shared context, as an install's seed uses: no game is running yet, and the
+                    // game's award path will flip these very rows through it, so its tracked copies
+                    // must be the reconciled ones.
+                    await ReconcileAsync(AchievementContext.Current, productId, appName, catalogue).ConfigureAwait(false);
+                    if (written) OfferToHub(productId);
+                }
+                finally { GenerationGate.Release(); }
+            }
+            catch (Exception ex)
+            {
+                Log.Warn(LogCategory.AppList, $"XnaAchievementSeeder: preparing achievements for '{appName}' ({productId}) failed: {ex.Message}");
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Builds catalogues for installed games that lack one, then seeds each into the
+        /// database (on a context of its own: this runs off the UI thread, beside any game's
+        /// award path) and offers it to WPR Hub. Never throws.
+        /// </summary>
+        private static async Task GenerateMissingAsync(List<string> productIds, Dictionary<string, string> names)
+        {
+            try
+            {
+                using AchievementContext db = new AchievementContext();
+                foreach (string productId in productIds)
+                {
+                    await GenerationGate.WaitAsync().ConfigureAwait(false);
+                    try
+                    {
+                        if (!GeneratedAchievementCatalogues.EnsureFor(productId)) continue;
+                        List<HardcodedAchievement> catalogue = HardcodedAchievementCatalogue.Load(productId);
+                        if (catalogue.Count == 0) continue;
+                        await ReconcileAsync(db, productId, names.TryGetValue(productId, out string? name) ? name : productId, catalogue);
+                        OfferToHub(productId);
+                    }
+                    finally { GenerationGate.Release(); }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warn(LogCategory.Startup, $"XnaAchievementSeeder: generating missing catalogues failed: {ex}");
+            }
+        }
+
+        /// <summary>
+        /// A product's catalogue as WPR Hub's achievement definitions (icons as absolute paths),
+        /// or null when it has none.
+        /// </summary>
+        public static WPR.Engine.Online.TitleAchievements? DescribeForHub(string productId)
+        {
+            if (string.IsNullOrWhiteSpace(productId) || Configuration.Current is not { } config) return null;
+            List<HardcodedAchievement> catalogue = HardcodedAchievementCatalogue.Load(productId);
+            if (catalogue.Count == 0) return null;
+            string source = HardcodedAchievementCatalogue.HasBundledAchievements(productId) ? "bundled" : "package";
+            return new WPR.Engine.Online.TitleAchievements(productId, source, catalogue.Select(a =>
+                new WPR.Engine.Online.OfferedAchievement(a.Key, a.Name, a.NameFromKey,
+                    string.IsNullOrWhiteSpace(a.Description) ? null : a.Description, a.GamerScore, a.Secret,
+                    string.IsNullOrEmpty(a.IconRelativePath) ? null : config.DataPath(a.IconRelativePath))).ToList());
+        }
+
+        /// <summary>
+        /// Every installed game's catalogue, described for WPR Hub: the backfill
+        /// <c>HubAchievementDefinitions</c> runs at a process's first flush. Reads its own database
+        /// context, because it runs on a flush thread.
+        /// </summary>
+        public static IEnumerable<WPR.Engine.Online.TitleAchievements> InstalledCataloguesForHub()
+        {
+            List<string> ids;
+            using (var db = new ApplicationContext())
+            {
+                ids = db.Applications?.AsNoTracking().Select(a => a.ProductId).ToList()
+                          .Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id!.Trim('{', '}'))
+                          .Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+                      ?? new List<string>();
+            }
+            foreach (string id in ids)
+            {
+                if (DescribeForHub(id) is { } catalogue) yield return catalogue;
+            }
+        }
+
+        /// <summary>Queue a product's catalogue for WPR Hub. A no-op without a hub or with server logging off.</summary>
+        private static void OfferToHub(string productId)
+        {
+            try
+            {
+                if (WPR.Engine.Online.OnlineBackend.AchievementDefinitions is { } sync && DescribeForHub(productId) is { } catalogue)
+                {
+                    sync.Offer(catalogue);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warn(LogCategory.AppInstall, $"Could not offer achievement definitions to WPR Hub (non-fatal): {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Upserts <paramref name="desired"/> into the DB for the product, preserving
-        /// earned state. Inserts missing rows, updates changed metadata, deletes
-        /// nothing.
+        /// earned state. Inserts missing rows, updates changed metadata, and removes rows whose
+        /// key left the catalogue: any such row for a shipped catalogue, only unearned ones for
+        /// a generated catalogue (which a later generator may key differently), so an unlock is
+        /// never lost to a regeneration.
         /// </summary>
         private static async Task ReconcileAsync(AchievementContext db, string productId, string appName, List<HardcodedAchievement> desired)
         {
+            bool generated = HardcodedAchievementCatalogue.IsGenerated(productId);
             productId = productId.Trim('{').Trim('}');
             if (desired.Count == 0)
             {
@@ -201,7 +348,7 @@ namespace WPR
             // that index their own asset map by achievement key). Earned state for
             // keys that still exist is preserved by the upsert above.
             var desiredKeys = new HashSet<string>(desired.Select(d => d.Key), StringComparer.Ordinal);
-            List<Achievement> stale = existing.Where(a => !desiredKeys.Contains(a.Key)).ToList();
+            List<Achievement> stale = existing.Where(a => !desiredKeys.Contains(a.Key) && !(generated && a.IsEarned)).ToList();
             int removed = stale.Count;
             if (removed > 0) db.Achievements!.RemoveRange(stale);
 

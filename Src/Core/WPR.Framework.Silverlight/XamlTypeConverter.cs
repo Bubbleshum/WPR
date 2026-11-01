@@ -96,6 +96,7 @@ namespace WPR.SilverlightCompability
             if (targetType == typeof(TimeSpan)) return TimeSpan.Parse(s, CultureInfo.InvariantCulture);
             if (targetType == typeof(FontWeight)) return ParseFontWeight(s);
             if (targetType == typeof(PropertyPath)) return new PropertyPath(s);
+            if (targetType == typeof(FontFamily)) return new FontFamily(s);
             if (targetType == typeof(KeyTime)) return ParseKeyTime(s);
             if (targetType == typeof(RepeatBehavior)) return ParseRepeatBehavior(s);
 
@@ -149,9 +150,9 @@ namespace WPR.SilverlightCompability
             {
                 // A BitmapSource- or BitmapImage-typed property (a game control's own) needs one of
                 // those; a plain ImageSource could not be assigned to it.
-                if (targetType.IsAssignableFrom(typeof(WPR.WindowsCompability.BitmapImage))
+                if (targetType.IsAssignableFrom(typeof(System.Windows.Media.Imaging.BitmapImage))
                     && targetType != typeof(ImageSource))
-                    return new WPR.WindowsCompability.BitmapImage(new Uri(s, UriKind.RelativeOrAbsolute));
+                    return new System.Windows.Media.Imaging.BitmapImage(new Uri(s, UriKind.RelativeOrAbsolute));
                 return new ImageSource(s);
             }
 

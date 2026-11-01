@@ -1,4 +1,4 @@
-namespace WPR.SilverlightCompability
+namespace System.Windows.Data
 {
     /// <summary>
     /// XAML markup extension descriptor. Captures the binding's intent (path, mode,

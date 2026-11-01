@@ -44,6 +44,21 @@ namespace WPR.Common
         public static string? CurrentTitleName { get; set; }
 
         /// <summary>
+        /// The Windows Phone OS version the running title was built for (its manifest's
+        /// <c>AppPlatformVersion</c>, else 7.1 managed / 8.0 native), or <c>null</c> when no game is
+        /// active. Set by <c>ApplicationLaunch</c> for every launch kind and cleared at teardown.
+        /// Read it through <see cref="Target"/>, and only where the phone itself behaved differently
+        /// by target version: see <see cref="WindowsPhoneTarget"/>.
+        /// </summary>
+        public static WindowsPhoneTarget? CurrentTarget { get; set; }
+
+        /// <summary>
+        /// <see cref="CurrentTarget"/>, or 7.1 when no game is active: the behaviour every shim had
+        /// before the target was known.
+        /// </summary>
+        public static WindowsPhoneTarget Target => CurrentTarget ?? WindowsPhoneTarget.Wp71;
+
+        /// <summary>
         /// True while the game was started with "play with logging": <c>ApplicationLaunch</c> then
         /// attaches the per-game trace log and the first-chance exception logger that a Release build
         /// otherwise leaves out, and the head shows a "stop and send report" button over the game.
