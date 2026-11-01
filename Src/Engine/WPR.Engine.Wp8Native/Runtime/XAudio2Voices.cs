@@ -216,7 +216,15 @@ namespace WPR.Wp8Native
                 if (state != 0)
                 {
                     Voice? v = VoiceAt(Arg(0));
-                    if (v is not null)
+
+                    // A voice with a callback hears of a finished buffer at the pump, so its buffers
+                    // leave the queue there too, with their OnBufferEnd: on a phone the two happen
+                    // together on the audio thread. Retired here, a finished buffer left the count a
+                    // frame before its OnBufferEnd woke anyone, and a thread woken by something else
+                    // saw room it was never told about. Asphalt 7's streamer, woken by its own exit
+                    // code, refilled into a lock the exiting thread held and the game never closed.
+                    // A voice nobody calls back is polled, so its count stays current here.
+                    if (v is { Callback: 0 })
                     {
                         Retire(v);
                     }

@@ -13,6 +13,7 @@ namespace WPR.SilverlightCompability.Tests
     /// What the WP Toolkit's own GestureListener calls into (patcher version 47): Touch.FrameReported,
     /// TouchAction's real values, FindElementsInHostCoordinates, TransformToVisual and MatrixTransform.
     /// </summary>
+    [Collection("TouchPanel")] // HostFrame and Touch are static, and HostFrameTests turns them
     public class ToolkitGestureSurfaceTests : IDisposable
     {
         public void Dispose() => Touch.ResetForNewLaunch();

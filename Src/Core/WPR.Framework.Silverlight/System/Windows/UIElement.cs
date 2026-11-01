@@ -92,6 +92,9 @@ namespace System.Windows
             set => SetValue(IsHitTestVisibleProperty, value);
         }
 
+        /// <summary>Whether files may be dropped on the element. Stored only: a phone has no drag and drop.</summary>
+        public bool AllowDrop { get; set; }
+
         /// <summary>Stored; the rasteriser snaps to pixels regardless.</summary>
         public bool UseLayoutRounding { get; set; } = true;
 
@@ -303,9 +306,12 @@ namespace System.Windows
         /// </remarks>
         public GeneralTransform TransformToVisual(UIElement? relativeTo)
         {
-            Point from = HitTester.OriginInRoot(this);
-            Point to = relativeTo == null ? new Point(0, 0) : HitTester.OriginInRoot(relativeTo);
-            return new MatrixTransform(new Matrix(1, 0, 0, 1, from.X - to.X, from.Y - to.Y));
+            // Through the phone's host frame, which on a landscape page is portrait and is also the
+            // root visual's (the frame's) own space (HostFrame). Between two elements below the root
+            // the turn cancels and this is the plain offset it always was.
+            Matrix from = WPR.SilverlightCompability.HostFrame.ElementToHost(this);
+            Matrix to = relativeTo == null ? Matrix.Identity : WPR.SilverlightCompability.HostFrame.ElementToHost(relativeTo);
+            return new MatrixTransform(WPR.SilverlightCompability.HostFrame.Multiply(from, to.TryInvert() ?? Matrix.Identity));
         }
 
         public Size DesiredSize { get; private set; }

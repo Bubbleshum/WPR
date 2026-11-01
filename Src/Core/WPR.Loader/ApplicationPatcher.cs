@@ -443,7 +443,10 @@ namespace WPR
         // Bumped to 64: Windows.Foundation.Collections.IPropertySet and PropertySet joined
         // WPR.Framework.WinRT (CoreApplication.Properties is typed as it, as game IL binds the getter),
         // so WinRtImplementedTypes rescopes them. Not identity-binding.
-        public static int Version => 64;
+        // Bumped to 65: Windows.Phone.System.Analytics.HostInformation joined WPR.Framework.WinRT
+        // (Asphalt 7's page reads PublisherHostId), so WinRtImplementedTypes rescopes it.
+        // Not identity-binding.
+        public static int Version => 65;
 
         private AssemblyNameReference FnaBackendRef;
         private AssemblyNameReference FNARef;

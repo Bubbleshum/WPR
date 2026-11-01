@@ -1184,6 +1184,23 @@ namespace WPR.Wp8Native
 
             CallSlot("Provider::PrepareResources", _providerNative, SlotProviderPrepareResources, [time, size], [], _ =>
             {
+                // The provider writes back the render target size it wants. The phone handed Draw a
+                // target that size and stretched it to the screen; here the back buffer stays the
+                // screen's, the provider draws into its top-left corner (its viewport is the size it
+                // asked for), and the present stretches that corner (GpuFrame.Shown). Asphalt 7
+                // races at 600x1000 of a 768x1280 screen: without this the race filled the corner and
+                // the menu it left behind stayed on the rest.
+                int wantedWidth = (int)MathF.Round(BitConverter.ToSingle(_emulator.ReadMemory(size, 4), 0));
+                int wantedHeight = (int)MathF.Round(BitConverter.ToSingle(_emulator.ReadMemory(size + 4, 4), 0));
+                bool smaller = wantedWidth > 0 && wantedHeight > 0 && wantedWidth <= surfaceWidth && wantedHeight <= surfaceHeight &&
+                               (wantedWidth < surfaceWidth || wantedHeight < surfaceHeight);
+                (int, int)? shown = smaller ? (wantedWidth, wantedHeight) : null;
+                if (shown != _emulator.Direct3D.ShownSize)
+                {
+                    Log($"provider asks for a {(smaller ? $"{wantedWidth}x{wantedHeight}" : "full-size")} render target; showing {(smaller ? "that corner stretched" : "the whole back buffer")}");
+                }
+
+                _emulator.Direct3D.ShownSize = shown;
                 CallSlot("Provider::Draw", _providerNative, SlotProviderDraw, [_hostDevice, _hostContext, _hostTarget], [], hr =>
                 {
                     ComponentFrames++;

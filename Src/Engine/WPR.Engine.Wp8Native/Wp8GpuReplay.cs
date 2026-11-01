@@ -170,6 +170,12 @@ namespace WPR.Wp8Native
 
         /// <summary>The back buffer the last replayed frame drew into, which <see cref="Present"/> shows.</summary>
         private RenderTarget2D? _lastBackBuffer;
+        private (int Width, int Height)? _lastShown;
+
+        /// <summary>The part of the back buffer that is the picture (<see cref="GpuFrame.Shown"/>), stretched to the window by Present.</summary>
+        private Rectangle ShownPart(RenderTarget2D backBuffer) => _lastShown is (int w, int h) && w > 0 && h > 0
+            ? new Rectangle(0, 0, Math.Min(w, backBuffer.Width), Math.Min(h, backBuffer.Height))
+            : new Rectangle(0, 0, backBuffer.Width, backBuffer.Height);
 
         /// <summary>
         /// Replays one frame's commands into the render targets. Each frame the guest presents is
@@ -177,6 +183,7 @@ namespace WPR.Wp8Native
         /// </summary>
         public void Replay(GpuFrame frame)
         {
+            _lastShown = frame.Shown;
             long started = System.Diagnostics.Stopwatch.GetTimestamp();
             try
             {
@@ -408,18 +415,19 @@ namespace WPR.Wp8Native
                 return;
             }
 
+            Rectangle shown = ShownPart(backBuffer);
             _blit.Begin(SpriteSortMode.Immediate, BlendState.Opaque, SamplerState.LinearClamp, DepthStencilState.None, RasterizerState.CullNone);
             if (turn == PresentTurn.Clockwise)
             {
                 // Portrait (px, py) lands at (height - py, px): rotate +90 degrees about the
                 // top-left, then move right by the portrait height.
-                float scale = Math.Min(windowWidth / (float)backBuffer.Height, windowHeight / (float)backBuffer.Width);
-                _blit.Draw(backBuffer, new Vector2(backBuffer.Height * scale, 0), null, Color.White, MathHelper.PiOver2, Vector2.Zero, scale, SpriteEffects.None, 0f);
+                float scale = Math.Min(windowWidth / (float)shown.Height, windowHeight / (float)shown.Width);
+                _blit.Draw(backBuffer, new Vector2(shown.Height * scale, 0), shown, Color.White, MathHelper.PiOver2, Vector2.Zero, scale, SpriteEffects.None, 0f);
             }
             else
             {
-                float scale = Math.Min(windowWidth / (float)backBuffer.Width, windowHeight / (float)backBuffer.Height);
-                _blit.Draw(backBuffer, Vector2.Zero, null, Color.White, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+                float scale = Math.Min(windowWidth / (float)shown.Width, windowHeight / (float)shown.Height);
+                _blit.Draw(backBuffer, Vector2.Zero, shown, Color.White, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
             }
 
             _blit.End();
@@ -437,9 +445,10 @@ namespace WPR.Wp8Native
 
             // Portrait to landscape: rotate by -90 degrees about the top-left, then drop it down
             // by the portrait width, so portrait (px, py) lands at (py, width - px).
-            float scale = Math.Min(windowWidth / (float)backBuffer.Height, windowHeight / (float)backBuffer.Width);
+            Rectangle shown = ShownPart(backBuffer);
+            float scale = Math.Min(windowWidth / (float)shown.Height, windowHeight / (float)shown.Width);
             _blit.Begin(SpriteSortMode.Immediate, BlendState.Opaque, SamplerState.LinearClamp, DepthStencilState.None, RasterizerState.CullNone);
-            _blit.Draw(backBuffer, new Vector2(0, backBuffer.Width * scale), null, Color.White, -MathHelper.PiOver2, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            _blit.Draw(backBuffer, new Vector2(0, shown.Width * scale), shown, Color.White, -MathHelper.PiOver2, Vector2.Zero, scale, SpriteEffects.None, 0f);
             _blit.End();
         }
 
@@ -766,6 +775,23 @@ namespace WPR.Wp8Native
         }
 
         private readonly Dictionary<(byte[] Data, long Stride, string Key), UploadedStream> _uploaded = new(UploadedComparer.Instance);
+
+        // The keys of _uploaded by their array, so ForgetStream is a lookup: the recorder reuses
+        // vertex copies every frame, and scanning the whole cache for each one took a third of the
+        // host thread (Asphalt 7's menu fell to 38 fps).
+        private readonly Dictionary<byte[], List<(byte[] Data, long Stride, string Key)>> _uploadedByArray = new(ReferenceEqualityComparer.Instance);
+
+        private void ForgetUploadKey((byte[] Data, long Stride, string Key) key)
+        {
+            if (_uploadedByArray.TryGetValue(key.Data, out var keys))
+            {
+                keys.Remove(key);
+                if (keys.Count == 0)
+                {
+                    _uploadedByArray.Remove(key.Data);
+                }
+            }
+        }
         private byte[] _scratch = new byte[64 * 1024];
 
         private sealed class UploadedComparer : IEqualityComparer<(byte[] Data, long Stride, string Key)>
@@ -934,6 +960,12 @@ namespace WPR.Wp8Native
                     if (!_uploaded.TryGetValue(key, out UploadedStream? uploaded))
                     {
                         _uploaded[key] = uploaded = new UploadedStream { FirstSeen = _frameIndex };
+                        if (!_uploadedByArray.TryGetValue(data, out var keys))
+                        {
+                            _uploadedByArray[data] = keys = [];
+                        }
+
+                        keys.Add(key);
                     }
 
                     uploaded.LastUsed = _frameIndex;
@@ -1084,19 +1116,17 @@ namespace WPR.Wp8Native
         /// </summary>
         public void ForgetStream(byte[] data)
         {
-            List<(byte[], long, string)>? stale = null;
-            foreach (var (key, uploaded) in _uploaded)
+            if (!_uploadedByArray.Remove(data, out var keys))
             {
-                if (ReferenceEquals(key.Data, data))
-                {
-                    uploaded.Buffer?.Dispose();
-                    (stale ??= []).Add(key);
-                }
+                return;
             }
 
-            foreach (var key in stale ?? [])
+            foreach (var key in keys)
             {
-                _uploaded.Remove(key);
+                if (_uploaded.Remove(key, out UploadedStream? uploaded))
+                {
+                    uploaded.Buffer?.Dispose();
+                }
             }
         }
 
@@ -1155,6 +1185,7 @@ namespace WPR.Wp8Native
             foreach (var key in stale ?? [])
             {
                 _uploaded.Remove(key);
+                ForgetUploadKey(key);
             }
         }
 

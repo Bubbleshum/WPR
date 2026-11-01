@@ -533,6 +533,10 @@ namespace WPR
             // drew upside down with the right-hand turn.
             WPR.Xna.Rhi.EmbeddedGameLoop.PageLandscapeLeft = landscape && page.Orientation == PageOrientation.LandscapeLeft;
 
+            // The same turn decides the page's host coordinates (touch points and transforms
+            // relative to nothing are in the phone's portrait frame). A WP page is 480x800 DIPs.
+            WPR.SilverlightCompability.HostFrame.Set(landscape, WPR.Xna.Rhi.EmbeddedGameLoop.PageLandscapeLeft, 800, 480);
+
             // After the turn above is decided: the page hears it has turned, as on the phone.
             if (landscape)
             {

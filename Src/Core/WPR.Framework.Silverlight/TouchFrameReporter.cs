@@ -139,6 +139,7 @@ namespace WPR.SilverlightCompability
 
         internal static void ResetForNewLaunch()
         {
+            HostFrame.Reset();
             _down.Clear();
             _primaryId = -1;
             _failed = false;

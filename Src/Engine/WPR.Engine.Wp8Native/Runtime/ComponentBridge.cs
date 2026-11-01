@@ -752,7 +752,9 @@ namespace WPR.Wp8Native
         /// <summary>
         /// A C# handler the page subscribed to one of the component's events, as a guest delegate:
         /// its Invoke reads the arguments by the delegate's metadata and calls the handler on the
-        /// guest thread, as WinRT raised events on its own thread.
+        /// guest thread, as WinRT raised events on its own thread. A delegate that returns a value
+        /// (Asphalt 7's "is this the demo?" callback) has it written through the out pointer that
+        /// follows the arguments; dropped, the engine read whatever that word held.
         /// </summary>
         private long ManagedDelegate(string delegateType, Delegate handler)
         {
@@ -761,10 +763,10 @@ namespace WPR.Wp8Native
             return CreateUnknownObject($"{name} (managed handler)", ("Invoke", () =>
             {
                 object?[] values = [];
+                int core = 1, vfp = 0;
                 if (invoke is not null)
                 {
                     values = new object?[invoke.ParameterTypes.Count];
-                    int core = 1, vfp = 0;
                     for (int i = 0; i < values.Length; i++)
                     {
                         // Floats travel in VFP registers; everything else takes the next core word.
@@ -792,13 +794,19 @@ namespace WPR.Wp8Native
                     BridgeNote($"event {name} raised to the page");
                 }
 
+                object? result = null;
                 try
                 {
-                    handler.DynamicInvoke(ConvertForHandler(handler, values));
+                    result = handler.DynamicInvoke(ConvertForHandler(handler, values));
                 }
                 catch (Exception ex)
                 {
                     BridgeNote($"{name} handler threw {ex.InnerException?.GetType().Name ?? ex.GetType().Name}: {ex.InnerException?.Message ?? ex.Message}");
+                }
+
+                if (invoke is not null && invoke.ReturnType != "Void" && Arg(core) is long outPointer && outPointer != 0)
+                {
+                    WriteManagedResult(outPointer, invoke.ReturnType, result);
                 }
 
                 Return(HResultOk);

@@ -328,12 +328,14 @@ namespace WPR.Backend.FNA
 			F3D.FNA3D_ApplyRasterizerState(device, ref s);
 		}
 
+		// The marshalled path is its own method because a lambda's closure is allocated at the top
+		// of the method that declares it: inline, every sampler of every draw paid for one.
 		public void VerifySampler(IntPtr device, int index, IntPtr texture, ref RhiSamplerState sampler)
 		{
 			F3D.FNA3D_SamplerState s = ToFna(in sampler);
 			if (DeviceThreadDispatch.MustMarshal)
 			{
-				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_VerifySampler(device, index, DeferredGpuHandles.Resolve(texture), ref s));
+				VerifySamplerOnDeviceThread(device, index, texture, s, vertex: false);
 				return;
 			}
 			F3D.FNA3D_VerifySampler(device, index, Real(texture), ref s);
@@ -344,10 +346,25 @@ namespace WPR.Backend.FNA
 			F3D.FNA3D_SamplerState s = ToFna(in sampler);
 			if (DeviceThreadDispatch.MustMarshal)
 			{
-				DeviceThreadDispatch.Invoke(() => F3D.FNA3D_VerifyVertexSampler(device, index, DeferredGpuHandles.Resolve(texture), ref s));
+				VerifySamplerOnDeviceThread(device, index, texture, s, vertex: true);
 				return;
 			}
 			F3D.FNA3D_VerifyVertexSampler(device, index, Real(texture), ref s);
+		}
+
+		private static void VerifySamplerOnDeviceThread(IntPtr device, int index, IntPtr texture, F3D.FNA3D_SamplerState s, bool vertex)
+		{
+			DeviceThreadDispatch.Invoke(() =>
+			{
+				if (vertex)
+				{
+					F3D.FNA3D_VerifyVertexSampler(device, index, DeferredGpuHandles.Resolve(texture), ref s);
+				}
+				else
+				{
+					F3D.FNA3D_VerifySampler(device, index, DeferredGpuHandles.Resolve(texture), ref s);
+				}
+			});
 		}
 
 		public unsafe void ApplyVertexBufferBindings(IntPtr device, IntPtr bindings, int numBindings, byte bindingsUpdated, int baseVertex)

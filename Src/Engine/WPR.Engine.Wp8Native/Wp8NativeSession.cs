@@ -1120,6 +1120,13 @@ namespace WPR.Wp8Native
                 else
                 {
                     _replay ??= new Wp8GpuReplay(_host.GraphicsDevice, _log);
+                    // A vertex copy the recorder reused holds other bytes now: drop the GPU buffer
+                    // cached for it before replaying a frame that may use it again.
+                    while (_emulator?.Direct3D.TryTakeReusedSnapshot(out byte[] reused) == true)
+                    {
+                        _replay.ForgetStream(reused);
+                    }
+
                     foreach (GpuFrame gpuFrame in gpuFrames)
                     {
                         _replay.Replay(gpuFrame);
@@ -1309,11 +1316,25 @@ namespace WPR.Wp8Native
 
                     LogHotImports(emulator);
                     _statsCalls = calls;
+
+                    // Once per stall, where every guest thread is: a thread spinning on a lock says
+                    // little until you know what the lock's owner is waiting for.
+                    if (++_stallReports == 2)
+                    {
+                        foreach (string line in emulator.DescribeThreads().Where(l => !l.Contains(": finished", StringComparison.Ordinal)))
+                        {
+                            Log("   thread: " + line);
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {
                     Log($"stall report failed: {ex.Message}");
                 }
+            }
+            else
+            {
+                _stallReports = 0;
             }
 
             _statsAt = now;
@@ -1383,7 +1404,8 @@ namespace WPR.Wp8Native
         private void Watchdog(object? state)
         {
             long last = Volatile.Read(ref _lastUpdateTimestamp);
-            if (_closing || last == 0 || _capture is not null || _emulator is not { } emulator)
+            // Once the guest has stopped the host loop is the error screen's or teardown's, not ours.
+            if (_closing || last == 0 || _capture is not null || Outcome is not null || _emulator is not { } emulator)
             {
                 return;
             }
@@ -1422,6 +1444,7 @@ namespace WPR.Wp8Native
         }
 
         private readonly object _hotImportsLock = new();
+        private int _stallReports;
         private int _audioLogged;
         private int _unsupportedLogged;
         private long _statsCalls;

@@ -127,6 +127,15 @@ namespace WPR.Wp8Native
             return methods;
         }
 
+        /// <summary>
+        /// <paramref name="current"/> when it already holds <paramref name="values"/>, else a new
+        /// array of them. Recorded draws keep the array they were given, so a changed value needs a
+        /// new one; an unchanged one (nearly every call: a title sets the same viewport and blend
+        /// factor before each draw) needs nothing.
+        /// </summary>
+        private static float[] SameOrNew(float[]? current, ReadOnlySpan<float> values) =>
+            current is not null && values.SequenceEqual(current) ? current : values.ToArray();
+
         private void HookGpuContext(Dictionary<int, (string, Action)> methods)
         {
             void Slots(int slot, long[] into) => Wrap(methods, slot, original => () =>
@@ -170,9 +179,17 @@ namespace WPR.Wp8Native
             methods[35] = ("OMSetBlendState", Chain(methods.GetValueOrDefault(35).Item2, () =>
             {
                 _gpuBlend = Arg(1);
-                _gpuBlendFactor = Arg(2) == 0
-                    ? [1f, 1f, 1f, 1f]
-                    : [.. Enumerable.Range(0, 4).Select(i => BitConverter.ToSingle(_emulator.ReadMemory(Arg(2) + (i * 4), 4)))];
+                Span<float> factor = stackalloc float[4];
+                if (Arg(2) == 0)
+                {
+                    factor.Fill(1f);
+                }
+                else
+                {
+                    _emulator.ReadMemory(Arg(2), System.Runtime.InteropServices.MemoryMarshal.AsBytes(factor));
+                }
+
+                _gpuBlendFactor = SameOrNew(_gpuBlendFactor, factor);
             }));
 
             // OMSetDepthStencilState(state, UINT ref)
@@ -189,8 +206,9 @@ namespace WPR.Wp8Native
             {
                 if (Arg(1) > 0 && Arg(2) != 0)
                 {
-                    byte[] raw = _emulator.ReadMemory(Arg(2), 24);
-                    _gpuViewport = [.. Enumerable.Range(0, 6).Select(i => BitConverter.ToSingle(raw, i * 4))];
+                    Span<float> viewport = stackalloc float[6];
+                    _emulator.ReadMemory(Arg(2), System.Runtime.InteropServices.MemoryMarshal.AsBytes(viewport));
+                    _gpuViewport = SameOrNew(_gpuViewport, viewport);
                 }
 
                 original();
@@ -398,21 +416,56 @@ namespace WPR.Wp8Native
                 return copies;
             }
 
-            Dictionary<int, GpuTexture> textures = [];
-            Dictionary<int, byte[]> samplers = [];
+            // Built into scratch maps and swapped for the previous draw's when they match, as the
+            // constants are: most draws bind what the one before did, and a dictionary and a
+            // GpuTexture per slot per draw was a steady stream of garbage in a race.
+            Dictionary<int, GpuTexture> textures = _textureScratch ?? [];
+            Dictionary<int, byte[]> samplers = _samplerScratch ?? [];
+            _textureScratch = null;
+            _samplerScratch = null;
+            textures.Clear();
+            samplers.Clear();
             for (int i = 0; i < _psViews.Length; i++)
             {
                 if (_psViews[i] != 0 && _viewedResource.TryGetValue(_psViews[i], out FrameCapture.Resource? resource))
                 {
-                    textures[i] = _renderTargetKeys.Contains(resource.Storage)
-                        ? new GpuTexture(null, new GpuTarget(resource.Storage, resource.PixelWidth, resource.PixelHeight))
-                        : new GpuTexture(FrameCapture.CubeOrTextureForGpu(_emulator, resource), null);
+                    GpuTexture? earlier = _lastTextures?.GetValueOrDefault(i);
+                    if (_renderTargetKeys.Contains(resource.Storage))
+                    {
+                        var viewed = new GpuTarget(resource.Storage, resource.PixelWidth, resource.PixelHeight);
+                        textures[i] = earlier is { Image: null } && earlier.RenderTarget == viewed ? earlier : new GpuTexture(null, viewed);
+                    }
+                    else
+                    {
+                        TextureImage? image = FrameCapture.CubeOrTextureForGpu(_emulator, resource);
+                        textures[i] = earlier is { RenderTarget: null } && ReferenceEquals(earlier.Image, image) ? earlier : new GpuTexture(image, null);
+                    }
                 }
 
                 if (_psSamplers[i] != 0 && _gpuStateDescs.TryGetValue(_psSamplers[i], out byte[]? sampler))
                 {
                     samplers[i] = sampler;
                 }
+            }
+
+            if (SameBindings(_lastTextures, textures))
+            {
+                _textureScratch = textures;
+                textures = _lastTextures!;
+            }
+            else
+            {
+                _lastTextures = textures;
+            }
+
+            if (SameBindings(_lastSamplers, samplers))
+            {
+                _samplerScratch = samplers;
+                samplers = _lastSamplers!;
+            }
+            else
+            {
+                _lastSamplers = samplers;
             }
 
             _gpuCommands.Add(new GpuDraw(
@@ -440,6 +493,27 @@ namespace WPR.Wp8Native
         // may still sit in a frame the host has not replayed, so it is retired with the serial of
         // the frame being recorded and reused only once the host has replayed that frame.
         private Dictionary<int, byte[]>? _lastVsConstants, _lastPsConstants, _constantScratch;
+        private Dictionary<int, GpuTexture>? _lastTextures, _textureScratch;
+        private Dictionary<int, byte[]>? _lastSamplers, _samplerScratch;
+
+        /// <summary>Whether two slot maps hold the same objects in the same slots.</summary>
+        private static bool SameBindings<T>(Dictionary<int, T>? last, Dictionary<int, T> current) where T : class
+        {
+            if (last is null || last.Count != current.Count)
+            {
+                return false;
+            }
+
+            foreach (var (slot, value) in current)
+            {
+                if (!last.TryGetValue(slot, out T? earlier) || !ReferenceEquals(earlier, value))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
         private long _gpuFrameSerial;
         private long _replayedGpuSerial = -1;
         private readonly System.Collections.Concurrent.ConcurrentQueue<(long Serial, byte[] Array)> _retiredConstants = new();
@@ -458,7 +532,9 @@ namespace WPR.Wp8Native
             }
         }
 
-        private byte[] TakeConstantArray(int length)
+        private byte[] TakeConstantArray(int length) => TakeConstantArray(length, out _);
+
+        private byte[] TakeConstantArray(int length, out bool reused)
         {
             long replayed = Interlocked.Read(ref _replayedGpuSerial);
             while (_retiredConstants.TryPeek(out var retired) && retired.Serial <= replayed && _retiredConstants.TryDequeue(out retired))
@@ -468,16 +544,109 @@ namespace WPR.Wp8Native
                     _constantPool[retired.Array.Length] = free = new Stack<byte[]>();
                 }
 
-                if (free.Count < 64)
+                // About 2 MB of each size: a race rewrites a few hundred small constant buffers a
+                // frame, and a vertex copy can be megabytes on its own.
+                if (free.Count < Math.Clamp(2 * 1024 * 1024 / Math.Max(1, retired.Array.Length), 4, 4096))
                 {
                     free.Push(retired.Array);
                 }
             }
 
-            return _constantPool.TryGetValue(length, out Stack<byte[]>? pool) && pool.TryPop(out byte[]? reused)
-                ? reused
-                : new byte[length];
+            if (_constantPool.TryGetValue(length, out Stack<byte[]>? pool) && pool.TryPop(out byte[]? array))
+            {
+                reused = true;
+                return array;
+            }
+
+            reused = false;
+            return new byte[length];
         }
+
+        // Vertex copies (FrameCapture.SnapshotStream) go through the same pool. A dynamic vertex
+        // buffer is rewritten every frame, so its copies cannot be shared between frames: Asphalt 7
+        // took ~25 MB/s of them in a race, felt on a phone as GC pauses and jumps. A superseded copy
+        // is retired with the frame being recorded and reused once the host has replayed it. Only
+        // while every frame goes to the GPU host alone: the software rasteriser keeps draws longer.
+        private bool RecyclesSnapshots => GpuCapture && GpuFrameBuilt is not null && FramePresented is null;
+
+        private readonly System.Collections.Concurrent.ConcurrentQueue<byte[]> _reusedSnapshots = new();
+
+        /// <summary>A copy no longer referenced by its buffer; reused after the frame being recorded is replayed.</summary>
+        internal void RetireSnapshotArray(byte[] array)
+        {
+            if (RecyclesSnapshots)
+            {
+                _retiredConstants.Enqueue((_gpuFrameSerial, array));
+            }
+        }
+
+        /// <summary>An array for a vertex copy: a retired one of that length when there is one.</summary>
+        internal byte[] TakeSnapshotArray(int length)
+        {
+            if (!RecyclesSnapshots)
+            {
+                return new byte[length];
+            }
+
+            byte[] array = TakeConstantArray(length, out bool reused);
+            if (reused)
+            {
+                _reusedSnapshots.Enqueue(array);
+            }
+
+            return array;
+        }
+
+        // Index copies (FrameCapture.ResolveIndicesCached), the same way: a dynamic index buffer is
+        // resolved afresh each frame. The replay copies them into its own buffer per draw and keeps
+        // no reference, so a reused array needs no forgetting.
+        private readonly System.Collections.Concurrent.ConcurrentQueue<(long Serial, int[] Array)> _retiredIndices = new();
+        private readonly Dictionary<int, Stack<int[]>> _indexPool = new();
+
+        internal void RetireIndexArray(int[] array)
+        {
+            if (RecyclesSnapshots && array.Length > 0)
+            {
+                _retiredIndices.Enqueue((_gpuFrameSerial, array));
+            }
+        }
+
+        internal int[] TakeIndexArray(int length)
+        {
+            if (!RecyclesSnapshots)
+            {
+                return new int[length];
+            }
+
+            long replayed = Interlocked.Read(ref _replayedGpuSerial);
+            while (_retiredIndices.TryPeek(out var retired) && retired.Serial <= replayed && _retiredIndices.TryDequeue(out retired))
+            {
+                if (!_indexPool.TryGetValue(retired.Array.Length, out Stack<int[]>? free))
+                {
+                    _indexPool[retired.Array.Length] = free = new Stack<int[]>();
+                }
+
+                if (free.Count < Math.Clamp(512 * 1024 / retired.Array.Length, 4, 4096))
+                {
+                    free.Push(retired.Array);
+                }
+            }
+
+            return _indexPool.TryGetValue(length, out Stack<int[]>? pool) && pool.TryPop(out int[]? array) ? array : new int[length];
+        }
+
+        /// <summary>
+        /// A vertex copy that now holds other bytes. The host replay caches its GPU buffers by the
+        /// array, so it must drop that one before replaying a later frame (Wp8GpuReplay.ForgetStream).
+        /// Any thread.
+        /// </summary>
+        public bool TryTakeReusedSnapshot(out byte[] array) => _reusedSnapshots.TryDequeue(out array!);
+
+        /// <summary>
+        /// The part of the back buffer a background grid's provider asked to be shown (its
+        /// desiredRenderTargetSize), or null for all of it. Set by the XAML host every frame.
+        /// </summary>
+        public (int Width, int Height)? ShownSize { get; set; }
 
         /// <summary>Hands the frame's commands to the host; true if a GPU host took it.</summary>
         private bool DeliverGpuFrame()
@@ -487,7 +656,7 @@ namespace WPR.Wp8Native
                 return false;
             }
 
-            GpuFrame frame = new() { Commands = _gpuCommands, Serial = _gpuFrameSerial++ };
+            GpuFrame frame = new() { Commands = _gpuCommands, Serial = _gpuFrameSerial++, Shown = ShownSize };
             _gpuCommands = new List<GpuCommand>();
             try
             {

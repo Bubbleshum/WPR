@@ -141,7 +141,21 @@ namespace WPR.Wp8Native
             handlers["ResetEvent"] = () => SetEventState(false);
 
             // DWORD WaitForSingleObject(Ex)(HANDLE, DWORD milliseconds[, BOOL alertable])
-            handlers["WaitForSingleObjectEx"] = () => WaitAny([_frame.Arg(0)], waitAll: false, _frame.Arg(1));
+            handlers["WaitForSingleObjectEx"] = () =>
+            {
+                // Satisfied at once is the common case (a free mutex, a set event: Asphalt 7 locks
+                // its mutexes thousands of times a second), and needs no arrays.
+                long handle = _frame.Arg(0);
+                int me = _emulator.CurrentThreadId;
+                if (handle != CurrentThreadPseudoHandle && _events.TryGetValue(handle, out Event? one) && CanTake(one, me))
+                {
+                    _satisfied++;
+                    _frame.Return((Take(one, me) ? WaitAbandoned0 : WaitObject0));
+                    return;
+                }
+
+                WaitAny([handle], waitAll: false, _frame.Arg(1));
+            };
             handlers["WaitForSingleObject"] = handlers["WaitForSingleObjectEx"];
 
             // DWORD WaitForMultipleObjects(Ex)(DWORD count, const HANDLE*, BOOL waitAll, DWORD ms[, BOOL alertable])

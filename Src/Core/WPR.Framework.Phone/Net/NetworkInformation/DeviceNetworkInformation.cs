@@ -63,6 +63,9 @@ namespace Microsoft.Phone.Net.NetworkInformation
     public class NetworkNotificationEventArgs : EventArgs
     {
         public NetworkNotificationType NotificationType { get; set; }
+
+        /// <summary>The interface the notification is about: WPR's one Wi-Fi adapter.</summary>
+        public NetworkInterfaceInfo NetworkInterface { get; set; } = NetworkInterfaceInfo.WiFi;
     }
 
     /// <summary>

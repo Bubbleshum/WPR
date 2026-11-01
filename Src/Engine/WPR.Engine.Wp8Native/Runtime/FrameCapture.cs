@@ -297,8 +297,13 @@
             if (buffer.SnapshotVersion != buffer.Version || buffer.Snapshots is null)
             {
                 buffer.SnapshotVersion = buffer.Version;
-                (buffer.Snapshots ??= []).Clear();
-                buffer.SnapshotBytes = 0;
+                RetireSnapshots(emulator, buffer);
+                buffer.Snapshots ??= [];
+                if (buffer.WholeCopy is { } stale && buffer.WholeCopyVersion != buffer.Version)
+                {
+                    emulator.Direct3D.RetireSnapshotArray(stale);
+                    buffer.WholeCopy = null;
+                }
             }
 
             foreach (var known in buffer.Snapshots)
@@ -326,25 +331,23 @@
                 if (buffer.SnapshotBytes + length > buffer.StorageSize && buffer.StorageSize is > 0 and <= MaxWholeCopy &&
                     first >= 0 && end <= buffer.StorageSize + Math.Min(stream.Offset, WholeCopyPadding))
                 {
-                    byte[] all = new byte[buffer.StorageSize + WholeCopyPadding];
+                    byte[] all = emulator.Direct3D.TakeSnapshotArray((int)buffer.StorageSize + WholeCopyPadding);
                     emulator.ReadMemory(buffer.Storage, all.AsSpan(0, (int)buffer.StorageSize));
+                    Array.Clear(all, (int)buffer.StorageSize, WholeCopyPadding);
                     buffer.WholeCopy = all;
                     buffer.WholeCopyVersion = buffer.Version;
-                    buffer.Snapshots.Clear();
-                    buffer.SnapshotBytes = 0;
+                    RetireSnapshots(emulator, buffer);
                     return stream with { Data = all, FirstVertex = 0, DataOffset = stream.Offset };
                 }
 
-                byte[] data = emulator.ReadMemory(
-                    stream.Buffer.Storage + stream.Offset + ((long)first * stream.Stride),
-                    (int)length);
+                byte[] data = emulator.Direct3D.TakeSnapshotArray((int)length);
+                emulator.ReadMemory(stream.Buffer.Storage + stream.Offset + ((long)first * stream.Stride), data.AsSpan());
 
                 // A ring buffer gets many small ranges per version; keep the list bounded by what
                 // it holds as well as by how many.
                 if (buffer.Snapshots.Count >= MaxSnapshotRanges || buffer.SnapshotBytes + length > Math.Max(MinSnapshotBudget, 2 * buffer.StorageSize))
                 {
-                    buffer.Snapshots.Clear();
-                    buffer.SnapshotBytes = 0;
+                    RetireSnapshots(emulator, buffer);
                 }
 
                 buffer.Snapshots.Add((stream.Offset, stream.Stride, first, count, data));
@@ -355,6 +358,22 @@
             {
                 return stream;
             }
+        }
+
+        /// <summary>Hands a buffer's range copies back to the pool (<see cref="Direct3DRuntime.RetireSnapshotArray"/>) and empties its list.</summary>
+        private static void RetireSnapshots(ArmEmulator emulator, Resource buffer)
+        {
+            if (buffer.Snapshots is { } snapshots)
+            {
+                foreach (var snapshot in snapshots)
+                {
+                    emulator.Direct3D.RetireSnapshotArray(snapshot.Data);
+                }
+
+                snapshots.Clear();
+            }
+
+            buffer.SnapshotBytes = 0;
         }
 
         private readonly List<DrawCall> _draws = new();
@@ -665,7 +684,8 @@
             if (buffer.IndexSnapshotVersion != buffer.Version || buffer.IndexSnapshots is null)
             {
                 buffer.IndexSnapshotVersion = buffer.Version;
-                (buffer.IndexSnapshots ??= []).Clear();
+                RetireIndexSnapshots(emulator, buffer);
+                buffer.IndexSnapshots ??= [];
             }
 
             foreach (var known in buffer.IndexSnapshots)
@@ -692,7 +712,7 @@
                 // ones per version. Keep the list bounded either way.
                 if (buffer.IndexSnapshots.Count >= 64)
                 {
-                    buffer.IndexSnapshots.Clear();
+                    RetireIndexSnapshots(emulator, buffer);
                 }
 
                 buffer.IndexSnapshots.Add((call.IndexOffset, call.StartIndex, count, call.IndexFormat, indices, lowest, highest));
@@ -701,10 +721,28 @@
             return (indices, lowest, highest);
         }
 
+        /// <summary>Hands a buffer's resolved index arrays back to the pool and empties its list.</summary>
+        private static void RetireIndexSnapshots(ArmEmulator emulator, Resource buffer)
+        {
+            if (buffer.IndexSnapshots is { } snapshots)
+            {
+                foreach (var snapshot in snapshots)
+                {
+                    emulator.Direct3D.RetireIndexArray(snapshot.Indices);
+                }
+
+                snapshots.Clear();
+            }
+        }
+
         private static int[] ResolveIndices(ArmEmulator emulator, DrawCall call)
         {
             int count = Math.Clamp(call.IndexCount, 0, 200_000);
-            int[] indices = new int[count];
+
+            // A sequence for a non-indexed draw is cached for good (_sequences), so it never comes
+            // from the pool, whose arrays go back once their frame is replayed.
+            bool indexed = call.IndexBuffer is { Storage: not 0 };
+            int[] indices = indexed ? emulator.Direct3D.TakeIndexArray(count) : new int[count];
 
             if (call.IndexBuffer is null || call.IndexBuffer.Storage == 0)
             {
