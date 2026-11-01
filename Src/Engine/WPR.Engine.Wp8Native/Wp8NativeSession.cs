@@ -816,6 +816,9 @@ namespace WPR.Wp8Native
         /// <summary>Lifts of missed taps, delivered on the next update (see PumpTouch).</summary>
         private readonly List<(uint Id, float X, float Y)> _releaseNext = new();
 
+        /// <summary>Presses written to the log so far (the first few of a run).</summary>
+        private int _pressesLogged;
+
         private void PumpTouch()
         {
             ArmEmulator? emulator = _emulator;
@@ -868,6 +871,14 @@ namespace WPR.Wp8Native
                     case TouchLocationState.Moved when !down:
                         _fingers[touch.Id] = (x, y);
                         emulator.WinRt.InjectPointer(WinRtRuntime.PointerKind.Pressed, x, y, id);
+                        if (++_pressesLogged <= 6)
+                        {
+                            // "Taps land in the wrong place" needs these three spaces side by side.
+                            Log($"pointer {id} pressed: touch ({touch.Position.X:0},{touch.Position.Y:0}) on a " +
+                                $"{TouchPanel.DisplayWidth}x{TouchPanel.DisplayHeight} display -> ({x:0},{y:0}) in the " +
+                                $"{FrameCapture.Width}x{FrameCapture.Height} composition{(_hostPortrait ? ", portrait host" : "")}");
+                        }
+
                         break;
                     case TouchLocationState.Moved when x != last.X || y != last.Y:
                         _fingers[touch.Id] = (x, y);
