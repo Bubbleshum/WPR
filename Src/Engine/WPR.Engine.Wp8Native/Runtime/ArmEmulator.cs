@@ -75,6 +75,17 @@ namespace WPR.Wp8Native
         private static readonly long ImportTraceLimit =
             long.TryParse(Environment.GetEnvironmentVariable("WPR_WP8_IMPORT_TRACE"), out long n) ? n : 0;
 
+        /// <summary>
+        /// WPR_WP8_IMPORT_TRACE_AFTER=S: the import trace starts S seconds into the run instead of at
+        /// the first call, for what goes wrong a minute in (startup makes millions of calls).
+        /// </summary>
+        private static readonly double ImportTraceAfterSeconds =
+            double.TryParse(Environment.GetEnvironmentVariable("WPR_WP8_IMPORT_TRACE_AFTER"),
+                System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double s) ? s : 0;
+
+        private readonly System.Diagnostics.Stopwatch _importTraceClock = System.Diagnostics.Stopwatch.StartNew();
+        private long _importsTraced;
+
         private readonly List<string> _callOrder = new();
         private readonly Queue<string> _recentCalls = new();
 
@@ -1512,6 +1523,55 @@ namespace WPR.Wp8Native
         public long RegisterVtableMethod(string name, Action handler)
             => AllocateTrapSlot(name, TrapKind.VtableMethod, handler);
 
+        private readonly Dictionary<string, long> _objectMethodTraps = new(StringComparer.Ordinal);
+        private readonly Dictionary<(long Trap, long Self), Action> _objectMethodHandlers = new();
+        private readonly Dictionary<long, Action> _objectMethodOnly = new();
+
+        /// <summary>
+        /// A vtable method of the host object at <paramref name="self"/>. Methods of the same
+        /// name and vtable slot share one trap slot, which finds the handler by the object the guest called
+        /// through (r0, <c>this</c>).
+        /// </summary>
+        /// <remarks>
+        /// A slot per method per object filled the 16,384-slot trap page: every collection,
+        /// vector view or async operation the host hands out has 38 or more methods, and a title
+        /// that asks for one each frame (N.O.V.A. 3 reads its achievement list) ran out after
+        /// about 430 objects. Shared, a new object costs no slot. Only for objects whose methods
+        /// are always called with the object itself as <c>this</c>, as single-interface COM objects are.
+        /// </remarks>
+        public long RegisterObjectMethod(string name, int slot, long self, Action handler)
+        {
+            string key = $"{name}#{slot}";
+            if (!_objectMethodTraps.TryGetValue(key, out long trap))
+            {
+                long allocated = 0;
+                allocated = AllocateTrapSlot(name, TrapKind.VtableMethod, () => DispatchObjectMethod(allocated, name));
+                trap = allocated;
+                _objectMethodTraps[key] = trap;
+                _objectMethodOnly[trap] = handler;
+            }
+            else
+            {
+                _objectMethodOnly.Remove(trap);
+            }
+
+            _objectMethodHandlers[(trap, self)] = handler;
+            return trap;
+        }
+
+        private void DispatchObjectMethod(long trap, string name)
+        {
+            long self = _cpu.RegRead(Arm.UC_ARM_REG_R0) & 0xFFFFFFFFL;
+            if (_objectMethodHandlers.TryGetValue((trap, self), out Action? handler) ||
+                _objectMethodOnly.TryGetValue(trap, out handler))
+            {
+                handler();
+                return;
+            }
+
+            throw new InvalidOperationException($"{name} called on 0x{self:X8}, which is not an object this method was registered for");
+        }
+
         /// <summary>Turns a trap address into a value safe to store as an ARM function pointer.</summary>
         public static long ThumbEntry(long trapAddress) => trapAddress | 1;
 
@@ -1996,8 +2056,10 @@ namespace WPR.Wp8Native
             {
                 case TrapKind.Import:
                     CallOrderTotal++;
-                    if (CallOrderTotal <= ImportTraceLimit
-                        && !slot.Name.EndsWith("CriticalSection", StringComparison.Ordinal))
+                    if (ImportTraceLimit > 0 && _importsTraced < ImportTraceLimit
+                        && !slot.Name.EndsWith("CriticalSection", StringComparison.Ordinal)
+                        && (ImportTraceAfterSeconds <= 0 || _importTraceClock.Elapsed.TotalSeconds >= ImportTraceAfterSeconds)
+                        && ++_importsTraced > 0)
                     {
                         System.Diagnostics.Trace.WriteLine(
                             $"[wpr-wp8-import] #{CallOrderTotal} t{CurrentThreadId} {slot.Name} lr=0x{_cpu.RegRead(Arm.UC_ARM_REG_LR):X8} " +

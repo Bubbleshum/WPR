@@ -234,7 +234,13 @@ namespace WPR.SilverlightCompability
                     break;
 
                 case ContentControl content:
-                    FillBrush(surface, content.Background, bounds, drawClip, opacity);
+                    // Silverlight's UserControl (and so Page / PhoneApplicationPage) has no
+                    // template that draws Background: it is ignored, which is why WP apps put
+                    // theirs on LayoutRoot. N.O.V.A. 3's page says Background="White" over the
+                    // DrawingSurfaceBackgroundGrid its game draws to, and painting it covered the
+                    // game with a white sheet.
+                    if (content is not UserControl)
+                        FillBrush(surface, content.Background, bounds, drawClip, opacity);
                     if (content.Presenter != null)
                         PaintChild(content.Presenter, bounds, opacity, surface, depth, scaleX, scaleY, clip);
                     break;

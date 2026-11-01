@@ -2721,7 +2721,7 @@ namespace WPR.Wp8Native
                     _ => ($"slot{captured}", () => Return(HResultOk)),
                 };
 
-                long trap = _emulator.RegisterVtableMethod($"{interfaceName}::{name}", handler);
+                long trap = _emulator.RegisterObjectMethod($"{interfaceName}::{name}", slot, self, handler);
                 _emulator.WriteUInt32(vtable + (slot * 4), (uint)ArmEmulator.ThumbEntry(trap));
             }
 
@@ -2762,7 +2762,7 @@ namespace WPR.Wp8Native
 
             for (int i = 0; i < all.Length; i++)
             {
-                long trap = _emulator.RegisterVtableMethod($"{interfaceName}::{all[i].Name}", all[i].Handler);
+                long trap = _emulator.RegisterObjectMethod($"{interfaceName}::{all[i].Name}", i, instance, all[i].Handler);
                 _emulator.WriteUInt32(vtable + (i * 4), (uint)ArmEmulator.ThumbEntry(trap));
             }
 

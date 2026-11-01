@@ -430,9 +430,14 @@ namespace WPR.Wp8Native
                         continue;
                     }
 
+                    // The fair cursor is left where it is: moving it past a woken worker skipped
+                    // the yielding threads in between, every time. N.O.V.A. 3's sound streamer
+                    // sleeps with Concurrency::wait between reads and sat just past the mixer; once
+                    // a mission added a thread the mixer wakes, both were always picked here, the
+                    // round robin always restarted beyond the streamer, and it never ran again:
+                    // silence from the first mission on.
                     if (candidate.Ready is not null && WokenByWait(candidate) && candidate.Ready())
                     {
-                        _roundRobin = (_threads.IndexOf(candidate) + 1) % _threads.Count;
                         return candidate;
                     }
                 }
