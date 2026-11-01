@@ -683,7 +683,39 @@ namespace WPR.Wp8Native
             if (gap > System.Diagnostics.Stopwatch.Frequency / 20)
             {
                 _hitches++;
+                LogHitch(gap);
             }
+
+            NoteFrameStart();
+        }
+
+        // What a long frame was spent on, so a stutter can be put down to the guest's own work, the
+        // host it waited for, file I/O or a collection. The first 30 of a run, then every 50th.
+        private long _frameWaitTicks, _frameCalls, _frameIoTicks, _frameIoCalls;
+        private int _frameGen0, _frameGen1, _frameGen2, _hitchesLogged;
+
+        private void NoteFrameStart()
+        {
+            _frameCalls = _emulator?.CallOrderTotal ?? 0;
+            _frameIoTicks = _emulator?.Stubs.Files.IoTicks ?? 0;
+            _frameIoCalls = _emulator?.Stubs.Files.IoCalls ?? 0;
+            _frameGen0 = GC.CollectionCount(0);
+            _frameGen1 = GC.CollectionCount(1);
+            _frameGen2 = GC.CollectionCount(2);
+        }
+
+        private void LogHitch(long gap)
+        {
+            int n = ++_hitchesLogged;
+            if (n > 30 && n % 50 != 0 || _emulator is not { } emulator)
+            {
+                return;
+            }
+
+            double ms(long ticks) => ticks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            Log($"hitch #{n} at frame {_presented}: {ms(gap):0} ms (guest {ms(gap - _frameWaitTicks):0}, waiting for the host {ms(_frameWaitTicks):0}), " +
+                $"{emulator.CallOrderTotal - _frameCalls:N0} host call(s), file io {ms(emulator.Stubs.Files.IoTicks - _frameIoTicks):0} ms/{emulator.Stubs.Files.IoCalls - _frameIoCalls}, " +
+                $"gc {GC.CollectionCount(0) - _frameGen0}/{GC.CollectionCount(1) - _frameGen1}/{GC.CollectionCount(2) - _frameGen2}");
         }
 
         private void OnGpuFrameBuilt(GpuFrame frame)
@@ -706,7 +738,8 @@ namespace WPR.Wp8Native
             {
                 long waitFrom = System.Diagnostics.Stopwatch.GetTimestamp();
                 _tick.Wait(250);
-                Interlocked.Add(ref _guestWaitTicks, System.Diagnostics.Stopwatch.GetTimestamp() - waitFrom);
+                _frameWaitTicks = System.Diagnostics.Stopwatch.GetTimestamp() - waitFrom;
+                Interlocked.Add(ref _guestWaitTicks, _frameWaitTicks);
             }
         }
 
@@ -1080,6 +1113,55 @@ namespace WPR.Wp8Native
 
         public void Draw()
         {
+            long drawStart = System.Diagnostics.Stopwatch.GetTimestamp();
+            NoteHostFrame(drawStart);
+            try
+            {
+                DrawCore();
+            }
+            finally
+            {
+                _hostDrawTicks = System.Diagnostics.Stopwatch.GetTimestamp() - drawStart;
+            }
+        }
+
+        // The host side of a stutter: a host frame that came late, split into this session's own
+        // Draw (and the replay inside it) and everything outside it (the page, present, vsync,
+        // whatever else the host loop did). The first 30 of a run, then every 50th.
+        private long _lastHostDrawStart, _hostDrawTicks, _hostReplayTicks, _hostReplayedFrames;
+        private int _hostGen0, _hostGen1, _hostGen2, _hostLateLogged, _hostCached;
+        private long _hostUploaded;
+
+        private void NoteHostFrame(long now)
+        {
+            long interval = _lastHostDrawStart == 0 ? 0 : now - _lastHostDrawStart;
+            _lastHostDrawStart = now;
+            if (interval > System.Diagnostics.Stopwatch.Frequency / 40 && _replay is { } replay)
+            {
+                int n = ++_hostLateLogged;
+                if (n <= 30 || n % 50 == 0)
+                {
+                    double ms(long ticks) => ticks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+                    Log($"late host frame #{n} at frame {_presented}: {ms(interval):0} ms since the last (our Draw {ms(_hostDrawTicks):0}, replay {ms(_hostReplayTicks):0} for {_hostReplayedFrames} frame(s), " +
+                        $"outside {ms(interval - _hostDrawTicks):0} of which the last swap {ms(Microsoft.Xna.Framework.Graphics.GraphicsDevice.WprLastSwapTicks):0}), streams cached {replay.StreamsCached - _hostCached} uploaded {replay.StreamsUploaded - _hostUploaded}, " +
+                        $"gc {GC.CollectionCount(0) - _hostGen0}/{GC.CollectionCount(1) - _hostGen1}/{GC.CollectionCount(2) - _hostGen2}");
+                }
+            }
+
+            _hostGen0 = GC.CollectionCount(0);
+            _hostGen1 = GC.CollectionCount(1);
+            _hostGen2 = GC.CollectionCount(2);
+            _hostReplayTicks = 0;
+            _hostReplayedFrames = 0;
+            if (_replay is { } current)
+            {
+                _hostCached = current.StreamsCached;
+                _hostUploaded = current.StreamsUploaded;
+            }
+        }
+
+        private void DrawCore()
+        {
             EnsureGraphics();
 
             // The frame is portrait (the phone's screen, or a portrait page's DrawingSurface)
@@ -1127,12 +1209,16 @@ namespace WPR.Wp8Native
                         _replay.ForgetStream(reused);
                     }
 
+                    long replayStart = System.Diagnostics.Stopwatch.GetTimestamp();
+                    _hostReplayedFrames = gpuFrames.Length;
                     foreach (GpuFrame gpuFrame in gpuFrames)
                     {
                         _replay.Replay(gpuFrame);
                         _emulator?.Direct3D.GpuFrameReplayed(gpuFrame.Serial);
                         _drawn++;
                     }
+
+                    _hostReplayTicks = System.Diagnostics.Stopwatch.GetTimestamp() - replayStart;
 
                     _replay.Present(_host.GraphicsDevice.PresentationParameters.BackBufferWidth, _host.GraphicsDevice.PresentationParameters.BackBufferHeight,
                         turned ? PresentTurn.Anticlockwise : PresentTurn.None);
@@ -1523,10 +1609,16 @@ namespace WPR.Wp8Native
         /// Joyride stuttered every couple of seconds. An isolated catch-up now costs the guest one
         /// frame of its own time (its clock is counted in frames; about 1% at worst, which nobody
         /// sees) instead of a dropped frame. Each catch-up is a frame of debt, one is forgiven every
-        /// 60 draws, and a debt of two is paid with an extra guest frame: a host that keeps falling
-        /// behind (a device that cannot draw 60 a second) still runs the game at its speed, while
-        /// the occasional beat never costs a shown frame. While the host draws nothing (the
-        /// background) the guest's bounded waits pace it.
+        /// 60 draws, and a debt of two is paid by moving the guest's clock on a frame
+        /// (<see cref="HostStubs.ClockFramesSkipped"/>): a host that keeps falling behind (a device
+        /// that cannot draw 60 a second) still runs the game at its speed, while the occasional beat
+        /// never costs a shown frame. While the host draws nothing (the background) the guest's
+        /// bounded waits pace it.
+        /// <para>The debt used to be paid with an extra guest frame. A host behind because its GPU
+        /// is (Asphalt 7's races on the S24) then had two frames to replay in one draw, twice the
+        /// GPU work, so it fell further behind: a stutter every few frames. A phone that cannot keep
+        /// up renders fewer frames and its clock, which is real time, gives the next one a longer
+        /// step; moving the clock instead of rendering is that.</para>
         /// </summary>
         /// <summary>After the host has shown a frame.</summary>
         public void AfterDraw()
@@ -1540,12 +1632,13 @@ namespace WPR.Wp8Native
                 _frameDebt = Math.Max(0, _frameDebt - 1);
             }
 
-            WakeGuest();
-            if (_frameDebt >= 2)
+            if (_frameDebt >= 2 && _emulator is { } emulator)
             {
                 _frameDebt--;
-                WakeGuest();
+                Interlocked.Increment(ref emulator.Stubs.ClockFramesSkipped);
             }
+
+            WakeGuest();
         }
 
         private int _updatesSinceDraw, _frameDebt, _drawsSinceForgiven;

@@ -106,7 +106,7 @@ namespace WPR.Wp8Native
                 return _clock;
             }
 
-            long frame = _winRt.ProcessEventsCalls;
+            long frame = _winRt.ProcessEventsCalls + Volatile.Read(ref ClockFramesSkipped);
             if (frame != _clockFrame)
             {
                 _clockFrame = frame;
@@ -182,6 +182,13 @@ namespace WPR.Wp8Native
         private long? _spinOffset;
 
         private long _clockFrame = -1;
+
+        /// <summary>
+        /// Frames of time the host has added to the guest's clock without a guest frame to go with
+        /// them: when it falls behind the display it moves the clock on instead of asking for an
+        /// extra frame (Wp8NativeSession.AfterDraw). Written on the host thread.
+        /// </summary>
+        public long ClockFramesSkipped;
         private long _queriesThisFrame;
 
         /// <summary>Ticks per second reported to the image: one microsecond of resolution.</summary>
