@@ -52,6 +52,7 @@ namespace WPR.Wp8Native
             _phoneAudio.RegisterInto(_handlers);
             new X3DAudioLibrary(_mediaCom).RegisterInto(_handlers);
             XAudio2.FrameTick += () => TickMedia();
+            XAudio2.OtherAudioActive = () => (_mediaEngine?.Active ?? false) || (_phoneAudio?.Active ?? false);
 
             // HRESULT CreateDXGIFactory1(REFIID, void** ppFactory), and the older CreateDXGIFactory.
             _handlers["CreateDXGIFactory1"] = Direct3D.CreateDxgiFactory;

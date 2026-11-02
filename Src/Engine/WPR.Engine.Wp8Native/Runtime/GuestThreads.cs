@@ -71,6 +71,12 @@ namespace WPR.Wp8Native
             public long TlsArray { get; set; }
 
             public int TlsCapacity { get; set; }
+
+            /// <summary>
+            /// The XAudio2 engine thread, parked between passes. A parked thread is never picked by
+            /// the scheduler; only <see cref="PreemptAfterSlice"/> switches to it, when a pass is due.
+            /// </summary>
+            public bool Parked { get; set; }
         }
 
         private const int GuestThreadStackBytes = 1024 * 1024;
@@ -409,6 +415,34 @@ namespace WPR.Wp8Native
         private static bool WokenByWait(GuestThread t) =>
             t.Why is { } why && why != "time slice" && !why.Contains("yield", StringComparison.Ordinal);
 
+        /// <summary>
+        /// A background thread whose wait is now satisfied (not a yield or a time slice), or null.
+        /// </summary>
+        private GuestThread? WokenWorker(GuestThread except)
+        {
+            for (int n = 0; n < _threads.Count; n++)
+            {
+                GuestThread candidate = _threads[(_roundRobin + n) % _threads.Count];
+                if (candidate == except || candidate.Id == 1 || candidate.Finished || candidate.Registers is null || candidate.Parked)
+                {
+                    continue;
+                }
+
+                // The fair cursor is left where it is: moving it past a woken worker skipped
+                // the yielding threads in between, every time. N.O.V.A. 3's sound streamer
+                // sleeps with Concurrency::wait between reads and sat just past the mixer; once
+                // a mission added a thread the mixer wakes, both were always picked here, the
+                // round robin always restarted beyond the streamer, and it never ran again:
+                // silence from the first mission on.
+                if (candidate.Ready is not null && WokenByWait(candidate) && candidate.Ready())
+                {
+                    return candidate;
+                }
+            }
+
+            return null;
+        }
+
         private GuestThread? PickNext(GuestThread except)
         {
             // A worker that blocks hands the CPU to another worker whose wait it may just have
@@ -420,33 +454,16 @@ namespace WPR.Wp8Native
             // (mixer thread posts a decode job, a worker runs it and releases the mixer), and it
             // produced 70% of real time - slowed, stuttering music. Yielding threads are not
             // preferred, so a worker spinning on Sleep cannot keep the main thread waiting.
-            if (except.Id != 1 && System.Diagnostics.Stopwatch.GetTimestamp() - _workersSince < WorkerBudget)
+            if (except.Id != 1 && System.Diagnostics.Stopwatch.GetTimestamp() - _workersSince < WorkerBudget
+                && WokenWorker(except) is { } woken)
             {
-                for (int n = 0; n < _threads.Count; n++)
-                {
-                    GuestThread candidate = _threads[(_roundRobin + n) % _threads.Count];
-                    if (candidate == except || candidate.Id == 1 || candidate.Finished || candidate.Registers is null)
-                    {
-                        continue;
-                    }
-
-                    // The fair cursor is left where it is: moving it past a woken worker skipped
-                    // the yielding threads in between, every time. N.O.V.A. 3's sound streamer
-                    // sleeps with Concurrency::wait between reads and sat just past the mixer; once
-                    // a mission added a thread the mixer wakes, both were always picked here, the
-                    // round robin always restarted beyond the streamer, and it never ran again:
-                    // silence from the first mission on.
-                    if (candidate.Ready is not null && WokenByWait(candidate) && candidate.Ready())
-                    {
-                        return candidate;
-                    }
-                }
+                return woken;
             }
 
             for (int n = 0; n < _threads.Count; n++)
             {
                 GuestThread candidate = _threads[(_roundRobin + n) % _threads.Count];
-                if (candidate == except || candidate.Finished || candidate.Registers is null)
+                if (candidate == except || candidate.Finished || candidate.Registers is null || candidate.Parked)
                 {
                     continue;
                 }
@@ -563,27 +580,100 @@ namespace WPR.Wp8Native
             _trapsAtSlice = _trapsEntered;
 
             // Inside an IT block (CPSR IT bits) the stub could not restore the IT state.
-            if (enteredTraps || _threads.Count < 2 || (cpsr & 0x0600FC00) != 0)
+            if ((cpsr & 0x0600FC00) != 0)
             {
                 return here;
             }
 
             GuestThread me = CurrentThread;
+
+            // An audio pass is due (no frame for a while: a loading screen) and the XAudio2 engine
+            // thread is parked: it runs now, whatever this thread was doing, host calls included.
+            // On a phone XAudio2's thread is the OS's to schedule; a loader that keeps the CPU
+            // busy with file reads never stops it. Here it did, so music stopped behind loads.
+            if (_audioEngine is { Parked: true, Finished: false } engine && engine != me && AudioPassDue?.Invoke() == true)
+            {
+                AudioPreemptions++;
+                return PreemptTo(me, engine, pc, here, "for an XAudio2 pass");
+            }
+
+            if (enteredTraps || _threads.Count < 2)
+            {
+                return here;
+            }
+
             if (PickNext(me) is not { } next)
             {
                 return here;
             }
 
+            return PreemptTo(me, next, pc, here, "after a slice with no host call");
+        }
+
+        /// <summary>The XAudio2 engine thread (<see cref="MarkAudioEngineThread"/>), or null.</summary>
+        private GuestThread? _audioEngine;
+
+        /// <summary>
+        /// Asked at every slice boundary while the XAudio2 engine thread is parked: true when the
+        /// frame loop has not run an audio pass for long enough that the engine thread should.
+        /// </summary>
+        public Func<bool>? AudioPassDue { get; set; }
+
+        /// <summary>Times a slice was cut short to run an XAudio2 pass on the engine thread.</summary>
+        public int AudioPreemptions { get; private set; }
+
+        /// <summary>Marks a thread made with <see cref="CreateGuestThread"/> as the XAudio2 engine thread.</summary>
+        public void MarkAudioEngineThread(int id) => _audioEngine = _threads.FirstOrDefault(t => t.Id == id);
+
+        /// <summary>
+        /// Parks the current thread (the XAudio2 engine thread, inside a trap) until
+        /// <see cref="PreemptAfterSlice"/> switches back to it, then runs <paramref name="then"/> on it
+        /// inside a trap, which may call into the image. Hands the CPU to another thread; false when
+        /// there is none (the caller should end the thread).
+        /// </summary>
+        /// <remarks>
+        /// Parked, it is invisible to <see cref="PickNext"/>, so it can never be what keeps a run
+        /// alive: a deadlock among the game's threads is still reported as one, and a wait with
+        /// nothing else to run still carries on as it did before this thread existed.
+        /// </remarks>
+        public bool ParkAudioEngineThread(Action then, string why)
+        {
+            GuestThread me = CurrentThread;
+
+            // A mixer the pass just woke (OnBufferEnd sets the event it waits on) goes first, as
+            // on a phone where it would run at once: handed straight back to a busy loader, it
+            // would wait for the next pass to refill, and the voice could run dry in between.
+            if ((WokenWorker(me) ?? PickNext(me)) is not { } next)
+            {
+                return false;
+            }
+
+            long resume = _freeReturnTraps.Count > 0
+                ? ReuseReturnTrap("audio engine resume", then)
+                : AllocateTrapSlot("audio engine resume", TrapKind.RecycledReturn, then);
+            Save(me);
+            me.Registers![Index(Arm.UC_ARM_REG_R12)] = ThumbEntry(resume);
+            me.Ready = static () => false;
+            me.OnResume = null;
+            me.Why = why;
+            me.WakeAt = 0;
+            me.Parked = true;
+            SwitchTo(next);
+            return true;
+        }
+
+        private long PreemptTo(GuestThread me, GuestThread next, long pc, long here, string reason)
+        {
             Save(me);
             me.Ready = null;
             me.OnResume = null;
             me.Why = null;
             me.WakeAt = 0;
             me.PreemptedPc = here;
-            Preemptions++;
-            if (Preemptions <= 8)
+            int count = next == _audioEngine ? AudioPreemptions : ++Preemptions;
+            if (count <= 8)
             {
-                ThreadNote($"thread {me.Id} preempted at 0x{pc & ~1L:X8} after a slice with no host call; thread {next.Id} runs");
+                ThreadNote($"thread {me.Id} preempted at 0x{pc & ~1L:X8} {reason}; thread {next.Id} runs");
             }
 
             SwitchTo(next, fromTrap: false);
@@ -687,6 +777,7 @@ namespace WPR.Wp8Native
             // what the trap's bx r12 jumps to.
             thread.Ready = null;
             thread.WakeAt = 0;
+            thread.Parked = false;
             Action? resumed = thread.OnResume;
             thread.OnResume = null;
             _currentThread = thread;

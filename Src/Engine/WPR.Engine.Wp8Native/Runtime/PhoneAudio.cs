@@ -63,6 +63,9 @@ namespace WPR.Wp8Native
         private readonly Func<long, bool> _setEvent;
         private readonly List<Client> _clients = new();
 
+        /// <summary>Whether an audio client exists, i.e. the title plays sound through WASAPI.</summary>
+        public bool Active => _clients.Count > 0;
+
         public PhoneAudio(MediaCom com, Func<IAudioOutput?> output, Func<long, bool> setEvent)
         {
             _com = com;

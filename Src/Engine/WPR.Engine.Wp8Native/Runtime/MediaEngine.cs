@@ -45,6 +45,9 @@ namespace WPR.Wp8Native
         private readonly MediaFoundation? _mf;
         private readonly List<Engine> _engines = new();
 
+        /// <summary>Whether a media engine exists, i.e. the title plays sound through this path.</summary>
+        public bool Active => _engines.Count > 0;
+
         public MediaEngine(MediaCom com, string packageRoot, Func<IAudioOutput?> output, Func<IMediaDecoder?>? decoder = null, MediaFoundation? mediaFoundation = null)
         {
             _com = com;

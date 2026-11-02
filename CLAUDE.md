@@ -1102,6 +1102,50 @@ rebuilt `.so`, watching `guest-heap: released=` climb and the post-PLAY load tim
 <pid> RUNNING_CRITICAL` for the trim log line. The `[wpr-adec]` line is unchanged, so an MP3 that
 still plays is the decoder check. No `ApplicationPatcher.Version` bump and no reinstall.
 
+### WP8 audio keeps playing behind loading screens: the XAudio2 engine thread (2026-11-02)
+
+**Not built or run yet** (no .NET SDK where it was written); same branch as the low-memory pass.
+
+Every XAudio2 pass (feed the host, retire buffers, raise `OnBufferEnd` /
+`OnVoiceProcessingPassStart` / the engine callbacks, and `FrameTick`, which also clocks the media
+engine and WASAPI) ran only at the frame loop's turn. A loading screen that presents nothing for
+seconds therefore stopped the music once the host's ~0.5 s ran out: the "underruns climb during
+loading" in several sections above. Guest threads were not the problem: preemption already gives
+them the CPU. The pass itself never ran.
+
+Now a host-driven guest thread, **"XAudio2 engine"**, runs passes while the frame loop is stalled,
+as XAudio2's own thread does on a phone:
+
+- **Started** from the frame pump (`XAudio2Runtime.EnsureEngineThread`) the first time the title
+  has an XAudio2 source voice, or uses the media engine or WASAPI (`OtherAudioActive`). It starts
+  through the loader like any thread (DLL_THREAD_ATTACH), then parks.
+- **Parked** (`ArmEmulator.ParkAudioEngineThread`, `GuestThread.Parked`), it is invisible to
+  `PickNext`. It can never be what keeps a run alive: a deadlock is still reported, and a wait with
+  nothing else to run still carries on, exactly as before.
+- **Woken only by `PreemptAfterSlice`**, at a slice boundary (every 4M instructions, outside any
+  trap), when `AudioPassDue`: no pass for **60 ms** and none in flight. Unlike the existing
+  preemption this fires **even if the slice made host calls**, because a loader reading files is
+  the case. In normal play the frame pump keeps `_lastPass` fresh, so every pass and callback
+  happens where it always did.
+- **A pass on the engine thread** (`EnginePass`) is the same `CollectPass` the frame pump runs. Its
+  callbacks run on the engine thread, as on Windows, then it parks. It hands the CPU first to a
+  worker its pass just woke (`WokenWorker`: a mixer waiting on `OnBufferEnd`), else round robin.
+
+Log: `engine-passes=` and `audio-preemptions=` on the `guest fps` line; the first eight audio
+preemptions write `thread N preempted at … for an XAudio2 pass` to the thread log.
+**`WPR_WP8_AUDIO_THREAD=0`** turns it off.
+
+Risks, in the order they are likely: a callback the game assumed ran on the main thread (it never
+did on the phone); `DLL_THREAD_ATTACH` into a title that had no extra thread before; a title at
+10-15 fps now getting some passes from the engine thread (harmless by design, but new). The
+SharpDX host (`HostXAudio2`) is unchanged.
+
+To verify: AC Pirates' title music across PLAY, a Halo mission load, Jetpack Joyride's
+start-of-run load, with `engine-passes` climbing during the load and `underruns` not; then the
+WP8 regression set (11-12 titles) for unchanged frames and underruns in play; then
+`XAudio2QueueSuite`. A contract test for parking (a parked thread is never picked; a due pass
+preempts a trap-making thread) is still to write.
+
 ### WP8 achievements and leaderboards reach WPR through one door (2026-10-14)
 
 Every in-scope WP8 native title ships `Microsoft.Xbox.winmd` and calls Xbox Live from its **native**
