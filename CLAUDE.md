@@ -1053,6 +1053,55 @@ on the desktop before and after; it is not this.
 
 Contract tests: 2,177 passed. No `ApplicationPatcher.Version` bump and no reinstall.
 
+### Low-memory pass for 4 GB phones (branch `perf/low-memory-4gb`, 2026-11-02)
+
+Five changes aimed at games staying smooth, and alive, on a 4 GB device. **Built and tested
+nowhere yet**: no .NET SDK was available where this was written, so the managed changes are
+uncompiled, and the two new `wprcpu` exports were checked only by `-fsyntax-only` against dynarmic's
+headers plus a harness that ran the real `wprcpu_copy`/`wprcpu_discard` bodies against `memmove`
+(20,000 random copies, overlapping and not, guest pages scattered in host memory, ASan + UBSan).
+
+| change | where | what it saves |
+| --- | --- | --- |
+| **Dxt1 stored as `Bgra5551`, not `Color`**, when the device has no BC formats but packed 16-bit formats work (forced Vulkan on every phone; never GLES, where `convertPackedShorts` is set) | `TextureFormatShim.StorageFormatFor`; `Encode` now takes the storage format, so all four call sites pass `storageFormat` | half the GPU memory of every Dxt1 texture, which on a phone is system RAM. WP8 titles too: the GPU replay creates its textures through the same shim |
+| `ApplicationCurrentMemoryUsage` / `ApplicationPeakMemoryUsage` answer `DeviceStatus`'s 32 / 48 MB, not the process working set | `DeviceExtendedProperties` | a game that throttles on usage/limit no longer thinks it is always over its 180 MB limit (WPR's whole process was being reported), and no `Process` is built per call |
+| freed guest heap blocks of 64 KB or more give their whole pages back to the OS | `ArmEmulator.FreeHeap` → `IArmCpu.DiscardPages` → `wprcpu_discard` (MADV_DONTNEED; MEM_RESET on Windows) | the WP8 heap only grows and never merges or splits buckets, so every asset a level ever loaded stayed resident |
+| guest-to-guest copies go native | `ArmEmulator.CopyMemory` → `IArmCpu.TryCopyWithin` → `wprcpu_copy`; `realloc`/`HeapReAlloc` now use `CopyMemory` | the "~40% in `wprcpu_read`/`wprcpu_write`" load-time cost measured in "The WP8 runtime must not allocate per guest call", plus a managed array per `realloc` |
+| whole-track decode peaks at about 2x the PCM, not ~5x | `MediaCodecAudioDecoder` (one buffer sized from `KEY_DURATION`, converted in place) | AC Pirates' 92 s title MP3 and the like, on the large-object heap |
+| `:game` answers `OnTrimMemory`/`OnLowMemory` | `GameActivity.RespondToMemoryPressure` | a compacting (`Aggressive`, LOH included) collection when hidden or `RunningCritical`, a non-blocking one at `RunningLow`, at most every 10 s. Log: `[wpr-memory] trim level=…` |
+
+Things to know:
+
+- **The new exports are optional.** `DynarmicNative.Copy`/`.Discard` are looked up with
+  `NativeLibrary.TryGetExport`, not `DllImport`, so the committed `wprcpu.dll` and both
+  `libwprcpu.so` (built before them) still load and every caller keeps its old path. **Nothing
+  native changes until the shim is rebuilt** (`Native/CMakeLists.txt` with mingw for the DLL,
+  `Native/android/CMakeLists.txt` with the NDK for arm64-v8a and x86_64). Unicorn keeps the
+  interface defaults (`false`), so the probe is unchanged.
+- **`wprcpu_copy` is all or nothing.** An unmapped page in either range copies nothing and returns
+  0, and `CopyMemory` falls back to its buffered loop, which throws as before. A copy onto the trap
+  page never takes the native path, so its refusal is still recorded in `RejectedWrites`.
+- **A discarded block reads back zero on Android/Linux and undefined on Windows** until written.
+  It stays mapped, so the GPU replay thread or a guest use-after-free reads memory rather than
+  faulting (that is why Windows uses MEM_RESET, not decommit + recommit). A reused block still
+  reports `LastAllocationReused`, so `Direct3DRuntime.ZeroStorage` behaves as before.
+  **`WPR_WP8_KEEP_FREED=1`** turns it off to rule it out. The stats line gained
+  `guest-heap: used=…MB released=…MB`; `released` counts only what the shim actually discarded.
+- **Dxt1's cost is green's sixth bit** (and the interpolated colours' extra precision): slight
+  banding on smooth gradients is possible. **`WPR_DXT1_FULL_COLOR=1`** restores `Color` storage.
+  Dxt3/Dxt5 stay `Color`: their 16-bit option is `Bgra4444`, and 4-bit colour bands visibly. The
+  `[wpr-texfmt]` line now ends `; Dxt1 stored as Bgra5551` (or `Color`).
+- **Not done:** transcoding DXT to ETC2/ASTC at install (the bigger win for Dxt3/Dxt5, and it removes
+  the load-time CPU decode); streaming the WP8 media engine's decode instead of draining it whole;
+  committing the Windows guest heap on demand (`VirtualAlloc` still commits the whole gigabyte,
+  which is commit charge, not RAM; doing it lazily needs a fault handler under the JIT's page table).
+
+To verify: a WP8 title with big level loads (AC Pirates, Halo) on the S24 or emulator with the
+rebuilt `.so`, watching `guest-heap: released=` climb and the post-PLAY load time against the
+2026-10-14 figures; a Dxt1-heavy XNA title on A2 Vulkan for banding; `adb shell am send-trim-memory
+<pid> RUNNING_CRITICAL` for the trim log line. The `[wpr-adec]` line is unchanged, so an MP3 that
+still plays is the decoder check. No `ApplicationPatcher.Version` bump and no reinstall.
+
 ### WP8 achievements and leaderboards reach WPR through one door (2026-10-14)
 
 Every in-scope WP8 native title ships `Microsoft.Xbox.winmd` and calls Xbox Live from its **native**

@@ -64,6 +64,21 @@ struct Memory {
 #endif
     }
 
+    // Hands the host pages behind a run back to the OS while keeping them mapped and
+    // accessible, so a stray read (the GPU replay thread, a guest use-after-free) still lands
+    // on memory rather than faulting. Linux/Android: MADV_DONTNEED on private anonymous memory
+    // frees the pages now and reads back zero. Windows: MEM_RESET drops them from the working
+    // set without decommitting; their contents are undefined until written, which is all a
+    // freed block ever promised. Decommit + recommit would zero them on Windows too, but would
+    // leave a window in which another thread's read faults.
+    static void discard(uint8_t* base, size_t size) {
+#ifdef _WIN32
+        VirtualAlloc(base, size, MEM_RESET, PAGE_READWRITE);
+#else
+        madvise(base, size, MADV_DONTNEED);
+#endif
+    }
+
     static void release(uint8_t* base, size_t size) {
 #ifdef _WIN32
         (void)size;
@@ -271,6 +286,23 @@ std::uint64_t Callbacks::GetTicksRemaining() {
     return cpu_.ticksLeft;
 }
 
+// Every page of [address, address + size) has host memory. size > 0.
+bool allMapped(const Cpu& cpu, uint32_t address, uint32_t size) {
+    uint64_t last = uint64_t(address) + size - 1;
+    if (last >= (uint64_t{1} << 32)) return false;
+    for (uint32_t p = Memory::page(address), end = Memory::page(uint32_t(last)); p <= end; p++) {
+        if (cpu.memory.host[p] == nullptr) return false;
+    }
+    return true;
+}
+
+bool anyExecutable(const Cpu& cpu, uint32_t address, uint32_t size) {
+    for (uint32_t p = Memory::page(address), last = Memory::page(address + size - 1); p <= last; p++) {
+        if (cpu.memory.prot[p] & WPRCPU_PROT_EXEC) return true;
+    }
+    return false;
+}
+
 }  // namespace
 
 extern "C" {
@@ -407,6 +439,72 @@ WPRCPU_API int wprcpu_write(wprcpu* handle, uint32_t address, const void* source
 
 WPRCPU_API void wprcpu_invalidate(wprcpu* handle, uint32_t address, uint32_t size) {
     reinterpret_cast<Cpu*>(handle)->jit->InvalidateCacheRange(address, size);
+}
+
+WPRCPU_API int wprcpu_copy(wprcpu* handle, uint32_t destination, uint32_t source, uint32_t size) {
+    auto* cpu = reinterpret_cast<Cpu*>(handle);
+    if (size == 0 || destination == source) return 1;
+
+    // All or nothing: a refused copy has touched no byte, so the caller can fall back to its
+    // own path and report the failure exactly as it always did.
+    if (!allMapped(*cpu, source, size) || !allMapped(*cpu, destination, size)) return 0;
+
+    // memmove semantics. Chunks end at whichever of the two page boundaries comes first, since
+    // consecutive guest pages need not be consecutive host memory. An overlapping copy to a
+    // higher address walks from the end, so no chunk reads bytes an earlier one overwrote.
+    constexpr uint32_t mask = kPageSize - 1;
+    bool backwards = destination > source && destination - source < size;
+    uint32_t left = size;
+    while (left > 0) {
+        uint32_t chunk;
+        uint32_t s, d;
+        if (backwards) {
+            uint32_t sEnd = source + left, dEnd = destination + left;
+            chunk = left;
+            uint32_t sRoom = ((sEnd - 1) & mask) + 1, dRoom = ((dEnd - 1) & mask) + 1;
+            if (chunk > sRoom) chunk = sRoom;
+            if (chunk > dRoom) chunk = dRoom;
+            s = sEnd - chunk;
+            d = dEnd - chunk;
+        } else {
+            uint32_t done = size - left;
+            s = source + done;
+            d = destination + done;
+            chunk = left;
+            uint32_t sRoom = kPageSize - (s & mask), dRoom = kPageSize - (d & mask);
+            if (chunk > sRoom) chunk = sRoom;
+            if (chunk > dRoom) chunk = dRoom;
+        }
+        std::memmove(cpu->memory.host[Memory::page(d)] + (d & mask),
+                     cpu->memory.host[Memory::page(s)] + (s & mask), chunk);
+        left -= chunk;
+    }
+
+    // As wprcpu_write: only a copy onto executable pages can stale translated code.
+    if (anyExecutable(*cpu, destination, size)) cpu->jit->InvalidateCacheRange(destination, size);
+    return 1;
+}
+
+WPRCPU_API int wprcpu_discard(wprcpu* handle, uint32_t address, uint32_t size) {
+    auto* cpu = reinterpret_cast<Cpu*>(handle);
+    if ((address & (kPageSize - 1)) != 0 || (size & (kPageSize - 1)) != 0 || size == 0) return 0;
+    if (!allMapped(*cpu, address, size)) return 0;
+
+    // One OS call per run of pages that are also contiguous in host memory.
+    uint32_t first = Memory::page(address), count = size >> kPageBits;
+    uint32_t runStart = first;
+    for (uint32_t p = first + 1; p <= first + count; p++) {
+        bool contiguous = p < first + count &&
+            cpu->memory.host[p] == cpu->memory.host[p - 1] + kPageSize;
+        if (!contiguous) {
+            Memory::discard(cpu->memory.host[runStart], size_t(p - runStart) * kPageSize);
+            runStart = p;
+        }
+    }
+
+    // A freed block on an executable heap page may have held code the guest generated.
+    if (anyExecutable(*cpu, address, size)) cpu->jit->InvalidateCacheRange(address, size);
+    return 1;
 }
 
 WPRCPU_API uint32_t* wprcpu_regs(wprcpu* handle) { return reinterpret_cast<Cpu*>(handle)->jit->Regs().data(); }

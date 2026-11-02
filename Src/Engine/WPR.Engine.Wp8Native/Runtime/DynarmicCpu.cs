@@ -92,6 +92,24 @@ public sealed unsafe class DynarmicCpu : IDisposable
 
     public void Invalidate(uint address, uint size) => DynarmicNative.wprcpu_invalidate(_handle, address, size);
 
+    /// <summary>
+    /// Guest-to-guest memmove in native code. False, having copied nothing, when a page of
+    /// either range is unmapped or the loaded shim predates <c>wprcpu_copy</c>.
+    /// </summary>
+    public bool TryCopy(uint destination, uint source, uint size)
+    {
+        return DynarmicNative.HasCopy && DynarmicNative.wprcpu_copy(_handle, destination, source, size) != 0;
+    }
+
+    /// <summary>
+    /// Returns a page-aligned, mapped range's host pages to the OS; see <c>wprcpu_discard</c>.
+    /// False when the range is not page-aligned and mapped, or the shim predates the export.
+    /// </summary>
+    public bool TryDiscard(uint address, uint size)
+    {
+        return DynarmicNative.HasDiscard && DynarmicNative.wprcpu_discard(_handle, address, size) != 0;
+    }
+
     /// <summary>r0-r15, live.</summary>
     public uint this[int register]
     {

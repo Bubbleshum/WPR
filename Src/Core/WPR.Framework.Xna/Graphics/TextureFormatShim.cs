@@ -57,8 +57,9 @@ namespace Microsoft.Xna.Framework.Graphics
 	/// </para>
 	/// <para>
 	/// <b>DXT is handled here too, and that applies the same rule to content textures.</b> A device
-	/// without BC support (every Adreno and Mali, on either driver) stores <c>Dxt1</c>/<c>Dxt3</c>/
-	/// <c>Dxt5</c> as <c>Color</c>, decompressing on upload. <c>Texture2DReader</c> used to do that
+	/// without BC support (every Adreno and Mali, on either driver) stores <c>Dxt3</c>/<c>Dxt5</c>
+	/// as <c>Color</c> and <c>Dxt1</c> as <c>Bgra5551</c> where packed formats work (else
+	/// <c>Color</c>), decompressing on upload. <c>Texture2DReader</c> used to do that
 	/// decompression itself and create the texture <i>as</i> <c>Color</c>, on the reasoning that it
 	/// owned the texture's whole lifecycle and nothing would read the format back. Games do:
 	/// <b>Asphalt 5</b> (issue #43) treats <c>Format == Color</c> as "this is a recolourable car
@@ -93,6 +94,24 @@ namespace Microsoft.Xna.Framework.Graphics
 		private static bool convertBgra8888 = true;
 		private static bool convertDxt1 = true;
 		private static bool convertS3tc = true;
+
+		/* A Dxt1 texture the device cannot take is stored as Bgra5551, not Color, whenever the
+		 * packed 16-bit formats upload correctly (Vulkan on every phone; not GLES, where
+		 * convertPackedShorts is set). Dxt1 is 5:6:5 colour with 1-bit alpha, so Bgra5551 keeps
+		 * its punch-through alpha exactly and costs half of Color: on a phone, where texture
+		 * memory is system RAM, a game's whole Dxt1 set shrinks from 8x its compressed size to
+		 * 4x. The one loss is green's sixth bit (and the interpolated colours' extra precision),
+		 * which shows only as slight banding on smooth gradients.
+		 *
+		 * Dxt3/Dxt5 stay Color: their 16-bit option is Bgra4444, and 4-bit colour bands
+		 * visibly. WPR_DXT1_FULL_COLOR=1 in the process environment turns this off, so a
+		 * banding report can be checked against the old storage without a rebuild.
+		 */
+		private static readonly bool compactDxt1 = !string.Equals(
+			Environment.GetEnvironmentVariable("WPR_DXT1_FULL_COLOR"),
+			"1",
+			StringComparison.Ordinal
+		);
 
 		/// <summary>
 		/// True when at least one format still needs converting on this device, so the common
@@ -131,7 +150,8 @@ namespace Microsoft.Xna.Framework.Graphics
 				" Dxt1=" + Describe(dxt1Usable) +
 				" Dxt3/Dxt5=" + Describe(s3tcUsable) +
 				" (" + detail + "); conversion " +
-				(Enabled ? "ENABLED" : "not needed")
+				(Enabled ? "ENABLED" : "not needed") +
+				(convertDxt1 ? "; Dxt1 stored as " + StorageFormatFor(SurfaceFormat.Dxt1) : "")
 			);
 		}
 
@@ -169,7 +189,13 @@ namespace Microsoft.Xna.Framework.Graphics
 					return convertBgra8888 ? SurfaceFormat.Color : requested;
 
 				case SurfaceFormat.Dxt1:
-					return convertDxt1 ? SurfaceFormat.Color : requested;
+					if (!convertDxt1)
+					{
+						return requested;
+					}
+					return compactDxt1 && !convertPackedShorts
+						? SurfaceFormat.Bgra5551
+						: SurfaceFormat.Color;
 
 				case SurfaceFormat.Dxt3:
 				case SurfaceFormat.Dxt5:
@@ -208,14 +234,16 @@ namespace Microsoft.Xna.Framework.Graphics
 
 		/// <summary>
 		/// Converts a <paramref name="width"/> x <paramref name="height"/> rect of
-		/// <paramref name="requested"/> at <paramref name="source"/> into 32-bit
-		/// <see cref="SurfaceFormat.Color"/> (R, G, B, A bytes) at <paramref name="destination"/>,
-		/// which must hold <c>width * height * 4</c> bytes. <paramref name="sourceLength"/> bounds
-		/// the read for the block-compressed formats, whose size is not a whole number of bytes
-		/// per pixel.
+		/// <paramref name="requested"/> at <paramref name="source"/> into
+		/// <paramref name="storage"/> at <paramref name="destination"/>, which must hold
+		/// <c>width * height * GetFormatSize(storage)</c> bytes. <paramref name="storage"/> is
+		/// <see cref="SurfaceFormat.Color"/> for everything but a Dxt1 texture stored as
+		/// <see cref="SurfaceFormat.Bgra5551"/>. <paramref name="sourceLength"/> bounds the read
+		/// for the block-compressed formats, whose size is not a whole number of bytes per pixel.
 		/// </summary>
 		internal static unsafe void Encode(
 			SurfaceFormat requested,
+			SurfaceFormat storage,
 			IntPtr source,
 			int sourceLength,
 			IntPtr destination,
@@ -224,7 +252,7 @@ namespace Microsoft.Xna.Framework.Graphics
 		) {
 			if (IsBlockCompressed(requested))
 			{
-				EncodeBlocks(requested, source, sourceLength, destination, width, height);
+				EncodeBlocks(requested, storage, source, sourceLength, destination, width, height);
 				return;
 			}
 
@@ -292,12 +320,14 @@ namespace Microsoft.Xna.Framework.Graphics
 			}
 		}
 
-		/* DXT -> Color through the same decompressor Texture2DReader used before this moved here.
+		/* DXT -> Color through the same decompressor Texture2DReader used before this moved here,
+		 * then packed to Bgra5551 when that is the storage (Decode is exactly that packing).
 		 * A short source (a game handing over less than a whole rect of blocks) is padded with
 		 * zeros rather than read past, so the worst it can do is a black tail.
 		 */
-		private static void EncodeBlocks(
+		private static unsafe void EncodeBlocks(
 			SurfaceFormat requested,
+			SurfaceFormat storage,
 			IntPtr source,
 			int sourceLength,
 			IntPtr destination,
@@ -324,8 +354,17 @@ namespace Microsoft.Xna.Framework.Graphics
 				pixels = DxtUtil.DecompressDxt5(blocks, width, height);
 			}
 
-			System.Runtime.InteropServices.Marshal.Copy(
-				pixels, 0, destination, width * height * 4);
+			if (storage == SurfaceFormat.Color)
+			{
+				System.Runtime.InteropServices.Marshal.Copy(
+					pixels, 0, destination, width * height * 4);
+				return;
+			}
+
+			fixed (byte* rgba = pixels)
+			{
+				Decode(storage, (IntPtr) rgba, destination, width * height);
+			}
 		}
 
 		/// <summary>

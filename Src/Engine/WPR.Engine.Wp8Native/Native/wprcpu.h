@@ -71,6 +71,14 @@ WPRCPU_API int  wprcpu_is_mapped(wprcpu* cpu, uint32_t address);
 WPRCPU_API int  wprcpu_read(wprcpu* cpu, uint32_t address, void* destination, uint32_t size);
 WPRCPU_API int  wprcpu_write(wprcpu* cpu, uint32_t address, const void* source, uint32_t size);
 WPRCPU_API void wprcpu_invalidate(wprcpu* cpu, uint32_t address, uint32_t size);
+// Guest-to-guest memmove, with no host buffer in between. All or nothing: returns 0, having
+// copied nothing, if any page of either range is unmapped. Invalidates translated code in the
+// destination range as wprcpu_write does. (Added after ABI 1; probe for the export.)
+WPRCPU_API int  wprcpu_copy(wprcpu* cpu, uint32_t destination, uint32_t source, uint32_t size);
+// Gives the host pages of a page-aligned, mapped range back to the OS. The range stays mapped
+// and readable; its contents are undefined (zero on Linux/Android) until written. For freed
+// heap blocks. Returns 0 for a misaligned or unmapped range. (Added after ABI 1; probe for it.)
+WPRCPU_API int  wprcpu_discard(wprcpu* cpu, uint32_t address, uint32_t size);
 
 // ---- registers ----------------------------------------------------------------------------
 // Live pointers into the JIT's register file: r0-r15 (16 words) and the VFP bank (64 words,

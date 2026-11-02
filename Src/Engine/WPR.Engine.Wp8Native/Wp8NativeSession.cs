@@ -1326,6 +1326,7 @@ namespace WPR.Wp8Native
                 $"guest-wait={Interlocked.Exchange(ref _guestWaitTicks, 0) * 1000 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, _presented - _statsPresented)}ms/frame " +
                 $"file-io={((_emulator?.Stubs.Files.IoTicks ?? 0) - _statsIoTicks) * 1000 / System.Diagnostics.Stopwatch.Frequency}ms/{(_emulator?.Stubs.Files.IoCalls ?? 0) - _statsIoCalls} " +
                 $"drawlist-build total={build * 1000 / System.Diagnostics.Stopwatch.Frequency}ms textures={_textures.Count} " +
+                $"guest-heap: used={(_emulator?.HeapUsed ?? 0) / (1024 * 1024)}MB released={(_emulator?.BytesReleased ?? 0) / (1024 * 1024)}MB " +
                 $"gpu: replayed={_replay?.DrawsReplayed} skipped={_replay?.DrawsSkipped} frames-dropped={_gpuFramesDropped} {_replay?.Statistics()} unrecorded={string.Join(",", _emulator?.Direct3D.GpuSkipped.Select(p => $"{p.Key}:{p.Value}") ?? [])} " +
                 $"audio: {_emulator?.XAudio2.Summary()} voices={_audio?.VoicesCreated} underruns={_audio?.Underruns} callbacks={_emulator?.XAudio2.CallbacksMade}");
             // What the game did with its sensors (a handful of lines per run; same racy read as below).

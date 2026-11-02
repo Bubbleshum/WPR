@@ -119,4 +119,46 @@ internal static unsafe class DynarmicNative
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     public static extern IntPtr wprcpu_stop_message(IntPtr cpu);
+
+    // ---- optional exports ------------------------------------------------------------------
+    // Added after ABI 1. A wprcpu.dll / libwprcpu.so built before them is still loadable, so
+    // these are looked up rather than imported: a missing one is reported by HasCopy/HasDiscard and the caller keeps its
+    // managed path. A DllImport would throw EntryPointNotFoundException on first call instead.
+
+    private static readonly IntPtr CopyExport = Optional("wprcpu_copy");
+    private static readonly IntPtr DiscardExport = Optional("wprcpu_discard");
+
+    /// <summary>Whether the loaded shim has <c>wprcpu_copy</c>.</summary>
+    public static bool HasCopy => CopyExport != IntPtr.Zero;
+
+    /// <summary>Whether the loaded shim has <c>wprcpu_discard</c>.</summary>
+    public static bool HasDiscard => DiscardExport != IntPtr.Zero;
+
+    /// <summary><c>wprcpu_copy</c>: guest-to-guest memmove, all or nothing. Check <see cref="HasCopy"/> first.</summary>
+    public static int wprcpu_copy(IntPtr cpu, uint destination, uint source, uint size) =>
+        ((delegate* unmanaged[Cdecl]<IntPtr, uint, uint, uint, int>)CopyExport)(cpu, destination, source, size);
+
+    /// <summary><c>wprcpu_discard</c>: return a freed range's pages to the OS. Check <see cref="HasDiscard"/> first.</summary>
+    public static int wprcpu_discard(IntPtr cpu, uint address, uint size) =>
+        ((delegate* unmanaged[Cdecl]<IntPtr, uint, uint, int>)DiscardExport)(cpu, address, size);
+
+    private static IntPtr Optional(string name)
+    {
+        try
+        {
+            // The same resolution the DllImports above use, so this finds the very library
+            // they bind (beside the executable on Windows, libwprcpu.so in the APK).
+            if (NativeLibrary.TryLoad(Library, typeof(DynarmicNative).Assembly, null, out IntPtr library) &&
+                NativeLibrary.TryGetExport(library, name, out IntPtr export))
+            {
+                return export;
+            }
+        }
+        catch
+        {
+            // A load failure here is reported by the first real DllImport call, not this probe.
+        }
+
+        return IntPtr.Zero;
+    }
 }

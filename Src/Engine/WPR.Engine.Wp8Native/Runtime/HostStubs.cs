@@ -285,7 +285,7 @@ namespace WPR.Wp8Native
                         long copy = Math.Min(size, available);
                         if (copy > 0)
                         {
-                            _emulator.WriteMemory(moved, _emulator.ReadMemory(pointer, (int)copy));
+                            _emulator.CopyMemory(moved, pointer, copy);   // native, no per-grow array
                         }
 
                         _emulator.FreeHeap(pointer);
@@ -355,7 +355,7 @@ namespace WPR.Wp8Native
                     {
                         long available = _emulator.AllocationSizeOf(pointer);
                         long copy = Math.Min(size, available == 0 ? size : available);
-                        _emulator.WriteMemory(moved, _emulator.ReadMemory(pointer, (int)copy));
+                        _emulator.CopyMemory(moved, pointer, copy);   // native, no per-grow array
 
                         // The old block is dead the moment its contents have been carried
                         // across, and a game that reallocs a growing buffer would otherwise

@@ -105,6 +105,21 @@ public interface IArmCpu : IDisposable
     /// <summary><see cref="MemWrite(long, byte[])"/> from a caller's buffer; see <see cref="MemReadInto"/>.</summary>
     void MemWriteFrom(long address, ReadOnlySpan<byte> source) => MemWrite(address, source.ToArray());
 
+    /// <summary>
+    /// memmove within guest memory without a host buffer between the two ends. Returns false,
+    /// having copied nothing, when the engine cannot (the default) or a page of either range is
+    /// unmapped; the caller then copies through its own buffer, which reports the failure.
+    /// Big guest memcpys through a host buffer were ~40% of a WP8 title's load time.
+    /// </summary>
+    bool TryCopyWithin(long destination, long source, long count) => false;
+
+    /// <summary>
+    /// Gives the host pages behind a freed, page-aligned range back to the OS. The range stays
+    /// mapped; what it reads before the next write is undefined (zero on Linux and Android).
+    /// Returns false, doing nothing, on an engine that cannot (the default).
+    /// </summary>
+    bool DiscardPages(long address, long size) => false;
+
     // ---- execution -------------------------------------------------------------------------
     /// <summary>
     /// Runs from <paramref name="startAddress"/> (bit 0 = Thumb) for at most
