@@ -46,4 +46,21 @@ public class PartnerTokenTests
     {
         Assert.Equal(Gamer.GetPartnerToken("x"), Gamer.EndGetPartnerToken(null!));
     }
+
+    /// <summary>
+    /// Skulls of the Shogun goes online only from this callback (AngelXNA.Net.NetAsyncGameManager);
+    /// a begin that never completed left it on "Connecting to async servers" for ever.
+    /// </summary>
+    [Fact]
+    public void The_async_begin_completes_and_calls_back_with_its_state()
+    {
+        var called = new System.Threading.ManualResetEventSlim();
+        object? state = null;
+        System.IAsyncResult result = Gamer.BeginGetPartnerToken("http://xboxlive.com/", r => { state = r.AsyncState; called.Set(); }, "mine");
+
+        Assert.True(called.Wait(System.TimeSpan.FromSeconds(5)));
+        Assert.True(result.IsCompleted);
+        Assert.Equal("mine", state);
+        Assert.Equal(Gamer.GetPartnerToken("x"), Gamer.EndGetPartnerToken(result));
+    }
 }

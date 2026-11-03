@@ -1976,6 +1976,22 @@ ids, grouping the page by `xbox_live_game_id`, or the hub listing unlocks only u
 
 No `ApplicationPatcher.Version` bump and no reinstall.
 
+### Xbox LIVE async multiplayer is served by WPR Hub (2026-11-03)
+
+WP7 titles of 2012 played turn-based games over Xbox LIVE's RESTful services
+(`services.xboxlive.com`, `activeservices.xboxlive.com`, `titlestorage.xboxlive.com`). The hub's
+`xbox-live-async` package (hub branch `xbl-async-multiplayer`, `docs/services/xbox-live-async.md` there)
+answers them: player id, sessions, message queues, matchmaking, friends, invitations, title storage.
+It reaches games through the existing `GameNetworkRoutes` host rules; WPR has no code of its own for it.
+The player is the hub account (XUID = `0x0009000000000000` + user id, gamertag = username), from the
+service token, never from the game's `XBL2.0` partner token.
+
+**Skulls of the Shogun** (`2152e203-…`, Xbox title 1297290174) plays "Skulls Anywhere" through it:
+two players matched, both sides played turns (desktop D3D11, scratch hub, 2026-11-03; not run on
+Android). The one WPR change: `Gamer.BeginGetPartnerToken` returned a task that never completed, so
+the game sat on "Connecting to async servers"; it now completes on a pool thread with the placeholder
+token and calls back (`PartnerTokenTests`). Harness route and coordinates are in the hub doc.
+
 ### Every game is attempted; what it carries on past reaches WPR Hub (2026-10-14)
 
 Two halves, one policy (the "run unknown games until they fail" rule): WPR refuses a game up front
