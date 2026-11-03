@@ -64,4 +64,45 @@ public class DeviceThreadDispatchTests
             OffThreadGpuCalls.ClearDeviceThread();
         }
     }
+
+    /// <summary>
+    /// AE Mobile's shape: a loader holds a mutex across a GPU call handed to the device thread,
+    /// while the device thread waits on that mutex. <see cref="WPR.Xna.Compat.WaitHandles"/> must
+    /// run the worker's call while it waits, then take the mutex.
+    /// </summary>
+    [Fact]
+    public void Device_thread_wait_on_a_handle_runs_the_holders_gpu_call()
+    {
+        OffThreadGpuCalls.SetDeviceThread();
+        DeviceThreadDispatch.Enable("test");
+        using var mutex = new Mutex(false);
+        using var held = new ManualResetEventSlim();
+        bool readBack = false;
+        try
+        {
+            var loader = new Thread(() =>
+            {
+                mutex.WaitOne();
+                held.Set();
+                DeviceThreadDispatch.Invoke(() => readBack = true);
+                mutex.ReleaseMutex();
+            });
+            loader.Start();
+            Assert.True(held.Wait(5000));
+
+            Assert.True(WPR.Xna.Compat.WaitHandles.WaitOne(mutex, 5000));
+            Assert.True(readBack);
+            mutex.ReleaseMutex();
+            Assert.True(loader.Join(5000));
+
+            // A timed wait on a handle nobody signals still times out.
+            using var never = new ManualResetEvent(false);
+            Assert.False(WPR.Xna.Compat.WaitHandles.WaitOne(never, 20));
+        }
+        finally
+        {
+            DeviceThreadDispatch.Disable();
+            OffThreadGpuCalls.ClearDeviceThread();
+        }
+    }
 }

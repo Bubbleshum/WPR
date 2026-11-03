@@ -19,6 +19,18 @@
         public event EventHandler<GeoPositionChangedEventArgs<GeoCoordinate>> PositionChanged;
         public event EventHandler<GeoPositionStatusChangedEventArgs> StatusChanged;
 
+        /// <summary>
+        /// The same as <c>new GeoCoordinateWatcher(GeoPositionAccuracy.Default)</c>, as on WP7.
+        /// AE Mobile's framework (AE Roundy POP) builds one this way from its Flurry setup in
+        /// <c>Game.Initialize</c>; without it the MissingMethodException ended Initialize before
+        /// <c>base.Initialize()</c>, no component was initialised, and the backbuffer was later
+        /// reset to 0x0.
+        /// </summary>
+        public GeoCoordinateWatcher()
+            : this(GeoPositionAccuracy.Default)
+        {
+        }
+
         public GeoCoordinateWatcher(GeoPositionAccuracy accuracy)
         {
             _Accuracy = accuracy;
