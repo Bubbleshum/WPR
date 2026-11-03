@@ -424,10 +424,14 @@ namespace WPR.Wp8Native
             Environment.GetEnvironmentVariable("WPR_WP8_AUDIO_THREAD") != "0";
 
         /// <summary>
-        /// How long without a pass before the engine thread runs one: longer than a slow frame
-        /// (20 fps is 50 ms), well inside what a voice keeps queued (at least three passes' worth).
+        /// How long without a pass before the engine thread runs one: longer than a 30 fps frame
+        /// (33 ms), so normal play keeps every pass on the frame loop, and short enough for a WASAPI
+        /// stream that holds only about 100 ms. 60 ms left N.O.V.A. 3's stream (event-driven,
+        /// 50 ms chunks) running dry in every second-long loading stall: +26 underruns over the
+        /// campaign load at 60 ms, 0 at 40. <c>WPR_WP8_AUDIO_PASS_MS</c> overrides it.
         /// </summary>
-        private static readonly long EnginePassDueTicks = System.Diagnostics.Stopwatch.Frequency * 60 / 1000;
+        private static readonly long EnginePassDueTicks = System.Diagnostics.Stopwatch.Frequency
+            * (int.TryParse(Environment.GetEnvironmentVariable("WPR_WP8_AUDIO_PASS_MS"), out int ms) && ms > 0 ? ms : 40) / 1000;
 
         private int _engineThread;          // 0 = not yet, -1 = given up, else its guest thread id
         private bool _enginePassRunning;

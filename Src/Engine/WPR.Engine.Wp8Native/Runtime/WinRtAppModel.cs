@@ -440,8 +440,8 @@ namespace WPR.Wp8Native
                                 }
 
                                 _audioEndpointHandlers.Add(handler);
-                                _rt.KeepAlive(handler);
                                 c.RetI64(_audioEndpointHandlers.Count);
+                                _rt.KeepAlive(handler);   // last: it calls the guest's AddRef and returns S_OK
                             }),
                             ("remove_AudioEndpointChanged", c =>
                             {

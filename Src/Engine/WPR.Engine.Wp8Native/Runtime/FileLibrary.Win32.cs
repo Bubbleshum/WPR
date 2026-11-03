@@ -381,13 +381,34 @@ namespace WPR.Wp8Native
             }
         }
 
-        private static bool ParentExists(string host)
+        private bool ParentExists(string host)
         {
             // "Local/State/" names the folder State, whose parent is Local: Win32 accepts a
             // trailing separator on a directory name, and GetDirectoryName would otherwise
             // answer State itself. Amazing Alex creates every folder that way.
             string? parent = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(host));
-            return parent is null || Directory.Exists(parent);
+            return parent is null || Directory.Exists(parent) || PackageHasFolder(parent);
+        }
+
+        /// <summary>
+        /// Whether a sandbox folder stands for a folder of the package. A relative path the package
+        /// does not have resolves into the sandbox (<see cref="Resolve"/>), but on the phone it
+        /// named a file in the install folder, so a missing file under a package folder is
+        /// ERROR_FILE_NOT_FOUND there, not ERROR_PATH_NOT_FOUND. SQLite's winAccess in the 2012
+        /// builds WP8 titles bundle accepts only the first as "no journal"; Where's My Perry got
+        /// PATH_NOT_FOUND for Content/Perry/Data/perry.db-journal, took it as a disk I/O error, and
+        /// replaced its save with the shipped database at every launch.
+        /// </summary>
+        private bool PackageHasFolder(string hostFolder)
+        {
+            string relative = Path.GetRelativePath(_writeRoot, hostFolder);
+            if (relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relative))
+            {
+                return false;
+            }
+
+            return PackageIndex().TryGetValue(Normalise(relative.Replace(Path.DirectorySeparatorChar, '/')), out string? entry)
+                && Directory.Exists(entry);
         }
 
         // ---------------------------------------------------------------------------

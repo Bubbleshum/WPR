@@ -1055,9 +1055,10 @@ Contract tests: 2,177 passed. No `ApplicationPatcher.Version` bump and no reinst
 
 ### Low-memory pass for 4 GB phones (branch `perf/low-memory-4gb`, 2026-11-02)
 
-Five changes aimed at games staying smooth, and alive, on a 4 GB device. **Built and tested
-nowhere yet**: no .NET SDK was available where this was written, so the managed changes are
-uncompiled, and the two new `wprcpu` exports were checked only by `-fsyntax-only` against dynarmic's
+Five changes aimed at games staying smooth, and alive, on a 4 GB device. **Built on the desktop
+2026-11-03** (0 errors; Android not built or run). The Dxt1 change was checked with Kinectimals on
+forced Vulkan + `WPR_FORCE_NO_DXT=1`: `Bgra5551` and `Color` storage give the same frames (means
+equal, no pixel more than 7/255 apart). The two new `wprcpu` exports were checked only by `-fsyntax-only` against dynarmic's
 headers plus a harness that ran the real `wprcpu_copy`/`wprcpu_discard` bodies against `memmove`
 (20,000 random copies, overlapping and not, guest pages scattered in host memory, ASan + UBSan).
 
@@ -1078,6 +1079,12 @@ Things to know:
   native changes until the shim is rebuilt** (`Native/CMakeLists.txt` with mingw for the DLL,
   `Native/android/CMakeLists.txt` with the NDK for arm64-v8a and x86_64). Unicorn keeps the
   interface defaults (`false`), so the probe is unchanged.
+  **The Windows `wprcpu.dll` was rebuilt with both on 2026-11-03** (WSL: `cmake -S src -B build
+  -DCMAKE_TOOLCHAIN_FILE=<abs>/mingw.cmake` over `~/dyn/build-win`; same 26 exports plus the two).
+  WP8 regression set, 30 s each, old DLL vs new: `released=` 88-246 MB per title, managed memory
+  down where copies used to go through arrays (AC Pirates 356 to 69 MB, Monopoly 175 to 63 MB),
+  frames and underruns unchanged within noise, no stops. **The Android `libwprcpu.so` files were
+  not rebuilt**, so phones still take the managed paths.
 - **`wprcpu_copy` is all or nothing.** An unmapped page in either range copies nothing and returns
   0, and `CopyMemory` falls back to its buffered loop, which throws as before. A copy onto the trap
   page never takes the native path, so its refusal is still recorded in `RejectedWrites`.
@@ -1104,7 +1111,11 @@ still plays is the decoder check. No `ApplicationPatcher.Version` bump and no re
 
 ### WP8 audio keeps playing behind loading screens: the XAudio2 engine thread (2026-11-02)
 
-**Not built or run yet** (no .NET SDK where it was written); same branch as the low-memory pass.
+Same branch as the low-memory pass. **Measured on the desktop (D3D11) 2026-11-03**: N.O.V.A. 3's
+campaign load (WASAPI) added 118 underruns with the thread off, 26 at the original 60 ms threshold,
+0 at 40 ms. The WP8 regression set (12 titles, 30 s, off vs on): no stop or crash, as many frames or
+more, underruns down for every title that had them (Angry Birds Classic 176 to 0, Star Wars II 290
+to 15, Purple 278 to 4, MC4 326 to 139, Monopoly 105 to 57). Not run on Android.
 
 Every XAudio2 pass (feed the host, retire buffers, raise `OnBufferEnd` /
 `OnVoiceProcessingPassStart` / the engine callbacks, and `FrameTick`, which also clocks the media
@@ -1123,7 +1134,8 @@ as XAudio2's own thread does on a phone:
   `PickNext`. It can never be what keeps a run alive: a deadlock is still reported, and a wait with
   nothing else to run still carries on, exactly as before.
 - **Woken only by `PreemptAfterSlice`**, at a slice boundary (every 4M instructions, outside any
-  trap), when `AudioPassDue`: no pass for **60 ms** and none in flight. Unlike the existing
+  trap), when `AudioPassDue`: no pass for **40 ms** (`WPR_WP8_AUDIO_PASS_MS` overrides it; 60 ms let a
+  WASAPI stream holding ~100 ms run dry) and none in flight. Unlike the existing
   preemption this fires **even if the slice made host calls**, because a loader reading files is
   the case. In normal play the frame pump keeps `_lastPass` fresh, so every pass and callback
   happens where it always did.
@@ -1145,6 +1157,31 @@ start-of-run load, with `engine-passes` climbing during the load and `underruns`
 WP8 regression set (11-12 titles) for unchanged frames and underruns in play; then
 `XAudio2QueueSuite`. A contract test for parking (a parked thread is never picked; a due pass
 preempts a trap-making thread) is still to write.
+
+### Where's My Perry saves, and survives its screen changes (2026-11-03)
+
+Where's My Perry (`73165b83-…`, Disney/Walaber, WP8 Direct3D/XAML on its own managed page, FMOD
+on WASAPI, SQLite) lost every setting and all progress at each launch, and crashed on any screen
+change that loaded new art (settings, PLAY). Four general runtime defects, each hiding the next:
+
+| defect | symptom | fix |
+| --- | --- | --- |
+| `AttachSignalNotifier` called `KeepAlive(handler)` first and `Return(S_OK)` after; KeepAlive starts the guest's AddRef by writing r0, so the Return made it AddRef the zero page | FMOD's temporary `SignalHandler` was freed at once; the next signal called freed memory (null call from the notifier's Invoke trap). `add_AudioEndpointChanged` had the same order | KeepAlive last, `if (!KeepAlive(h)) Return(S_OK)`, as every other caller |
+| a notifier thread was a new guest thread with a 1 MB stack, never reused | once FMOD's handler lived, its threads (a NEW notifier from inside every handler call) leaked 200 MB of guest heap every 5 s, 500+ threads in 20 s | notifier threads are pooled (`SignalPoolThread`, up to 8 idle), as the WinRT thread pool reuses its threads |
+| `SwitchTo(fromTrap: false)` (a preemption between slices) took `_resumeAt` from the thread's r12 BEFORE running its `OnResume` | a notifier resumed that way never made its handler call and carried on with the call half set up: jumps to 0, or into a trap slot, on whichever thread ran next. stb_image's inflate loop (PNG decoding) is preempted often enough to hit it on every screen change | r12 is read after the callback for a trap-saved thread |
+| a relative path the package lacks resolves into the sandbox, where its folder does not exist, so a missing file was ERROR_PATH_NOT_FOUND | the game's 2012 SQLite (`winAccess`) accepts only ERROR_FILE_NOT_FOUND as "no journal": `Content/Perry/Data/perry.db-journal` gave `SQLITE_IOERR_ACCESS` ("disk I/O error"), and the engine replaced `Local\perry.db` with the shipped one every launch | `ParentExists` also counts a package folder (`PackageHasFolder`) |
+
+Also: a slice that ends inside the shared preempt-resume stub no longer switches threads (never
+observed; the stub's data block is shared, so it would resume with another thread's pc).
+
+Diagnostics: the run summary lists the first notifier attaches/ends (`signal notifier:`), and
+`WPR_WP8_FILE_LOG=1` now prints every file operation at the end of a normal run, not only after a
+failure. **The tell for the SQLite case** is `[Walaber] ERROR:Database error: disk I/O error` on
+stdout followed by `remove(...Local\perry.db)` and a copy from `Content/` in the file log.
+
+Verified D1 (harness, scratch root): settings and PLAY 6/6 (both crashed 100% before, on 0.2.09
+too), music switched off and still off after a relaunch, `perry.db` integrity ok. Not run: a level
+played to completion, D2-D4, Android.
 
 ### WP8 achievements and leaderboards reach WPR through one door (2026-10-14)
 

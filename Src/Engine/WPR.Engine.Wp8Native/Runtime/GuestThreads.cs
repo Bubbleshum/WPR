@@ -553,6 +553,12 @@ namespace WPR.Wp8Native
         private long _trapsAtSlice = -1;
         private long _resumeAt;
         private long _preemptStub;
+
+        /// <summary>Bytes of code in the resume stub (<see cref="PreemptResumeStub"/>), its address word excluded.</summary>
+        private const int PreemptStubBytes = 20;
+
+        /// <summary>Slice ends that fell inside the resume stub and so did not switch threads.</summary>
+        public int PreemptsDeferredInStub { get; private set; }
         private long _preemptData;
 
         /// <summary>
@@ -582,6 +588,16 @@ namespace WPR.Wp8Native
             // Inside an IT block (CPSR IT bits) the stub could not restore the IT state.
             if ((cpsr & 0x0600FC00) != 0)
             {
+                return here;
+            }
+
+            // Inside the resume stub itself. Its data block is shared by every thread and is
+            // rewritten each time a preempted thread is resumed, so a thread switched out half way
+            // through it would later finish with ANOTHER thread's pc, r12 and flags. It is five
+            // instructions; the next slice finishes it.
+            if (_preemptStub != 0 && (pc & ~1L) >= _preemptStub && (pc & ~1L) < _preemptStub + PreemptStubBytes)
+            {
+                PreemptsDeferredInStub++;
                 return here;
             }
 
@@ -773,6 +789,8 @@ namespace WPR.Wp8Native
                 _resumeAt = fromTrap ? 0 : thread.Registers![Index(Arm.UC_ARM_REG_R12)];
             }
 
+            bool resumesThroughR12 = !fromTrap && _resumeAt != 0 && thread.Registers![Index(Arm.UC_ARM_REG_R12)] == _resumeAt;
+
             // RestoreRegisters put the thread's own r12 - its resume address - back, which is
             // what the trap's bx r12 jumps to.
             thread.Ready = null;
@@ -784,6 +802,18 @@ namespace WPR.Wp8Native
             LoadThreadPointer(thread);
             ThreadSwitches++;
             resumed?.Invoke();
+
+            // Between two slices there is no trap whose bx r12 would pick up what the resume
+            // callback did, so take its r12 now. A callback that calls into the image
+            // (CallEmulated) or continues elsewhere (ContinueAt) does it by writing r12: a signal
+            // notifier's FireSignalNotifier, which sets up SignalHandler::Invoke. Read before the
+            // callback ran, the thread went on from its old r12 with the call half set up: a jump
+            // to 0 or into a trap slot, on whichever thread ran next. Where's My Perry's PNG
+            // decoding is preempted often enough to hit it on every screen change.
+            if (resumesThroughR12 && resumed is not null)
+            {
+                _resumeAt = _cpu.RegRead(Arm.UC_ARM_REG_R12);
+            }
         }
     }
 }

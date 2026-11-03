@@ -453,6 +453,30 @@ namespace WPR.Wp8Native
                 $"defaultedslots=[{string.Join(", ", _emulator.WinRt.DefaultedSlots.Select(p => $"{p.Key} x{p.Value}"))}] " +
                 $"guessedslots=[{string.Join(", ", _emulator.WinRt.GuessedSlots.Select(p => $"{p.Key} x{p.Value}"))}]");
 
+            // WPR_WP8_FILE_LOG=1: every file operation of the run, not only on a failure (a save
+            // that does not survive a relaunch fails nothing).
+            if (Environment.GetEnvironmentVariable("WPR_WP8_FILE_LOG") == "1")
+            {
+                foreach (string line in _emulator.Stubs.Files.Log)
+                {
+                    Log("file: " + line);
+                }
+            }
+
+            // Every SignalNotifier attach and terminate (FMOD's threads on WP8), in order: a
+            // handler fired after its owner let go of it shows up as an attach with no terminate.
+            // FMOD makes a new notifier for every turn of its threads, so only the first few.
+            List<string> notifierLog = _emulator.WinRt.SignalNotifierLog;
+            foreach (string line in notifierLog.Take(6))
+            {
+                Log("signal notifier: " + line);
+            }
+
+            if (notifierLog.Count > 6)
+            {
+                Log($"signal notifier: ... {notifierLog.Count - 6} more line(s) (first {notifierLog.Count} kept)");
+            }
+
             // Where each module was mapped, so a post-mortem's addresses can be put back into the
             // right DLL (a relocated module's code is nowhere near its file's ImageBase).
             foreach (string line in _emulator.ModuleLog.Where(l => l.StartsWith("mapped ", StringComparison.Ordinal)).Take(40))
@@ -472,7 +496,7 @@ namespace WPR.Wp8Native
 
                 // A thread switched out between two instructions because it entered no trap for a
                 // whole slice (GuestThreads.PreemptAfterSlice): a title that polls memory to wait.
-                Log($"threads: {_emulator.Preemptions} preemption(s), {_emulator.ThreadSwitches} switch(es)");
+                Log($"threads: {_emulator.Preemptions} preemption(s), {_emulator.ThreadSwitches} switch(es), {_emulator.PreemptsDeferredInStub} slice end(s) inside the resume stub");
             }
             catch (Exception)
             {
