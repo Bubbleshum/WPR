@@ -364,7 +364,42 @@ namespace WPR
                         Directory.Delete(productStoreFolder, true);
                         return (ApplicationInstallError.Canceled, app, dataFolderProduct);
                     }
-                    string fileDestinationPath = Path.Combine(productStoreFolder, iterateEntry.FullName);
+                    // A WP7 XAP names its entries with WINDOWS separators, and a backslash is an
+                    // ordinary filename character on Android rather than a directory separator.
+                    // Path.Combine does not translate them, so "Content\\Textures\\SplashScreen\\
+                    // bg.xnb" combined with the install folder is one long FILE NAME with no
+                    // directory part: the entry never lands under Content/, where TitleContainer
+                    // looks for it.
+                    //
+                    // This is the install-time half of the v23 defect class described at
+                    // ApplicationPatcher.RedirectIsolatedStorageCalls - "a WP7 title spelling a path
+                    // with a Windows separator, which Android treats as an ordinary filename
+                    // character" (Funny Bounce, blue screen after game over, Android only). v23
+                    // fixed the runtime path APIs and left extraction alone.
+                    //
+                    // AE Roundy POP (c62ad1a0-c2a0-4239-afa6-390141114d05) is the reference case:
+                    // of the 508 entries in its package, 481 are backslash-named and 27 are not,
+                    // and the 27 are exactly the files that reached the install folder. Its first
+                    // asset load then threw ContentLoadException and the game showed a blue frame
+                    // and died on Vulkan, or hung black on OpenGL - reported as a driver problem.
+                    //
+                    // Normalised, then checked: an entry that still resolves outside the install
+                    // folder (a ".." component) is refused instead of written, because the name
+                    // now decides where the file lands. See PackageManifests.FindEntry, which
+                    // already normalises for its own lookups.
+                    string entryPath = iterateEntry.FullName.Replace('\\', '/');
+                    string fileDestinationPath = Path.GetFullPath(Path.Combine(productStoreFolder, entryPath));
+                    string installRoot = Path.GetFullPath(productStoreFolder)
+                        .TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+
+                    if (!fileDestinationPath.StartsWith(installRoot, StringComparison.Ordinal))
+                    {
+                        Log.Warn(LogCategory.AppInstall,
+                            $"Skipping archive entry '{iterateEntry.FullName}': it resolves outside the install folder.");
+                        count++;
+                        progressSet(5 + (int)((float)count / archive.Entries.Count * 50.0f));
+                        continue;
+                    }
 
                     if (Path.GetFileName(fileDestinationPath).Length == 0)
                     {
