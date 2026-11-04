@@ -19,6 +19,19 @@
         public event EventHandler<GeoPositionChangedEventArgs<GeoCoordinate>> PositionChanged;
         public event EventHandler<GeoPositionStatusChangedEventArgs> StatusChanged;
 
+        /// <summary>The parameterless overload, which is what most titles call.</summary>
+        /// <remarks>
+        /// AE Roundy POP's <c>GameService.EnableFlurryTracking</c> constructs this with no
+        /// arguments. With only the accuracy overload declared, that call fails at JIT with
+        /// <c>MissingMethodException: Method not found: 'Void
+        /// System.Device.Location.GeoCoordinateWatcher..ctor()'</c> - the exact failure this
+        /// class's own note says the shim exists to prevent. The phone implementation had both,
+        /// this one defaulting to <see cref="GeoPositionAccuracy.Default"/>.
+        /// </remarks>
+        public GeoCoordinateWatcher() : this(GeoPositionAccuracy.Default)
+        {
+        }
+
         public GeoCoordinateWatcher(GeoPositionAccuracy accuracy)
         {
             _Accuracy = accuracy;
