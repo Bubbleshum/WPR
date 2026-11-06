@@ -302,6 +302,14 @@ namespace WPR.Wp8Native
             {
                 path = path[(installAt + "/Install/".Length)..];
             }
+            else if (path.EndsWith("/Install", StringComparison.OrdinalIgnoreCase) &&
+                     (path.StartsWith('/') || (path.Length > 2 && path[1] == ':')))
+            {
+                // The install folder itself, named without a trailing separator: the package root.
+                // FindFirstFileEx resolves "<folder>\*" by its folder, so Marmalade's listing of
+                // Package.InstalledLocation landed in the sandbox and never found its .s86.
+                path = string.Empty;
+            }
 
             // Otherwise strip a drive letter or leading slash and treat it as relative.
             if (path.Length > 2 && path[1] == ':')

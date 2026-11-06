@@ -474,11 +474,26 @@ namespace WPR.Wp8Native
             _engineThread = _emulator.CreateGuestThread("XAudio2 engine", ArmEmulator.ThumbEntry(gate), 0);
             _emulator.MarkAudioEngineThread(_engineThread);
             _emulator.AudioPassDue = EnginePassDue;
+            _emulator.AudioPassDueAt = IdlePassDueAt;
         }
 
         private bool EnginePassDue() =>
             !_enginePassRunning && _lastPass != 0
             && System.Diagnostics.Stopwatch.GetTimestamp() - _lastPass > EnginePassDueTicks;
+
+        /// <summary>
+        /// How long without a pass before the engine thread runs one when every guest thread is
+        /// waiting (the presenting thread for the host's frame, the rest on their own waits). The
+        /// CPU is idle then, so this is shorter than <see cref="EnginePassDueTicks"/>: a phone's
+        /// XAudio2 runs a pass every 10 ms whatever the game does. Longer than one 60 fps frame, so
+        /// a host that keeps up still sees every pass on the frame loop.
+        /// <c>WPR_WP8_AUDIO_IDLE_PASS_MS</c> overrides it.
+        /// </summary>
+        private static readonly long IdlePassTicks = System.Diagnostics.Stopwatch.Frequency
+            * (int.TryParse(Environment.GetEnvironmentVariable("WPR_WP8_AUDIO_IDLE_PASS_MS"), out int idle) && idle > 0 ? idle : 20) / 1000;
+
+        private long? IdlePassDueAt() =>
+            _enginePassRunning || _lastPass == 0 ? null : _lastPass + IdlePassTicks;
 
         /// <summary>One pass on the engine thread, then park again.</summary>
         private void EnginePass()
@@ -510,6 +525,7 @@ namespace WPR.Wp8Native
 
             _engineThread = -1;
             _emulator.AudioPassDue = null;
+            _emulator.AudioPassDueAt = null;
             if (!_emulator.EndCurrentGuestThread("the XAudio2 engine thread had no thread to hand the CPU back to"))
             {
                 _emulator.Stop("the XAudio2 engine thread ended and no thread is runnable");

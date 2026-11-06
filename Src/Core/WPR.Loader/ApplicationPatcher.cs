@@ -451,7 +451,11 @@ namespace WPR
         // waits, as Compat.Monitor does for `lock`. AE Mobile's framework holds a named Mutex across
         // Texture2D.GetData on a loader thread while BeginDraw waits on it; on desktop OpenGL AE
         // Roundy POP stopped after one frame. Rewrites game IL; not identity-binding.
-        public static int Version => 66;
+        // Bumped to 67: Windows.Devices.Sensors.Accelerometer (+ its reading, event-args and shaken
+        // types) and Windows.Storage.Streams.Buffer joined WPR.Framework.WinRT, so
+        // WinRtImplementedTypes rescopes them. Marmalade's managed page (Shadow Fight 2) reads the
+        // WinRT accelerometer and builds a Buffer. Not identity-binding.
+        public static int Version => 67;
 
         private AssemblyNameReference FnaBackendRef;
         private AssemblyNameReference FNARef;

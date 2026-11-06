@@ -2877,6 +2877,34 @@ namespace WPR.Wp8Native
         {
             DeliverFrame();
             Return(HResultOk);
+            AwaitHostFrame(continueWith: null);
+        }
+
+        /// <summary>
+        /// How the host says it has shown the last frame: <c>Ready</c> once it has (any thread),
+        /// <c>Taken</c> on the guest thread when the presenting thread carries on. Null: the host
+        /// waits for itself inside the frame handlers, and nothing waits here.
+        /// </summary>
+        public (Func<bool> Ready, Action Taken)? HostFrame { get; set; }
+
+        /// <summary>How long a frame wait lasts before the guest carries on anyway (a paused host).</summary>
+        public static readonly TimeSpan HostFrameTimeout = TimeSpan.FromMilliseconds(250);
+
+        /// <summary>
+        /// After <see cref="DeliverFrame"/>: the presenting thread waits for the host to show the
+        /// frame, the other guest threads running meanwhile (<see cref="ArmEmulator.AwaitHostFrame"/>).
+        /// The last act of an import (<paramref name="continueWith"/> null) or of a trap callback.
+        /// </summary>
+        public void AwaitHostFrame(Action? continueWith)
+        {
+            if (HostFrame is { } host)
+            {
+                _emulator.AwaitHostFrame(host.Ready, host.Taken, HostFrameTimeout, continueWith);
+            }
+            else
+            {
+                continueWith?.Invoke();
+            }
         }
 
         /// <summary>

@@ -1349,6 +1349,15 @@ namespace WPR.Wp8Native
 
             if (chars.Length > room)
             {
+                // Windows fills the buffer with what fits before failing, and callers rely on it
+                // (see WideCharToMultiByte). A surrogate pair is not split.
+                int fit = room;
+                if (char.IsHighSurrogate(chars[fit - 1]))
+                {
+                    fit--;
+                }
+
+                _emulator.WriteMemory(destination, Encoding.Unicode.GetBytes(chars, 0, fit));
                 Fail(ErrorInsufficientBuffer);
                 return;
             }
@@ -1453,12 +1462,38 @@ namespace WPR.Wp8Native
 
             if (output.Length > room)
             {
+                // Windows writes as many whole characters as fit, then fails with
+                // ERROR_INSUFFICIENT_BUFFER, and code relies on that: Marmalade's s3e_native sizes
+                // its buffer from WindowsGetStringLen (no room for the NUL), converts with a count of
+                // -1, and uses what was written. Writing nothing left stale heap bytes as the path
+                // it looked for s3e.icf under, so Shadow Fight 2 stopped on "could not find s3e.icf".
+                _emulator.WriteMemory(destination, FittingPrefix(text, room, utf ? Encoding.UTF8 : CodePage(codePage, new EncoderReplacementFallback("?"), DecoderFallback.ReplacementFallback)!));
                 Fail(ErrorInsufficientBuffer);
                 return;
             }
 
             _emulator.WriteMemory(destination, output);
             _frame.Return(output.Length);
+        }
+
+        /// <summary>The encoding of the longest run of whole characters of <paramref name="text"/> that fits in <paramref name="room"/> bytes.</summary>
+        private static byte[] FittingPrefix(string text, int room, Encoding encoding)
+        {
+            int used = 0, end = 0;
+            while (end < text.Length)
+            {
+                int length = char.IsHighSurrogate(text[end]) && end + 1 < text.Length && char.IsLowSurrogate(text[end + 1]) ? 2 : 1;
+                int bytes = encoding.GetByteCount(text.AsSpan(end, length));
+                if (used + bytes > room)
+                {
+                    break;
+                }
+
+                used += bytes;
+                end += length;
+            }
+
+            return encoding.GetBytes(text.Substring(0, end));
         }
 
         // ---------------------------------------------------------------------------

@@ -77,6 +77,9 @@ namespace WPR.Wp8Native
             /// the scheduler; only <see cref="PreemptAfterSlice"/> switches to it, when a pass is due.
             /// </summary>
             public bool Parked { get; set; }
+
+            /// <summary>Its stack, a block from the guest heap; 0 once given back (<see cref="ReclaimFinishedStacks"/>).</summary>
+            public long Stack { get; set; }
         }
 
         private const int GuestThreadStackBytes = 1024 * 1024;
@@ -96,6 +99,19 @@ namespace WPR.Wp8Native
 
         /// <summary>Times a thread ended with nothing runnable and the run waited out another's timed wait.</summary>
         public int TimedWaitsWaitedOut { get; private set; }
+
+        /// <summary>
+        /// Interrupts the host's sleep in <see cref="WaitOutTimedWaits"/>, which otherwise lasts until
+        /// the earliest timed wait runs out. Set by <see cref="WakeIdle"/>.
+        /// </summary>
+        private readonly AutoResetEvent _idleWake = new(false);
+
+        /// <summary>
+        /// Something a blocked thread waits for has happened on another host thread (the host has
+        /// shown a frame): a scheduler sleeping because nothing could run looks again at once.
+        /// Any thread.
+        /// </summary>
+        public void WakeIdle() => _idleWake.Set();
 
         private GuestThread CurrentThread
         {
@@ -135,7 +151,18 @@ namespace WPR.Wp8Native
             GuestThread creator = CurrentThread;
             GuestThread thread = new(_nextThreadId++, name);
 
+            ReclaimFinishedStacks();
             long stack = AllocateHeap(GuestThreadStackBytes);
+            if (LastAllocationReused)
+            {
+                // A new thread's stack is zero on Windows, as the heap's untouched end is here.
+                for (long done = 0; done < GuestThreadStackBytes; done += StackZeros.Length)
+                {
+                    WriteMemory(stack + done, StackZeros);
+                }
+            }
+
+            thread.Stack = stack;
             long top = (stack + GuestThreadStackBytes - 64) & ~7L;
             RecordGuestThreadStack(stack, stack + GuestThreadStackBytes);
 
@@ -158,6 +185,31 @@ namespace WPR.Wp8Native
             _threads.Add(thread);
             ThreadNote($"thread {thread.Id} '{name}' created by {creator.Id} at 0x{entry:X8}({argument:X8}), stack 0x{stack:X8}");
             return thread.Id;
+        }
+
+        private static readonly byte[] StackZeros = new byte[64 * 1024];
+
+        /// <summary>
+        /// Gives the stacks of threads that have ended back to the heap, so the next thread can take
+        /// one. They were never freed, and a title that starts a thread per task leaked a megabyte a
+        /// task: FIFA 13 runs every <c>std::async</c> on a new ConcRT worker (one exits as soon as the
+        /// queue is empty), made over 700 by the time a match loaded, and the run stopped with the
+        /// guest heap exhausted. Only threads other than the running one: the thread that is ending
+        /// is still on its stack until the switch away from it.
+        /// </summary>
+        private void ReclaimFinishedStacks()
+        {
+            foreach (GuestThread finished in _threads)
+            {
+                if (!finished.Finished || finished.Stack == 0 || finished == _currentThread)
+                {
+                    continue;
+                }
+
+                ForgetGuestThreadStack(finished.Stack);
+                FreeHeap(finished.Stack);
+                finished.Stack = 0;
+            }
         }
 
         private static int Index(int register) => Array.IndexOf(CoreRegisters, register);
@@ -254,30 +306,8 @@ namespace WPR.Wp8Native
         private GuestThread? NextAfterExit(GuestThread leaving)
         {
             GuestThread? next = PickNext(leaving);
-            bool waited = false;
-            while (next is null && EarliestTimedWait(leaving) is { } waiter)
-            {
-                waited = true;
-                long now = System.Diagnostics.Stopwatch.GetTimestamp();
-                long due = waiter.WakeAt - now;
-                if (due > 0)
-                {
-                    Thread.Sleep(TimeSpan.FromSeconds((double)due / System.Diagnostics.Stopwatch.Frequency) + TimeSpan.FromMilliseconds(1));
-                }
-                else if (-due > System.Diagnostics.Stopwatch.Frequency / 10)
-                {
-                    // Its time ran out a while ago and it still cannot run: it is waiting for
-                    // something besides the clock (the lock a condition wait retakes). Not a sleeper.
-                    waiter.WakeAt = 0;
-                }
-                else
-                {
-                    Thread.Sleep(1);
-                }
-
-                next = PickNext(leaving);
-            }
-
+            bool waited = next is null && EarliestTimedWait(leaving) is not null;
+            next ??= WaitOutTimedWaits(leaving, stopEarly: null, stopAt: long.MaxValue);
             if (waited && next is not null)
             {
                 TimedWaitsWaitedOut++;
@@ -285,6 +315,152 @@ namespace WPR.Wp8Native
             }
 
             return next;
+        }
+
+        /// <summary>
+        /// Waits in real time for another thread's timed wait to run out while nothing can run, and
+        /// returns the thread that then can; null if no other thread is in a timed wait, once
+        /// <paramref name="stopEarly"/> comes true, or once <paramref name="stopAt"/> (Stopwatch
+        /// ticks) passes.
+        /// </summary>
+        /// <remarks>
+        /// <para>While it waits, a parked XAudio2 engine thread whose idle pass falls due
+        /// (<see cref="AudioPassDueAt"/>) is returned too: the CPU is idle, so this is where a
+        /// phone's XAudio2 thread would run. It is never returned when nothing else is waiting on
+        /// the clock, so it still cannot keep a deadlocked run alive.</para>
+        /// <para>The sleep is cut short by <see cref="WakeIdle"/>, so a thread waiting for the host
+        /// (<see cref="AwaitHostFrame"/>) runs as soon as the host has shown its frame rather than
+        /// when some other thread's timed wait happens to end.</para>
+        /// </remarks>
+        /// <param name="untilStop">
+        /// Wait until <paramref name="stopAt"/> even if no other thread is in a timed wait (the
+        /// caller's own wait is the timed one). Otherwise that case returns null at once, as it
+        /// always did.
+        /// </param>
+        private GuestThread? WaitOutTimedWaits(GuestThread me, Func<bool>? stopEarly, long stopAt, bool untilStop = false)
+        {
+            GuestThread? next = null;
+            while (next is null && stopEarly?.Invoke() != true)
+            {
+                GuestThread? waiter = EarliestTimedWait(me);
+                if (waiter is null && !untilStop)
+                {
+                    return null;
+                }
+
+                long now = System.Diagnostics.Stopwatch.GetTimestamp();
+                if (now >= stopAt)
+                {
+                    return null;
+                }
+
+                if (_audioEngine is { Parked: true, Finished: false } engine && engine != me
+                    && AudioPassDueAt?.Invoke() is { } audioAt && audioAt <= now)
+                {
+                    IdleAudioPasses++;
+                    return engine;
+                }
+
+                long until = Math.Min(waiter?.WakeAt ?? long.MaxValue, stopAt);
+                if (_audioEngine is { Parked: true, Finished: false } parked && parked != me && AudioPassDueAt?.Invoke() is { } next2)
+                {
+                    until = Math.Min(until, next2);
+                }
+
+                long due = until - now;
+                if (due > 0)
+                {
+                    long cap = System.Diagnostics.Stopwatch.Frequency; // look again at least once a second
+                    _idleWake.WaitOne(TimeSpan.FromSeconds((double)Math.Min(due, cap) / System.Diagnostics.Stopwatch.Frequency) + TimeSpan.FromMilliseconds(1));
+                }
+                else if (waiter is not null && waiter.WakeAt <= now && -due > System.Diagnostics.Stopwatch.Frequency / 10)
+                {
+                    // Its time ran out a while ago and it still cannot run: it is waiting for
+                    // something besides the clock (the lock a condition wait retakes). Not a sleeper.
+                    waiter.WakeAt = 0;
+                }
+                else
+                {
+                    _idleWake.WaitOne(1);
+                }
+
+                next = PickNext(me);
+            }
+
+            return next;
+        }
+
+        /// <summary>Times the parked XAudio2 engine ran a pass while every other thread was waiting.</summary>
+        public int IdleAudioPasses { get; private set; }
+
+        /// <summary>
+        /// When the parked XAudio2 engine thread should next run a pass if the CPU is otherwise idle
+        /// (Stopwatch ticks), or null when none is wanted. Shorter than <see cref="AudioPassDue"/>'s
+        /// threshold, because an idle CPU costs nothing to use.
+        /// </summary>
+        public Func<long?>? AudioPassDueAt { get; set; }
+
+        /// <summary>The thread waiting in <see cref="AwaitHostFrame"/>, or null.</summary>
+        private GuestThread? _hostFrameWaiter;
+
+        /// <summary>Frame waits during which other guest threads got the CPU.</summary>
+        public int HostFrameHandoffs { get; private set; }
+
+        /// <summary>Slices cut short because the host had shown the frame a thread was waiting for.</summary>
+        public int HostFramePreemptions { get; private set; }
+
+        /// <summary>
+        /// The presenting thread waits for the host to show the frame it just finished, as a phone's
+        /// Present waits for vsync: only that thread. Every other guest thread runs meanwhile (the
+        /// game's mixer, its loaders, the XAudio2 engine thread), and when none can, the host sleeps
+        /// until the frame is shown, a timed wait ends or an audio pass is due.
+        /// </summary>
+        /// <remarks>
+        /// <para>This used to be a plain host wait on the emulator's only thread, so nothing in the
+        /// guest ran while the host drew. A host frame that took 30-50 ms (a Vulkan present pushing
+        /// back, a replay uploading new vertex data) stopped the game's audio for that long: on the
+        /// Galaxy S24, Asphalt 7's race lost about four AudioTrack buffers a second, and its dry
+        /// spells followed the frames the host was late with (r = 0.91 over 47 five-second
+        /// windows).</para>
+        /// <para>Inside an import (<paramref name="continueWith"/> null) this must be the handler's
+        /// last act, as with <see cref="BlockCurrentThread"/>; with a continuation it is the last
+        /// act of a trap callback, as with <see cref="RunOtherThreads"/>. <paramref name="taken"/>
+        /// runs on this thread when it carries on, whether the frame was shown or the wait ran out.</para>
+        /// </remarks>
+        public void AwaitHostFrame(Func<bool> ready, Action taken, TimeSpan timeout, Action? continueWith)
+        {
+            GuestThread me = CurrentThread;
+            long deadline = System.Diagnostics.Stopwatch.GetTimestamp() + (long)(timeout.TotalSeconds * System.Diagnostics.Stopwatch.Frequency);
+            bool Done() => ready() || System.Diagnostics.Stopwatch.GetTimestamp() >= deadline;
+
+            GuestThread? next = Done() ? null : PickNext(me) ?? WaitOutTimedWaits(me, Done, deadline, untilStop: true);
+            if (next is null)
+            {
+                taken();
+                continueWith?.Invoke();
+                return;
+            }
+
+            HostFrameHandoffs++;
+            _hostFrameWaiter = me;
+            me.Ready = Done;
+            me.OnResume = () =>
+            {
+                _hostFrameWaiter = null;
+                taken();
+            };
+            me.Why = "the host's next frame";
+            me.WakeAt = deadline;
+            Save(me);
+            if (continueWith is not null)
+            {
+                long resume = _freeReturnTraps.Count > 0
+                    ? ReuseReturnTrap("frame wait resume", continueWith)
+                    : AllocateTrapSlot("frame wait resume", TrapKind.RecycledReturn, continueWith);
+                me.Registers![Index(Arm.UC_ARM_REG_R12)] = ThumbEntry(resume);
+            }
+
+            SwitchTo(next);
         }
 
         private GuestThread? EarliestTimedWait(GuestThread except)
@@ -318,7 +494,14 @@ namespace WPR.Wp8Native
         public bool BlockCurrentThread(Func<bool> ready, Action? onResume = null, string? why = null, TimeSpan? timeout = null)
         {
             GuestThread me = CurrentThread;
-            GuestThread? next = PickNext(me);
+            long wakeAt = timeout is { } limit
+                ? System.Diagnostics.Stopwatch.GetTimestamp() + Math.Max(1, (long)(limit.TotalSeconds * System.Diagnostics.Stopwatch.Frequency))
+                : long.MaxValue;
+
+            // Nothing can run now, but another thread is asleep (a timed wait): wait for it rather
+            // than call this wait unsatisfiable, as a thread that exits does (NextAfterExit). The
+            // sleeper may be the one that satisfies it.
+            GuestThread? next = PickNext(me) ?? WaitOutTimedWaits(me, ready, wakeAt);
             if (next is null)
             {
                 if (!ready())
@@ -334,9 +517,7 @@ namespace WPR.Wp8Native
             me.Ready = ready;
             me.OnResume = onResume;
             me.Why = why;
-            me.WakeAt = timeout is { } t
-                ? System.Diagnostics.Stopwatch.GetTimestamp() + Math.Max(1, (long)(t.TotalSeconds * System.Diagnostics.Stopwatch.Frequency))
-                : 0;
+            me.WakeAt = wakeAt == long.MaxValue ? 0 : wakeAt;
             Save(me);
             SwitchTo(next);
             return true;
@@ -613,6 +794,15 @@ namespace WPR.Wp8Native
                 return PreemptTo(me, engine, pc, here, "for an XAudio2 pass");
             }
 
+            // The host has shown the frame the presenting thread was waiting for: it carries on now,
+            // host calls or not, so a busy worker (a loader making file calls) cannot hold the game's
+            // next frame back for as long as it keeps going.
+            if (_hostFrameWaiter is { Finished: false } waiter && waiter != me && waiter.Ready?.Invoke() == true)
+            {
+                HostFramePreemptions++;
+                return PreemptTo(me, waiter, pc, here, "for the frame the host has shown");
+            }
+
             if (enteredTraps || _threads.Count < 2)
             {
                 return here;
@@ -659,12 +849,41 @@ namespace WPR.Wp8Native
             // A mixer the pass just woke (OnBufferEnd sets the event it waits on) goes first, as
             // on a phone where it would run at once: handed straight back to a busy loader, it
             // would wait for the next pass to refill, and the voice could run dry in between.
-            if ((WokenWorker(me) ?? PickNext(me)) is not { } next)
+            GuestThread? next = WokenWorker(me) ?? PickNext(me);
+            long resume;
+            if (next is null)
             {
-                return false;
+                // Every other thread is waiting. If one of them waits on the clock (the presenting
+                // thread waiting for the host's frame, a timed wait), the CPU is idle until then:
+                // wait for it here, and run the next pass on this thread if that falls due first.
+                // With no timed wait anywhere nothing can ever run again, and the thread ends as
+                // before, so a deadlock is still reported as one.
+                if (EarliestTimedWait(me) is null)
+                {
+                    return false;
+                }
+
+                long passAt = AudioPassDueAt?.Invoke() ?? long.MaxValue;
+                next = WaitOutTimedWaits(me, stopEarly: null, stopAt: passAt, untilStop: true);
+                if (next is null)
+                {
+                    if (EarliestTimedWait(me) is null && System.Diagnostics.Stopwatch.GetTimestamp() < passAt)
+                    {
+                        return false;
+                    }
+
+                    // Nothing else can run and a pass is due: run it on this thread, from a fresh
+                    // trap when this one returns, rather than by recursion.
+                    IdleAudioPasses++;
+                    resume = _freeReturnTraps.Count > 0
+                        ? ReuseReturnTrap("audio engine again", then)
+                        : AllocateTrapSlot("audio engine again", TrapKind.RecycledReturn, then);
+                    _cpu.RegWrite(Arm.UC_ARM_REG_R12, ThumbEntry(resume));
+                    return true;
+                }
             }
 
-            long resume = _freeReturnTraps.Count > 0
+            resume = _freeReturnTraps.Count > 0
                 ? ReuseReturnTrap("audio engine resume", then)
                 : AllocateTrapSlot("audio engine resume", TrapKind.RecycledReturn, then);
             Save(me);

@@ -1210,7 +1210,7 @@ namespace WPR.Wp8Native
                     }
 
                     _emulator.Direct3D.DeliverFrame();
-                    NextFrame();
+                    _emulator.Direct3D.AwaitHostFrame(NextFrame);
                 });
             });
         }
@@ -1239,7 +1239,7 @@ namespace WPR.Wp8Native
                     }
 
                     _emulator.Direct3D.DeliverFrame();
-                    NextFrame();
+                    _emulator.Direct3D.AwaitHostFrame(NextFrame);
                 });
             });
         }

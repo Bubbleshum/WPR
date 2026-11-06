@@ -17,7 +17,9 @@
     Real objects matter: WPR.Framework.Xbox (Microsoft.Xbox) returns these, and a game sets
     Completed on them or awaits them.
 
-    No references. A game-facing identity; nothing in WPR's engine tier is named here.
+    One reference: WPR.Engine.Sensors, for Windows.Devices.Sensors.Accelerometer, which reads the
+    same IAccelerometerProvider as the WP7 Microsoft.Devices.Sensors.Accelerometer. That contract
+    speaks System.Numerics only and references nothing, so the edge runs one way.
   -->
 
   <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
@@ -33,6 +35,10 @@
     <Nullable>enable</Nullable>
     <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net10.0-android'">24.0</SupportedOSPlatformVersion>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(SolutionDir)Engine\WPR.Engine.Sensors\WPR.Engine.Sensors.csproj" />
+  </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="WPR.SilverlightCompability.Tests" />

@@ -1,3 +1,8 @@
+// Events a platform without the hardware never raises.
+#pragma warning disable CS0067
+
+using System;
+
 namespace Microsoft.Phone.Info
 {
     /// <summary>
@@ -24,5 +29,28 @@ namespace Microsoft.Phone.Info
         public static long ApplicationCurrentMemoryUsage => 32L * 1024 * 1024;
         public static long ApplicationPeakMemoryUsage => 48L * 1024 * 1024;
         public static long ApplicationMemoryUsageLimit => 256L * 1024 * 1024;
+
+        /// <summary>
+        /// What powers the device. WPR has no battery seam, so this answers
+        /// <see cref="PowerSource.Battery"/>, a phone in the hand, and
+        /// <see cref="PowerSourceChanged"/> is never raised.
+        /// </summary>
+        public static PowerSource PowerSource => PowerSource.Battery;
+
+        public static event EventHandler? PowerSourceChanged;
+
+        /// <summary>No WP8 phone in this library's target set had a hardware keyboard.</summary>
+        public static bool IsKeyboardPresent => false;
+
+        public static bool IsKeyboardDeployed => false;
+
+        public static event EventHandler? KeyboardDeployedChanged;
+    }
+
+    /// <summary>Shim for <c>Microsoft.Phone.Info.PowerSource</c>.</summary>
+    public enum PowerSource
+    {
+        Battery = 0,
+        External = 1,
     }
 }

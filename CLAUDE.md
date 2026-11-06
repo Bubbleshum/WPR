@@ -1158,6 +1158,92 @@ WP8 regression set (11-12 titles) for unchanged frames and underruns in play; th
 `XAudio2QueueSuite`. A contract test for parking (a parked thread is never picked; a due pass
 preempts a trap-making thread) is still to write.
 
+### A WASAPI stream is woken again while another write fits (2026-11-04)
+
+FIFA 13 (`b7f0b0ac-…`, WASAPI, event-driven) stuttered in matches on the S24. AudioFlinger
+(`dumpsys media.audio_flinger`, the `:game` pid's track row, `Underruns` column = frames) showed
+none in the menus (24 fps) and about a fifth of the frames served as underrun in a match (16-20
+fps), while WPR's own `underruns=` barely moved. The game writes a fixed ~2048 frames per event
+wake; a phone set the event every 10 ms device period while there was room, `PhoneAudio` sets it
+once per guest frame (`Tick`), so the stream made frame-rate x chunk of sound. `ReleaseBuffer` now
+sets the event again at once while another write of the same size still fits; a wake that writes
+nothing is not repeated. A game that writes everything available is unaffected (no room is left).
+Contract checks in `MediaSuite` (WASAPI). **Not yet run on the phone.** The tell for this class:
+underruns that scale with the frame rate, AudioFlinger's count climbing while WPR's stays flat.
+
+### Only the presenting thread waits for the host's frame (2026-11-05)
+
+Measured first, from the S24's own `Logs/wpr-game.log` (pull it with plain `adb pull`, no run-as):
+the `hitch #N` lines split each slow frame into guest time and "waiting for the host".
+
+- **Asphalt 7** (XAudio2, GPU-bound in races): hitches were mostly host time (`guest 21, waiting for
+  the host 33`: a Vulkan present pushing back, or a replay uploading new vertex data), and dry spells
+  followed them (r = 0.91 over 47 five-second windows; AudioTrack `underruns=1058` in ~4 minutes).
+  The guest's whole host thread sat in `_tick.Wait`, so no guest thread could refill.
+- **FIFA 13** (WASAPI): `waiting for the host 0` on every hitch. Its matches run 55-70 ms frames in
+  guest code, and the 50 ms WASAPI buffer held less than one of them.
+
+Two changes:
+
+- `ArmEmulator.AwaitHostFrame` (GuestThreads.cs): after `DeliverFrame` the presenting thread
+  blocks as a guest thread (`Direct3DRuntime.AwaitHostFrame`, from swap-chain `Present` and the XAML
+  host's Draw/GetTexture), so other guest threads run. With none runnable, the host sleeps in
+  `WaitOutTimedWaits`, now cut short by `WakeIdle` (called from `WakeGuest`), and wakes the parked
+  XAudio2 engine thread for a pass 20 ms after the last one (`AudioPassDueAt`,
+  `WPR_WP8_AUDIO_IDLE_PASS_MS`). A parked engine thread with nothing else runnable waits for the
+  next timed wait instead of ending, unless nothing waits on the clock (a deadlock is still one).
+  A shown frame preempts a busy worker at the next slice (`frame-preemptions`). The session handlers
+  no longer wait; `WPR_WP8_FRAME_WAIT=host` restores the old host wait for A/B runs.
+- `PhoneAudio.MinimumBufferDuration` is 150 ms (was 50).
+
+The `guest fps` line gained `idle-passes`, `frame-waits-shared`, `frame-preemptions`. Side effect: a
+title whose main thread sleeps (FIFA's `Concurrency::wait(40 ms)` menu loop) now gets its passes and
+callbacks on the engine thread, as XAudio2's thread did on a phone.
+
+Desktop D1 A/B, 10 WP8 titles, 35 s, clean stores: same screens, no stops, frames within noise,
+underruns equal or lower (Monopoly is noisy: 51/49 base, 35/40 new). The desktop never shows the
+host stall, so the phone (Asphalt race, FIFA match, AudioFlinger counts) is the real test.
+
+**S24, Asphalt 7 race** (test build 36, with `Concurrency::wait` answered as a yield so the race ran
+at its uncapped ~60 fps): WPR's dry-spell counter rose ~0.35 a second in the race, against ~0.8 at
+60 fps without this change and ~1.5 on build 33; about 40 frame waits a second were shared with
+other guest threads. **With `Concurrency::wait` as a real sleep the race is held at the game's own
+~30 fps, the host is never behind, and this change barely runs** (8 shared waits in a whole race).
+FIFA 13 not yet run on the phone with it. Contract tests 2409/2410; the failing `add_AudioEndpointChanged` fails
+the same way without this change.
+
+### FIFA 13 plays a match; Vulkan's uniform buffer and vertex streams; FNA3D.dll rebuilt with MinGW (2026-11-05)
+
+FIFA 13 (WP8 native, D3D11) ran its menus and force-closed on entering any game mode. All the
+fixes are general:
+
+| defect | symptom | fix |
+| --- | --- | --- |
+| finished guest threads never gave their 1 MB stacks back | the match load starts many short-lived threads: guest heap exhausted, the run stopped | `ReclaimFinishedStacks` reuses a finished thread's stack (zeroed); a heap-exhausted stop now says so |
+| an Aon9 sampler entry was read in the wrong order | pitch and players sampled the wrong texture: a dark grid | entries are (resource slot, sampler slot, sN register, reserved): FIFA `(1,0,0)(2,1,1)(0,2,2)`, AC Pirates `(0,0,0)(1,0,1)(2,0,2)` |
+| a runtime constant's register was read from its kind field | FIFA's skinned shaders keep the position fix-up in c217/c218, so the constant table was too short: players drawn as kit only, no heads or arms | entries are (uint16 kind, uint16 register); the register is not always c0 |
+| a texture created with mip levels but data for the top only | the lower levels were never filled | `Wp8GpuReplay.UploadMips` box-filters the missing levels |
+| a vertex stream replaced on every draw | on Vulkan every Discard makes a new VkBuffer the driver keeps: ~98,000 draws in one load frame, LOW_MEMORY kill at 2.5 GB on the S24 | one 1 MB ring vertex buffer (NoOverwrite, Discard only on wrap); an array used twice, in one frame or across frames, is cached. Desktop private memory 2373 → 1919 MB at the same point |
+| MojoShader's Vulkan uniform buffer overran its 8 MB per-frame half | SIGSEGV in `update_uniform_buffer` on the phone during the load | a block that does not fit wraps to the frame's start; `MOJOSHADER_vkGetUniformBufferUsage` and the log line `Vulkan: uniform buffer peak per frame: vertex … KB, pixel … KB of 8000 KB; N overflow(s)` |
+
+**Frame rate: `Concurrency::wait` stays a yield, by the user's choice.** Games use it as their frame
+limiter: Asphalt 7's is `use_fps_limit=30` for every `wp_*` profile in its own
+`data/DeviceConfig/DeviceConfig.xml`; FIFA's is `WP8CONFIGURATION/FPS=24`. Honouring it held Asphalt to
+30 (and 24 without compensating for the virtual guest clock, which sees almost no time pass in a
+sleep), which the user found unplayable. Cost: FIFA's menus run fast. Do not reintroduce the sleep
+without asking.
+
+**The desktop `FNA3D.dll` is now a MinGW build** (WSL Ubuntu, `/root/mingw.cmake`, plus
+`-DCMAKE_POLICY_VERSION_MINIMUM=3.5`), so the "cannot be rebuilt here (no MSVC)" notes elsewhere in
+this file are out of date: desktop native fixes can ship. Same 83 exports, D3D11/Vulkan/OpenGL
+drivers, imports only KERNEL32/USER32/SDL2/msvcrt, swizzle table checked. A/B against the old MSVC DLL
+with no difference: D3D11 12 titles, Vulkan 6 (PvZ included, which also gets the passLock fix on the
+desktop now), OpenGL 5. All three `libFNA3D.so` were rebuilt with the same sources.
+
+Verified: FIFA 13 menu → match on D1, D2 and D3 (desktop harness); WP8 regression set (10 titles)
+unchanged. Phone: an earlier build with these fixes passed the match load on the S24 (P1).
+**Not run**: the rebuilt x86_64 / armeabi-v7a `.so` on any device, and this exact build on the phone.
+
 ### Where's My Perry saves, and survives its screen changes (2026-11-03)
 
 Where's My Perry (`73165b83-…`, Disney/Walaber, WP8 Direct3D/XAML on its own managed page, FMOD
@@ -2667,6 +2753,50 @@ D1/D2, later on D3/D4. `tilt -0.6 0 -0.8` steers (the tutorial's "tilt to the le
 
 Contract tests: cube faces and face updates in `Direct3DStateSuite`, offset-bound interleaved
 streams in `VertexSnapshotSuite`. No `ApplicationPatcher.Version` bump and no reinstall.
+
+**Exiting crashes in the game's own teardown, and now closes quietly (2026-11-05).** Quitting through the game's
+own Back > Quit dialog stops the guest with `null call to 0x00000000 from 0x10312CE3`. The cause
+is in the game's shutdown, before it ever calls the page's `ExitGame` callback (which would call
+`Application.Current.Terminate()`): the file-system manager's destructor (`0x10311CA8`) nulls its
+global (`[0x106BB6E0]`) first, then destroys its children, and a child's destructor
+(`0x10311814`) calls `FileSystem::...(path)` (`0x10312C94`) through that null global. `r0 =
+0xB16B00B5` is NOT a freed-object marker: the game uses that constant as the main thread's key in
+its thread-keyed lookups. Why a phone would not take the same branch is unknown (the child reads
+its own string capacity at `[item+0x20]` after deleting it; MSVC's `~basic_string` leaves 15
+there, which would skip the call, and WPR's `FreeHeap` does not touch small blocks).
+The child destructor's call is not gated on the string: an entry whose refcount (`[item+4]`) is
+still 2 at teardown always reaches it, so the crash means a package file was still open. Giving
+other guest threads turns during the teardown (a busy-thread preemption rule, tried on the S24
+2026-11-05) did not help. Reproduces on the desktop harness: scratch root with Asphalt installed,
+script `18 hold 640 400 0.2; 45 back; 53 hold 538 345 0.3` (Back, pressed once the menu is up at ~45 s, opens "Do you want to exit the
+game?", the tap is EXIT GAME; taps here are in 800x480 display coords, 861,552 gets clamped to the
+corner). The open file is NOT the sound bank: a post-mortem that prints a text block in full
+showed `Install/data/Effects/Lens.bdae` (the lens-flare effect), opened while the menu loads, long
+before the quit. The quit is all game code: EXIT GAME's Scaleform callback `CBQuitGame`
+(`0x100B3160`) only sets a flag (`[0x106BB459]`); the main loop (`0x101CA940`) then tears the
+engine down (`0x101D4F88`), whose destructor (`0x102C5F04`) releases the file system (`+0x30`)
+before the other subsystems (`+0x34`, `+0x10`), and only after that (`0x101CBEB4`) appears to reach
+its exit path. No delegate (`ExitGame` included) is raised between the tap and the crash. No WPR
+answer was found that changes this path, so a phone may crash here too and close silently.
+Diagnostics used, in the `WPR-ab` worktree only: `WPR_WP8_BRIDGE_LOG=N`, `WPR_WP8_BRIDGE_ALL_RAISES=1`,
+a wider stack scan, the null-call report uncapped, and `WPR_WP8_IMPORT_TRACE` with `_AFTER`.
+
+**What WPR does about it, generally:** a guest stop that happens **within 10 s of a Back press,
+after the live guest heap has shrunk by at least 16 MB and an eighth** since that press, is the app
+closing, as a native crash in its own quit was on a phone: no error screen, no WPR Hub crash report,
+the window closes (`Wp8NativeSession.StoppedWhileShuttingDown`). Only a shutdown frees that much
+that fast; Asphalt went 109 -> 83 MB in 8.4 s. `ArmEmulator.LiveHeapBytes` counts allocated minus
+freed guest heap; `NoteBackForShutdown` samples the pad's Back for bridged and unbridged titles
+alike, taking nothing from the page. Log: `back noted (live guest heap N MB)`, then either
+`guest stopped while shutting down (...); treating it as the app closing` or `not a shutdown: ...`
+with the numbers, and the post-mortem is still written. The cost: a real crash right after Back
+that also frees a lot (a pause menu's "quit to menu") is closed quietly rather than reported.
+Verified on the desktop harness (D3D11) with the script above; not run on the S24.
+Separately, every page handler the bridge runs for the guest (`ManagedDelegate`,
+`ManagedInterfaceObject`) now ends with `StopIfAppTerminated`: on WP8 `Terminate()` ended the
+process at once, so the guest stops with outcome `the app called Application.Terminate()`, a clean
+quit (`IsCleanQuit`), and any guest stop after a termination request is not a failure. Correct
+WP8 behaviour, but it does not reach this crash.
 
 ### Update checks and the About page's "what's new" (2026-09-29, Android)
 

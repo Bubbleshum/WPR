@@ -125,6 +125,30 @@ namespace WPR.Wp8Native
             private set => _bridgeCallWaiting = value;
         }
 
+        /// <summary>The run's outcome when page code ended the app with <c>Application.Terminate()</c>.</summary>
+        public const string AppTerminatedOutcome = "the app called Application.Terminate()";
+
+        /// <summary>
+        /// Set by the host: whether page code has asked for the app to end
+        /// (<c>Application.Terminate()</c>). Asked after every page handler the guest calls.
+        /// </summary>
+        public Func<bool>? TerminationRequested { get; set; }
+
+        /// <summary>
+        /// On WP8, <c>Application.Terminate()</c> ended the process at once, so no guest code ran
+        /// after the handler that called it. Games tear themselves down before asking (Asphalt 7's
+        /// ExitGame callback), and running on into the next frame met freed objects: a null call
+        /// shown as a crash. So the run stops here, as a clean quit.
+        /// </summary>
+        private void StopIfAppTerminated()
+        {
+            if (TerminationRequested?.Invoke() == true)
+            {
+                BridgeNote("Application.Terminate() requested by a page handler; stopping the guest");
+                _emulator.Stop(AppTerminatedOutcome);
+            }
+        }
+
         private void BridgeNote(string line)
         {
             lock (BridgeLog)
@@ -166,6 +190,7 @@ namespace WPR.Wp8Native
             _emulator.CallEmulated("DllMain", image.EntryPoint, [image.ImageBase, 1, 0], onReturn: () =>
             {
                 _guestThread = Thread.CurrentThread;
+                _pageGuestThreads.Add(_emulator.CurrentThreadId);
                 Log($"DllMain(PROCESS_ATTACH) returned {Arg(0)}; serving the managed page");
                 ServeBridge();
             });
@@ -174,6 +199,12 @@ namespace WPR.Wp8Native
         }
 
         private bool _bridged;
+
+        /// <summary>
+        /// The guest threads that serve the page: the main thread (its UI thread's calls) and each
+        /// lane. A component's own threads are the others (see <see cref="CallManagedOffThread"/>).
+        /// </summary>
+        private readonly HashSet<int> _pageGuestThreads = new();
         private long _getActivationFactory;
         private bool _serving;
         private bool _serveAgain;
@@ -223,6 +254,7 @@ namespace WPR.Wp8Native
                 BridgeLane captured = lane;
                 long gate = _emulator.RegisterVtableMethod($"bridge lane ({lane.Name})", () => LaneTurn(captured));
                 int id = _emulator.CreateGuestThread($"bridge lane ({lane.Name})", ArmEmulator.ThumbEntry(gate), 0);
+                _pageGuestThreads.Add(id);
                 BridgeNote($"guest thread {id} serves the calls of {lane.Name}");
             }
         }
@@ -810,6 +842,7 @@ namespace WPR.Wp8Native
                 }
 
                 Return(HResultOk);
+                StopIfAppTerminated();
             }));
         }
 
@@ -878,22 +911,38 @@ namespace WPR.Wp8Native
                         BridgeNote($"{name} called on the page's {target.GetType().Name}");
                     }
 
-                    object? result = null;
-                    try
+                    object? Call()
                     {
-                        result = implementation?.Invoke(target, values);
-                    }
-                    catch (Exception ex)
-                    {
-                        BridgeNote($"{name} threw {ex.InnerException?.GetType().Name ?? ex.GetType().Name}: {ex.InnerException?.Message ?? ex.Message}");
+                        try
+                        {
+                            return implementation?.Invoke(target, values);
+                        }
+                        catch (Exception ex)
+                        {
+                            BridgeNote($"{name} threw {ex.InnerException?.GetType().Name ?? ex.GetType().Name}: {ex.InnerException?.Message ?? ex.Message}");
+                            return null;
+                        }
                     }
 
-                    if (method.ReturnType != "Void" && Arg(core) is long outPointer && outPointer != 0)
+                    long outPointer = method.ReturnType != "Void" ? Arg(core) : 0;
+                    void Finish(object? result)
                     {
-                        WriteManagedResult(outPointer, method.ReturnType, result);
+                        if (outPointer != 0)
+                        {
+                            WriteManagedResult(outPointer, method.ReturnType, result);
+                        }
+
+                        StopIfAppTerminated();
                     }
 
                     Return(HResultOk);
+                    if (_bridged && !_pageGuestThreads.Contains(_emulator.CurrentThreadId))
+                    {
+                        CallManagedOffThread(name, Call, Finish);
+                        return;
+                    }
+
+                    Finish(Call());
                 });
             }
 
@@ -901,6 +950,53 @@ namespace WPR.Wp8Native
             _managedObjects.AddOrUpdate(target, created);
             BridgeNote($"the page's {target.GetType().Name} stands in for {interfaceName} (0x{created:X8})");
             return created;
+        }
+
+        /// <summary>
+        /// Runs a call a component's own thread made into the page's managed code on a host thread,
+        /// with that guest thread parked until it returns and the other guest threads running.
+        /// </summary>
+        /// <remarks>
+        /// On a phone the call ran on the component's native thread while the UI thread went on,
+        /// and Marmalade relies on it: s3e's loader thread calls <c>RunOnUIThread</c>, whose managed
+        /// side posts <c>runnable.Run()</c> to the dispatcher and waits for it, and that Run comes
+        /// back into the component on the UI thread. Run inline on the emulator's only OS thread,
+        /// the wait stopped every guest thread, the main thread never served the UI thread's call,
+        /// and Shadow Fight 2 hung before its first frame. The page's own threads (the main thread
+        /// and the lanes) still call inline: they are its UI and managed threads, and a callback
+        /// made while serving one of their calls belongs on that thread.
+        /// </remarks>
+        private void CallManagedOffThread(string name, Func<object?> call, Action<object?> finish)
+        {
+            Task<object?> work = Task.Run(() =>
+            {
+                try
+                {
+                    return call();
+                }
+                finally
+                {
+                    // The scheduler may be asleep with nothing else to run; let it look again.
+                    _emulator.WakeIdle();
+                }
+            });
+
+            bool finished = false;
+            void FinishOnce()
+            {
+                if (!finished)
+                {
+                    finished = true;
+                    finish(work.Result);
+                }
+            }
+
+            if (!_emulator.BlockCurrentThread(() => work.IsCompleted, FinishOnce, why: $"the page's {name}"))
+            {
+                // No switch: either it finished already (FinishOnce has run) or nothing else could
+                // run, and then this thread waits here, as every call used to.
+                FinishOnce();
+            }
         }
 
         /// <summary>A managed answer written through a WinRT out pointer, by the metadata's type.</summary>

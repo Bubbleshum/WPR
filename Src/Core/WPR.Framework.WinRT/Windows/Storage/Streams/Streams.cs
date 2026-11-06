@@ -184,7 +184,7 @@ namespace Windows.Storage.Streams
         {
             try
             {
-                var target = (global::System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBuffer)buffer;
+                var target = WPR.WinRT.ArrayBuffer.Of(buffer);
                 int wanted = (int)Math.Min(count, target.Capacity);
                 if (at >= 0)
                 {
@@ -216,7 +216,7 @@ namespace Windows.Storage.Streams
         {
             try
             {
-                var source = (global::System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBuffer)buffer;
+                var source = WPR.WinRT.ArrayBuffer.Of(buffer);
                 if (at >= 0)
                 {
                     stream.Position = at;
@@ -238,30 +238,11 @@ namespace System.Runtime.InteropServices.WindowsRuntime
     using global::Windows.Storage.Streams;
 
     /// <summary>Shim for <c>System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBuffer</c>: an <see cref="IBuffer"/> over a byte array.</summary>
-    public sealed class WindowsRuntimeBuffer : IBuffer
+    public sealed class WindowsRuntimeBuffer : WPR.WinRT.ArrayBuffer
     {
-        private uint _length;
-
         internal WindowsRuntimeBuffer(byte[] data, uint length)
+            : base(data, length)
         {
-            Data = data;
-            _length = length;
-        }
-
-        internal byte[] Data { get; }
-
-        public uint Capacity => (uint)Data.Length;
-
-        public uint Length => _length;
-
-        public void put_Length(uint value)
-        {
-            if (value > Capacity)
-            {
-                throw new ArgumentOutOfRangeException(nameof(value));
-            }
-
-            _length = value;
         }
 
         public static IBuffer Create(int capacity) => new WindowsRuntimeBuffer(new byte[capacity], 0);
@@ -294,7 +275,7 @@ namespace System.Runtime.InteropServices.WindowsRuntime
 
         public static byte[] ToArray(this IBuffer source)
         {
-            var b = (WindowsRuntimeBuffer)source;
+            var b = WPR.WinRT.ArrayBuffer.Of(source);
             var result = new byte[b.Length];
             Array.Copy(b.Data, result, result.Length);
             return result;
@@ -302,7 +283,7 @@ namespace System.Runtime.InteropServices.WindowsRuntime
 
         public static byte[] ToArray(this IBuffer source, uint sourceIndex, int count)
         {
-            var b = (WindowsRuntimeBuffer)source;
+            var b = WPR.WinRT.ArrayBuffer.Of(source);
             var result = new byte[count];
             Array.Copy(b.Data, sourceIndex, result, 0, count);
             return result;
@@ -310,7 +291,7 @@ namespace System.Runtime.InteropServices.WindowsRuntime
 
         public static System.IO.Stream AsStream(this IBuffer source)
         {
-            var b = (WindowsRuntimeBuffer)source;
+            var b = WPR.WinRT.ArrayBuffer.Of(source);
             return new System.IO.MemoryStream(b.Data, 0, (int)b.Length, writable: true);
         }
 
@@ -319,7 +300,7 @@ namespace System.Runtime.InteropServices.WindowsRuntime
 
         public static void CopyTo(this byte[] source, int sourceIndex, IBuffer destination, uint destinationIndex, int count)
         {
-            var b = (WindowsRuntimeBuffer)destination;
+            var b = WPR.WinRT.ArrayBuffer.Of(destination);
             Array.Copy(source, sourceIndex, b.Data, destinationIndex, count);
             if (destinationIndex + count > b.Length)
             {
@@ -396,6 +377,22 @@ namespace System.IO
             {
                 return Task.FromException<Stream>(ex);
             }
+        }
+    }
+}
+
+namespace Windows.Storage.Streams
+{
+    /// <summary>
+    /// Shim for <c>Windows.Storage.Streams.Buffer</c>: a buffer of a fixed capacity, empty
+    /// (<see cref="WPR.WinRT.ArrayBuffer.Length"/> 0) until something writes into it. Marmalade's
+    /// Windows Store billing simulator builds one to read its receipt file into.
+    /// </summary>
+    public sealed class Buffer : WPR.WinRT.ArrayBuffer
+    {
+        public Buffer(uint capacity)
+            : base(new byte[capacity], 0)
+        {
         }
     }
 }

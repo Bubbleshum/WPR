@@ -829,6 +829,7 @@ namespace WPR.Wp8Native
 
             if (!Directory.Exists(host))
             {
+                Log.Add($"FindFirstFileEx(\"{spec}\") -> no such folder");
                 _lastError = ErrorPathNotFound;
                 _frame.Return(InvalidHandleValue);
                 return;
@@ -849,6 +850,7 @@ namespace WPR.Wp8Native
                 }
             }
 
+            Log.Add($"FindFirstFileEx(\"{spec}\") -> {found.Count} match(es){(found.Count is > 0 and <= 8 ? ": " + string.Join(", ", found.Select(f => f.Item2)) : "")}");
             if (found.Count == 0)
             {
                 _lastError = ErrorFileNotFound;

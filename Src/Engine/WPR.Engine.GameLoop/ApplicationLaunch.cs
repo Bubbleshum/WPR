@@ -1802,8 +1802,13 @@ namespace WPR
         }
 
         /// <summary>What the marker file says when an install has been readied to run its own page; bump to redo every install.</summary>
-        /// <remarks>2: bridged stubs write out parameters back (Mandreel's <c>wait_event(out int)</c>).</remarks>
-        private const string ManagedPageStamp = "managed-page 2";
+        /// <remarks>
+        /// 2: bridged stubs write out parameters back (Mandreel's <c>wait_event(out int)</c>).
+        /// 3: stub signatures apply the rest of .NET's WinRT projection (Windows.Foundation.Uri is
+        /// System.Uri, DateTime is DateTimeOffset...), so a managed class implementing a component
+        /// interface with one of them loads (Marmalade's s3eWindowsStoreBilling).
+        /// </remarks>
+        private const string ManagedPageStamp = "managed-page 3";
 
         /// <summary>
         /// Readies a Direct3D/XAML install to run its own managed page, once: bridged stubs for its
