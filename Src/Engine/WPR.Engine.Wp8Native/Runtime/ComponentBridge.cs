@@ -76,6 +76,12 @@ namespace WPR.Wp8Native
         /// </remarks>
         public void RunBridgeCall(BridgeCall call, TimeSpan timeout)
         {
+            if (_guestStopped)
+            {
+                call.Error = "the guest has stopped";
+                return;
+            }
+
             if (Thread.CurrentThread == _guestThread)
             {
                 call.Error = "re-entrant call from the guest thread";
@@ -104,7 +110,19 @@ namespace WPR.Wp8Native
             BridgeCallWaiting = $"{call.ClassName}.{call.Member}";
             try
             {
-                if (!call.Done.Wait(timeout))
+                // In slices, so a call queued just as the guest stopped (after MarkGuestStopped
+                // drained the queues) is not left waiting out the whole timeout.
+                var waited = System.Diagnostics.Stopwatch.StartNew();
+                bool answered;
+                while (!(answered = call.Done.Wait(TimeSpan.FromMilliseconds(100))) && !_guestStopped && waited.Elapsed < timeout)
+                {
+                }
+
+                if (!answered && _guestStopped)
+                {
+                    call.Error ??= "the guest has stopped";
+                }
+                else if (!answered)
                 {
                     call.Error ??= "timed out";
                     BridgeNote($"{call.ClassName}.{call.Member}: no answer within {timeout.TotalSeconds:0}s");
@@ -113,6 +131,34 @@ namespace WPR.Wp8Native
             finally
             {
                 BridgeCallWaiting = null;
+            }
+        }
+
+        private volatile bool _guestStopped;
+
+        /// <summary>
+        /// The guest has stopped for good: nothing will ever take a queued bridge call again. Every
+        /// call still waiting is answered now with an error, and later ones are refused at once.
+        /// Without this, each page call made while the app closes (Back, Deactivated, Closing)
+        /// waited its whole timeout for a guest that was gone: a minute before Asphalt 7's window
+        /// closed after its own quit crashed (S24, 2026-11-06).
+        /// </summary>
+        public void MarkGuestStopped()
+        {
+            _guestStopped = true;
+            Fail(_bridgeCalls);
+            foreach (BridgeLane lane in _lanes.Values)
+            {
+                Fail(lane.Calls);
+            }
+
+            static void Fail(ConcurrentQueue<BridgeCall> queue)
+            {
+                while (queue.TryDequeue(out BridgeCall? pending))
+                {
+                    pending.Error ??= "the guest has stopped";
+                    pending.Done.Set();
+                }
             }
         }
 

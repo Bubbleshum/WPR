@@ -297,6 +297,7 @@ namespace WPR.Wp8Native
             }
 
             Outcome = fault ?? _emulator?.StopReason ?? "the image returned";
+            _emulator?.WinRt.MarkGuestStopped();
             RuntimeReady.Set();
 
             // The guest ending on its own is a failure to report, unless the player closed the game

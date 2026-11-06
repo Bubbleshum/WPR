@@ -2791,7 +2791,16 @@ alike, taking nothing from the page. Log: `back noted (live guest heap N MB)`, t
 `guest stopped while shutting down (...); treating it as the app closing` or `not a shutdown: ...`
 with the numbers, and the post-mortem is still written. The cost: a real crash right after Back
 that also frees a lot (a pause menu's "quit to menu") is closed quietly rather than reported.
-Verified on the desktop harness (D3D11) with the script above; not run on the S24.
+Verified on the desktop harness (D3D11) with the script above, and on the S24 (build 38):
+`1.2 s after Back, 110 -> 85 MB`, teardown 0.2 s later.
+
+**A stopped guest answers page calls at once** (`WinRtRuntime.MarkGuestStopped`, called by the
+session as soon as the guest's run returns). Bridge calls from the managed page wait up to 30 s
+each (`Wp8NativeComponentHost.CallTimeout`); with the guest gone nothing ever took them, so on the
+S24 (build 37) Asphalt's window sat frozen for exactly 60 s (two calls) before closing, with nothing
+in the log between the stop and the teardown. Now every queued call is answered with
+`the guest has stopped`, later ones are refused at once, and a waiting call checks every 100 ms.
+**The tell for this class**: a 30 s multiple between `guest stopped` and the next teardown line.
 Separately, every page handler the bridge runs for the guest (`ManagedDelegate`,
 `ManagedInterfaceObject`) now ends with `StopIfAppTerminated`: on WP8 `Terminate()` ended the
 process at once, so the guest stops with outcome `the app called Application.Terminate()`, a clean
