@@ -3842,6 +3842,13 @@ DECLSPEC void MOJOSHADER_vkGetUniformBuffers(MOJOSHADER_vkContext *context,
  */
 DECLSPEC void MOJOSHADER_vkEndFrame(MOJOSHADER_vkContext *context);
 
+/* WPR: the most uniform bytes one frame has used in each buffer (each frame has
+ * 8 MB), and how many blocks did not fit and were wrapped to the start of their half. */
+DECLSPEC void MOJOSHADER_vkGetUniformBufferUsage(MOJOSHADER_vkContext *context,
+                                                 unsigned long long *vertPeak,
+                                                 unsigned long long *fragPeak,
+                                                 unsigned int *overflows);
+
 /*
  * Return the location of a vertex attribute for the given shader.
  *

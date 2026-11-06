@@ -6521,6 +6521,34 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	renderer->submittedCommandBufferContainers[renderer->submittedCommandBufferContainerCount] = containerToSubmit;
 	renderer->submittedCommandBufferContainerCount += 1;
 
+	/* WPR: report the uniform buffers' high-water mark as it grows (each 1 MB step), and
+	 * any overflow, so a title that fills a frame's 8 MB is visible in the log rather than
+	 * only as a wrong frame. */
+	{
+		static unsigned long long loggedPeak = 0;
+		static unsigned int loggedOverflows = 0;
+		unsigned long long vertPeak, fragPeak, peak;
+		unsigned int overflows;
+		MOJOSHADER_vkGetUniformBufferUsage(
+			renderer->mojoshaderContext,
+			&vertPeak,
+			&fragPeak,
+			&overflows
+		);
+		peak = SDL_max(vertPeak, fragPeak);
+		if (peak >= loggedPeak + 1048576 || overflows != loggedOverflows)
+		{
+			FNA3D_LogInfo(
+				"Vulkan: uniform buffer peak per frame: vertex %llu KB, pixel %llu KB of 8000 KB; %u overflow(s)",
+				vertPeak / 1024,
+				fragPeak / 1024,
+				overflows
+			);
+			loggedPeak = peak;
+			loggedOverflows = overflows;
+		}
+	}
+
 	/* Rotate the UBOs */
 	MOJOSHADER_vkEndFrame(renderer->mojoshaderContext);
 
