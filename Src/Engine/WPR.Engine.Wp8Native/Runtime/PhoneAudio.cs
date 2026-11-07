@@ -72,6 +72,19 @@ namespace WPR.Wp8Native
         /// <summary>Whether an audio client exists, i.e. the title plays sound through WASAPI.</summary>
         public bool Active => _clients.Count > 0;
 
+        // Totals for the run summary's wasapi: field: events set, GetBuffer calls (and how many
+        // were refused for asking more than fits), frames written, and the padding the game was
+        // told on average.
+        private long _wakes, _getBuffers, _refused, _written, _paddingAsks, _paddingSum;
+
+        /// <summary>One line for the run summary: how the WASAPI streams are being fed.</summary>
+        public string Summary()
+        {
+            string queued = string.Join("/", _clients.Where(c => c.Initialized).Select(c => $"{c.Queued.Sum()}of{c.BufferFrames}@{c.Rate}"));
+            long avgPadding = _paddingAsks == 0 ? 0 : _paddingSum / _paddingAsks;
+            return $"wakes={_wakes} getbuffer={_getBuffers} refused={_refused} written={_written} padding-avg={avgPadding} padding-asks={_paddingAsks} queued={queued}";
+        }
+
         public PhoneAudio(MediaCom com, Func<IAudioOutput?> output, Func<long, bool> setEvent)
         {
             _com = com;
@@ -225,6 +238,8 @@ namespace WPR.Wp8Native
             [6] = ("GetCurrentPadding", () => With(c =>
             {
                 Retire(c);
+                _paddingAsks++;
+                _paddingSum += c.Padding;
                 _com.W32(Arg(1), c.Padding);
                 Return(Arg(1) == 0 ? MediaCom.EPointer : MediaCom.SOk);
             })),
@@ -497,6 +512,7 @@ namespace WPR.Wp8Native
         {
             if (c.EventDriven && c.EventHandle != 0 && c.Running && c.Padding < c.BufferFrames)
             {
+                _wakes++;
                 _setEvent(c.EventHandle);
             }
         }
@@ -570,8 +586,10 @@ namespace WPR.Wp8Native
                 }
 
                 Retire(c);
+                _getBuffers++;
                 if (Arg(1) > c.BufferFrames - c.Padding)
                 {
+                    _refused++;
                     _com.W32(Arg(2), 0);
                     Return(BufferTooLarge);
                     return;
@@ -611,6 +629,7 @@ namespace WPR.Wp8Native
                     c.Voice?.Submit(PcmAudio.ToPcm16(raw, c.IsFloat, c.Bits, c.Channels, c.BlockAlign) ?? []);
                     c.Queued.Enqueue(written);
                     c.WrittenFrames += written;
+                    _written += written;
 
                     // A phone set the event every device period (10 ms) while the buffer had room;
                     // this host sets it once per guest frame. A stream that writes a fixed amount

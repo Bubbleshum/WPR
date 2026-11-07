@@ -1479,7 +1479,8 @@ namespace WPR.Wp8Native
                 $"drawlist-build total={build * 1000 / System.Diagnostics.Stopwatch.Frequency}ms textures={_textures.Count} " +
                 $"guest-heap: used={(_emulator?.HeapUsed ?? 0) / (1024 * 1024)}MB released={(_emulator?.BytesReleased ?? 0) / (1024 * 1024)}MB " +
                 $"gpu: replayed={_replay?.DrawsReplayed} skipped={_replay?.DrawsSkipped} frames-dropped={_gpuFramesDropped} {_replay?.Statistics()} unrecorded={string.Join(",", _emulator?.Direct3D.GpuSkipped.Select(p => $"{p.Key}:{p.Value}") ?? [])} " +
-                $"audio: {_emulator?.XAudio2.Summary()} voices={_audio?.VoicesCreated} underruns={_audio?.Underruns} callbacks={_emulator?.XAudio2.CallbacksMade} engine-passes={_emulator?.XAudio2.EnginePasses} audio-preemptions={_emulator?.AudioPreemptions} idle-passes={_emulator?.IdleAudioPasses} frame-waits-shared={_emulator?.HostFrameHandoffs} frame-preemptions={_emulator?.HostFramePreemptions}");
+                $"audio: {_emulator?.XAudio2.Summary()} voices={_audio?.VoicesCreated} underruns={_audio?.Underruns} callbacks={_emulator?.XAudio2.CallbacksMade} engine-passes={_emulator?.XAudio2.EnginePasses} audio-preemptions={_emulator?.AudioPreemptions} idle-passes={_emulator?.IdleAudioPasses} frame-waits-shared={_emulator?.HostFrameHandoffs} frame-preemptions={_emulator?.HostFramePreemptions}" +
+                (_emulator?.Stubs.WasapiSummary is { Length: > 0 } wasapi ? $" wasapi: {wasapi}" : ""));
             // What the game did with its sensors (a handful of lines per run; same racy read as below).
             if (_emulator?.WinRt.SensorLog is { } sensorLog)
             {
