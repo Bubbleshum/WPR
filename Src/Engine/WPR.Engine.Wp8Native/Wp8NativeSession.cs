@@ -203,7 +203,7 @@ namespace WPR.Wp8Native
                 // its loop waits for the tick here instead of after a frame.
                 if (!HostBlockingFrameWait)
                 {
-                    _emulator.Direct3D.HostFrame = (() => _closing || _tick.CurrentCount > 0, HostFrameTaken);
+                    _emulator.Direct3D.HostFrame = (() => _closing || _tick.CurrentCount > 0 || _emulator.WinRt.HasPendingBridgeCall, HostFrameTaken);
                 }
 
                 _emulator.WinRt.IdleTurn += () =>
@@ -241,7 +241,7 @@ namespace WPR.Wp8Native
                     // (Runtime/ComponentBridge.cs); each call it queues wakes the guest's frame wait.
                     string directory = Path.GetDirectoryName(_executable)!;
                     WinmdReader metadata = WinmdReader.Load(Directory.GetFiles(directory, "*.winmd"));
-                    _emulator.WinRt.BridgeCallQueued += WakeGuest;
+                    _emulator.WinRt.BridgeCallQueued += WakeForBridgeCall;
                     _emulator.WinRt.BridgeUiThread = BridgeUiThread;
                     _emulator.WinRt.TerminationRequested = () => WPR.Xna.Rhi.GameUnhandledException.TerminationRequested;
                     long start = _emulator.WinRt.StartBridgedComponent(image, metadata, Path.GetFileName(_executable));
@@ -823,9 +823,19 @@ namespace WPR.Wp8Native
         /// <summary>On the guest thread, when the presenting thread carries on after a frame.</summary>
         private void HostFrameTaken()
         {
-            if (!HostBlockingFrameWait && !_closing)
+            bool ticked = HostBlockingFrameWait || _closing || _tick.Wait(0);
+
+            // Woken only because the page queued a call: the guest serves it and waits on, and the
+            // frame wait goes on being timed (a wait that ran out with a call pending is the same).
+            bool granted = ticked || _emulator?.WinRt.HasPendingBridgeCall != true;
+            if (_emulator is { } emulator)
             {
-                _tick.Wait(0);
+                emulator.Direct3D.HostFrameGranted = granted;
+            }
+
+            if (!granted)
+            {
+                return;
             }
 
             _frameWaitTicks = System.Diagnostics.Stopwatch.GetTimestamp() - _frameWaitFrom;
@@ -1752,6 +1762,23 @@ namespace WPR.Wp8Native
         /// threw <see cref="SemaphoreFullException"/>: caught, but it put a first-chance stack trace
         /// in every crash report. The catch stays because the check and the release are not atomic.
         /// </summary>
+        /// <summary>
+        /// A page call was queued. While the frame loop draws, the main thread's frame wait takes it
+        /// (<see cref="WinRtRuntime.BridgeCallsServedBetweenFrames"/>), so the guest is only woken:
+        /// releasing a tick gave every call a frame of its own (a finger down on Shadow Fight 2 ran
+        /// it at twice the display's rate). Otherwise the guest waits on the tick, which it needs.
+        /// </summary>
+        private void WakeForBridgeCall()
+        {
+            if (_emulator is { } emulator && emulator.WinRt.BridgeCallsServedBetweenFrames)
+            {
+                emulator.WakeIdle();
+                return;
+            }
+
+            WakeGuest();
+        }
+
         private void WakeGuest()
         {
             if (_tick.CurrentCount >= 2)

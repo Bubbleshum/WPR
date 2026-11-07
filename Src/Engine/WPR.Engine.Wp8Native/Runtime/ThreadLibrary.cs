@@ -285,6 +285,16 @@ namespace WPR.Wp8Native
                 return;
             }
 
+            LockContended(mutex);
+        }
+
+        /// <summary>
+        /// The waiting half of <see cref="LockAndReturn"/>, apart so its closures are made only
+        /// when the lock is held: C# allocates them at the top of the method, and the uncontended
+        /// path (8,000 locks a frame in Shadow Fight 2's loader) paid for them every time.
+        /// </summary>
+        private void LockContended(long mutex)
+        {
             bool switched = _emulator.BlockCurrentThread(
                 () => !_mutexes.TryGetValue(mutex, out var s) || s.Count == 0,
                 () => TryTake(mutex),

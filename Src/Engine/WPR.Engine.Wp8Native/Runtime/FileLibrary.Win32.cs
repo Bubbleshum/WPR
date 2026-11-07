@@ -841,7 +841,9 @@ namespace WPR.Wp8Native
                 var directory = new DirectoryInfo(host);
                 if (Matches(".", pattern)) found.Enqueue((directory, "."));
                 if (Matches("..", pattern)) found.Enqueue((directory.Parent ?? directory, ".."));
+                bool package = host.StartsWith(_readRoot, StringComparison.OrdinalIgnoreCase);
                 foreach (FileSystemInfo entry in directory.EnumerateFileSystemInfos()
+                             .Where(e => !(package && IsHostArtefact(e.Name)))
                              .Where(e => Matches(e.Name, pattern))
                              .Where(e => searchOp != 1 || e is DirectoryInfo)
                              .OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase))

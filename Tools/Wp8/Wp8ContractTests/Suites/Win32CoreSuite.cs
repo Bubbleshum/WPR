@@ -48,7 +48,10 @@ public sealed class Win32CoreSuite : IContractSuite
         }
 
         h.Check("FindNextFileW ends with ERROR_NO_MORE_FILES", LastError(h) == 18, $"error {LastError(h)}");
-        var expected = Directory.EnumerateFileSystemEntries(package).Select(Path.GetFileName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // What the package shipped: WPR's own files there (.original backups, wpr-* records) are hidden.
+        var expected = Directory.EnumerateFileSystemEntries(package).Select(Path.GetFileName).OfType<string>()
+            .Where(n => !WPR.Wp8Native.FileLibrary.IsHostArtefact(n)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        h.Check("FindFirstFileExW hides WPR's own files in the install folder", !seen.Any(WPR.Wp8Native.FileLibrary.IsHostArtefact));
         h.Check("FindFirstFileExW lists the package folder, . and .. first",
             seen.Count == expected.Count + 2 && seen[0] == "." && seen[1] == ".." && seen.Skip(2).All(expected.Contains),
             $"{seen.Count} entries, package has {expected.Count}");

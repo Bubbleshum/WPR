@@ -2881,7 +2881,7 @@ namespace WPR.Wp8Native
                 return;
             }
 
-            Wait(() => { Pump(); return op.Done; }, Report, () =>
+            Wait(() => { PumpFromWait(); return op.Done; }, Report, () =>
             {
                 SetLastError(WSA_IO_INCOMPLETE);
                 _frame.Return(0);
@@ -2959,10 +2959,35 @@ namespace WPR.Wp8Native
                 }
             }
 
-            foreach ((long address, Overlapped op) in _overlapped.ToList())
+            if (_overlapped.Count > 0)
             {
-                if (!op.Done && op.Ready()) Finish(address, op);
+                foreach ((long address, Overlapped op) in _overlapped.ToList())
+                {
+                    if (!op.Done && op.Ready()) Finish(address, op);
+                }
             }
+        }
+
+        private long _lastWaitPumpMs = -1;
+
+        /// <summary>
+        /// <see cref="Pump"/> for a wait's readiness check, at most once a millisecond. The scheduler
+        /// asks a parked thread whether it can run at every switch: Shadow Fight 2's network thread
+        /// parks in WSAWaitForMultipleEvents, a loader runs, and the check was asked millions of
+        /// times a second, each pumping every socket and copying the overlapped list. About
+        /// 100 MB/s of garbage, which on the S24 meant hundreds of collections a second. Sockets do
+        /// not change state faster than this.
+        /// </summary>
+        private void PumpFromWait()
+        {
+            long now = NowMs;
+            if (now == _lastWaitPumpMs)
+            {
+                return;
+            }
+
+            _lastWaitPumpMs = now;
+            Pump();
         }
 
         /// <summary>int WSAEventSelect(SOCKET, WSAEVENT, long networkEvents): makes the socket non-blocking.</summary>
@@ -3023,18 +3048,34 @@ namespace WPR.Wp8Native
                 return;
             }
 
-            long[] events = Enumerable.Range(0, count).Select(i => (long)_emulator.ReadUInt32(array + (i * 4))).ToArray();
-            if (events.Any(e => _sync().CouldWait(e) is null))
+            long[] events = new long[count];
+            for (int i = 0; i < count; i++)
+            {
+                events[i] = _emulator.ReadUInt32(array + (i * 4));
+            }
+
+            if (Array.Exists(events, e => _sync().CouldWait(e) is null))
             {
                 SetLastError(WSA_INVALID_HANDLE);
                 _frame.Return(waitFailed);
                 return;
             }
 
+            // Asked at every scheduler switch while this thread is parked: no allocation here.
             bool Ready()
             {
-                Pump();
-                return all ? events.All(e => _sync().CouldWait(e) == true) : events.Any(e => _sync().CouldWait(e) == true);
+                PumpFromWait();
+                var sync = _sync();
+                foreach (long e in events)
+                {
+                    bool signalled = sync.CouldWait(e) == true;
+                    if (all ? !signalled : signalled)
+                    {
+                        return !all;
+                    }
+                }
+
+                return all;
             }
 
             void Complete()

@@ -2887,6 +2887,13 @@ namespace WPR.Wp8Native
         /// </summary>
         public (Func<bool> Ready, Action Taken)? HostFrame { get; set; }
 
+        /// <summary>
+        /// Set by the host's <c>Taken</c>: whether the frame wait that just ended gave the guest a
+        /// frame (the host showed one, the wait ran out, or the host is closing) rather than only
+        /// waking it to serve a page call (<see cref="WinRtRuntime.HasPendingBridgeCall"/>).
+        /// </summary>
+        public bool HostFrameGranted { get; set; } = true;
+
         /// <summary>How long a frame wait lasts before the guest carries on anyway (a paused host).</summary>
         public static readonly TimeSpan HostFrameTimeout = TimeSpan.FromMilliseconds(250);
 
@@ -3127,14 +3134,20 @@ namespace WPR.Wp8Native
         /// </remarks>
         private long CreateDxgiResource(ComObject owner)
         {
+            // The vtable is built once and shared by every texture's IDXGIResource1, so the
+            // handlers find their texture from this, never from a captured owner. Capturing it
+            // gave every later texture the first one's handle: Shadow Fight 2's GL layer (ANGLE)
+            // rebuilt its surface landscape after the page turned, shared the new texture, and
+            // the game kept presenting the old portrait one - a black screen in about half its runs.
             long Share()
             {
-                long handle = _sharedHandles.FirstOrDefault(e => e.Value == owner).Key;
+                ComObject texture = Self() ?? owner;
+                long handle = _sharedHandles.FirstOrDefault(e => e.Value == texture).Key;
                 if (handle == 0)
                 {
                     handle = _nextSharedHandle;
                     _nextSharedHandle += 4;
-                    _sharedHandles[handle] = owner;
+                    _sharedHandles[handle] = texture;
                 }
 
                 return handle;

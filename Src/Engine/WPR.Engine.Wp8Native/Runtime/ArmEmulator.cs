@@ -451,9 +451,9 @@ namespace WPR.Wp8Native
             Arm.UC_ARM_REG_R12, Arm.UC_ARM_REG_SP, Arm.UC_ARM_REG_LR, Arm.UC_ARM_REG_CPSR,
         ];
 
-        private long[] CaptureRegisters()
+        private long[] CaptureRegisters(long[]? into = null)
         {
-            long[] values = new long[CoreRegisters.Length];
+            long[] values = into is { } reuse && reuse.Length == CoreRegisters.Length ? reuse : new long[CoreRegisters.Length];
             for (int i = 0; i < CoreRegisters.Length; i++)
             {
                 values[i] = _cpu.RegRead(CoreRegisters[i]);
@@ -1773,6 +1773,17 @@ namespace WPR.Wp8Native
                 return false;
             }
 
+            RunDeferredFromYield();
+            return true;
+        }
+
+        /// <summary>
+        /// The body of <see cref="YieldToDeferredWork"/>, apart so its closure is made only when there
+        /// is work: C# allocates a method's closure at its top, and a ConcRT wait loop (a yield)
+        /// called the empty case hundreds of thousands of times a second.
+        /// </summary>
+        private void RunDeferredFromYield()
+        {
             (string name, long function, long[] arguments) = _deferred.Dequeue();
             LogDeferred($"-> {name} at 0x{function:X8} (from a yield)");
             Yields++;
@@ -1793,7 +1804,6 @@ namespace WPR.Wp8Native
             });
 
             _domain = new FaultDomain(name, resumeTrap, snapshot);
-            return true;
         }
 
         /// <summary>

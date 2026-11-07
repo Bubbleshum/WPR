@@ -1269,6 +1269,76 @@ Verified D1 (harness, scratch root): settings and PLAY 6/6 (both crashed 100% be
 too), music switched off and still off after a relaunch, `perry.db` integrity ok. Not run: a level
 played to completion, D2-D4, Android.
 
+### Shadow Fight 2 plays: Marmalade on the managed-page bridge (patcher v67, 2026-11-06)
+
+Shadow Fight 2 (`faf51742-…`, Nekki) is a **Marmalade** (s3e) WP8 title: the managed page
+`Marmalade.App` drives the native WinRT component `s3e_native.dll`, whose loader thread reads
+`s3e.icf`/`app.icf`, lists the install folder, `LoadPackagedLibrary`s the extension DLLs, ANGLE
+(`libEGL`/`libGLESv2`) and the game itself (`Shadow Fight 2 by Nekki.s86`, a PE with another
+extension), and draws through ANGLE onto a `DrawingSurfaceBackgroundGrid`. It used to die in its
+`MainPage` constructor. It now plays the tutorial and the first fight against Kenji ("You win!").
+Every fix is general; nothing names the title:
+
+| defect | symptom | fix |
+| --- | --- | --- |
+| `Microsoft.Devices.Camera`/`CameraType`/`PhotoCamera`, `DeviceStatus.PowerSource`/keyboard, `Clipboard`, `FocusManager`, `InputScope*`, `VideoBrush`, WinRT `Accelerometer`, `Buffer(uint)` missing | `TypeLoadException` building `MainPage` | added. The camera reports no cameras (`PhotoCamera` throws as on a device without one); WinRT `Accelerometer` is backed by `SensorBackend` |
+| WinmdStubber did not apply .NET's projection to `Windows.Foundation.Uri`/`DateTime`/`TimeSpan`/`HResult`/`IReference`1`/`EventHandler`1` | the stub of `s3eWindowsStoreBilling` had members "without an implementation" | projected; `ManagedPageStamp` "managed-page 3" restubs every bridged install on its next launch |
+| `WideCharToMultiByte`/`MultiByteToWideChar` wrote nothing into a buffer one byte short | Marmalade sizes the buffer without the NUL: assert "could not find s3e.icf" | write what fits, then `ERROR_INSUFFICIENT_BUFFER`, as Windows does |
+| a rooted path ending `/Install` did not map to the package | `FindFirstFileEx(".../Install/*")` said no such folder | it is the package root |
+| WPR's own files (`*.original`, `*.native_original`, `wpr-*`) were listed in the install folder | Marmalade `LoadPackagedLibrary`s every file it lists: it loaded a managed `.original` stub and failed | hidden from `FindFirstFileEx` and `GetFilesAsync` listings (`FileLibrary.IsHostArtefact`) |
+| `LoadPackagedLibrary` only knew `*.dll` | the `.s86` game binary was not found | any top-level package file, minus host artefacts |
+| a guest call into the page's managed code ran inline on the emulator's only OS thread | `RunOnUIThread` waits for the UI thread, which waited for the guest: hang before the first frame. Later, the renderer's `LockWindowInfo` on the main thread blocked on a Monitor the loader thread held, so the loader never reached its unlock: frozen on the first tap | every such call, from any guest thread (the page's own included), runs on a host thread kept per guest thread (Monitor affinity: Lock/Unlock pairs must share a thread), with the guest thread parked meanwhile (`CallManagedOffThread`). A call that finishes within 2 ms is answered without a switch. These threads live until the guest stops (`MarkGuestStopped`), never ending on idle: one that ended while holding a page Monitor would abandon it |
+| a page call queued while the frame loop drew released a frame tick (`BridgeCallQueued` → `WakeGuest`) | every touch event is a call (`s3ePointerUpdate`): 100-140 guest frames a second on the S24 while a finger was down | while the provider is connected the call only wakes the guest (`BridgeCallsServedBetweenFrames`); the frame wait is also ready on a pending call, `HostFrameGranted` says whether a frame was given, and `XamlInterop.AwaitFrame` serves calls without drawing until one is |
+| `UserControl.Content` was `protected` | `s3eVideo.UpdateMainLayout` threw `MethodAccessException`, the video never ended, and the guest polled `WaitOperationEnding` at 14,000 fps | public, as Silverlight's |
+| the `IDXGIResource1` vtable is shared, and its handlers captured the first texture they were built for | every later texture's `GetSharedHandle` answered the first texture's handle. ANGLE builds its surface portrait, then rebuilds it landscape when the game locks the page to landscape; the present kept sampling the old portrait texture: **black screen in about half the runs** | handlers resolve their texture from `this` (`Self()`), like every other handler |
+
+Four more found on the S24, all general:
+
+| defect | symptom | fix |
+| --- | --- | --- |
+| `Microphone.All`/`.Default` opened every capture device (paused) just to list them (FNA's `SDL2_FNAPlatform.GetMicrophones`) | **the phone's microphone indicator was on for the whole game**: Marmalade's page reads `Microphone.Default` for s3eSoundRecord. On Android a paused input stream still records (`AUDIO_SOURCE_VOICE_RECOGNITION` in `dumpsys media.audio_policy`) | devices are listed by name; one is opened on `Start()` and closed on `Stop()`; `Microphone.StopAllForNewLaunch` at teardown. Any title that touches `Microphone` was affected |
+| the media engine decoded a whole compressed track inside `SetSource` | the 109 s menu music took 3.2 s through MediaCodec: a 4 s freeze with ~200 sound underruns | decoded on a worker; `Tick` finishes the load (Media Foundation loads asynchronously too). A `Play()` during loading starts playback when it lands |
+| allocation per call on hot paths: `xtime_get`/`_Xtime_diff_to_millis2` (arrays), `YieldToDeferredWork` and `_Mtx_lock` (closures allocated at the method's top even on the fast path), `WSAWaitForMultipleEvents`' readiness check (LINQ, `Pump()` copying the overlapped list on every scheduler switch) | a ConcRT wait loop runs ~480k times a second: ~200 MB/s of garbage, **hundreds of gen0 collections per 250 ms on the S24** (the desktop's large gen0 hid it) | word reads/writes, slow paths split into their own methods, a socket pump at most once a millisecond from wait checks. Measure with `GAMERUN_ALLOC=1` on the desktop; on the phone read `gc` in the `hitch #` lines |
+
+**Two harness artefacts, not bugs.** With its window moved off-screen (the default for
+`gamerun`), Windows throttles presents to ~30 Hz: the game runs at ~31 fps, shows its own "FPS on
+your device is very low" message, and its sound voice underruns ~6 times a second.
+`GAMERUN_ONSCREEN=1` gives 60 fps and no underruns after loading. And Marmalade's
+`Touch.FrameReported` handler forwards `TouchDevice.Id` as is; ids past 10 work (tested), so the
+ever-growing TouchPanel ids are left alone.
+
+**Sound**: effects are one 44.1 kHz mono XAudio2 voice fed by s3e's mixer thread; music is
+the media engine over `IsolatedStore/.../s3eaudio.mp3` (s3e copies each track there first),
+decoded by the platform decoder (`[wpr-wp8] media: ffmpeg.exe decoded s3eaudio.mp3`). The harness
+needs `WPR_FFMPEG` set to the head's `ffmpeg.exe` **path**, or the music is reported as
+"none found no audio it could decode".
+
+**Exit** crashes in s3e's own shutdown (`FireCallback(2, 0)`, the page's `Closing` handler) after
+the host has asked the game to close; `_closing` already makes that a clean stop.
+
+The game's own "New version available. Would you like to update now?" box blocks the game until
+answered, as on a phone: frame waits then time out at 250 ms in a row, which reads like a loading
+stall in the `hitch #` lines and is not one.
+
+GPU matrix, 2026-11-06 (tutorial → fight against Kenji, punches and kicks landing):
+
+| cell | result |
+| --- | --- |
+| D1 D3D11 | ✅ fight won, 60 fps on screen |
+| D2 Vulkan | ✅ |
+| D3 OpenGL | ✅ |
+| D4 GLES 3.0 + no DXT | ✅ (washed out, as D4 always is) |
+| P1 S24 Vulkan | ✅ menu music, tutorial, fight, 60 fps, microphone off |
+| P2 S24 GLES 3.2 | ✅ dojo, attacks |
+| A1/A2 emulator | not run |
+| P3 Mali | unverified, no device |
+
+Harness route (480x800 display coords, the frame is portrait with the landscape game drawn turned):
+the Sensei's MORE/CONTINUE button `hold 135 555 0.2` (four times), joystick right
+`hold 120 200 1.2`, punch `hold 140 730 0.15`, kick `hold 65 655 0.15`, results OK `hold 43 520 0.2`.
+Read the shots turned a quarter anticlockwise. The fight needs the character next to Kenji:
+punching air does not advance the tutorial.
+
 ### WP8 achievements and leaderboards reach WPR through one door (2026-10-14)
 
 Every in-scope WP8 native title ships `Microsoft.Xbox.winmd` and calls Xbox Live from its **native**

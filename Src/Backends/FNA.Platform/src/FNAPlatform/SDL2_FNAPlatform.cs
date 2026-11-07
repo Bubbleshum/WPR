@@ -2421,6 +2421,19 @@ namespace Microsoft.Xna.Framework
 		 */
 		private static bool micInit = false;
 
+		/* WPR: a Microphone names a capture device; the device is opened
+		 * only while the game records (Start until Stop). FNA opened every
+		 * capture device just to list them, paused. On Android an open
+		 * input stream, paused or not, turns the microphone on and shows the
+		 * privacy indicator, so a game that only read Microphone.Default
+		 * (Marmalade's page does, for s3eSoundRecord) appeared to be
+		 * listening the whole time it ran. WP7/WP8 listed microphones
+		 * without opening them. The handles handed out are 1-based indices
+		 * into this table; a null name is the OS default device.
+		 */
+		private static readonly List<string> micNames = new List<string>();
+		private static readonly Dictionary<uint, uint> micOpen = new Dictionary<uint, uint>();
+
 		public static Microphone[] GetMicrophones()
 		{
 			// Init subsystem if needed
@@ -2439,40 +2452,39 @@ namespace Microsoft.Xna.Framework
 			}
 			Microphone[] result = new Microphone[numDev + 1];
 
-			// Default input format
-			SDL.SDL_AudioSpec have;
-			SDL.SDL_AudioSpec want = new SDL.SDL_AudioSpec();
-			want.freq = Microphone.SAMPLERATE;
-			want.format = SDL.AUDIO_S16;
-			want.channels = 1;
-			want.samples = 4096; /* FIXME: Anything specific? */
-
-			// First mic is always OS default
-			result[0] = new Microphone(
-				SDL.SDL_OpenAudioDevice(
-					null,
-					1,
-					ref want,
-					out have,
-					0
-				),
-				"Default Device"
-			);
-			for (int i = 0; i < numDev; i += 1)
+			lock (micNames)
 			{
-				string name = SDL.SDL_GetAudioDeviceName(i, 1);
-				result[i + 1] = new Microphone(
-					SDL.SDL_OpenAudioDevice(
-						name,
-						1,
-						ref want,
-						out have,
-						0
-					),
-					name
-				);
+				// First mic is always OS default
+				result[0] = new Microphone(MicId(null), "Default Device");
+				for (int i = 0; i < numDev; i += 1)
+				{
+					string name = SDL.SDL_GetAudioDeviceName(i, 1);
+					result[i + 1] = new Microphone(MicId(name), name);
+				}
 			}
 			return result;
+		}
+
+		/* The id for a device name, the same one every time it is listed. */
+		private static uint MicId(string name)
+		{
+			int index = micNames.IndexOf(name);
+			if (index < 0)
+			{
+				micNames.Add(name);
+				index = micNames.Count - 1;
+			}
+			return (uint) (index + 1);
+		}
+
+		/* The open SDL device behind a Microphone, or 0 while it is not recording. */
+		private static uint MicDevice(uint handle)
+		{
+			lock (micNames)
+			{
+				uint device;
+				return micOpen.TryGetValue(handle, out device) ? device : 0;
+			}
 		}
 
 		public static unsafe int GetMicrophoneSamples(
@@ -2481,10 +2493,15 @@ namespace Microsoft.Xna.Framework
 			int offset,
 			int count
 		) {
+			uint device = MicDevice(handle);
+			if (device == 0)
+			{
+				return 0;
+			}
 			fixed (byte* ptr = &buffer[offset])
 			{
 				return (int) SDL.SDL_DequeueAudio(
-					handle,
+					device,
 					(IntPtr) ptr,
 					(uint) count
 				);
@@ -2493,17 +2510,59 @@ namespace Microsoft.Xna.Framework
 
 		public static int GetMicrophoneQueuedBytes(uint handle)
 		{
-			return (int) SDL.SDL_GetQueuedAudioSize(handle);
+			uint device = MicDevice(handle);
+			return device == 0 ? 0 : (int) SDL.SDL_GetQueuedAudioSize(device);
 		}
 
 		public static void StartMicrophone(uint handle)
 		{
-			SDL.SDL_PauseAudioDevice(handle, 0);
+			lock (micNames)
+			{
+				uint device;
+				if (!micOpen.TryGetValue(handle, out device))
+				{
+					if (handle == 0 || handle > micNames.Count)
+					{
+						return;
+					}
+
+					SDL.SDL_AudioSpec have;
+					SDL.SDL_AudioSpec want = new SDL.SDL_AudioSpec();
+					want.freq = Microphone.SAMPLERATE;
+					want.format = SDL.AUDIO_S16;
+					want.channels = 1;
+					want.samples = 4096; /* FIXME: Anything specific? */
+					device = SDL.SDL_OpenAudioDevice(
+						micNames[(int) handle - 1],
+						1,
+						ref want,
+						out have,
+						0
+					);
+					if (device == 0)
+					{
+						return;
+					}
+					micOpen[handle] = device;
+				}
+				SDL.SDL_PauseAudioDevice(device, 0);
+			}
 		}
 
 		public static void StopMicrophone(uint handle)
 		{
-			SDL.SDL_PauseAudioDevice(handle, 1);
+			lock (micNames)
+			{
+				uint device;
+				if (micOpen.TryGetValue(handle, out device))
+				{
+					/* Closed, not paused: an open device keeps the
+					 * microphone (and its indicator) on.
+					 */
+					SDL.SDL_CloseAudioDevice(device);
+					micOpen.Remove(handle);
+				}
+			}
 		}
 
 		#endregion

@@ -19,12 +19,15 @@ namespace System.Windows.Controls
         public UserControl() { }
 
         /// <summary>
-        /// Silverlight's UserControl declares its own <c>protected UIElement Content</c>, and a
-        /// user control setting its content in code calls that setter. It is the same value as
-        /// <see cref="ContentControl.Content"/>; protected, so XAML and reflection still find
-        /// the public one.
+        /// UserControl's own <c>UIElement Content</c>, the same value as
+        /// <see cref="ContentControl.Content"/>. Public, as in the Windows Phone reference
+        /// assemblies: Marmalade's s3eVideo reads <c>((UserControl)page).Content</c> from a class
+        /// of its own, and with this protected the read threw MethodAccessException, the intro
+        /// video's play operation never finished, and Shadow Fight 2 sat on its first logo.
+        /// Reflection by name goes through <c>ReflectionMembers.GetProperty</c>, which takes this
+        /// (the most-derived) one rather than throwing AmbiguousMatchException.
         /// </summary>
-        protected new UIElement? Content
+        public new UIElement? Content
         {
             get => base.Content as UIElement;
             set => base.Content = value;

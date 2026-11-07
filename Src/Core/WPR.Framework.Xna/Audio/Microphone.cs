@@ -217,6 +217,26 @@ namespace Microsoft.Xna.Framework.Audio
 
 		#region Internal Methods
 
+		/// <summary>
+		/// WPR: a game that exits while recording never stops its microphone, and the
+		/// device would stay open (and the phone's microphone indicator on) in the
+		/// launcher. Called from the launch teardown.
+		/// </summary>
+		internal static void StopAllForNewLaunch()
+		{
+			if (micList == null)
+			{
+				return;
+			}
+			foreach (Microphone mic in micList)
+			{
+				if (mic.State == MicrophoneState.Started)
+				{
+					try { mic.Stop(); } catch (Exception) { }
+				}
+			}
+		}
+
 		internal void CheckBuffer()
 		{
 			if (	BufferReady != null &&

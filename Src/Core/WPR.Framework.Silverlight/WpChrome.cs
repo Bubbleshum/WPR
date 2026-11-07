@@ -129,7 +129,7 @@ namespace WPR.SilverlightCompability
         {
             try
             {
-                var p = obj.GetType().GetProperty(name,
+                var p = ReflectionMembers.GetProperty(obj.GetType(), name,
                     System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
                 object? v = p?.GetValue(obj);
                 // An unresolved Binding sitting in the property prints its type name, which is

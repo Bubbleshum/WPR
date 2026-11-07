@@ -1852,6 +1852,9 @@ namespace WPR
 
         private static void TeardownAudioState()
         {
+            // A game that exits while recording: its capture device closes with the audio.
+            try { Microsoft.Xna.Framework.Audio.Microphone.StopAllForNewLaunch(); }
+            catch (Exception ex) { Log.Warn(LogCategory.AppList, $"Microphone stop on teardown threw: {ex.Message}"); }
             // A movie still up when the game exits: release it (its sound is a SoundEffect
             // instance, so before the audio device goes) without posting its completion.
             try { WPR.Xna.Rhi.HostOverlay.Clear(completed: false); }

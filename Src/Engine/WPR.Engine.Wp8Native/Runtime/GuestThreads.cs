@@ -569,7 +569,10 @@ namespace WPR.Wp8Native
 
         private void Save(GuestThread thread)
         {
-            thread.Registers = CaptureRegisters();
+            // Into the thread's own array: a game spinning on Concurrency::wait (a yield) switches
+            // threads hundreds of thousands of times a second, and a new array per switch was a
+            // large share of the garbage that cost the S24 hundreds of collections a second.
+            thread.Registers = CaptureRegisters(thread.Registers);
             uint[] vfp = thread.Vfp ?? new uint[64];
             for (int i = 0; i < 64; i++)
             {

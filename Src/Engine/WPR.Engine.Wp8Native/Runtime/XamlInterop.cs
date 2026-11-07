@@ -1210,9 +1210,31 @@ namespace WPR.Wp8Native
                     }
 
                     _emulator.Direct3D.DeliverFrame();
-                    _emulator.Direct3D.AwaitHostFrame(NextFrame);
+                    AwaitFrame();
                 });
             });
+        }
+
+        /// <summary>
+        /// Waits for the host's next frame, serving the page's calls that arrive meanwhile without
+        /// drawing. Each touch the page reports (Marmalade's s3ePointerUpdate) is a call, and when a
+        /// call released a frame of its own Shadow Fight 2 ran at 100-140 guest frames a second on
+        /// the S24 while a finger was down, against the display's 60.
+        /// </summary>
+        private void AwaitFrame() => _emulator.Direct3D.AwaitHostFrame(AfterFrameWait);
+
+        private void AfterFrameWait()
+        {
+            if (_emulator.Direct3D.HostFrameGranted)
+            {
+                NextFrame();
+                return;
+            }
+
+            if (!ServeBridgeCallInFrame(AwaitFrame))
+            {
+                AwaitFrame();
+            }
         }
 
         /// <summary>
@@ -1239,7 +1261,7 @@ namespace WPR.Wp8Native
                     }
 
                     _emulator.Direct3D.DeliverFrame();
-                    _emulator.Direct3D.AwaitHostFrame(NextFrame);
+                    AwaitFrame();
                 });
             });
         }

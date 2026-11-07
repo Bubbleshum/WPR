@@ -332,6 +332,23 @@ namespace WPR.Wp8Native
         private Dictionary<string, string>? _packageIndex;
 
         /// <summary>
+        /// A file WPR keeps in the install folder that the package did not ship: the pristine
+        /// copies the patcher and the stubber set aside (<c>.original</c>,
+        /// <c>.native_original</c>), and WPR's own records and logs (<c>wpr-*</c>, <c>wpr_*</c>).
+        /// </summary>
+        /// <remarks>
+        /// The guest sees the package as shipped. Marmalade's loader lists its install folder and
+        /// loads every extension DLL it finds; it found <c>s3eAdMobExtension.dll.original</c> (a
+        /// managed stub), the load failed and Shadow Fight 2 quit. The module loader reads the
+        /// host folder itself, so a component's <c>.native_original</c> still loads.
+        /// </remarks>
+        internal static bool IsHostArtefact(string name) =>
+            name.EndsWith(".original", StringComparison.OrdinalIgnoreCase) ||
+            name.EndsWith(".native_original", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("wpr-", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("wpr_", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
         /// Every file and folder in the unpacked package, by relative path compared without
         /// case (WP8's file system ignores case and games rely on it), built once.
         /// </summary>
@@ -353,6 +370,11 @@ namespace WPR.Wp8Native
             {
                 foreach (string entry in Directory.EnumerateFileSystemEntries(_readRoot, "*", SearchOption.AllDirectories))
                 {
+                    if (IsHostArtefact(Path.GetFileName(entry)))
+                    {
+                        continue;
+                    }
+
                     index.TryAdd(Path.GetRelativePath(_readRoot, entry).Replace(Path.DirectorySeparatorChar, '/'), entry);
                 }
             }
@@ -835,7 +857,9 @@ namespace WPR.Wp8Native
                 var directory = new DirectoryInfo(host);
                 if (Matches(".", pattern)) found.Enqueue((directory, "."));
                 if (Matches("..", pattern)) found.Enqueue((directory.Parent ?? directory, ".."));
+                bool package = host.StartsWith(_readRoot, StringComparison.OrdinalIgnoreCase);
                 foreach (FileSystemInfo entry in directory.EnumerateFileSystemInfos()
+                             .Where(e => !(package && IsHostArtefact(e.Name)))
                              .Where(e => Matches(e.Name, pattern))
                              .OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase))
                 {
