@@ -526,7 +526,10 @@ namespace WPR.Wp8Native
 
                 if (files)
                 {
-                    foreach (string name in Directory.EnumerateFiles(folder.HostPath).Select(Path.GetFileName).OfType<string>().Order(StringComparer.OrdinalIgnoreCase))
+                    // WPR's own files in the install folder are not the package's (FileLibrary.IsHostArtefact).
+                    bool package = folder.HostPath.StartsWith(Files.PackageRoot, StringComparison.OrdinalIgnoreCase);
+                    foreach (string name in Directory.EnumerateFiles(folder.HostPath).Select(Path.GetFileName).OfType<string>()
+                                 .Where(n => !(package && FileLibrary.IsHostArtefact(n))).Order(StringComparer.OrdinalIgnoreCase))
                     {
                         long obj = File(ChildOf(folder, name, isFolder: false));
                         items.Add(folders ? PointerFor(Lookup(obj)!, "Windows.Storage.IStorageItem") : obj);

@@ -32,9 +32,10 @@ namespace WPR.Wp8Native
     /// mapped registers, and <c>s0</c>, <c>s1</c>... for the samplers.</para>
     /// <para>Chunk layout: [0] size, [4] Direct3D 9 version token, [8] bytecode size, [12] bytecode
     /// offset, then five (count, offset) uint16 pairs - constant-buffer maps (8 bytes each + 4
-    /// padding), loop registers, unused, samplers (4 bytes), runtime constants (4 bytes). A vertex
-    /// shader's c0 is a runtime constant, the position fix-up, which is answered with zeros here
-    /// (the host's rasteriser needs no half-pixel correction).</para>
+    /// padding), loop registers, unused, samplers (4 bytes: resource slot, sampler slot, sN, unused),
+    /// runtime constants (4 bytes: uint16 kind, uint16 register). A vertex shader's runtime constant
+    /// is the position fix-up, usually in c0 but not always; it is answered with zeros here (the
+    /// host's rasteriser needs no half-pixel correction).</para>
     /// </remarks>
     public sealed class Aon9Shader
     {
@@ -105,19 +106,32 @@ namespace WPR.Wp8Native
                     maps.Add(new Aon9ConstantMap(U16(aon9, at), U16(aon9, at + 2), U16(aon9, at + 4), U16(aon9, at + 6)));
                 }
 
+                // Each sampler entry is (shader resource slot, sampler slot, sN register, reserved).
+                // Most shaders map slot N to sN, where the order cannot be told apart. Two that do
+                // not settle it: FIFA 13's pitch shader stores (1,0,0) (2,1,1) (0,2,2), so s0 reads
+                // t1 (its detail tiling), s1 reads t2 (the lightmap) and s2 reads t0 (the mowing
+                // pattern); Assassin's Creed Pirates' video shader stores (0,0,0) (1,0,1) (2,0,2), its
+                // Y, U and V planes through one sampler. Read with the register first, FIFA's lightmap
+                // was sampled at the detail texture's tiling and the pitch drew as a grid of tiny
+                // lightmaps.
                 List<Aon9SamplerMap> samplers = [];
                 (int sCount, int sOffset) = Pair(3);
                 for (int i = 0; i < sCount; i++)
                 {
                     int at = sOffset + (i * 4);
-                    samplers.Add(new Aon9SamplerMap(aon9[at], aon9[at + 1], aon9[at + 2]));
+                    samplers.Add(new Aon9SamplerMap(Register: aon9[at + 2], Sampler: aon9[at + 1], Texture: aon9[at]));
                 }
 
                 int registers = maps.Count == 0 ? 0 : maps.Max(m => m.Target + m.Count);
                 (int rtCount, int rtOffset) = Pair(4);
                 for (int i = 0; i < rtCount; i++)
                 {
-                    registers = Math.Max(registers, U16(aon9, rtOffset + (i * 4)) + 1);
+                    // (uint16 kind, uint16 register). Most vertex shaders keep the fix-up in c0, where
+                    // reading the kind instead gave the same answer; FIFA 13's skinned player shaders
+                    // keep it after their 217-218 mapped registers (c217, c218). Left out of the table,
+                    // that register read whatever MojoShader had there, and the shader whose fix-up sat
+                    // one past its table moved every vertex off the screen: heads, arms and legs vanished.
+                    registers = Math.Max(registers, U16(aon9, rtOffset + (i * 4) + 2) + 1);
                 }
 
                 byte[] code = aon9.AsSpan(codeOffset, codeSize).ToArray();

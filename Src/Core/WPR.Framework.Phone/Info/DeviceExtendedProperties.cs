@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 
 namespace Microsoft.Phone.Info
 {
@@ -95,14 +94,21 @@ namespace Microsoft.Phone.Info
                 // telemetry (e.g. PressPlay.Tentacles.MetricsSender.CreateTearDownExtendedKeys
                 // calls .ToString() on the value, so returning null here NREs the host on
                 // game exit). Long, in bytes, matching the WP7 SDK shape.
+                //
+                // These are DeviceStatus's plausible WP-era figures, NOT the process working set.
+                // WPR's process holds the runtime, the JIT, the shell, the emulator and the game
+                // together, so its working set is routinely several times the 180 MB limit below.
+                // A game that throttles on usage/limit (purges its texture cache, drops effects,
+                // reloads content) then believed it was always over budget, which costs memory
+                // churn and frame time instead of saving either. Process.GetCurrentProcess() also
+                // allocated a Process and read /proc on every call, and some titles poll this in
+                // their debug overlay every frame.
                 case "ApplicationCurrentMemoryUsage":
-                    try { value = Process.GetCurrentProcess().WorkingSet64; }
-                    catch { value = GC.GetTotalMemory(false); }
+                    value = DeviceStatus.ApplicationCurrentMemoryUsage;
                     return true;
 
                 case "ApplicationPeakMemoryUsage":
-                    try { value = Process.GetCurrentProcess().PeakWorkingSet64; }
-                    catch { value = GC.GetTotalMemory(false); }
+                    value = DeviceStatus.ApplicationPeakMemoryUsage;
                     return true;
 
                 // The per-app cap, in bytes. "ApplicationWorkingSetLimit" is the real WP7 spelling

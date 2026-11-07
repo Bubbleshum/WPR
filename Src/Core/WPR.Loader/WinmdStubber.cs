@@ -52,6 +52,19 @@ namespace WPR
             // A C++/CX class with a destructor implements IClosable; managed code sees IDisposable,
             // and calls Dispose (its Close is renamed, see CloneMethod).
             ["Windows.Foundation.IClosable"] = typeof(IDisposable),
+            // The rest of .NET's WinRT projection. A managed class implementing a component's
+            // interface names these BCL types: Marmalade's s3eWindowsStoreBilling implements
+            // CurrentApp_LinkUri() as returning System.Uri, which the stub declared as
+            // Windows.Foundation.Uri, so the class failed to load and took Shadow Fight 2's whole
+            // page with it.
+            ["Windows.Foundation.Uri"] = typeof(Uri),
+            ["Windows.Foundation.DateTime"] = typeof(DateTimeOffset),
+            ["Windows.Foundation.TimeSpan"] = typeof(TimeSpan),
+            ["Windows.Foundation.HResult"] = typeof(Exception),
+            ["Windows.Foundation.EventHandler`1"] = typeof(EventHandler<>),
+            ["Windows.Foundation.IReference`1"] = typeof(Nullable<>),
+            ["Windows.UI.Xaml.Interop.IBindableIterable"] = typeof(System.Collections.IEnumerable),
+            ["Windows.UI.Xaml.Interop.IBindableVector"] = typeof(System.Collections.IList),
         };
 
         /// <summary>

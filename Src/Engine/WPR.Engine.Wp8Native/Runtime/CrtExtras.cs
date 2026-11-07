@@ -356,8 +356,10 @@ namespace WPR.Wp8Native
                 long ticks = DateTime.UtcNow.Ticks - DateTime.UnixEpoch.Ticks;
                 if (target != 0)
                 {
-                    _emulator.WriteMemory(target, [.. BitConverter.GetBytes(ticks / TimeSpan.TicksPerSecond),
-                        .. BitConverter.GetBytes((int)(ticks % TimeSpan.TicksPerSecond * 100))]);
+                    // Word writes, no arrays: a ConcRT wait loop calls this hundreds of thousands
+                    // of times a second (Shadow Fight 2), and the garbage cost the S24 dearly.
+                    _emulator.WriteUInt64(target, (ulong)(ticks / TimeSpan.TicksPerSecond));
+                    _emulator.WriteUInt32(target + 8, (uint)(int)(ticks % TimeSpan.TicksPerSecond * 100));
                 }
 
                 _frame.Return(_frame.Arg(1));
@@ -369,8 +371,9 @@ namespace WPR.Wp8Native
             // long _Xtime_diff_to_millis2(const xtime* later, const xtime* earlier)
             handlers["_Xtime_diff_to_millis2"] = () =>
             {
-                long Millis(long xtime) => (BitConverter.ToInt64(_emulator.ReadMemory(xtime, 8)) * 1000) +
-                                           (BitConverter.ToInt32(_emulator.ReadMemory(xtime + 8, 4)) / 1_000_000);
+                long Millis(long xtime) =>
+                    ((long)((ulong)_emulator.ReadUInt32(xtime) | ((ulong)_emulator.ReadUInt32(xtime + 4) << 32)) * 1000) +
+                    ((int)_emulator.ReadUInt32(xtime + 8) / 1_000_000);
                 long difference = Millis(_frame.Arg(0)) - Millis(_frame.Arg(1));
                 _frame.Return(unchecked((uint)(int)Math.Max(0, difference)));
             };

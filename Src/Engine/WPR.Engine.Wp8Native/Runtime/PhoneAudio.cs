@@ -51,8 +51,14 @@ namespace WPR.Wp8Native
         /// rest of this fixed). Shared mode may hand back a larger buffer than requested, and games
         /// size their writes from GetBufferSize, so this is within the contract. 20 ms already kept
         /// up at 60 fps; 50 ms also rides out slow frames.
+        /// <para>150 ms since 2026-11-05: FIFA 13 runs its matches at 16-18 fps on the Galaxy S24,
+        /// i.e. 55-70 ms frames spent entirely in guest code, and writes about 42 ms a wake. A 50 ms
+        /// buffer then held less than one frame of sound, and the stream ran dry between wakes
+        /// (AudioTrack counted 4,326 underruns in about six minutes). 150 ms holds two slow frames;
+        /// it is latency the game asked about through GetBufferSize, as a shared-mode endpoint may
+        /// hand back more than requested.</para>
         /// </summary>
-        public const long MinimumBufferDuration = 500_000;
+        public const long MinimumBufferDuration = 1_500_000;
 
         public const string RenderId = @"\\?\SWD#MMDEVAPI#{0.0.0.00000000}.{6b4e04c0-6b2f-4fd3-9d32-2a26d1a2e4d1}#{e6327cad-dcec-4949-ae8a-991e976a79d2}";
         public const string CommunicationsRenderId = @"\\?\SWD#MMDEVAPI#{0.0.0.00000000}.{6b4e04c0-6b2f-4fd3-9d32-2a26d1a2e4d2}#{e6327cad-dcec-4949-ae8a-991e976a79d2}";
@@ -62,6 +68,22 @@ namespace WPR.Wp8Native
         private readonly Func<IAudioOutput?> _output;
         private readonly Func<long, bool> _setEvent;
         private readonly List<Client> _clients = new();
+
+        /// <summary>Whether an audio client exists, i.e. the title plays sound through WASAPI.</summary>
+        public bool Active => _clients.Count > 0;
+
+        // Totals for the run summary's wasapi: field: events set, GetBuffer calls (and how many
+        // were refused for asking more than fits), frames written, and the padding the game was
+        // told on average.
+        private long _wakes, _getBuffers, _refused, _written, _paddingAsks, _paddingSum;
+
+        /// <summary>One line for the run summary: how the WASAPI streams are being fed.</summary>
+        public string Summary()
+        {
+            string queued = string.Join("/", _clients.Where(c => c.Initialized).Select(c => $"{c.Queued.Sum()}of{c.BufferFrames}@{c.Rate}"));
+            long avgPadding = _paddingAsks == 0 ? 0 : _paddingSum / _paddingAsks;
+            return $"wakes={_wakes} getbuffer={_getBuffers} refused={_refused} written={_written} padding-avg={avgPadding} padding-asks={_paddingAsks} queued={queued}";
+        }
 
         public PhoneAudio(MediaCom com, Func<IAudioOutput?> output, Func<long, bool> setEvent)
         {
@@ -216,6 +238,8 @@ namespace WPR.Wp8Native
             [6] = ("GetCurrentPadding", () => With(c =>
             {
                 Retire(c);
+                _paddingAsks++;
+                _paddingSum += c.Padding;
                 _com.W32(Arg(1), c.Padding);
                 Return(Arg(1) == 0 ? MediaCom.EPointer : MediaCom.SOk);
             })),
@@ -488,6 +512,7 @@ namespace WPR.Wp8Native
         {
             if (c.EventDriven && c.EventHandle != 0 && c.Running && c.Padding < c.BufferFrames)
             {
+                _wakes++;
                 _setEvent(c.EventHandle);
             }
         }
@@ -561,8 +586,10 @@ namespace WPR.Wp8Native
                 }
 
                 Retire(c);
+                _getBuffers++;
                 if (Arg(1) > c.BufferFrames - c.Padding)
                 {
+                    _refused++;
                     _com.W32(Arg(2), 0);
                     Return(BufferTooLarge);
                     return;
@@ -602,6 +629,20 @@ namespace WPR.Wp8Native
                     c.Voice?.Submit(PcmAudio.ToPcm16(raw, c.IsFloat, c.Bits, c.Channels, c.BlockAlign) ?? []);
                     c.Queued.Enqueue(written);
                     c.WrittenFrames += written;
+                    _written += written;
+
+                    // A phone set the event every device period (10 ms) while the buffer had room;
+                    // this host sets it once per guest frame. A stream that writes a fixed amount
+                    // per wake therefore made only frame-rate x chunk of sound: FIFA 13 writes about
+                    // 2048 frames a wake, enough at its menus' 24 fps and ~80% of real time in a
+                    // match at 18-20 fps (measured on the S24: AudioFlinger underruns grew by a
+                    // fifth of the frames served). So the stream is woken again at once while
+                    // another write of the same size still fits, as the phone's periods would have
+                    // done. A wake that writes nothing is not repeated, so this cannot spin.
+                    if (c.BufferFrames - c.Padding >= written)
+                    {
+                        Signal(c);
+                    }
                 }
 
                 Return(MediaCom.SOk);

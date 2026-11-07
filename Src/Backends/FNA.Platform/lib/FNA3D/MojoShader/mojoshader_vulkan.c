@@ -44,6 +44,8 @@ typedef struct MOJOSHADER_vkUniformBuffer
     VkDeviceSize currentBlockSize;
     VkDeviceSize currentBlockIncrement;
     uint8_t *mapPointer;
+    VkDeviceSize peakFrameBytes; // WPR: most bytes one frame has used
+    unsigned int overflows;      // WPR: blocks that did not fit in their frame's half
 } MOJOSHADER_vkUniformBuffer;
 
 // Error state...
@@ -216,6 +218,8 @@ static MOJOSHADER_vkUniformBuffer *create_ubo(MOJOSHADER_vkContext *ctx)
     result->currentBlockSize = 0;
     result->currentBlockIncrement = 0;
     result->dynamicOffset = 0;
+    result->peakFrameBytes = 0;
+    result->overflows = 0;
 
     return result;
 } // create_ubo
@@ -309,10 +313,24 @@ static void update_uniform_buffer(
     ubo->currentBlockSize = next_highest_offset_alignment(ctx, uniform_data_size(shader));
     ubo->currentBlockIncrement = ubo->currentBlockSize;
 
-    if (ubo->dynamicOffset + ubo->currentBlockSize >= ubo->bufferSize * ctx->frameIndex)
+    /* WPR: each frame owns one UBO_BUFFER_SIZE half of the buffer. The old test compared
+     * against bufferSize * frameIndex, which is 0 for frame 0 (so it "failed" on every draw)
+     * and the whole buffer for frame 1, and it only set an error and wrote on regardless: a
+     * frame with more than 8 MB of uniforms (FIFA 13's match on Android) wrote past the end
+     * of the mapping and the process died in memcpy. A block that does not fit now goes back
+     * to the start of its frame's half: the draws it overwrites may read the wrong constants
+     * for this one frame, but nothing is written outside the buffer. */
     {
-        set_error("UBO overflow!!");
-    } // if
+        const VkDeviceSize frameStart = (VkDeviceSize) UBO_BUFFER_SIZE * ctx->frameIndex;
+        if (ubo->dynamicOffset + ubo->currentBlockSize > frameStart + UBO_BUFFER_SIZE)
+        {
+            set_error("UBO overflow: a frame used more uniform data than its half of the buffer");
+            ubo->overflows++;
+            ubo->dynamicOffset = frameStart;
+        } // if
+        if (ubo->dynamicOffset + ubo->currentBlockSize - frameStart > ubo->peakFrameBytes)
+            ubo->peakFrameBytes = ubo->dynamicOffset + ubo->currentBlockSize - frameStart;
+    }
 
     contents = ubo->mapPointer + ubo->dynamicOffset;
 
@@ -795,6 +813,16 @@ void MOJOSHADER_vkGetUniformBuffers(
     *poff = get_uniform_offset(ctx, ctx->bound_program->pixelShader);
     *psize = get_uniform_size(ctx, ctx->bound_program->pixelShader);
 } // MOJOSHADER_vkGetUniformBuffers
+
+void MOJOSHADER_vkGetUniformBufferUsage(
+    MOJOSHADER_vkContext *ctx,
+    unsigned long long *vertPeak, unsigned long long *fragPeak,
+    unsigned int *overflows
+) {
+    *vertPeak = ctx->vertUboBuffer->peakFrameBytes;
+    *fragPeak = ctx->fragUboBuffer->peakFrameBytes;
+    *overflows = ctx->vertUboBuffer->overflows + ctx->fragUboBuffer->overflows;
+} // MOJOSHADER_vkGetUniformBufferUsage
 
 void MOJOSHADER_vkEndFrame(MOJOSHADER_vkContext *ctx)
 {

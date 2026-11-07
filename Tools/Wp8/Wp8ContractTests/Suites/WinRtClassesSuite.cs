@@ -101,7 +101,7 @@ public sealed class WinRtClassesSuite : IContractSuite
         Check("GetFolderAsync finds a package folder", assetsFolder != 0);
         long listing = Results(Call(installed, "Windows.Storage.IStorageFolder", "GetFilesAsync"));
         uint listed = U32(Get(listing, "Windows.Foundation.Collections.IVectorView`1", "get_Size"));
-        int expectedFiles = Directory.EnumerateFiles(packageRoot).Count();
+        int expectedFiles = Directory.EnumerateFiles(packageRoot).Count(f => !WPR.Wp8Native.FileLibrary.IsHostArtefact(Path.GetFileName(f)));
         Check("GetFilesAsync lists the folder's files", listed == expectedFiles, $"{listed} vs {expectedFiles}");
 
         // ---- reading: FileIO.ReadBufferAsync, IBufferByteAccess ----

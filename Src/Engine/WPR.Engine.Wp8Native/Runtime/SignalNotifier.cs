@@ -56,16 +56,42 @@ namespace WPR.Wp8Native
             public bool Serving { get; set; }
 
             public long Deadline { get; set; }
+
+            /// <summary>Times the handler was called, for the run summary.</summary>
+            public int Fires { get; set; }
+
+            /// <summary>The pool thread serving it while <see cref="Serving"/>.</summary>
+            public SignalPoolThread? Worker { get; set; }
         }
+
+        /// <summary>
+        /// A guest thread of the notifiers' thread pool. Between notifiers it parks, idle, until
+        /// <see cref="Next"/> is given one.
+        /// </summary>
+        private sealed class SignalPoolThread
+        {
+            public SignalNotifierState? Next { get; set; }
+        }
+
+        /// <summary>Pool threads parked with nothing to serve.</summary>
+        private readonly List<SignalPoolThread> _idleSignalThreads = new();
+
+        /// <summary>
+        /// How many idle pool threads are kept. FMOD keeps two or three notifiers in flight; a
+        /// thread past this many ends, as before the pool existed.
+        /// </summary>
+        private const int MaxIdleSignalThreads = 8;
 
         /// <summary>Calls made on notifiers and how they fired, for the run summary.</summary>
         public List<string> SignalNotifierLog { get; } = new();
 
+        private readonly Stopwatch _signalClock = Stopwatch.StartNew();
+
         private void SignalNote(string line)
         {
-            if (SignalNotifierLog.Count < 50)
+            if (SignalNotifierLog.Count < 200)
             {
-                SignalNotifierLog.Add(line);
+                SignalNotifierLog.Add($"{_signalClock.ElapsedMilliseconds,6} ms {line}");
             }
         }
 
@@ -82,7 +108,6 @@ namespace WPR.Wp8Native
             }
 
             long handle = _emulator.Sync.OpenOrCreateNamed(name, semaphore);
-            KeepAlive(handler);
             var state = new SignalNotifierState
             {
                 Name = name,
@@ -100,15 +125,24 @@ namespace WPR.Wp8Native
                     [InspectableSlots + 1] = ("Terminate", () =>
                     {
                         state.Terminated = true;
-                        SignalNote($"{state.Name}: terminated");
+                        SignalNote($"{state.Name} (0x{state.Self:X8}): terminated{(state.Serving ? " while its thread is serving" : "")}");
                         Return(HResultOk);
                     }),
                 });
 
-            SignalNote($"attached to {(semaphore ? "semaphore" : "event")} '{name}'" +
+            SignalNote($"attached to {(semaphore ? "semaphore" : "event")} '{name}' handler 0x{handler:X8} notifier 0x{state.Self:X8}" +
                        (timed ? $" with a {timeout100ns / 10_000} ms timeout" : ""));
             _emulator.WriteUInt32(outNotifier, (uint)state.Self);
-            Return(HResultOk);
+
+            // The notifier holds its handler, as on Windows. KeepAlive runs the guest's AddRef and
+            // returns S_OK itself, so it must come last: taken first, the Return below put 0 in r0
+            // and AddRef ran on the zero page instead. A caller that passes a temporary delegate
+            // (FMOD's non-blocking loader thread, Where's My Perry's settings screen) then freed it,
+            // and the next signal called through freed memory (null call from the Invoke trap).
+            if (!KeepAlive(handler))
+            {
+                Return(HResultOk);
+            }
         }
 
         private void EnableSignalNotifier(SignalNotifierState state)
@@ -127,7 +161,24 @@ namespace WPR.Wp8Native
             }
 
             state.Serving = true;
-            long gate = _emulator.RegisterVtableMethod($"SignalNotifier '{state.Name}' (pool thread)", () => SignalNotifierTurn(state));
+
+            // A parked pool thread takes it if there is one, as the WinRT thread pool reuses its
+            // threads. FMOD's WP8 threads (Where's My Perry, Tiny Death Star) attach a NEW notifier
+            // from inside every handler call, many times a second; a new guest thread each time
+            // left a 1 MB stack behind per call (200 MB of guest heap every 5 s) and a scheduler
+            // list hundreds of finished threads long.
+            if (_idleSignalThreads.Count > 0)
+            {
+                SignalPoolThread idle = _idleSignalThreads[^1];
+                _idleSignalThreads.RemoveAt(_idleSignalThreads.Count - 1);
+                state.Worker = idle;
+                idle.Next = state;
+                return;
+            }
+
+            var worker = new SignalPoolThread();
+            state.Worker = worker;
+            long gate = _emulator.RegisterVtableMethod("SignalNotifier pool thread", () => SignalNotifierTurn(state));
             _emulator.CreateGuestThread($"signal notifier {state.Name}", ArmEmulator.ThumbEntry(gate), 0);
         }
 
@@ -172,6 +223,7 @@ namespace WPR.Wp8Native
 
             bool signalled = _emulator.Sync.TryWait(state.Handle);
             state.Enabled = false;
+            state.Fires++;
             long invoke = _emulator.ReadUInt32(_emulator.ReadUInt32(state.Handler) + (SlotHandlerInvoke * 4));
 
             // SignalHandler::Invoke(this, SignalNotifier^ notifier, bool timedOut)
@@ -190,10 +242,42 @@ namespace WPR.Wp8Native
         private void EndSignalNotifierThread(SignalNotifierState state)
         {
             state.Serving = false;
+            SignalNote($"{state.Name} (0x{state.Self:X8}): done after {state.Fires} call(s){(state.Terminated ? ", terminated" : "")}");
+
+            // Park this thread for the next notifier rather than end it.
+            if (state.Worker is { } worker && _idleSignalThreads.Count < MaxIdleSignalThreads)
+            {
+                state.Worker = null;
+                worker.Next = null;
+                _idleSignalThreads.Add(worker);
+                if (_emulator.BlockCurrentThread(() => worker.Next is not null, onResume: () => ServePoolThread(worker),
+                        why: "signal notifier pool thread, idle"))
+                {
+                    return;
+                }
+
+                // Nothing else could run: give the thread up as before.
+                _idleSignalThreads.Remove(worker);
+                if (worker.Next is not null)
+                {
+                    ServePoolThread(worker);
+                    return;
+                }
+            }
+
+            state.Worker = null;
             if (!_emulator.EndCurrentGuestThread($"signal notifier '{state.Name}' idle"))
             {
                 _emulator.Stop($"the signal notifier '{state.Name}' thread ended and no thread is runnable");
             }
+        }
+
+        /// <summary>A parked pool thread was handed a notifier: serve it on this thread.</summary>
+        private void ServePoolThread(SignalPoolThread worker)
+        {
+            SignalNotifierState state = worker.Next!;
+            worker.Next = null;
+            SignalNotifierTurn(state);
         }
     }
 }

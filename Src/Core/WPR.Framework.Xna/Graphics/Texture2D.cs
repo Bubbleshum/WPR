@@ -257,6 +257,7 @@ namespace Microsoft.Xna.Framework.Graphics
                     staging = GCHandle.Alloc(converted, GCHandleType.Pinned);
                     TextureFormatShim.Encode(
                         Format,
+                        storageFormat,
                         source,
                         sourceLength,
                         staging.AddrOfPinnedObject(),
@@ -344,6 +345,7 @@ namespace Microsoft.Xna.Framework.Graphics
 				{
 					TextureFormatShim.Encode(
 						Format,
+						storageFormat,
 						data,
 						dataLength,
 						staging.AddrOfPinnedObject(),

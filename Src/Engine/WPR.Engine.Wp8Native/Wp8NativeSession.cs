@@ -74,6 +74,21 @@ namespace WPR.Wp8Native
         private int _sensorLogged;
         private int _silentReports;
 
+        /// <summary>
+        /// The component log for the run's end: its first 40 lines (activation and the page's
+        /// set-up) and its last 60 (where it got to), with a count of what was left out between.
+        /// </summary>
+        private static IEnumerable<string> ComponentLogExcerpt(List<string> log)
+        {
+            string[] lines = log.ToArray();
+            if (lines.Length <= 100)
+            {
+                return lines;
+            }
+
+            return [.. lines.Take(40), $"... {lines.Length - 100:N0} line(s) left out ...", .. lines.TakeLast(60)];
+        }
+
         /// <summary>Stopwatch ticks the guest spent waiting for the host's tick after a frame, since the last stats line.</summary>
         private long _guestWaitTicks;
 
@@ -186,6 +201,11 @@ namespace WPR.Wp8Native
                 }
                 // A XAML title in the background draws nothing (its provider is disconnected), so
                 // its loop waits for the tick here instead of after a frame.
+                if (!HostBlockingFrameWait)
+                {
+                    _emulator.Direct3D.HostFrame = (() => _closing || _tick.CurrentCount > 0 || _emulator.WinRt.HasPendingBridgeCall, HostFrameTaken);
+                }
+
                 _emulator.WinRt.IdleTurn += () =>
                 {
                     if (!_closing)
@@ -221,13 +241,14 @@ namespace WPR.Wp8Native
                     // (Runtime/ComponentBridge.cs); each call it queues wakes the guest's frame wait.
                     string directory = Path.GetDirectoryName(_executable)!;
                     WinmdReader metadata = WinmdReader.Load(Directory.GetFiles(directory, "*.winmd"));
-                    _emulator.WinRt.BridgeCallQueued += WakeGuest;
+                    _emulator.WinRt.BridgeCallQueued += WakeForBridgeCall;
                     _emulator.WinRt.BridgeUiThread = BridgeUiThread;
+                    _emulator.WinRt.TerminationRequested = () => WPR.Xna.Rhi.GameUnhandledException.TerminationRequested;
                     long start = _emulator.WinRt.StartBridgedComponent(image, metadata, Path.GetFileName(_executable));
                     Log($"managed page drives {Path.GetFileName(_executable)}");
                     RuntimeReady.Set();
                     fault = _emulator.Run(start, long.MaxValue / 4);
-                    foreach (string line in _emulator.WinRt.ComponentLog.Take(60))
+                    foreach (string line in ComponentLogExcerpt(_emulator.WinRt.ComponentLog))
                     {
                         Log($"[xaml] {line}");
                     }
@@ -259,7 +280,7 @@ namespace WPR.Wp8Native
                         _presentUnturned = shell.PresentsUnturned;
                         long start = _emulator.WinRt.StartComponent(image, metadata, shell);
                         fault = _emulator.Run(start, long.MaxValue / 4);
-                        foreach (string line in _emulator.WinRt.ComponentLog.Take(60))
+                        foreach (string line in ComponentLogExcerpt(_emulator.WinRt.ComponentLog))
                         {
                             Log($"[xaml] {line}");
                         }
@@ -276,6 +297,7 @@ namespace WPR.Wp8Native
             }
 
             Outcome = fault ?? _emulator?.StopReason ?? "the image returned";
+            _emulator?.WinRt.MarkGuestStopped();
             RuntimeReady.Set();
 
             // The guest ending on its own is a failure to report, unless the player closed the game
@@ -283,7 +305,19 @@ namespace WPR.Wp8Native
             // exit(0)/_exit(0), or CoreApplication.Exit(). Rovio titles quit with exit(0) when Back
             // is pressed on their main menu; that was reported as a crash and, once the error screen
             // existed, shown as one (Angry Birds Stella on the S24, 2026-10-16).
-            bool failed = !_closing && !IsCleanQuit(Outcome);
+            // A stop after the page asked for Application.Terminate() is the app ending, too: on WP8
+            // the process was gone by then, so whatever the guest met afterwards never happened.
+            // The bridge normally stops the guest at that point; this covers a Terminate() made
+            // from the page's own thread, which the guest can run past until the host's next tick.
+            bool failed = !_closing && !IsCleanQuit(Outcome) && !WPR.Xna.Rhi.GameUnhandledException.TerminationRequested;
+            if (failed && StoppedWhileShuttingDown(out string shutdown))
+            {
+                // Kept in the log (and the post-mortem below), but not a failure: no error screen
+                // and no WPR Hub crash report for a quit the player asked for.
+                Log($"guest stopped while shutting down ({shutdown}); treating it as the app closing, as a phone did");
+                failed = false;
+            }
+
             if (failed)
             {
                 _capture = new List<string>();
@@ -375,7 +409,8 @@ namespace WPR.Wp8Native
             "the image returned" or
             "the image called exit(0)" or
             "the image called _exit(0)" or
-            "the image called CoreApplication.Exit()";
+            "the image called CoreApplication.Exit()" or
+            WinRtRuntime.AppTerminatedOutcome;
 
         /// <summary>Set by the <see cref="GuestFailed"/> handler once the failure is queued for WPR Hub.</summary>
         public bool FailureReported { get; set; }
@@ -453,6 +488,30 @@ namespace WPR.Wp8Native
                 $"defaultedslots=[{string.Join(", ", _emulator.WinRt.DefaultedSlots.Select(p => $"{p.Key} x{p.Value}"))}] " +
                 $"guessedslots=[{string.Join(", ", _emulator.WinRt.GuessedSlots.Select(p => $"{p.Key} x{p.Value}"))}]");
 
+            // WPR_WP8_FILE_LOG=1: every file operation of the run, not only on a failure (a save
+            // that does not survive a relaunch fails nothing).
+            if (Environment.GetEnvironmentVariable("WPR_WP8_FILE_LOG") == "1")
+            {
+                foreach (string line in _emulator.Stubs.Files.Log)
+                {
+                    Log("file: " + line);
+                }
+            }
+
+            // Every SignalNotifier attach and terminate (FMOD's threads on WP8), in order: a
+            // handler fired after its owner let go of it shows up as an attach with no terminate.
+            // FMOD makes a new notifier for every turn of its threads, so only the first few.
+            List<string> notifierLog = _emulator.WinRt.SignalNotifierLog;
+            foreach (string line in notifierLog.Take(6))
+            {
+                Log("signal notifier: " + line);
+            }
+
+            if (notifierLog.Count > 6)
+            {
+                Log($"signal notifier: ... {notifierLog.Count - 6} more line(s) (first {notifierLog.Count} kept)");
+            }
+
             // Where each module was mapped, so a post-mortem's addresses can be put back into the
             // right DLL (a relocated module's code is nowhere near its file's ImageBase).
             foreach (string line in _emulator.ModuleLog.Where(l => l.StartsWith("mapped ", StringComparison.Ordinal)).Take(40))
@@ -472,7 +531,7 @@ namespace WPR.Wp8Native
 
                 // A thread switched out between two instructions because it entered no trap for a
                 // whole slice (GuestThreads.PreemptAfterSlice): a title that polls memory to wait.
-                Log($"threads: {_emulator.Preemptions} preemption(s), {_emulator.ThreadSwitches} switch(es)");
+                Log($"threads: {_emulator.Preemptions} preemption(s), {_emulator.ThreadSwitches} switch(es), {_emulator.PreemptsDeferredInStub} slice end(s) inside the resume stub");
             }
             catch (Exception)
             {
@@ -734,13 +793,53 @@ namespace WPR.Wp8Native
                 }
             }
 
-            if (!_closing)
+            WaitForHostFrame();
+        }
+
+        /// <summary>
+        /// <c>WPR_WP8_FRAME_WAIT=host</c>: the old frame wait, a plain host wait inside the frame
+        /// handler, during which no guest thread runs. For A/B runs only.
+        /// </summary>
+        private static readonly bool HostBlockingFrameWait =
+            string.Equals(Environment.GetEnvironmentVariable("WPR_WP8_FRAME_WAIT"), "host", StringComparison.OrdinalIgnoreCase);
+
+        private long _frameWaitFrom;
+
+        /// <summary>
+        /// The guest has finished a frame. Normally the presenting thread then waits for the host's
+        /// next tick inside the runtime (<see cref="Direct3DRuntime.AwaitHostFrame"/>), other guest
+        /// threads running meanwhile; this only starts the clock on that wait.
+        /// </summary>
+        private void WaitForHostFrame()
+        {
+            _frameWaitFrom = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (HostBlockingFrameWait && !_closing)
             {
-                long waitFrom = System.Diagnostics.Stopwatch.GetTimestamp();
                 _tick.Wait(250);
-                _frameWaitTicks = System.Diagnostics.Stopwatch.GetTimestamp() - waitFrom;
-                Interlocked.Add(ref _guestWaitTicks, _frameWaitTicks);
+                HostFrameTaken();
             }
+        }
+
+        /// <summary>On the guest thread, when the presenting thread carries on after a frame.</summary>
+        private void HostFrameTaken()
+        {
+            bool ticked = HostBlockingFrameWait || _closing || _tick.Wait(0);
+
+            // Woken only because the page queued a call: the guest serves it and waits on, and the
+            // frame wait goes on being timed (a wait that ran out with a call pending is the same).
+            bool granted = ticked || _emulator?.WinRt.HasPendingBridgeCall != true;
+            if (_emulator is { } emulator)
+            {
+                emulator.Direct3D.HostFrameGranted = granted;
+            }
+
+            if (!granted)
+            {
+                return;
+            }
+
+            _frameWaitTicks = System.Diagnostics.Stopwatch.GetTimestamp() - _frameWaitFrom;
+            Interlocked.Add(ref _guestWaitTicks, _frameWaitTicks);
         }
 
         /// <summary>
@@ -796,12 +895,7 @@ namespace WPR.Wp8Native
             // Lockstep with the XNA loop: wait for the next tick before the guest builds another
             // frame. Bounded so a stalled host (a paused activity) cannot wedge the guest for ever
             // with nothing to show for it.
-            if (!_closing)
-            {
-                long waitFrom = System.Diagnostics.Stopwatch.GetTimestamp();
-                _tick.Wait(250);
-                Interlocked.Add(ref _guestWaitTicks, System.Diagnostics.Stopwatch.GetTimestamp() - waitFrom);
-            }
+            WaitForHostFrame();
         }
 
         // ------------------------------------------------------------------------------
@@ -825,6 +919,7 @@ namespace WPR.Wp8Native
                 _emulator?.WinRt.PageTurned();
             }
 
+            NoteBackForShutdown();
             PumpTouch();
             if (!_bridged)
             {
@@ -953,6 +1048,62 @@ namespace WPR.Wp8Native
 
         private bool _backWasDown;
         private volatile bool _closeRequested;
+
+        /// <summary>
+        /// Remembers when the player last pressed Back and how much guest heap was live then, for
+        /// <see cref="StoppedWhileShuttingDown"/>. Reads the pad state only, so it takes nothing
+        /// from the page or <see cref="PumpBack"/>.
+        /// </summary>
+        private void NoteBackForShutdown()
+        {
+            bool down = GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed;
+            if (down && !_backSeenDown && _emulator is { } emulator)
+            {
+                _lastBackAt = System.Diagnostics.Stopwatch.GetTimestamp();
+                _liveHeapAtBack = emulator.LiveHeapBytes;
+                Log($"back noted (live guest heap {_liveHeapAtBack / (1024 * 1024)} MB)");
+            }
+
+            _backSeenDown = down;
+        }
+
+        private bool _backSeenDown;
+        private long _lastBackAt;
+        private long _liveHeapAtBack;
+
+        /// <summary>How recent a Back press must be for a fault to count as part of a quit it started.</summary>
+        private static readonly TimeSpan QuitAfterBackWindow = TimeSpan.FromSeconds(10);
+
+        /// <summary>
+        /// True when the guest faulted while tearing itself down after the player asked to leave:
+        /// Back was pressed within <see cref="QuitAfterBackWindow"/>, and since then the live guest
+        /// heap has shrunk by at least a sixteenth and 16 MB, which only a shutdown that frees the
+        /// game's assets does. On a phone a native crash closed the app with no message, so a
+        /// game that crashes in its own quit (Asphalt 7: its file system goes before a file it
+        /// still holds) simply closed there. Here it is treated the same way: no error screen.
+        /// A sixteenth, not an eighth: quitting after a race (S24, 0.2.10) freed 38 of 336 MB in
+        /// 1.3 s, which an eighth called a crash and put on the error screen.
+        /// </summary>
+        private bool StoppedWhileShuttingDown(out string why)
+        {
+            why = string.Empty;
+            if (_emulator is not { } emulator || _lastBackAt == 0)
+            {
+                return false;
+            }
+
+            TimeSpan since = System.Diagnostics.Stopwatch.GetElapsedTime(_lastBackAt);
+            long freed = _liveHeapAtBack - emulator.LiveHeapBytes;
+            if (since > QuitAfterBackWindow || freed < 16L * 1024 * 1024 || freed * 16 < _liveHeapAtBack)
+            {
+                Log($"not a shutdown: {since.TotalSeconds:F1} s after Back, live guest heap {_liveHeapAtBack / (1024 * 1024)} -> {emulator.LiveHeapBytes / (1024 * 1024)} MB");
+                return false;
+            }
+
+            why = $"{since.TotalSeconds:F1} s after Back, with the live guest heap down from " +
+                  $"{_liveHeapAtBack / (1024 * 1024)} MB to {emulator.LiveHeapBytes / (1024 * 1024)} MB";
+            return true;
+        }
 
         /// <summary>
         /// The phone's Back button. It reaches every XNA title as <c>GamePad.Buttons.Back</c> -
@@ -1326,8 +1477,10 @@ namespace WPR.Wp8Native
                 $"guest-wait={Interlocked.Exchange(ref _guestWaitTicks, 0) * 1000 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, _presented - _statsPresented)}ms/frame " +
                 $"file-io={((_emulator?.Stubs.Files.IoTicks ?? 0) - _statsIoTicks) * 1000 / System.Diagnostics.Stopwatch.Frequency}ms/{(_emulator?.Stubs.Files.IoCalls ?? 0) - _statsIoCalls} " +
                 $"drawlist-build total={build * 1000 / System.Diagnostics.Stopwatch.Frequency}ms textures={_textures.Count} " +
+                $"guest-heap: used={(_emulator?.HeapUsed ?? 0) / (1024 * 1024)}MB released={(_emulator?.BytesReleased ?? 0) / (1024 * 1024)}MB " +
                 $"gpu: replayed={_replay?.DrawsReplayed} skipped={_replay?.DrawsSkipped} frames-dropped={_gpuFramesDropped} {_replay?.Statistics()} unrecorded={string.Join(",", _emulator?.Direct3D.GpuSkipped.Select(p => $"{p.Key}:{p.Value}") ?? [])} " +
-                $"audio: {_emulator?.XAudio2.Summary()} voices={_audio?.VoicesCreated} underruns={_audio?.Underruns} callbacks={_emulator?.XAudio2.CallbacksMade}");
+                $"audio: {_emulator?.XAudio2.Summary()} voices={_audio?.VoicesCreated} underruns={_audio?.Underruns} callbacks={_emulator?.XAudio2.CallbacksMade} engine-passes={_emulator?.XAudio2.EnginePasses} audio-preemptions={_emulator?.AudioPreemptions} idle-passes={_emulator?.IdleAudioPasses} frame-waits-shared={_emulator?.HostFrameHandoffs} frame-preemptions={_emulator?.HostFramePreemptions}" +
+                (_emulator?.Stubs.WasapiSummary is { Length: > 0 } wasapi ? $" wasapi: {wasapi}" : ""));
             // What the game did with its sensors (a handful of lines per run; same racy read as below).
             if (_emulator?.WinRt.SensorLog is { } sensorLog)
             {
@@ -1410,6 +1563,15 @@ namespace WPR.Wp8Native
                         foreach (string line in emulator.DescribeThreads().Where(l => !l.Contains(": finished", StringComparison.Ordinal)))
                         {
                             Log("   thread: " + line);
+                        }
+
+                        // And what the guest last asked of the file system: a loader that gave up on
+                        // a missing file (Marmalade's s3e.icf) stops with an assert dialog, before
+                        // the run's end-of-run file log would ever be written.
+                        // Read racily, like the rest of this report; a torn read lands in the catch.
+                        foreach (string line in emulator.Stubs.Files.Log.TakeLast(8).ToArray())
+                        {
+                            Log("   file: " + line);
                         }
                     }
                 }
@@ -1520,6 +1682,15 @@ namespace WPR.Wp8Native
                     Log($"   last host method: {method}");
                 }
 
+                // The guest's last file requests, once per stall (the first check that saw calls).
+                if (calls != _watchdogCalls)
+                {
+                    foreach (string line in emulator.Stubs.Files.Log.TakeLast(8).ToArray())
+                    {
+                        Log("   file: " + line);
+                    }
+                }
+
                 LogHotImports(emulator);
                 _watchdogCalls = calls;
             }
@@ -1594,11 +1765,29 @@ namespace WPR.Wp8Native
         /// threw <see cref="SemaphoreFullException"/>: caught, but it put a first-chance stack trace
         /// in every crash report. The catch stays because the check and the release are not atomic.
         /// </summary>
+        /// <summary>
+        /// A page call was queued. While the frame loop draws, the main thread's frame wait takes it
+        /// (<see cref="WinRtRuntime.BridgeCallsServedBetweenFrames"/>), so the guest is only woken:
+        /// releasing a tick gave every call a frame of its own (a finger down on Shadow Fight 2 ran
+        /// it at twice the display's rate). Otherwise the guest waits on the tick, which it needs.
+        /// </summary>
+        private void WakeForBridgeCall()
+        {
+            if (_emulator is { } emulator && emulator.WinRt.BridgeCallsServedBetweenFrames)
+            {
+                emulator.WakeIdle();
+                return;
+            }
+
+            WakeGuest();
+        }
+
         private void WakeGuest()
         {
             if (_tick.CurrentCount >= 2)
                 return;
             try { _tick.Release(); } catch (SemaphoreFullException) { }
+            _emulator?.WakeIdle();
         }
 
         /// <summary>

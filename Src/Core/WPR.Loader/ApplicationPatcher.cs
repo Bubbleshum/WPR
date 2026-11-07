@@ -446,7 +446,16 @@ namespace WPR
         // Bumped to 65: Windows.Phone.System.Analytics.HostInformation joined WPR.Framework.WinRT
         // (Asphalt 7's page reads PublisherHostId), so WinRtImplementedTypes rescopes it.
         // Not identity-binding.
-        public static int Version => 65;
+        // Bumped to 66: every WaitHandle.WaitOne in game IL goes to WPR.Xna.Compat.WaitHandles
+        // (RedirectWaitOneCalls), which on the device thread services workers' GPU calls while it
+        // waits, as Compat.Monitor does for `lock`. AE Mobile's framework holds a named Mutex across
+        // Texture2D.GetData on a loader thread while BeginDraw waits on it; on desktop OpenGL AE
+        // Roundy POP stopped after one frame. Rewrites game IL; not identity-binding.
+        // Bumped to 67: Windows.Devices.Sensors.Accelerometer (+ its reading, event-args and shaken
+        // types) and Windows.Storage.Streams.Buffer joined WPR.Framework.WinRT, so
+        // WinRtImplementedTypes rescopes them. Marmalade's managed page (Shadow Fight 2) reads the
+        // WinRT accelerometer and builds a Buffer. Not identity-binding.
+        public static int Version => 67;
 
         private AssemblyNameReference FnaBackendRef;
         private AssemblyNameReference FNARef;
@@ -2501,6 +2510,90 @@ namespace WPR
             }
         }
 
+        /// <summary>
+        /// Every <c>WaitOne</c> on a <c>System.Threading</c> wait handle becomes a call to the
+        /// matching <see cref="WPR.Xna.Compat.WaitHandles"/> overload, the instance becoming
+        /// argument zero. That type has the account: on desktop OpenGL a device-thread wait has to
+        /// service workers' GPU calls, or a worker holding the handle across one deadlocks it.
+        /// A call-site rewrite because the handle types cannot be substituted (<c>Mutex</c> is sealed).
+        /// </summary>
+        private static void RedirectWaitOneCalls(ModuleDefinition module)
+        {
+            Dictionary<string, MethodReference> targets = new Dictionary<string, MethodReference>(StringComparer.Ordinal);
+            int rewritten = 0;
+
+            foreach (TypeDefinition type in module.GetTypes())
+            {
+                foreach (MethodDefinition method in type.Methods)
+                {
+                    if (!method.HasBody)
+                    {
+                        continue;
+                    }
+
+                    foreach (Instruction ins in method.Body.Instructions)
+                    {
+                        // callvirt only: a plain `call` is a subclass's base.WaitOne(), which the
+                        // static would send back to the override.
+                        if (ins.OpCode != OpCodes.Callvirt
+                            || ins.Operand is not MethodReference callee
+                            || callee.Name != "WaitOne"
+                            || !callee.HasThis
+                            || !IsWaitHandleType(callee.DeclaringType?.FullName))
+                        {
+                            continue;
+                        }
+
+                        System.Type[] parameters = new System.Type[callee.Parameters.Count + 1];
+                        parameters[0] = typeof(WaitHandle);
+                        bool known = true;
+                        for (int i = 0; i < callee.Parameters.Count; i++)
+                        {
+                            parameters[i + 1] = callee.Parameters[i].ParameterType.FullName switch
+                            {
+                                "System.Int32" => typeof(int),
+                                "System.Boolean" => typeof(bool),
+                                "System.TimeSpan" => typeof(TimeSpan),
+                                _ => null!,
+                            };
+                            known &= parameters[i + 1] != null;
+                        }
+                        if (!known)
+                        {
+                            continue;
+                        }
+
+                        string key = string.Join(",", parameters.Select(p => p.Name));
+                        if (!targets.TryGetValue(key, out MethodReference? target))
+                        {
+                            System.Reflection.MethodInfo? info = typeof(WPR.Xna.Compat.WaitHandles).GetMethod(
+                                nameof(WPR.Xna.Compat.WaitHandles.WaitOne), parameters);
+                            if (info == null)
+                            {
+                                continue;
+                            }
+                            target = module.ImportReference(info);
+                            targets[key] = target;
+                        }
+
+                        ins.OpCode = OpCodes.Call;
+                        ins.Operand = target;
+                        rewritten += 1;
+                    }
+                }
+            }
+
+            if (rewritten > 0)
+            {
+                Log.Info(LogCategory.AppInstall,
+                    $"[waitone-fixup] {module.Name}: {rewritten} WaitOne call(s) now go through WPR.Xna.Compat.WaitHandles.");
+            }
+
+            static bool IsWaitHandleType(string? name) => name is
+                "System.Threading.WaitHandle" or "System.Threading.Mutex" or "System.Threading.EventWaitHandle"
+                or "System.Threading.AutoResetEvent" or "System.Threading.ManualResetEvent" or "System.Threading.Semaphore";
+        }
+
         private static readonly HashSet<string> SocketAsyncRedirects =
             new HashSet<string>(StringComparer.Ordinal)
             {
@@ -3172,6 +3265,9 @@ namespace WPR
 
             // Android cannot create a named Mutex; NamedMutex falls back to a process-local one.
             RedirectNamedMutexCalls(module);
+
+            // A device-thread wait on a handle services workers' GPU calls, as `lock` does.
+            RedirectWaitOneCalls(module);
 
             // Hand a game back the metadata tokens its own assembly shipped with. Same placement
             // reasoning as the call above: the shim assembly is already referenced by now. Must

@@ -103,6 +103,12 @@ namespace WPR.Wp8Native
         private SamplerState SamplerForCached(byte[]? desc)
             => _samplerByRef.TryGetValue(desc ?? NoDesc, out SamplerState? state) ? state : Remember(_samplerByRef, desc ?? NoDesc, SamplerFor(desc));
         private readonly Dictionary<string, (VertexDeclaration Declaration, DynamicVertexBuffer? Buffer)> _vertexBuffers = new(StringComparer.Ordinal);
+
+        /// <summary>Where the next draw's vertices go in each shared dynamic buffer (see <see cref="Streams"/>).</summary>
+        private readonly Dictionary<string, int> _vertexBufferPosition = new(StringComparer.Ordinal);
+
+        /// <summary>The shared dynamic buffers hold at least this much, so most draws append rather than discard.</summary>
+        private const int DynamicVertexBufferBytes = 1 << 20;
         private DynamicIndexBuffer? _indices16;
         private DynamicIndexBuffer? _indices32;
         private readonly HashSet<string> _warned = new(StringComparer.Ordinal);
@@ -693,8 +699,8 @@ namespace WPR.Wp8Native
                 return;
             }
 
-            // Registers nothing maps stay zero: c0 of a vertex shader is the runtime's position
-            // fix-up, which the host's rasteriser does not need.
+            // Registers nothing maps stay zero, and so does a vertex shader's runtime constant (the
+            // position fix-up): the host's rasteriser needs no half-pixel correction.
             if (!_registerScratch.TryGetValue(shader.ConstantRegisters, out Vector4[]? registers))
             {
                 _registerScratch[shader.ConstantRegisters] = registers = new Vector4[shader.ConstantRegisters];
@@ -772,6 +778,7 @@ namespace WPR.Wp8Native
             public VertexBuffer? Buffer;
             public int FirstSeen;
             public int LastUsed;
+            public int Uses;
         }
 
         private readonly Dictionary<(byte[] Data, long Stride, string Key), UploadedStream> _uploaded = new(UploadedComparer.Instance);
@@ -969,7 +976,15 @@ namespace WPR.Wp8Native
                     }
 
                     uploaded.LastUsed = _frameIndex;
-                    if (uploaded.Buffer is null && uploaded.FirstSeen != _frameIndex)
+                    uploaded.Uses++;
+
+                    // Cached from its second use, in this frame or a later one. The capture hands
+                    // over the same array only while the game has not rewritten the buffer, so a
+                    // repeat within one frame is as static as a repeat across frames. FIFA 13 draws
+                    // its ~20 player meshes about 98,000 times in ONE frame while a match loads (62
+                    // clears between two presents); waiting for a later frame sent every one of
+                    // those draws through the shared dynamic buffer.
+                    if (uploaded.Buffer is null && (uploaded.FirstSeen != _frameIndex || uploaded.Uses > 1))
                     {
                         int all = (data.Length - stream.DataOffset) / stream.Stride;
                         byte[] packed = Repack(slot, data, stream.Stride, 0, all, stream.DataOffset);
@@ -986,22 +1001,37 @@ namespace WPR.Wp8Native
                     }
                 }
 
-                // Through the shared dynamic buffer: just this draw's vertices.
+                // Through the shared dynamic buffer: just this draw's vertices, appended after the
+                // last draw's (NoOverwrite) and discarded only when the buffer is full. A discard per
+                // draw costs a whole new buffer on Vulkan whenever the old one is still bound, and
+                // FNA3D keeps every such buffer for the life of the device: a frame of 98,000 draws
+                // took the S24 past 2.5 GB and Android killed the game.
                 byte[] scratch = Repack(slot, data, stream.Stride, stream.Stride == 0 ? 0 : offsetInData, vertexCount, stream.DataOffset);
+                int stride = slot.Declaration.VertexStride;
                 if (!_vertexBuffers.TryGetValue(slot.Key, out var cached))
                 {
                     cached = (slot.Declaration, null);
                 }
 
+                int position = _vertexBufferPosition.GetValueOrDefault(slot.Key);
+                SetDataOptions write = SetDataOptions.NoOverwrite;
                 if (cached.Buffer is null || cached.Buffer.VertexCount < vertexCount)
                 {
                     cached.Buffer?.Dispose();
-                    cached.Buffer = new DynamicVertexBuffer(_device, cached.Declaration, Math.Max(vertexCount, 1024), BufferUsage.WriteOnly);
+                    cached.Buffer = new DynamicVertexBuffer(_device, cached.Declaration, Math.Max(vertexCount, Math.Max(1024, DynamicVertexBufferBytes / Math.Max(1, stride))), BufferUsage.WriteOnly);
+                    position = 0;
+                    write = SetDataOptions.Discard;
+                }
+                else if (position + vertexCount > cached.Buffer.VertexCount)
+                {
+                    position = 0;
+                    write = SetDataOptions.Discard;
                 }
 
                 _vertexBuffers[slot.Key] = cached;
-                cached.Buffer.SetData(scratch, 0, vertexCount * slot.Declaration.VertexStride, SetDataOptions.Discard);
-                list.Add(new VertexBufferBinding(cached.Buffer));
+                cached.Buffer.SetData(position * stride, scratch, 0, vertexCount * stride, 1, write);
+                list.Add(new VertexBufferBinding(cached.Buffer, position));
+                _vertexBufferPosition[slot.Key] = position + vertexCount;
                 StreamsUploaded++;
             }
 
@@ -1383,23 +1413,72 @@ namespace WPR.Wp8Native
                 return CubeFor(image, faces, format);
             }
 
+            // A texture the guest made with a mip chain is sampled with one: its samplers ask for
+            // mip filtering, and only the top level is captured, so the rest is built here.
+            bool mipmapped = image.MipLevels > 1 && image.Blocks is null && image.Rgba.Length > 0;
             if (_textures.TryGetValue(image.Key, out var known) && known.Version == image.Version &&
-                known.Texture is Texture2D same && same.Width == image.Width && same.Height == image.Height && same.Format == format)
+                known.Texture is Texture2D same && same.Width == image.Width && same.Height == image.Height && same.Format == format &&
+                same.LevelCount > 1 == mipmapped)
             {
                 return same;
             }
 
-            Texture2D created = known.Texture is Texture2D reuse && reuse.Width == image.Width && reuse.Height == image.Height && reuse.Format == format
+            Texture2D created = known.Texture is Texture2D reuse && reuse.Width == image.Width && reuse.Height == image.Height && reuse.Format == format &&
+                                reuse.LevelCount > 1 == mipmapped
                 ? reuse
-                : new Texture2D(_device, image.Width, image.Height, false, format);
+                : new Texture2D(_device, image.Width, image.Height, mipmapped, format);
             if (!ReferenceEquals(created, known.Texture))
             {
                 known.Texture?.Dispose();
             }
 
             created.SetData(image.Blocks ?? image.Rgba);
+            if (mipmapped)
+            {
+                UploadMips(created, image.Rgba, image.Width, image.Height);
+            }
+
             _textures[image.Key] = (image.Version, created);
             return created;
+        }
+
+        /// <summary>
+        /// Fills levels 1 and down of <paramref name="texture"/> by halving <paramref name="rgba"/>
+        /// (2x2 box filter, the last row or column repeated on an odd size).
+        /// </summary>
+        /// <remarks>
+        /// FIFA 13 tiles a 256x256 grass texture and a detail texture hundreds of times across its
+        /// pitch with trilinear filtering. Created with its top level only, every pixel of the far
+        /// pitch sampled one texel out of dozens, and the repeats aliased into a regular grid of
+        /// dark lines over the whole field, on every driver.
+        /// </remarks>
+        private static void UploadMips(Texture2D texture, byte[] rgba, int width, int height)
+        {
+            byte[] level = rgba;
+            for (int index = 1; index < texture.LevelCount; index++)
+            {
+                int w = Math.Max(1, width / 2), h = Math.Max(1, height / 2);
+                byte[] next = new byte[w * h * 4];
+                for (int y = 0; y < h; y++)
+                {
+                    int y0 = Math.Min(y * 2, height - 1), y1 = Math.Min((y * 2) + 1, height - 1);
+                    for (int x = 0; x < w; x++)
+                    {
+                        int x0 = Math.Min(x * 2, width - 1), x1 = Math.Min((x * 2) + 1, width - 1);
+                        int a = ((y0 * width) + x0) * 4, b = ((y0 * width) + x1) * 4, c = ((y1 * width) + x0) * 4, d = ((y1 * width) + x1) * 4;
+                        int to = ((y * w) + x) * 4;
+                        for (int k = 0; k < 4; k++)
+                        {
+                            next[to + k] = (byte)((level[a + k] + level[b + k] + level[c + k] + level[d + k] + 2) >> 2);
+                        }
+                    }
+                }
+
+                texture.SetData(index, null, next, 0, next.Length);
+                level = next;
+                width = w;
+                height = h;
+            }
         }
 
         /// <summary>

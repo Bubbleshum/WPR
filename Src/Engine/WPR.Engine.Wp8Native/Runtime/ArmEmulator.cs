@@ -451,9 +451,9 @@ namespace WPR.Wp8Native
             Arm.UC_ARM_REG_R12, Arm.UC_ARM_REG_SP, Arm.UC_ARM_REG_LR, Arm.UC_ARM_REG_CPSR,
         ];
 
-        private long[] CaptureRegisters()
+        private long[] CaptureRegisters(long[]? into = null)
         {
-            long[] values = new long[CoreRegisters.Length];
+            long[] values = into is { } reuse && reuse.Length == CoreRegisters.Length ? reuse : new long[CoreRegisters.Length];
             for (int i = 0; i < CoreRegisters.Length; i++)
             {
                 values[i] = _cpu.RegRead(CoreRegisters[i]);
@@ -677,6 +677,21 @@ namespace WPR.Wp8Native
                 return;
             }
 
+            // Native first: one guest-to-guest memmove, no host buffer. It is all or nothing, so
+            // anything it refuses (an unmapped page, an engine or shim without it) falls through
+            // to the buffered copy below, which fails exactly as it always did. A copy onto the
+            // trap page never takes this path, so that refusal is still recorded below.
+            bool touchesTrapPage = destination < TrapBase + TrapSize && destination + count > TrapBase;
+            if (!touchesTrapPage && count <= int.MaxValue)
+            {
+                if (_cpu.TryCopyWithin(destination, source, count))
+                {
+                    NoteHostWrite(destination, (int)count);
+                    NoteOverflow(destination, (int)count);
+                    return;
+                }
+            }
+
             const int chunk = 64 * 1024;
             byte[] buffer = System.Buffers.ArrayPool<byte>.Shared.Rent((int)Math.Min(chunk, count));
             try
@@ -805,6 +820,9 @@ namespace WPR.Wp8Native
         /// </summary>
         public bool LastAllocationReused { get; private set; }
 
+        /// <summary>Bytes in guest heap blocks that are allocated and not yet freed.</summary>
+        public long LiveHeapBytes { get; private set; }
+
         public long AllocateHeap(long size)
         {
             long aligned = Bucket(size);
@@ -827,7 +845,7 @@ namespace WPR.Wp8Native
                 // losing the diagnostics that explain why. Stop cleanly instead and let the
                 // caller report - malloc returning null is a legal answer in any case.
                 HeapExhausted = true;
-                _cpu.Stop();
+                Stop($"the guest heap is exhausted: {aligned:N0} bytes asked for with {HeapUsed / (1024 * 1024)} MB of {HeapSize / (1024 * 1024)} MB in use");
                 return 0;
             }
 
@@ -1224,6 +1242,7 @@ namespace WPR.Wp8Native
         private void RecordAllocation(long pointer, long size)
         {
             var record = (pointer, size, _lastTrapBase ?? "host setup", _cpu.RegRead(Arm.UC_ARM_REG_LR));
+            LiveHeapBytes += size;
 
             // A reused block keeps its place in the list - the list is ordered by address and
             // the binary search below depends on that - and takes on its new requester.
@@ -1268,7 +1287,47 @@ namespace WPR.Wp8Native
             // callers at once, turning an image bug into an emulator one.
             if (_freed.Add(pointer))
             {
+                LiveHeapBytes -= size;
                 bucket.Push(pointer);
+                ReleaseFreedPages(pointer, size);
+            }
+        }
+
+        /// <summary>
+        /// Blocks at least this big give their whole pages back to the OS when freed.
+        /// </summary>
+        /// <remarks>
+        /// The heap only ever grows, and buckets above 1 KB are powers of two with no splitting
+        /// or merging, so a level that loads and frees a few hundred megabytes of assets used to
+        /// keep all of it resident for the rest of the run, which a 4 GB phone answers by killing
+        /// the process. The block stays on the free list and mapped; only its contents go, and
+        /// a reused block reports <see cref="LastAllocationReused"/> exactly as before. Smaller
+        /// blocks are left alone: they share pages with live neighbours, and the call is not free.
+        /// Windows' own heap decommitted large free blocks the same way, so a title reading a
+        /// big block after freeing it was already relying on luck on the phone.
+        /// </remarks>
+        private const long ReleaseFreedAtLeast = 64 * 1024;
+
+        /// <summary><c>WPR_WP8_KEEP_FREED=1</c> keeps freed blocks resident, to rule this out.</summary>
+        private static readonly bool KeepFreedPages =
+            Environment.GetEnvironmentVariable("WPR_WP8_KEEP_FREED") == "1";
+
+        /// <summary>Bytes handed back to the OS by <see cref="FreeHeap"/>, for the run summary.</summary>
+        public long BytesReleased { get; private set; }
+
+        private void ReleaseFreedPages(long pointer, long size)
+        {
+            if (KeepFreedPages || size < ReleaseFreedAtLeast)
+            {
+                return;
+            }
+
+            // Only the pages wholly inside the block: the first and last may be shared.
+            long start = (pointer + PageSize - 1) & ~(PageSize - 1);
+            long end = (pointer + size) & ~(PageSize - 1);
+            if (end - start >= PageSize && _cpu.DiscardPages(start, end - start))
+            {
+                BytesReleased += end - start;
             }
         }
 
@@ -1714,6 +1773,17 @@ namespace WPR.Wp8Native
                 return false;
             }
 
+            RunDeferredFromYield();
+            return true;
+        }
+
+        /// <summary>
+        /// The body of <see cref="YieldToDeferredWork"/>, apart so its closure is made only when there
+        /// is work: C# allocates a method's closure at its top, and a ConcRT wait loop (a yield)
+        /// called the empty case hundreds of thousands of times a second.
+        /// </summary>
+        private void RunDeferredFromYield()
+        {
             (string name, long function, long[] arguments) = _deferred.Dequeue();
             LogDeferred($"-> {name} at 0x{function:X8} (from a yield)");
             Yields++;
@@ -1734,7 +1804,6 @@ namespace WPR.Wp8Native
             });
 
             _domain = new FaultDomain(name, resumeTrap, snapshot);
-            return true;
         }
 
         /// <summary>
@@ -1860,6 +1929,14 @@ namespace WPR.Wp8Native
             lock (GuestThreadStacks)
             {
                 GuestThreadStacks.Add((low, high));
+            }
+        }
+
+        private static void ForgetGuestThreadStack(long low)
+        {
+            lock (GuestThreadStacks)
+            {
+                GuestThreadStacks.RemoveAll(range => range.Low == low);
             }
         }
 

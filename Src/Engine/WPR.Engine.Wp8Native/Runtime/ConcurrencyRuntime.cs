@@ -858,6 +858,11 @@ namespace WPR.Wp8Native
             handlers[$"?_Trace_ppl_function{C}YAXABU_GUID@@EW4ConcRT_EventType@1@@Z"] = () => Return(0);
 
             // void Concurrency::wait(unsigned ms): the context sleeps, letting others run.
+            // Answered as a yield on purpose: games use it to cap their frame rate, and the
+            // user prefers WP8 titles uncapped (2026-11-05). Sleeping it for real held Asphalt 7
+            // to the 30 fps its own data/DeviceConfig/DeviceConfig.xml asks of every Windows
+            // Phone profile (use_fps_limit), which played badly here. The cost: FIFA 13, whose
+            // menus cap at its ini's FPS = 24 and step a fixed 1/24 s a frame, runs them fast.
             handlers[$"?wait{C}YAXI@Z"] = Yield;
 
             // static void _Context::_Yield() / details::_UnderlyingYield(): give up the CPU.

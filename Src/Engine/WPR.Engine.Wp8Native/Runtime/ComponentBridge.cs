@@ -76,6 +76,12 @@ namespace WPR.Wp8Native
         /// </remarks>
         public void RunBridgeCall(BridgeCall call, TimeSpan timeout)
         {
+            if (_guestStopped)
+            {
+                call.Error = "the guest has stopped";
+                return;
+            }
+
             if (Thread.CurrentThread == _guestThread)
             {
                 call.Error = "re-entrant call from the guest thread";
@@ -104,7 +110,19 @@ namespace WPR.Wp8Native
             BridgeCallWaiting = $"{call.ClassName}.{call.Member}";
             try
             {
-                if (!call.Done.Wait(timeout))
+                // In slices, so a call queued just as the guest stopped (after MarkGuestStopped
+                // drained the queues) is not left waiting out the whole timeout.
+                var waited = System.Diagnostics.Stopwatch.StartNew();
+                bool answered;
+                while (!(answered = call.Done.Wait(TimeSpan.FromMilliseconds(100))) && !_guestStopped && waited.Elapsed < timeout)
+                {
+                }
+
+                if (!answered && _guestStopped)
+                {
+                    call.Error ??= "the guest has stopped";
+                }
+                else if (!answered)
                 {
                     call.Error ??= "timed out";
                     BridgeNote($"{call.ClassName}.{call.Member}: no answer within {timeout.TotalSeconds:0}s");
@@ -116,6 +134,35 @@ namespace WPR.Wp8Native
             }
         }
 
+        private volatile bool _guestStopped;
+
+        /// <summary>
+        /// The guest has stopped for good: nothing will ever take a queued bridge call again. Every
+        /// call still waiting is answered now with an error, and later ones are refused at once.
+        /// Without this, each page call made while the app closes (Back, Deactivated, Closing)
+        /// waited its whole timeout for a guest that was gone: a minute before Asphalt 7's window
+        /// closed after its own quit crashed (S24, 2026-11-06).
+        /// </summary>
+        public void MarkGuestStopped()
+        {
+            _guestStopped = true;
+            EndManagedCallThreads();
+            Fail(_bridgeCalls);
+            foreach (BridgeLane lane in _lanes.Values)
+            {
+                Fail(lane.Calls);
+            }
+
+            static void Fail(ConcurrentQueue<BridgeCall> queue)
+            {
+                while (queue.TryDequeue(out BridgeCall? pending))
+                {
+                    pending.Error ??= "the guest has stopped";
+                    pending.Done.Set();
+                }
+            }
+        }
+
         private volatile string? _bridgeCallWaiting;
 
         /// <summary>The bridge call a managed thread is waiting on right now, if any (for a watchdog).</summary>
@@ -123,6 +170,30 @@ namespace WPR.Wp8Native
         {
             get => _bridgeCallWaiting;
             private set => _bridgeCallWaiting = value;
+        }
+
+        /// <summary>The run's outcome when page code ended the app with <c>Application.Terminate()</c>.</summary>
+        public const string AppTerminatedOutcome = "the app called Application.Terminate()";
+
+        /// <summary>
+        /// Set by the host: whether page code has asked for the app to end
+        /// (<c>Application.Terminate()</c>). Asked after every page handler the guest calls.
+        /// </summary>
+        public Func<bool>? TerminationRequested { get; set; }
+
+        /// <summary>
+        /// On WP8, <c>Application.Terminate()</c> ended the process at once, so no guest code ran
+        /// after the handler that called it. Games tear themselves down before asking (Asphalt 7's
+        /// ExitGame callback), and running on into the next frame met freed objects: a null call
+        /// shown as a crash. So the run stops here, as a clean quit.
+        /// </summary>
+        private void StopIfAppTerminated()
+        {
+            if (TerminationRequested?.Invoke() == true)
+            {
+                BridgeNote("Application.Terminate() requested by a page handler; stopping the guest");
+                _emulator.Stop(AppTerminatedOutcome);
+            }
         }
 
         private void BridgeNote(string line)
@@ -166,6 +237,7 @@ namespace WPR.Wp8Native
             _emulator.CallEmulated("DllMain", image.EntryPoint, [image.ImageBase, 1, 0], onReturn: () =>
             {
                 _guestThread = Thread.CurrentThread;
+                _pageGuestThreads.Add(_emulator.CurrentThreadId);
                 Log($"DllMain(PROCESS_ATTACH) returned {Arg(0)}; serving the managed page");
                 ServeBridge();
             });
@@ -174,6 +246,12 @@ namespace WPR.Wp8Native
         }
 
         private bool _bridged;
+
+        /// <summary>
+        /// The guest threads that serve the page: the main thread (its UI thread's calls) and each
+        /// lane. A component's own threads are the others (see <see cref="CallManagedOffThread"/>).
+        /// </summary>
+        private readonly HashSet<int> _pageGuestThreads = new();
         private long _getActivationFactory;
         private bool _serving;
         private bool _serveAgain;
@@ -187,6 +265,17 @@ namespace WPR.Wp8Native
 
         /// <summary>The provider was handed over and the UI thread has not finished the turn that did it yet.</summary>
         private bool AwaitingPageTurn => _bridged && _pageTurnAtProvider >= 0 && Volatile.Read(ref _pageTurns) <= _pageTurnAtProvider;
+
+        /// <summary>A call from the page's UI thread is waiting for the guest's main thread.</summary>
+        public bool HasPendingBridgeCall => !_bridgeCalls.IsEmpty;
+
+        /// <summary>
+        /// The frame loop is drawing: a page call queued now is served between frames, by the main
+        /// thread's frame wait (XamlInterop.AwaitFrame), and must not be given a frame of its own.
+        /// Before the provider connects, and while it is disconnected, the guest waits on the
+        /// host's tick instead, and a call still has to release it.
+        /// </summary>
+        public bool BridgeCallsServedBetweenFrames => _bridged && _providerNative != 0 && !_providerDisconnected && !AwaitingPageTurn;
 
         /// <summary>The page's UI thread, set by the host; calls from other threads get lanes. Null: every call is the UI thread's.</summary>
         public Thread? BridgeUiThread { get; set; }
@@ -223,6 +312,7 @@ namespace WPR.Wp8Native
                 BridgeLane captured = lane;
                 long gate = _emulator.RegisterVtableMethod($"bridge lane ({lane.Name})", () => LaneTurn(captured));
                 int id = _emulator.CreateGuestThread($"bridge lane ({lane.Name})", ArmEmulator.ThumbEntry(gate), 0);
+                _pageGuestThreads.Add(id);
                 BridgeNote($"guest thread {id} serves the calls of {lane.Name}");
             }
         }
@@ -810,6 +900,7 @@ namespace WPR.Wp8Native
                 }
 
                 Return(HResultOk);
+                StopIfAppTerminated();
             }));
         }
 
@@ -878,22 +969,38 @@ namespace WPR.Wp8Native
                         BridgeNote($"{name} called on the page's {target.GetType().Name}");
                     }
 
-                    object? result = null;
-                    try
+                    object? Call()
                     {
-                        result = implementation?.Invoke(target, values);
-                    }
-                    catch (Exception ex)
-                    {
-                        BridgeNote($"{name} threw {ex.InnerException?.GetType().Name ?? ex.GetType().Name}: {ex.InnerException?.Message ?? ex.Message}");
+                        try
+                        {
+                            return implementation?.Invoke(target, values);
+                        }
+                        catch (Exception ex)
+                        {
+                            BridgeNote($"{name} threw {ex.InnerException?.GetType().Name ?? ex.GetType().Name}: {ex.InnerException?.Message ?? ex.Message}");
+                            return null;
+                        }
                     }
 
-                    if (method.ReturnType != "Void" && Arg(core) is long outPointer && outPointer != 0)
+                    long outPointer = method.ReturnType != "Void" ? Arg(core) : 0;
+                    void Finish(object? result)
                     {
-                        WriteManagedResult(outPointer, method.ReturnType, result);
+                        if (outPointer != 0)
+                        {
+                            WriteManagedResult(outPointer, method.ReturnType, result);
+                        }
+
+                        StopIfAppTerminated();
                     }
 
                     Return(HResultOk);
+                    if (_bridged)
+                    {
+                        CallManagedOffThread(name, Call, Finish);
+                        return;
+                    }
+
+                    Finish(Call());
                 });
             }
 
@@ -901,6 +1008,190 @@ namespace WPR.Wp8Native
             _managedObjects.AddOrUpdate(target, created);
             BridgeNote($"the page's {target.GetType().Name} stands in for {interfaceName} (0x{created:X8})");
             return created;
+        }
+
+        /// <summary>
+        /// Runs a call a component's own thread made into the page's managed code on a host thread,
+        /// with that guest thread parked until it returns and the other guest threads running.
+        /// </summary>
+        /// <remarks>
+        /// On a phone the call ran on the component's native thread while the UI thread went on,
+        /// and Marmalade relies on it: s3e's loader thread calls <c>RunOnUIThread</c>, whose managed
+        /// side posts <c>runnable.Run()</c> to the dispatcher and waits for it, and that Run comes
+        /// back into the component on the UI thread. Run inline on the emulator's only OS thread,
+        /// the wait stopped every guest thread, the main thread never served the UI thread's call,
+        /// and Shadow Fight 2 hung before its first frame.
+        /// <para>
+        /// The page's own guest threads (the main thread and the lanes) go the same way. A managed
+        /// call can block on a lock another guest thread holds: Marmalade's loader thread takes the
+        /// window-info Monitor in <c>LockWindowInfo</c> and releases it in <c>UnlockWindowInfo</c>
+        /// a few calls later, and the renderer on the main thread takes the same Monitor. Inline,
+        /// the main thread's wait stopped the emulator's only OS thread, the loader never reached
+        /// its unlock, and Shadow Fight 2 froze on its first tap. Parked as a guest thread instead,
+        /// the loader runs and unlocks, as on the phone. A call that finishes at once (nearly all)
+        /// is answered without a thread switch.
+        /// </para>
+        /// </remarks>
+        private void CallManagedOffThread(string name, Func<object?> call, Action<object?> finish)
+        {
+            var done = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            Action run = () =>
+            {
+                try
+                {
+                    done.SetResult(call());
+                }
+                catch (Exception ex)
+                {
+                    done.SetException(ex);
+                }
+                finally
+                {
+                    // The scheduler may be asleep with nothing else to run; let it look again.
+                    _emulator.WakeIdle();
+                }
+            };
+            while (!ManagedCallThreadFor(_emulator.CurrentThreadId).TryPost(run))
+            {
+            }
+
+            Task<object?> work = done.Task;
+            bool finished = false;
+            void FinishOnce()
+            {
+                if (!finished)
+                {
+                    finished = true;
+                    finish(work.IsCompletedSuccessfully ? work.Result : null);
+                }
+            }
+
+            // Most calls are a property read: wait briefly before involving the scheduler.
+            if (((IAsyncResult)work).AsyncWaitHandle.WaitOne(TimeSpan.FromMilliseconds(2)))
+            {
+                FinishOnce();
+                return;
+            }
+
+            if (!_emulator.BlockCurrentThread(() => work.IsCompleted, FinishOnce, why: $"the page's {name}"))
+            {
+                // No switch: either it finished already (FinishOnce has run) or nothing else could
+                // run, and then this thread waits here, as every call used to.
+                ((IAsyncResult)work).AsyncWaitHandle.WaitOne();
+                FinishOnce();
+            }
+        }
+
+        private readonly Dictionary<int, ManagedCallThread> _managedCallThreads = new();
+
+        /// <summary>
+        /// The host thread that runs one guest thread's calls into managed code, always the same one,
+        /// as a native thread on WP8 always called managed code on itself. Marmalade's renderer takes
+        /// a Monitor in LockWindowInfo and releases it in UnlockWindowInfo: on two different threads
+        /// the release threw SynchronizationLockException.
+        /// </summary>
+        private ManagedCallThread ManagedCallThreadFor(int guestThreadId)
+        {
+            lock (_managedCallThreads)
+            {
+                if (!_managedCallThreads.TryGetValue(guestThreadId, out ManagedCallThread? thread) || thread.Ended)
+                {
+                    thread = new ManagedCallThread($"WP8 guest thread {guestThreadId} (managed calls)");
+                    _managedCallThreads[guestThreadId] = thread;
+                }
+
+                return thread;
+            }
+        }
+
+        /// <summary>Ends every managed-call thread once the guest has stopped (nothing will post to them again).</summary>
+        private void EndManagedCallThreads()
+        {
+            lock (_managedCallThreads)
+            {
+                foreach (ManagedCallThread thread in _managedCallThreads.Values)
+                {
+                    thread.End();
+                }
+
+                _managedCallThreads.Clear();
+            }
+        }
+
+        /// <summary>
+        /// One background host thread running posted work in order, until the guest stops. It never
+        /// ends on its own while the guest runs: a page Monitor it took (LockWindowInfo) belongs to
+        /// it until its own UnlockWindowInfo, and a thread that ended in between would abandon it.
+        /// </summary>
+        private sealed class ManagedCallThread
+        {
+            private readonly Queue<Action> _work = new();
+            private bool _ended;
+
+            public ManagedCallThread(string name)
+            {
+                new Thread(Run) { IsBackground = true, Name = name }.Start();
+            }
+
+            public bool Ended
+            {
+                get
+                {
+                    lock (_work)
+                    {
+                        return _ended;
+                    }
+                }
+            }
+
+            /// <summary>False once the thread has ended; the caller then asks for a new one.</summary>
+            public bool TryPost(Action action)
+            {
+                lock (_work)
+                {
+                    if (_ended)
+                    {
+                        return false;
+                    }
+
+                    _work.Enqueue(action);
+                    Monitor.Pulse(_work);
+                    return true;
+                }
+            }
+
+            public void End()
+            {
+                lock (_work)
+                {
+                    _ended = true;
+                    Monitor.Pulse(_work);
+                }
+            }
+
+            private void Run()
+            {
+                while (true)
+                {
+                    Action action;
+                    lock (_work)
+                    {
+                        while (_work.Count == 0 && !_ended)
+                        {
+                            Monitor.Wait(_work);
+                        }
+
+                        if (_work.Count == 0)
+                        {
+                            return;
+                        }
+
+                        action = _work.Dequeue();
+                    }
+
+                    action();
+                }
+            }
         }
 
         /// <summary>A managed answer written through a WinRT out pointer, by the metadata's type.</summary>

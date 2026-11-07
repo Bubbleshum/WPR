@@ -177,8 +177,14 @@ try {
         "-p:AndroidSdkDirectory=$AndroidHome"
         # Embed assemblies so an adb-installed APK runs without VS fast-deploy staging.
         '-p:EmbedAssembliesIntoApk=true'
-        '-p:AndroidEnableAssemblyCompression=false'
     )
+    if ($Configuration -ne 'Release') {
+        # Debug only. On a Release build this produces an APK that cannot start at all:
+        # libmonodroid.so imports compressed_assembly_count, which libxamarin-app.so defines
+        # only when compression is on (UnsatisfiedLinkError before any managed code runs).
+        # See the note in .github/workflows/release.yml; it bit a phone again on 2026-11-06.
+        $buildArgs += '-p:AndroidEnableAssemblyCompression=false'
+    }
     if ($Configuration -eq 'Release') {
         # A plain Release `build` stops short of packaging/signing.
         $buildArgs += '-t:SignAndroidPackage'

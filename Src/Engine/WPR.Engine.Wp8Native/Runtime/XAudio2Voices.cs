@@ -332,6 +332,13 @@ namespace WPR.Wp8Native
         // ------------------------------------------------------------------------------
 
         /// <summary>
+        /// Raised at the top of every pass: once per frame of the main loop, and from the engine
+        /// thread while the frame loop is stalled. The clock the other audio paths (WASAPI, the
+        /// media engine) advance on. Handlers must not call into the image.
+        /// </summary>
+        public event Action? FrameTick;
+
+        /// <summary>
         /// Once per frame, on the main guest thread from inside a trap: feeds the host, retires
         /// finished buffers, applies volume and pitch, and makes the callbacks that are due.
         /// </summary>
@@ -339,14 +346,25 @@ namespace WPR.Wp8Native
         /// True if it has taken over the return path (it is calling into the game) and will run
         /// <paramref name="continueWith"/> itself; false if there was nothing to call.
         /// </returns>
-        /// <summary>
-        /// Raised at the top of every <see cref="Pump"/>, i.e. once per frame of the main loop: the
-        /// clock the other audio paths (WASAPI, the media engine) advance on. Handlers must not
-        /// call into the image.
-        /// </summary>
-        public event Action? FrameTick;
-
         public bool Pump(Action continueWith)
+        {
+            EnsureEngineThread();
+            var calls = CollectPass();
+            if (calls.Length == 0)
+            {
+                return false;
+            }
+
+            RunCallbacks(calls, 0, continueWith);
+            return true;
+        }
+
+        /// <summary>
+        /// One processing pass, on whichever guest thread runs it: feeds the host, retires finished
+        /// buffers, applies volume and pitch, and returns the callbacks now due (to be run on that
+        /// thread). Calls nothing in the image itself.
+        /// </summary>
+        private (string Name, long Function, long[] Args)[] CollectPass()
         {
             FrameTick?.Invoke();
             // A real engine runs a processing pass every 10 ms and tells registered engine
@@ -389,15 +407,129 @@ namespace WPR.Wp8Native
             }
 
             QueueEngineCallback(1, "OnProcessingPassEnd");
-            if (_pendingCallbacks.Count == 0)
-            {
-                return false;
-            }
-
             var calls = _pendingCallbacks.ToArray();
             _pendingCallbacks.Clear();
-            RunCallbacks(calls, 0, continueWith);
-            return true;
+            return calls;
+        }
+
+        // ------------------------------------------------------------------------------
+        // The engine thread: passes while the frame loop is stalled
+        // ------------------------------------------------------------------------------
+
+        /// <summary>
+        /// <c>WPR_WP8_AUDIO_THREAD=0</c> leaves every pass to the frame loop, as before the engine
+        /// thread existed, to rule it out.
+        /// </summary>
+        private static readonly bool EngineThreadEnabled =
+            Environment.GetEnvironmentVariable("WPR_WP8_AUDIO_THREAD") != "0";
+
+        /// <summary>
+        /// How long without a pass before the engine thread runs one: longer than a 30 fps frame
+        /// (33 ms), so normal play keeps every pass on the frame loop, and short enough for a WASAPI
+        /// stream that holds only about 100 ms. 60 ms left N.O.V.A. 3's stream (event-driven,
+        /// 50 ms chunks) running dry in every second-long loading stall: +26 underruns over the
+        /// campaign load at 60 ms, 0 at 40. <c>WPR_WP8_AUDIO_PASS_MS</c> overrides it.
+        /// </summary>
+        private static readonly long EnginePassDueTicks = System.Diagnostics.Stopwatch.Frequency
+            * (int.TryParse(Environment.GetEnvironmentVariable("WPR_WP8_AUDIO_PASS_MS"), out int ms) && ms > 0 ? ms : 40) / 1000;
+
+        private int _engineThread;          // 0 = not yet, -1 = given up, else its guest thread id
+        private bool _enginePassRunning;
+
+        /// <summary>Passes the engine thread ran because the frame loop had not (loading screens).</summary>
+        public int EnginePasses { get; private set; }
+
+        /// <summary>
+        /// Whether another audio path the frame tick drives is in use (the media engine, WASAPI),
+        /// so a title with no XAudio2 voice of its own still gets an engine thread.
+        /// </summary>
+        public Func<bool>? OtherAudioActive { get; set; }
+
+        /// <summary>
+        /// Starts the engine thread the first time a title has sound to keep going. Called from the
+        /// frame pump, inside a trap on the main thread.
+        /// </summary>
+        /// <remarks>
+        /// Every pass used to run at the frame loop's turn on the main thread. A loading screen
+        /// that presents nothing for seconds therefore fed no voice, raised no OnBufferEnd and
+        /// ticked no media clock, and the music stopped until the next frame (AC Pirates after
+        /// PLAY, Halo's mission loads, every Mandreel load). On a phone XAudio2 runs passes on its
+        /// own thread, whatever the game's threads are doing; this is that thread. It only acts
+        /// when the frame loop has fallen behind (<see cref="EnginePassDue"/>), so in normal play
+        /// every pass, and every callback, still happens exactly where it did before.
+        /// </remarks>
+        private void EnsureEngineThread()
+        {
+            if (!EngineThreadEnabled || _engineThread != 0)
+            {
+                return;
+            }
+
+            if (!_voices.Values.Any(v => v.IsSource) && OtherAudioActive?.Invoke() != true)
+            {
+                return;
+            }
+
+            long gate = _emulator.RegisterVtableMethod("XAudio2 engine thread", ParkEngine);
+            _engineThread = _emulator.CreateGuestThread("XAudio2 engine", ArmEmulator.ThumbEntry(gate), 0);
+            _emulator.MarkAudioEngineThread(_engineThread);
+            _emulator.AudioPassDue = EnginePassDue;
+            _emulator.AudioPassDueAt = IdlePassDueAt;
+        }
+
+        private bool EnginePassDue() =>
+            !_enginePassRunning && _lastPass != 0
+            && System.Diagnostics.Stopwatch.GetTimestamp() - _lastPass > EnginePassDueTicks;
+
+        /// <summary>
+        /// How long without a pass before the engine thread runs one when every guest thread is
+        /// waiting (the presenting thread for the host's frame, the rest on their own waits). The
+        /// CPU is idle then, so this is shorter than <see cref="EnginePassDueTicks"/>: a phone's
+        /// XAudio2 runs a pass every 10 ms whatever the game does. Longer than one 60 fps frame, so
+        /// a host that keeps up still sees every pass on the frame loop.
+        /// <c>WPR_WP8_AUDIO_IDLE_PASS_MS</c> overrides it.
+        /// </summary>
+        private static readonly long IdlePassTicks = System.Diagnostics.Stopwatch.Frequency
+            * (int.TryParse(Environment.GetEnvironmentVariable("WPR_WP8_AUDIO_IDLE_PASS_MS"), out int idle) && idle > 0 ? idle : 20) / 1000;
+
+        private long? IdlePassDueAt() =>
+            _enginePassRunning || _lastPass == 0 ? null : _lastPass + IdlePassTicks;
+
+        /// <summary>One pass on the engine thread, then park again.</summary>
+        private void EnginePass()
+        {
+            _enginePassRunning = true;
+            EnginePasses++;
+            var calls = CollectPass();
+            if (calls.Length == 0)
+            {
+                ParkEngine();
+                return;
+            }
+
+            RunCallbacks(calls, 0, ParkEngine);
+        }
+
+        /// <summary>
+        /// Parks the engine thread until a pass is due. If no other thread can take the CPU (not
+        /// expected: the thread it was switched in from is runnable), it ends instead, and passes go
+        /// back to the frame loop alone.
+        /// </summary>
+        private void ParkEngine()
+        {
+            _enginePassRunning = false;
+            if (_emulator.ParkAudioEngineThread(EnginePass, "XAudio2 engine, waiting for a stalled frame loop"))
+            {
+                return;
+            }
+
+            _engineThread = -1;
+            _emulator.AudioPassDue = null;
+            _emulator.AudioPassDueAt = null;
+            if (!_emulator.EndCurrentGuestThread("the XAudio2 engine thread had no thread to hand the CPU back to"))
+            {
+                _emulator.Stop("the XAudio2 engine thread ended and no thread is runnable");
+            }
         }
 
         private long _lastPass;

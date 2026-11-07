@@ -314,7 +314,7 @@ namespace WPR.SilverlightCompability
 
                 (string owner, string member) = SplitPath(path!);
                 if (TryAttached(owningObject, owner, member, read: true, null, out object? attached)) return attached;
-                PropertyInfo? property = owningObject.GetType().GetProperty(
+                PropertyInfo? property = ReflectionMembers.GetProperty(owningObject.GetType(),
                     member, BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
                 return property?.GetValue(owningObject);
             }
@@ -338,7 +338,7 @@ namespace WPR.SilverlightCompability
                 (string owner, string member) = SplitPath(path);
                 if (TryAttached(owningObject, owner, member, read: false, value, out _)) return;
 
-                PropertyInfo? property = owningObject.GetType().GetProperty(
+                PropertyInfo? property = ReflectionMembers.GetProperty(owningObject.GetType(),
                     member, BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
                 if (property == null || !property.CanWrite)
                 {
@@ -421,7 +421,7 @@ namespace WPR.SilverlightCompability
                     int dot = name.LastIndexOf('.');
                     if (dot >= 0) name = name.Substring(dot + 1);
 
-                    PropertyInfo? step = current.GetType().GetProperty(
+                    PropertyInfo? step = ReflectionMembers.GetProperty(current.GetType(),
                         name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
                     if (step == null) return null;
 

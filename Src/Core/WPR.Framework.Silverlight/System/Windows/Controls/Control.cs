@@ -146,8 +146,20 @@ namespace System.Windows.Controls
             set => SetValue(VerticalContentAlignmentProperty, value);
         }
 
-        /// <summary>Gives the control focus. WPR has no keyboard focus; the answer is whether it could have taken it.</summary>
-        public bool Focus() => IsEnabled && Visibility == Visibility.Visible;
+        /// <summary>
+        /// Gives the control focus. WPR routes no keyboard input to pages, so focus is bookkeeping:
+        /// a control that could take it becomes <see cref="System.Windows.Input.FocusManager.GetFocusedElement"/>.
+        /// </summary>
+        public bool Focus()
+        {
+            if (!IsEnabled || Visibility != Visibility.Visible)
+            {
+                return false;
+            }
+
+            System.Windows.Input.FocusManager.SetFocusedElement(this);
+            return true;
+        }
 
         // Kept in the property store, not a field: like DefaultStyleKey below, these two are
         // called with a `this` whose patched base chain skips Control (an ItemsControl here is a

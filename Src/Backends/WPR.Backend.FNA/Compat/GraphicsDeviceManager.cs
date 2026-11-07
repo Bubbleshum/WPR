@@ -64,7 +64,13 @@ namespace WPR.Backend.FNA.Compat
         public new void ApplyChanges()
         {
             base.ApplyChanges();
-            RequestOrientationChange(PreferredBackBufferWidth, PreferredBackBufferHeight);
+            // The backbuffer the device got, not the preferred size: a Portrait-only game's
+            // 800x480 preference becomes a 480x800 backbuffer (WprFitToSupportedOrientations),
+            // and asking for a landscape activity here would turn the phone under it.
+            var pp = GraphicsDevice?.PresentationParameters;
+            RequestOrientationChange(
+                pp?.BackBufferWidth ?? PreferredBackBufferWidth,
+                pp?.BackBufferHeight ?? PreferredBackBufferHeight);
         }
 
         public static void RequestOrientationChange(int width, int height)

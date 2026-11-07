@@ -156,6 +156,21 @@ public sealed class DynarmicArmCpu : IArmCpu
         }
     }
 
+    public bool TryCopyWithin(long destination, long source, long count)
+    {
+        if (count <= 0 || count > uint.MaxValue)
+        {
+            return false;
+        }
+
+        return _cpu.TryCopy((uint)destination, (uint)source, (uint)count);
+    }
+
+    public bool DiscardPages(long address, long size)
+    {
+        return size > 0 && size <= uint.MaxValue && _cpu.TryDiscard((uint)address, (uint)size);
+    }
+
     public RunResult Run(long startAddress, long instructionBudget)
     {
         _stopped = false;

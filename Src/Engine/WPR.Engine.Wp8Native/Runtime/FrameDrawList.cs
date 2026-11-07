@@ -42,8 +42,12 @@ namespace WPR.Wp8Native
     /// texture headed for the GPU, its blocks as shipped (<see cref="Blocks"/>, tightly packed,
     /// <see cref="BlockFormat"/> 1/2/3 for BC1/BC2/BC3) with <see cref="Rgba"/> empty.
     /// </summary>
-    /// <remarks><see cref="Faces"/> is set for a cube map: faces 1-5, this image being face 0.</remarks>
-    public sealed record TextureImage(long Key, int Version, int Width, int Height, byte[] Rgba, byte[]? Blocks = null, int BlockFormat = 0, TextureImage[]? Faces = null);
+    /// <remarks>
+    /// <see cref="Faces"/> is set for a cube map: faces 1-5, this image being face 0.
+    /// <see cref="MipLevels"/> is how many levels the guest created the texture with; only the top
+    /// one is captured, and the GPU replay builds the rest.
+    /// </remarks>
+    public sealed record TextureImage(long Key, int Version, int Width, int Height, byte[] Rgba, byte[]? Blocks = null, int BlockFormat = 0, TextureImage[]? Faces = null, int MipLevels = 1);
 
     /// <summary>
     /// Decoded guest textures by storage address, each dropped once nothing has asked for it for
@@ -249,7 +253,7 @@ namespace WPR.Wp8Native
                 }
             }
 
-            var image = new TextureImage(texture.Storage, texture.Version, width, height, rgba);
+            var image = new TextureImage(texture.Storage, texture.Version, width, height, rgba, MipLevels: texture.MipLevels);
             RgbaCache.Set(texture.Storage, image);
             return image;
         }

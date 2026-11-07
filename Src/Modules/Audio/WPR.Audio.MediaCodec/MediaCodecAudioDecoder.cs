@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.IO;
 using Android.Media;
 using WPR.Engine.Audio;
@@ -113,7 +114,16 @@ namespace WPR.Audio.MediaCodec
 
                 // 16-bit unless the output format says otherwise (KEY_PCM_ENCODING, API 24+).
                 int encoding = 2;   // AudioFormat.ENCODING_PCM_16BIT
-                using var pcm = new MemoryStream();
+
+                // One buffer, sized up front from the track's duration, that every output
+                // buffer is appended to. A MemoryStream doubled its way up (up to twice the track), then
+                // ToArray and Finish's sample arrays copied it three more times: a 3-minute
+                // stereo MP3 is ~32 MB of PCM, so its decode peaked well over 100 MB on the
+                // large-object heap. Now the peak is this buffer plus one exact-length copy.
+                long durationUs = format.ContainsKey(MediaFormat.KeyDuration) ? format.GetLong(MediaFormat.KeyDuration) : 0;
+                byte[] pcm = new byte[EstimateBytes(durationUs, rate, channels)];
+                int pcmLength = 0;
+                byte[] chunk = Array.Empty<byte>();
                 using var info = new Android.Media.MediaCodec.BufferInfo();
                 bool inputDone = false;
                 DateTime giveUp = DateTime.UtcNow + Deadline;
@@ -164,17 +174,33 @@ namespace WPR.Audio.MediaCodec
                         using Java.Nio.ByteBuffer? output = codec.GetOutputBuffer(outIndex);
                         if (output != null)
                         {
-                            byte[] chunk = new byte[info.Size];
+                            if (pcmLength + info.Size > pcm.Length)
+                            {
+                                // The duration was short or missing (or the output is float):
+                                // grow by half again, not double.
+                                long grown = Math.Max((long)pcmLength + info.Size, pcm.Length + (pcm.Length / 2L));
+                                Array.Resize(ref pcm, (int)Math.Min(grown, Array.MaxLength));
+                            }
+
+                            // Through a small reused chunk, never straight into pcm: the binding
+                            // marshals the WHOLE managed array across JNI on every Get, so a
+                            // direct read would copy the growing track once per output buffer.
+                            if (chunk.Length < info.Size)
+                            {
+                                chunk = new byte[info.Size];
+                            }
+
                             output.Position(info.Offset);
                             output.Get(chunk, 0, info.Size);
-                            pcm.Write(chunk, 0, chunk.Length);
+                            Buffer.BlockCopy(chunk, 0, pcm, pcmLength, info.Size);
+                            pcmLength += info.Size;
                         }
                     }
 
                     codec.ReleaseOutputBuffer(outIndex, false);
                     if (end)
                     {
-                        return Finish(pcm.ToArray(), rate, channels, encoding, hasVideo, nameHint);
+                        return Finish(pcm, pcmLength, rate, channels, encoding, hasVideo, nameHint);
                     }
                 }
 
@@ -194,43 +220,60 @@ namespace WPR.Audio.MediaCodec
             }
         }
 
-        /// <summary>To 16-bit, at most two channels (the runtime's voices are mono or stereo).</summary>
-        private static DecodedPcm? Finish(byte[] raw, int rate, int channels, int encoding, bool hasVideo, string? nameHint)
+        /// <summary>
+        /// Bytes for <paramref name="durationUs"/> of 16-bit PCM, plus a little, as the decode
+        /// buffer's first size. 1 MB when the container gives no duration; never more than 256 MB
+        /// up front (a longer track grows into it).
+        /// </summary>
+        private static int EstimateBytes(long durationUs, int rate, int channels)
+        {
+            if (durationUs <= 0 || rate <= 0 || channels <= 0)
+            {
+                return 1024 * 1024;
+            }
+
+            double bytes = (durationUs / 1_000_000.0 * rate * channels * 2) + (64 * 1024);
+            return (int)Math.Clamp(bytes, 64 * 1024, 256.0 * 1024 * 1024);
+        }
+
+        /// <summary>
+        /// To 16-bit, at most two channels (the runtime's voices are mono or stereo), converted in
+        /// place: each output sample is written at or before the position its input is read
+        /// from, so the decode buffer is reused and only the exact-length result is new.
+        /// </summary>
+        private static DecodedPcm? Finish(byte[] raw, int length, int rate, int channels, int encoding, bool hasVideo, string? nameHint)
         {
             if (rate <= 0 || channels <= 0)
             {
                 return null;
             }
 
-            short[] samples;
-            if (encoding == 4)   // AudioFormat.ENCODING_PCM_FLOAT
+            bool isFloat = encoding == 4;   // AudioFormat.ENCODING_PCM_FLOAT; anything else is read as 16-bit
+            int bytesPerSample = isFloat ? 4 : 2;
+            int keep = Math.Min(channels, 2);
+            int frames = length / bytesPerSample / channels;
+            int written = frames * keep * 2;
+
+            if (isFloat || channels > 2)
             {
-                samples = new short[raw.Length / 4];
-                for (int i = 0; i < samples.Length; i++)
+                Span<byte> pcm = raw.AsSpan(0, length);
+                int at = 0;
+                for (int f = 0; f < frames; f++)
                 {
-                    float v = BitConverter.ToSingle(raw, i * 4);
-                    samples[i] = (short)Math.Clamp((int)MathF.Round(v * 32767f), short.MinValue, short.MaxValue);
+                    for (int c = 0; c < keep; c++)
+                    {
+                        int from = ((f * channels) + c) * bytesPerSample;
+                        short s = isFloat
+                            ? (short)Math.Clamp((int)MathF.Round(BinaryPrimitives.ReadSingleLittleEndian(pcm.Slice(from)) * 32767f), short.MinValue, short.MaxValue)
+                            : BinaryPrimitives.ReadInt16LittleEndian(pcm.Slice(from));
+                        BinaryPrimitives.WriteInt16LittleEndian(pcm.Slice(at), s);
+                        at += 2;
+                    }
                 }
-            }
-            else
-            {
-                samples = new short[raw.Length / 2];
-                Buffer.BlockCopy(raw, 0, samples, 0, samples.Length * 2);
             }
 
-            int keep = Math.Min(channels, 2);
-            int frames = samples.Length / channels;
-            byte[] pcm16 = new byte[frames * keep * 2];
-            for (int f = 0; f < frames; f++)
-            {
-                for (int c = 0; c < keep; c++)
-                {
-                    short s = samples[(f * channels) + c];
-                    int at = ((f * keep) + c) * 2;
-                    pcm16[at] = (byte)s;
-                    pcm16[at + 1] = (byte)(s >> 8);
-                }
-            }
+            // 16-bit mono or stereo is already the output layout: nothing to convert.
+            byte[] pcm16 = written == raw.Length ? raw : raw.AsSpan(0, written).ToArray();
 
             Trace.WriteLine($"[wpr-adec] {nameHint ?? "source"}: {rate} Hz x{keep}, {frames} frames" + (hasVideo ? " (video stream not decoded)" : ""));
             return new DecodedPcm(rate, keep, pcm16, hasVideo);

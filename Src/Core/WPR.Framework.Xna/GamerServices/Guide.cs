@@ -42,7 +42,24 @@ namespace Microsoft.Xna.Framework.GamerServices
             {
                 IsVisible = true;
 
-                string? result = await ShowInputBoxFunc(title, description, defaultText);
+                // No presenter, or one that fails, answers as a cancelled box, the way
+                // BeginShowMessageBox does. Throwing here faults the IAsyncResult, and the game's
+                // EndShowKeyboardInput then throws out of its Update (Doodle Jump's game-over
+                // name prompt, under a host with no input box).
+                string? result = null;
+                try
+                {
+                    var show = ShowInputBoxFunc;
+                    if (show != null)
+                    {
+                        result = await show(title, description, defaultText);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    WPR.Xna.Rhi.XnaBackend.LogWarn("[wpr-guide] keyboard input box failed: " + ex.Message);
+                }
+
                 if (result == null)
                 {
                     result = defaultText;

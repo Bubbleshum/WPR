@@ -284,7 +284,7 @@ namespace WPR.Wp8Native
             return fallback;
         }
 
-        /// <summary>The package's DLLs by lower-case file name. The WP8 loader searches the package root.</summary>
+        /// <summary>The files in the package root a module can be loaded from, by file name (any case). The WP8 loader searches the package root.</summary>
         private Dictionary<string, string> PackageDlls()
         {
             if (_packageDlls is not null)
@@ -295,11 +295,17 @@ namespace WPR.Wp8Native
             _packageDlls = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             if (Directory.Exists(_packageRoot))
             {
-                foreach (string file in Directory.EnumerateFiles(_packageRoot, "*.dll", SearchOption.TopDirectoryOnly))
+                // Every file, not only *.dll: LoadPackagedLibrary loads a module by its file name
+                // whatever its extension. Marmalade's loader maps the game itself from
+                // "<title>.s86", an ARM PE DLL; answered "not found", Shadow Fight 2 called exit(0)
+                // right after reading it. WPR's own backups (.original, .native_original) are not
+                // the package's; a component's native image is still found through PeImage.Load.
+                foreach (string file in Directory.EnumerateFiles(_packageRoot, "*", SearchOption.TopDirectoryOnly))
                 {
-                    if (file.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+                    string fileName = Path.GetFileName(file);
+                    if (!FileLibrary.IsHostArtefact(fileName))
                     {
-                        _packageDlls[Path.GetFileName(file)] = file;
+                        _packageDlls[fileName] = file;
                     }
                 }
             }

@@ -105,6 +105,17 @@ namespace System.Windows.Controls
             set => SetValue(IsReadOnlyProperty, value);
         }
 
+        public static readonly DependencyProperty InputScopeProperty =
+            DependencyProperty.Register(nameof(InputScope), typeof(System.Windows.Input.InputScope), typeof(TextBox),
+                new PropertyMetadata((object?)null));
+
+        /// <summary>The software keyboard layout asked for. Stored; WPR shows no on-screen keyboard.</summary>
+        public System.Windows.Input.InputScope? InputScope
+        {
+            get => (System.Windows.Input.InputScope?)GetValue(InputScopeProperty);
+            set => SetValue(InputScopeProperty, value);
+        }
+
         public int SelectionStart { get; set; }
         public int SelectionLength { get; set; }
         public string SelectedText { get; set; } = string.Empty;

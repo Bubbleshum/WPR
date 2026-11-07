@@ -303,6 +303,9 @@ public sealed class MediaStreamsSuite : IContractSuite
         Check("video is still NOT_SUPPORTED", M(engine, 13, _h.Bstr("video/mp4"), answer) == SOk && _h.U32(answer) == 0);
         before = events.Count;
         M(engine, 6, _h.Bstr("ms-appdata:///local/song.mp3"));
+        Check("a compressed source decodes off the guest thread: SetSource returns at LOADSTART",
+            events.Skip(before).LastOrDefault() == "LOADSTART", string.Join(",", events.Skip(before)));
+        TickUntilLoaded(events, before);
         Check("an MP3 loads through the decoder: ... CANPLAY, CANPLAYTHROUGH", events.Skip(before).TakeLast(2).SequenceEqual(["CANPLAY", "CANPLAYTHROUGH"]) && decoder.Calls == 1,
             string.Join(",", events.Skip(before)));
         M(engine, 19);
@@ -315,6 +318,7 @@ public sealed class MediaStreamsSuite : IContractSuite
 
         before = events.Count;
         M(engine, 6, _h.Bstr("ms-appdata:///local/intro.mp4"));
+        TickUntilLoaded(events, before);
         Check("a source with video fails with SRC_NOT_SUPPORTED even though its audio decodes", events.Skip(before).Last() == "ERROR(4, 0xC00D36C4)", string.Join(",", events.Skip(before)));
         Check("recorded as video", _h.S.MediaUnimplemented.Any(x => x.Contains("intro.mp4") && x.Contains("video")));
 
@@ -342,6 +346,18 @@ public sealed class MediaStreamsSuite : IContractSuite
         Check("SetSourceFromByteStream(NULL) is E_POINTER", M(engine, 45, 0, 0) == EPointer);
         M(engine, 42);
         _h.S.MediaDecoder = null;
+    }
+
+    /// <summary>Frames go by (TickMedia) until the background decode has finished the load, or 5 s.</summary>
+    private void TickUntilLoaded(IReadOnlyList<string> events, int before)
+    {
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        while (waited.ElapsedMilliseconds < 5000 &&
+               !events.Skip(before).Any(x => x == "CANPLAYTHROUGH" || x.StartsWith("ERROR", StringComparison.Ordinal)))
+        {
+            Thread.Sleep(1);
+            _h.S.TickMedia(0);
+        }
     }
 
     private static byte[] Wave(int rate, int channels, int frames)

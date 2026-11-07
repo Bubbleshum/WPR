@@ -48,7 +48,10 @@ public sealed class Win32CoreSuite : IContractSuite
         }
 
         h.Check("FindNextFileW ends with ERROR_NO_MORE_FILES", LastError(h) == 18, $"error {LastError(h)}");
-        var expected = Directory.EnumerateFileSystemEntries(package).Select(Path.GetFileName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // What the package shipped: WPR's own files there (.original backups, wpr-* records) are hidden.
+        var expected = Directory.EnumerateFileSystemEntries(package).Select(Path.GetFileName).OfType<string>()
+            .Where(n => !WPR.Wp8Native.FileLibrary.IsHostArtefact(n)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        h.Check("FindFirstFileExW hides WPR's own files in the install folder", !seen.Any(WPR.Wp8Native.FileLibrary.IsHostArtefact));
         h.Check("FindFirstFileExW lists the package folder, . and .. first",
             seen.Count == expected.Count + 2 && seen[0] == "." && seen[1] == ".." && seen.Skip(2).All(expected.Contains),
             $"{seen.Count} entries, package has {expected.Count}");
@@ -480,6 +483,20 @@ public sealed class Win32CoreSuite : IContractSuite
         h.Check("WideCharToMultiByte to UTF-8 with a used-default pointer is ERROR_INVALID_PARAMETER",
             h.Call("WideCharToMultiByte", 65001, 0, h.Wide("a"), 1, narrowOut, 16, 0, used) == 0 && LastError(h) == 87);
         h.Check("WideCharToMultiByte to UTF-8", h.Call("WideCharToMultiByte", 65001, 0, h.Wide("\u00e9"), 1, narrowOut, 16, 0, 0) == 2 && e.ReadMemory(narrowOut, 2).SequenceEqual(new byte[] { 0xC3, 0xA9 }));
+        // Too small a buffer still gets what fits, as on Windows: Marmalade sizes its path buffer
+        // without room for the NUL, converts with -1, and uses the bytes written.
+        e.WriteMemory(narrowOut, Enumerable.Repeat((byte)0xEE, 16).ToArray());
+        h.Check("WideCharToMultiByte into too small a buffer writes what fits, then ERROR_INSUFFICIENT_BUFFER",
+            h.Call("WideCharToMultiByte", 0, 0, h.Wide("C:\\data"), 0xFFFFFFFF, narrowOut, 7, 0, 0) == 0 && LastError(h) == 122 &&
+            h.ReadNarrow(narrowOut, 7) == "C:\\data" && e.ReadMemory(narrowOut + 7, 1)[0] == 0xEE);
+        e.WriteMemory(narrowOut, Enumerable.Repeat((byte)0xEE, 16).ToArray());
+        h.Check("WideCharToMultiByte to UTF-8 does not split a character",
+            h.Call("WideCharToMultiByte", 65001, 0, h.Wide("a\u00e9"), 2, narrowOut, 2, 0, 0) == 0 && LastError(h) == 122 &&
+            e.ReadMemory(narrowOut, 2).SequenceEqual(new byte[] { (byte)'a', 0xEE }),
+            Convert.ToHexString(e.ReadMemory(narrowOut, 2)) + $" error {LastError(h)}");
+        e.WriteMemory(utf8, [(byte)'a', (byte)'b', (byte)'c', 0]);
+        h.Check("MultiByteToWideChar into too small a buffer writes what fits",
+            h.Call("MultiByteToWideChar", 0, 0, utf8, 3, wide, 2) == 0 && LastError(h) == 122 && h.ReadWide(wide, 2) == "ab");
 
         // --- FormatMessage ---
         long message = h.Buffer(512);

@@ -101,12 +101,26 @@ namespace Microsoft.Xna.Framework.GamerServices
             return Gamertag;
         }
 
+        /// <summary>
+        /// Completes on a pool thread with <see cref="PlaceholderPartnerToken"/>, as a signed-in
+        /// device's fetch completed with a real token. It used to return a task that never finished,
+        /// so a game that waits for the callback before going online never did: Skulls of the Shogun
+        /// sat on "Connecting to async servers" for ever (AngelXNA.Net.NetAsyncGameManager). Where
+        /// that game's Xbox LIVE services are now served, the player is identified by WPR's service
+        /// token, not by this one.
+        /// </summary>
         public static IAsyncResult BeginGetPartnerToken(
           string audienceUri,
           AsyncCallback callback,
           object asyncState)
         {
-            return StubUtils.ForeverTask;
+            var source = new TaskCompletionSource<string>(asyncState, TaskCreationOptions.RunContinuationsAsynchronously);
+            Task.Run(() =>
+            {
+                source.SetResult(PlaceholderPartnerToken);
+                callback?.Invoke(source.Task);
+            });
+            return source.Task;
         }
 
         /// <summary>
@@ -139,12 +153,9 @@ namespace Microsoft.Xna.Framework.GamerServices
         // signed-in device never did: see PlaceholderPartnerToken.
         public static string GetPartnerToken(string audienceUri) => PlaceholderPartnerToken;
 
-        // The async half of the above. BeginGetPartnerToken hands back StubUtils.ForeverTask, so
-        // this is only ever reached by a game that polls IsCompleted rather than blocking — but
-        // it has to EXIST, because the reference is resolved when the calling method is JITted,
-        // not when it runs. Skulls of the Shogun (AngelXNA.Net.NetAsyncGameManager) and Crimson
-        // Dragon (Microsoft.Phone.Marketplace.GamerContext) both reference it. Same token as the
-        // synchronous path.
+        // The async half of the above, for BeginGetPartnerToken. Skulls of the Shogun
+        // (AngelXNA.Net.NetAsyncGameManager) and Crimson Dragon (Microsoft.Phone.Marketplace.GamerContext)
+        // both call it. Same token as the synchronous path.
         public static string EndGetPartnerToken(IAsyncResult result) => PlaceholderPartnerToken;
 
         /// <summary>

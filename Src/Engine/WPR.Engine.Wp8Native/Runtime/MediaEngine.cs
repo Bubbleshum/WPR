@@ -45,6 +45,9 @@ namespace WPR.Wp8Native
         private readonly MediaFoundation? _mf;
         private readonly List<Engine> _engines = new();
 
+        /// <summary>Whether a media engine exists, i.e. the title plays sound through this path.</summary>
+        public bool Active => _engines.Count > 0;
+
         public MediaEngine(MediaCom com, string packageRoot, Func<IAudioOutput?> output, Func<IMediaDecoder?>? decoder = null, MediaFoundation? mediaFoundation = null)
         {
             _com = com;
@@ -169,6 +172,10 @@ namespace WPR.Wp8Native
 
             public PcmAudio.Wave? Wave;
             public IAudioVoiceOutput? Voice;
+
+            // Compressed audio decoding on a worker thread; Tick finishes the load when it is done.
+            public System.Threading.Tasks.Task<DecodeResult>? PendingDecode;
+            public string? PendingName;
             public int StartFrame;
             public int CompletedAtStart;
             public readonly List<int> Chunks = new();
@@ -648,6 +655,7 @@ namespace WPR.Wp8Native
             StopVoice(e);
             CloseVideo(e);
             e.Wave = null;
+            e.PendingDecode = null;     // a decode still running for the last source is dropped
             e.ReadyState = 0;
             e.Paused = true;
             e.Ended = false;
@@ -674,7 +682,32 @@ namespace WPR.Wp8Native
 
             byte[] bytes = data ?? File.ReadAllBytes(file!);
             string name = Path.GetFileName(file ?? url);
-            PcmAudio.Wave? wave = PcmAudio.ReadWave(bytes) ?? OpenMovie(e, file, url, bytes, name) ?? Decode(bytes, name);
+            PcmAudio.Wave? wave = PcmAudio.ReadWave(bytes) ?? OpenMovie(e, file, url, bytes, name);
+            if (wave is null)
+            {
+                string container = MediaContainer.Sniff(bytes);
+                if (_decoder() is not { } decoder)
+                {
+                    _com.Record($"IMFMediaEngine source {name} ({container}): no decoder on this platform (only uncompressed WAVE) -> MF_MEDIA_ENGINE_ERR_SRC_NOT_SUPPORTED");
+                    FinishLoad(e, url, null);
+                    return;
+                }
+
+                // Media Foundation loads asynchronously, and games wait for its events. Decoding a
+                // whole track here stopped every guest thread for as long as it took: Shadow Fight
+                // 2's 109 s menu music took 3.2 s through MediaCodec on the S24, a 4 s freeze with
+                // its sound effects running dry. The rest of the load runs in Tick once it is done.
+                e.PendingName = $"{name} ({container})";
+                e.PendingDecode = System.Threading.Tasks.Task.Run(() => DecodeOnWorker(decoder, bytes, name));
+                return;
+            }
+
+            FinishLoad(e, url, wave);
+        }
+
+        /// <summary>The second half of the load algorithm, once the source's audio is known.</summary>
+        private void FinishLoad(Engine e, string url, PcmAudio.Wave? wave)
+        {
             if (wave is null)
             {
                 FailLoad(e, url, MediaFoundation.MfEUnsupportedByteStreamType);
@@ -693,8 +726,41 @@ namespace WPR.Wp8Native
             {
                 Play(e);
             }
+            else if (!e.Paused)
+            {
+                // Play() came while the source was loading: PLAY was raised then, playback starts now.
+                StartAt(e, 0);
+                e.Voice?.Play();
+                Fire(e, EventPlaying);
+            }
         }
 
+        /// <summary>What a worker's decode came back with, for <see cref="CompletePendingDecode"/> to record.</summary>
+        internal sealed record DecodeResult(DecodedAudio? Audio, string? Threw, string DecoderName);
+
+        private static DecodeResult DecodeOnWorker(IMediaDecoder decoder, byte[] bytes, string name)
+        {
+            try
+            {
+                return new DecodeResult(decoder.Decode(bytes, name), null, decoder.Name);
+            }
+            catch (Exception ex)
+            {
+                return new DecodeResult(null, ex.GetType().Name, decoder.Name);
+            }
+        }
+
+        /// <summary>On the guest thread, once a frame: a finished background decode completes its source's load.</summary>
+        private void CompletePendingDecode(Engine e)
+        {
+            if (e.PendingDecode is not { IsCompleted: true } task)
+            {
+                return;
+            }
+
+            e.PendingDecode = null;
+            FinishLoad(e, e.Source ?? "", Accept(task.Result, e.PendingName ?? "?"));
+        }
         /// <summary>
         /// A movie (an ASF or MP4 container the platform's video decoder opens): its frames are
         /// served through OnVideoStreamTick/TransferVideoFrame, and its soundtrack - decoded whole,
@@ -940,45 +1006,33 @@ namespace WPR.Wp8Native
         }
 
         /// <summary>
-        /// Compressed audio through the platform decoder; null (recorded, with the reason) when
-        /// there is no decoder, it cannot decode this, or the source carries video.
+        /// A decoder's answer, checked and recorded: null (with the reason) when it threw, found no
+        /// audio it could use, or the source carries video.
         /// </summary>
-        private PcmAudio.Wave? Decode(byte[] bytes, string name)
+        private PcmAudio.Wave? Accept(DecodeResult result, string name)
         {
-            string container = MediaContainer.Sniff(bytes);
-            IMediaDecoder? decoder = _decoder();
-            if (decoder is null)
-            {
-                _com.Record($"IMFMediaEngine source {name} ({container}): no decoder on this platform (only uncompressed WAVE) -> MF_MEDIA_ENGINE_ERR_SRC_NOT_SUPPORTED");
-                return null;
-            }
-
-            DecodedAudio? decoded;
-            try
-            {
-                decoded = decoder.Decode(bytes, name);
-            }
-            catch (Exception ex)
+            if (result.Threw is not null)
             {
                 // The contract says a decoder does not throw; one that does costs the source, never the game.
-                _com.Record($"IMFMediaEngine source {name} ({container}): {decoder.Name} threw {ex.GetType().Name} -> MF_MEDIA_ENGINE_ERR_SRC_NOT_SUPPORTED");
+                _com.Record($"IMFMediaEngine source {name}: {result.DecoderName} threw {result.Threw} -> MF_MEDIA_ENGINE_ERR_SRC_NOT_SUPPORTED");
                 return null;
             }
 
+            DecodedAudio? decoded = result.Audio;
             if (decoded is { HasVideo: true })
             {
-                _com.Record($"IMFMediaEngine source {name} ({container}): has a video stream, and video is not decoded here -> MF_MEDIA_ENGINE_ERR_SRC_NOT_SUPPORTED");
+                _com.Record($"IMFMediaEngine source {name}: has a video stream, and video is not decoded here -> MF_MEDIA_ENGINE_ERR_SRC_NOT_SUPPORTED");
                 return null;
             }
 
             if (decoded is null || decoded.SampleRate <= 0 || decoded.Channels is not (1 or 2) ||
                 decoded.Pcm16.Length == 0 || decoded.Pcm16.Length % (decoded.Channels * 2) != 0)
             {
-                _com.Record($"IMFMediaEngine source {name} ({container}): {decoder.Name} found no audio it could decode -> MF_MEDIA_ENGINE_ERR_SRC_NOT_SUPPORTED");
+                _com.Record($"IMFMediaEngine source {name}: {result.DecoderName} found no audio it could decode -> MF_MEDIA_ENGINE_ERR_SRC_NOT_SUPPORTED");
                 return null;
             }
 
-            Decoded.Add($"{name} ({container}, {decoded.SampleRate} Hz, {decoded.Channels} ch)");
+            Decoded.Add($"{name}, {decoded.SampleRate} Hz, {decoded.Channels} ch");
             return new PcmAudio.Wave(decoded.SampleRate, decoded.Channels, decoded.Pcm16);
         }
 
@@ -1190,6 +1244,11 @@ namespace WPR.Wp8Native
                 {
                     _engines.Remove(e);
                     continue;
+                }
+
+                if (!e.Shut && e.PendingDecode is not null)
+                {
+                    CompletePendingDecode(e);
                 }
 
                 if (e.Shut || e.Paused || e.Ended || e.Wave is null)

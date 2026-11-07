@@ -237,6 +237,80 @@ namespace WPR.Platform.Android
             }
         }
 
+        /// <summary>
+        /// Gives memory back when Android says it is short, before the low-memory killer picks
+        /// the <c>:game</c> process. Without this nothing in WPR ever heard the warning: the GC
+        /// only collects when its own budgets say so, and it does not compact the large-object
+        /// heap at all unless asked, so freed texture, audio and guest-memory arrays kept their
+        /// address space. On a 4 GB phone a level transition is exactly when that matters.
+        /// </summary>
+        /// <remarks>
+        /// <para>A compacting full collection stops every thread, so it runs only when a pause
+        /// costs nothing or is the lesser evil: the game is hidden (<c>UiHidden</c> and the
+        /// background levels), or it is in front and Android reports <c>RunningCritical</c>
+        /// (it is about to start killing foreground work). <c>RunningLow</c> gets a non-blocking
+        /// collection with no compaction, which does not hitch a frame. At most once every
+        /// 10 s, because Android repeats these while the pressure lasts.</para>
+        /// <para>base FIRST, as in <see cref="OnPause"/>: SDLActivity forwards low memory to the
+        /// native side as <c>SDL_APP_LOWMEMORY</c>.</para>
+        /// </remarks>
+        public override void OnTrimMemory([GeneratedEnum] TrimMemory level)
+        {
+            base.OnTrimMemory(level);
+            RespondToMemoryPressure(level);
+        }
+
+        public override void OnLowMemory()
+        {
+            base.OnLowMemory();
+            RespondToMemoryPressure(TrimMemory.Complete);
+        }
+
+        private static long _lastTrimTicks;
+
+        private static void RespondToMemoryPressure(TrimMemory level)
+        {
+            bool hidden = level >= TrimMemory.UiHidden;
+            bool compact = hidden || level >= TrimMemory.RunningCritical;
+            if (!compact && level < TrimMemory.RunningLow)
+            {
+                return;
+            }
+
+            long now = System.Environment.TickCount64;   // not Android.OS.Environment
+            if (now - Interlocked.Read(ref _lastTrimTicks) < 10_000)
+            {
+                return;
+            }
+
+            Interlocked.Exchange(ref _lastTrimTicks, now);
+
+            try
+            {
+                long before = GC.GetTotalMemory(false);
+                if (compact)
+                {
+                    System.Runtime.GCSettings.LargeObjectHeapCompactionMode =
+                        System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+                    GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+                }
+                else
+                {
+                    GC.Collect(GC.MaxGeneration, GCCollectionMode.Optimized, blocking: false, compacting: false);
+                }
+
+                Common.Log.Info(Common.LogCategory.Android,
+                    $"[wpr-memory] trim level={level}: {(compact ? "compacting" : "background")} collection, " +
+                    $"managed {before / (1024 * 1024)} MB -> {GC.GetTotalMemory(false) / (1024 * 1024)} MB");
+            }
+            catch (Exception ex)
+            {
+                // An exception escaping a lifecycle callback is an unhandled crash of :game.
+                Common.Log.Warn(Common.LogCategory.Android,
+                    $"[wpr-memory] trim response threw: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
         private static void SuspendMusicSafely()
         {
             try

@@ -32,6 +32,9 @@ namespace WPR.Wp8Native
         /// <summary>Media engine events queued to games, in order.</summary>
         public IReadOnlyList<string> MediaEngineEvents => _mediaEngine?.EventsFired ?? [];
 
+        /// <summary>How the WASAPI streams are being fed, for the run summary; empty with none.</summary>
+        public string WasapiSummary => _phoneAudio is { Active: true } pa ? pa.Summary() : "";
+
         /// <summary>One frame of the media clocks: WASAPI padding and events, media engine time and end.</summary>
         public void TickMedia(double frameSeconds = 1.0 / 60)
         {
@@ -52,6 +55,7 @@ namespace WPR.Wp8Native
             _phoneAudio.RegisterInto(_handlers);
             new X3DAudioLibrary(_mediaCom).RegisterInto(_handlers);
             XAudio2.FrameTick += () => TickMedia();
+            XAudio2.OtherAudioActive = () => (_mediaEngine?.Active ?? false) || (_phoneAudio?.Active ?? false);
 
             // HRESULT CreateDXGIFactory1(REFIID, void** ppFactory), and the older CreateDXGIFactory.
             _handlers["CreateDXGIFactory1"] = Direct3D.CreateDxgiFactory;
