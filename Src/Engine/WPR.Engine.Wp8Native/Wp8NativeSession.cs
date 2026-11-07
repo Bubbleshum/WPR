@@ -1077,10 +1077,12 @@ namespace WPR.Wp8Native
         /// <summary>
         /// True when the guest faulted while tearing itself down after the player asked to leave:
         /// Back was pressed within <see cref="QuitAfterBackWindow"/>, and since then the live guest
-        /// heap has shrunk by at least an eighth and 16 MB, which only a shutdown that frees the
+        /// heap has shrunk by at least a sixteenth and 16 MB, which only a shutdown that frees the
         /// game's assets does. On a phone a native crash closed the app with no message, so a
         /// game that crashes in its own quit (Asphalt 7: its file system goes before a file it
         /// still holds) simply closed there. Here it is treated the same way: no error screen.
+        /// A sixteenth, not an eighth: quitting after a race (S24, 0.2.10) freed 38 of 336 MB in
+        /// 1.3 s, which an eighth called a crash and put on the error screen.
         /// </summary>
         private bool StoppedWhileShuttingDown(out string why)
         {
@@ -1092,7 +1094,7 @@ namespace WPR.Wp8Native
 
             TimeSpan since = System.Diagnostics.Stopwatch.GetElapsedTime(_lastBackAt);
             long freed = _liveHeapAtBack - emulator.LiveHeapBytes;
-            if (since > QuitAfterBackWindow || freed < 16L * 1024 * 1024 || freed * 8 < _liveHeapAtBack)
+            if (since > QuitAfterBackWindow || freed < 16L * 1024 * 1024 || freed * 16 < _liveHeapAtBack)
             {
                 Log($"not a shutdown: {since.TotalSeconds:F1} s after Back, live guest heap {_liveHeapAtBack / (1024 * 1024)} -> {emulator.LiveHeapBytes / (1024 * 1024)} MB");
                 return false;

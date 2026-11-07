@@ -2852,7 +2852,7 @@ Diagnostics used, in the `WPR-ab` worktree only: `WPR_WP8_BRIDGE_LOG=N`, `WPR_WP
 a wider stack scan, the null-call report uncapped, and `WPR_WP8_IMPORT_TRACE` with `_AFTER`.
 
 **What WPR does about it, generally:** a guest stop that happens **within 10 s of a Back press,
-after the live guest heap has shrunk by at least 16 MB and an eighth** since that press, is the app
+after the live guest heap has shrunk by at least 16 MB and a sixteenth** since that press, is the app
 closing, as a native crash in its own quit was on a phone: no error screen, no WPR Hub crash report,
 the window closes (`Wp8NativeSession.StoppedWhileShuttingDown`). Only a shutdown frees that much
 that fast; Asphalt went 109 -> 83 MB in 8.4 s. `ArmEmulator.LiveHeapBytes` counts allocated minus
@@ -2863,6 +2863,8 @@ with the numbers, and the post-mortem is still written. The cost: a real crash r
 that also frees a lot (a pause menu's "quit to menu") is closed quietly rather than reported.
 Verified on the desktop harness (D3D11) with the script above, and on the S24 (build 38):
 `1.2 s after Back, 110 -> 85 MB`, teardown 0.2 s later.
+It was an eighth until 0.2.10: quitting after a race on the S24 freed 38 of 336 MB in 1.3 s
+(`not a shutdown: 1.3 s after Back, live guest heap 336 -> 298 MB`) and showed the error screen.
 
 **A stopped guest answers page calls at once** (`WinRtRuntime.MarkGuestStopped`, called by the
 session as soon as the guest's run returns). Bridge calls from the managed page wait up to 30 s
